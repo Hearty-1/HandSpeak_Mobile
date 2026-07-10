@@ -1,4 +1,4 @@
-# flutter_application_1
+# HandSpeak
 
 A new Flutter project.
 
