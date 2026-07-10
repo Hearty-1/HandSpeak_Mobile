@@ -1,0 +1,378 @@
+import 'package:flutter/material.dart';
+import 'tutorial_practice.dart';
+
+class TutorialSign {
+  final String label;
+  final String imagePath;
+  const TutorialSign({required this.label, required this.imagePath});
+}
+
+class TutorialInterface3 extends StatefulWidget {
+  final int initialIndex; // Receives selected entry index value from menu catalog
+  
+  const TutorialInterface3({super.key, this.initialIndex = 0});
+
+  @override
+  _TutorialInterface3State createState() => _TutorialInterface3State();
+}
+
+class _TutorialInterface3State extends State<TutorialInterface3> {
+  final List<TutorialSign> _alphabetList = const [
+    TutorialSign(label: 'Aa', imagePath: 'assets/pictures/A.png'),
+    TutorialSign(label: 'Bb', imagePath: 'assets/pictures/B.png'),
+    TutorialSign(label: 'Cc', imagePath: 'assets/pictures/C.png'),
+    TutorialSign(label: 'Dd', imagePath: 'assets/pictures/D.png'),
+    TutorialSign(label: 'Ee', imagePath: 'assets/pictures/E.png'),
+    TutorialSign(label: 'Ff', imagePath: 'assets/pictures/F.png'),
+    TutorialSign(label: 'Gg', imagePath: 'assets/pictures/G.png'),
+    TutorialSign(label: 'Hh', imagePath: 'assets/pictures/H.png'),
+    TutorialSign(label: 'Ii', imagePath: 'assets/pictures/I.png'),
+    TutorialSign(label: 'Jj', imagePath: 'assets/pictures/J.png'),
+    TutorialSign(label: 'Kk', imagePath: 'assets/pictures/K.png'),
+    TutorialSign(label: 'Ll', imagePath: 'assets/pictures/L.png'),
+    TutorialSign(label: 'Mm', imagePath: 'assets/pictures/M.png'),
+    TutorialSign(label: 'Nn', imagePath: 'assets/pictures/N.png'),
+    TutorialSign(label: 'Oo', imagePath: 'assets/pictures/O.png'),
+    TutorialSign(label: 'Pp', imagePath: 'assets/pictures/P.png'),
+    TutorialSign(label: 'Qq', imagePath: 'assets/pictures/Q.png'),
+    TutorialSign(label: 'Rr', imagePath: 'assets/pictures/R.png'),
+    TutorialSign(label: 'Ss', imagePath: 'assets/pictures/S.png'),
+    TutorialSign(label: 'Tt', imagePath: 'assets/pictures/T.png'),
+    TutorialSign(label: 'Uu', imagePath: 'assets/pictures/U.png'),
+    TutorialSign(label: 'Vv', imagePath: 'assets/pictures/V.png'),
+    TutorialSign(label: 'Ww', imagePath: 'assets/pictures/W.png'),
+    TutorialSign(label: 'Xx', imagePath: 'assets/pictures/X.png'),
+    TutorialSign(label: 'Yy', imagePath: 'assets/pictures/Y.png'),
+    TutorialSign(label: 'Zz', imagePath: 'assets/pictures/Z.png'),
+  ];
+
+  int _currentIndex = 0;
+  final int _currentStars = 3; // Simulated progress condition check for unlocking
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
+
+  void _goToNext() {
+    if (_currentIndex < _alphabetList.length - 1) {
+      if (_currentStars >= 3) {
+        setState(() {
+          _currentIndex++;
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Earn 3 stars in Practice mode to unlock the next letter!'),
+            backgroundColor: Color(0xCCF39C12),
+          ),
+        );
+      }
+    }
+  }
+
+  void _goToPrevious() {
+    if (_currentIndex > 0) {
+      setState(() {
+        _currentIndex--;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentSign = _alphabetList[_currentIndex];
+    
+    const double baseWidth = 393;
+    const double baseHeight = 793;
+    const double maxProgressWidth = 295.0;
+    
+    double progressPercentage = (_currentIndex + 1) / _alphabetList.length;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFF9E5),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final double scale = constraints.maxWidth / baseWidth;
+            final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
+
+            return Container(
+              width: double.infinity,
+              height: double.infinity,
+              color: const Color(0xFFFFF9E5),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: SizedBox(
+                  height: baseHeight * scale,
+                  width: constraints.maxWidth,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // --- Yellow Top Decorative Banner ---
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        child: Container(
+                          width: 393 * scale,
+                          height: 50 * scale,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFFB800),
+                          ),
+                        ),
+                      ),
+
+                      // --- Consistent Avatar Widget (Image 66 Replica) ---
+                      Positioned(
+                        left: 346.46 * scale,
+                        top: 0,
+                        child: SizedBox(
+                          width: 45.39 * scale,
+                          height: 50.11 * scale,
+                          child: Image.asset(
+                            "assets/pictures/image 66.png",
+                            fit: BoxFit.fill,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              margin: EdgeInsets.all(4 * scale),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.3),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.person,
+                                size: 22 * scale,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // --- Orange Subtitle Base Accent Bar ---
+                      Positioned(
+                        left: 0,
+                        top: 50 * scale,
+                        child: Container(
+                          width: 393 * scale,
+                          height: 50 * scale,
+                          decoration: const BoxDecoration(
+                            color: Color(0xCCF39C12),
+                          ),
+                        ),
+                      ),
+
+                      // --- Tutorial Header Text Label ---
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 61 * scale,
+                        child: Center(
+                          child: Text(
+                            'Tutorial',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 18 * scale,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // --- Dynamic Back Navigation Button ---
+                      Positioned(
+                        left: 16 * scale,
+                        top: 51 * scale,
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 46 * scale,
+                            height: 46 * scale,
+                            decoration: BoxDecoration(
+                              color: const Color(0x33FFF8E7),
+                              borderRadius: BorderRadius.circular(14 * scale),
+                            ),
+                            child: Icon(
+                              Icons.arrow_back,
+                              color: Colors.black,
+                              size: 20 * scale,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // --- Character Display Value Label Banner ---
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 139 * scale,
+                        child: Center(
+                          child: Text(
+                            currentSign.label,
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 52 * scale,
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1.5,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // --- Sign Image Workspace Display Window Canvas ---
+                      Positioned(
+                        left: 47 * scale,
+                        top: 225 * scale,
+                        child: Container(
+                          width: 299 * scale,
+                          height: 276 * scale,
+                          decoration: ShapeDecoration(
+                            image: DecorationImage(
+                              image: AssetImage(currentSign.imagePath),
+                              fit: BoxFit.cover,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16 * scale),
+                            ),
+                            shadows: const [
+                              BoxShadow(
+                                color: Color(0x0C132C4A),
+                                blurRadius: 12,
+                                offset: Offset(0, 4),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // --- Linear Dynamic Progress Step Tracker Indicator Bar ---
+                      Positioned(
+                        left: 49 * scale,
+                        top: 531 * scale,
+                        child: SizedBox(
+                          width: maxProgressWidth * scale,
+                          height: 14 * scale,
+                          child: Stack(
+                            children: [
+                              Container(
+                                width: maxProgressWidth * scale,
+                                height: 14 * scale,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F1FA),
+                                  borderRadius: BorderRadius.circular(25 * scale),
+                                ),
+                              ),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 250),
+                                width: calculatedProgressWidth * scale,
+                                height: 14 * scale,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF7DC579),
+                                  borderRadius: BorderRadius.circular(25 * scale),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // --- Controller Component Navigation: Previous ---
+                      Positioned(
+                        left: 36 * scale,
+                        top: 565 * scale,
+                        child: TextButton.icon(
+                          onPressed: _goToPrevious,
+                          icon: Icon(Icons.arrow_back, color: Colors.black, size: 18 * scale),
+                          label: Text(
+                            'Previous',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 16 * scale,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // --- Controller Component Navigation: Next ---
+                      Positioned(
+                        right: 36 * scale,
+                        top: 565 * scale,
+                        child: TextButton(
+                          onPressed: _goToNext,
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.symmetric(horizontal: 8 * scale),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Next',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 16 * scale,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(width: 8 * scale),
+                              Icon(
+                                Icons.arrow_forward,
+                                color: Colors.black,
+                                size: 18 * scale,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // --- Interface Practice Dynamic Routing Action Button ---
+                      Positioned(
+                        left: 47 * scale,
+                        top: 640 * scale,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFFB800),
+                            foregroundColor: Colors.white,
+                            minimumSize: Size(299 * scale, 50 * scale),
+                            elevation: 3,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25 * scale),
+                            ),
+                          ),
+                          onPressed: () {
+                            // Extract just the uppercase letter (e.g., "A" from "Aa")
+                            String letterToPractice = currentSign.label[0]; 
+                            
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TutorialPractice(
+                                  targetLetter: letterToPractice,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            'Practice',
+                            style: TextStyle(
+                              fontSize: 22 * scale,
+                              fontWeight: FontWeight.w800,
+                              fontFamily: 'Inter',
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
