@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'create_account.dart';
 import '../home/home.dart';
+import '../services/auth_service.dart'; // Import your auth service
 
 class SnedStudentLogin extends StatefulWidget {
   const SnedStudentLogin({super.key});
@@ -10,8 +11,54 @@ class SnedStudentLogin extends StatefulWidget {
 }
 
 class _SnedStudentLoginState extends State<SnedStudentLogin> {
-  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  
+  final AuthService _authService = AuthService();
+  bool _isLoading = false; // To show a loading spinner
+
+  void _handleLogin() async {
+    String email = _emailController.text.trim();
+    String password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter both email and password")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    // Call Firebase Auth status check structure
+    var userProfile = await _authService.signInWithStatusCheck(email, password);
+
+    setState(() => _isLoading = false);
+
+    if (userProfile != null) {
+      String status = userProfile['status'] ?? 'pending';
+      String displayName = userProfile['name'] ?? email.split('@')[0];
+
+      if (status == 'approved') {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => SnedInterafce1(userName: displayName)),
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Your account is awaiting faculty approval.")),
+        );
+      }
+    } else {
+      // Failed login (invalid credentials or profile not found)
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Login failed. Please check your credentials.")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,13 +97,13 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                   child: Image.asset("assets/pictures/image 66.png", width: 194 * scale),
                 ),
 
-                // Name Input Field
+                // Email Input Field
                 Positioned(
                   left: 33 * scale,
                   top: 392 * scale,
                   child: _buildInputField(
-                    hint: "Enter Name",
-                    controller: _nameController,
+                    hint: "Enter Email Address",
+                    controller: _emailController,
                     scale: scale,
                   ),
                 ),
@@ -64,7 +111,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                 // Password Input Field
                 Positioned(
                   left: 33 * scale,
-                  top: 460 * scale, // Adjusted spacing based on visual layout
+                  top: 460 * scale,
                   child: _buildInputField(
                     hint: "•••••••••••••",
                     controller: _passwordController,
@@ -78,25 +125,19 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                   left: 33 * scale,
                   top: 604 * scale,
                   child: ElevatedButton(
-                    onPressed: () {
-                      String customName = _nameController.text.trim();
-                      if (customName.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Please enter your name")),
-                        );
-                        return;
-                      }
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => SnedInterafce1(userName: customName)),
-                      );
-                    },
+                    onPressed: _isLoading ? null : _handleLogin, // Disable while loading
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFFB800),
                       fixedSize: Size(327 * scale, 56 * scale),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32 * scale)),
                     ),
-                    child: Text('Login', style: TextStyle(color: Colors.white, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 24, 
+                            height: 24, 
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
+                          )
+                        : Text('Login', style: TextStyle(color: Colors.white, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
                   ),
                 ),
 
@@ -131,7 +172,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       height: 48 * scale,
       padding: EdgeInsets.symmetric(horizontal: 20 * scale),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F1FA), // Light grey/white background from layout
+        color: const Color(0xFFF1F1FA),
         borderRadius: BorderRadius.circular(32 * scale),
         border: Border.all(color: Colors.black.withOpacity(0.1)),
       ),

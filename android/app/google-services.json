@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "238765289233",
+    "project_id": "handspeak-96d8d",
+    "storage_bucket": "handspeak-96d8d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:238765289233:android:42cedb071cad0cf7ff66b0",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBkDXo4sQfoqzR9cinlc90e1Av8mjyF1WY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

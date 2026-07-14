@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../home/home.dart';
+import '../services/auth_service.dart'; // Import your auth service
 
 class CreateAccount extends StatefulWidget {
   const CreateAccount({super.key});
@@ -18,8 +19,56 @@ class _CreateAccountState extends State<CreateAccount> {
   final TextEditingController _confirmPassController = TextEditingController();
   final TextEditingController _sectionController = TextEditingController();
 
+  final AuthService _authService = AuthService();
+  bool _isLoading = false; // Loading state
+
   String? _gradeLevel;
   final List<String> _gradeOptions = ["SNED", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6"];
+
+  void _handleSignUp() async {
+    // 1. Validate Form & Dropdown
+    if (!_formKey.currentState!.validate() || _gradeLevel == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill all required fields and select a grade.")),
+      );
+      return;
+    }
+
+    // 2. Check if passwords match
+    if (_passController.text != _confirmPassController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Passwords do not match!")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    // 3. Create account in Firebase with student details mapping
+    var user = await _authService.signUpWithStudentDetails(
+      email: _emailController.text.trim(),
+      password: _passController.text.trim(),
+      fullName: _nameController.text.trim(),
+      studentId: _idController.text.trim(),
+      section: _sectionController.text.trim(),
+      gradeLevel: _gradeLevel!,
+    );
+
+    setState(() => _isLoading = false);
+
+    if (user != null) {
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => SnedInterafce1(userName: _nameController.text)),
+      );
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Failed to create account. Email might be in use or invalid.")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,24 +110,19 @@ class _CreateAccountState extends State<CreateAccount> {
                 SizedBox(height: 20 * scale),
 
                 ElevatedButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate() && _gradeLevel != null) {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => SnedInterafce1(userName: _nameController.text)),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Please fill all required fields.")),
-                      );
-                    }
-                  },
+                  onPressed: _isLoading ? null : _handleSignUp,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFB800),
                     fixedSize: Size(327 * scale, 56 * scale),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32 * scale)),
                   ),
-                  child: Text("Sign Up", style: TextStyle(color: Colors.white, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                  child: _isLoading 
+                      ? const SizedBox(
+                          width: 24, 
+                          height: 24, 
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
+                        )
+                      : Text("Sign Up", style: TextStyle(color: Colors.white, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
                 ),
                 SizedBox(height: 40 * scale),
               ],
