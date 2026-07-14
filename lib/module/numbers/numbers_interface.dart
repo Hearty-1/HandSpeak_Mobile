@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 // Note: Update these imports to point to your specific Numbers practice and tutorial files if they are named differently.
 import '../alphabet/practice.dart'; 
 import 'numbers_tutorial.dart';
+import 'numbers_activity.dart';
 
 void main() {
   runApp(const FigmaToCodeApp());
@@ -353,7 +354,10 @@ class NumbersInterface extends StatelessWidget {
                           top: 492 * scale,
                           child: GestureDetector(
                             onTap: () {
-                              // TODO: Connect navigation context for Activity Interface
+                              Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const NumbersActivityInterface()),
+                      );
                             },
                             child: Container(
                               width: 164 * scale,

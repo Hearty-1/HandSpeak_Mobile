@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'easyAct_mc.dart';
+
+// Assuming you have a file named easyAct_mc.dart or similar for your quiz
+// import 'easyAct_mc.dart'; 
 
 void main() {
   runApp(const FigmaToCodeApp());
@@ -17,7 +21,7 @@ class FigmaToCodeApp extends StatelessWidget {
       home: const Scaffold(
         body: SafeArea(
           child: ActivityInterface(
-            easyXp: 350,   // Change these values to test dynamic backend progress binding
+            easyXp: 350, // This variable controls the progress bar fill
             mediumXp: 0,
             hardXp: 0,
             targetXp: 1000,
@@ -29,7 +33,8 @@ class FigmaToCodeApp extends StatelessWidget {
 }
 
 class ActivityInterface extends StatelessWidget {
-  // --- BACKEND PASSTHROUGH CHANNELS ---
+  // These variables drive the UI logic. 
+  // Update these when the user completes a quiz to see the bar move.
   final int easyXp;
   final int mediumXp;
   final int hardXp;
@@ -64,10 +69,7 @@ class ActivityInterface extends StatelessWidget {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // ==========================================
-                  // ORIGINAL DESIGN HEADERS
-                  // ==========================================
-                  // Top Banner
+                  // --- TOP BANNERS ---
                   Positioned(
                     left: 0,
                     top: 0,
@@ -76,17 +78,10 @@ class ActivityInterface extends StatelessWidget {
                       height: 50 * scale,
                       decoration: const BoxDecoration(
                         color: Color(0xFFFFB800),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Color(0x0C132C4A),
-                            blurRadius: 16,
-                          )
-                        ],
+                        boxShadow: [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)],
                       ),
                     ),
                   ),
-
-                  // Subtitle Banner
                   Positioned(
                     left: 0,
                     top: 50 * scale,
@@ -95,17 +90,10 @@ class ActivityInterface extends StatelessWidget {
                       height: 50 * scale,
                       decoration: const BoxDecoration(
                         color: Color(0xCCF39C12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Color(0x0C132C4A),
-                            blurRadius: 16,
-                          )
-                        ],
+                        boxShadow: [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)],
                       ),
                     ),
                   ),
-
-                  // Header Text
                   Positioned(
                     left: 162 * scale,
                     top: 61 * scale,
@@ -120,8 +108,6 @@ class ActivityInterface extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                  // Functional Back Button
                   Positioned(
                     left: 16 * scale,
                     top: 51 * scale,
@@ -136,34 +122,12 @@ class ActivityInterface extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14 * scale),
                           ),
                         ),
-                        child: Icon(
-                          Icons.arrow_back,
-                          color: Colors.black87,
-                          size: 22 * scale,
-                        ),
+                        child: Icon(Icons.arrow_back, color: Colors.black87, size: 22 * scale),
                       ),
                     ),
                   ),
 
-                  // Avatar Component (Image 66)
-                  Positioned(
-                    left: 346.46 * scale,
-                    top: 0,
-                    child: Container(
-                      width: 45.39 * scale,
-                      height: 50.11 * scale,
-                      decoration: const BoxDecoration(
-                        image: DecorationImage(
-                          image: AssetImage("assets/pictures/image 66.png"),
-                          fit: BoxFit.fill,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // ==========================================
-                  // UNLOCKED ACTIVITY LEVELS (1:1 with Figma)
-                  // ==========================================
+                  // --- ACTIVITY LEVELS ---
                   // EASY
                   ..._buildLevelBlock(
                     scale: scale,
@@ -171,6 +135,12 @@ class ActivityInterface extends StatelessWidget {
                     title: 'Easy',
                     currentXp: easyXp,
                     targetXp: targetXp,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const EasyQuizScreen()),
+                      );
+                    },
                   ),
 
                   // MEDIUM
@@ -180,6 +150,7 @@ class ActivityInterface extends StatelessWidget {
                     title: 'Medium',
                     currentXp: mediumXp,
                     targetXp: targetXp,
+                    onTap: () {},
                   ),
 
                   // HARD
@@ -189,6 +160,7 @@ class ActivityInterface extends StatelessWidget {
                     title: 'Hard',
                     currentXp: hardXp,
                     targetXp: targetXp,
+                    onTap: () {},
                   ),
                 ],
               ),
@@ -199,19 +171,20 @@ class ActivityInterface extends StatelessWidget {
     );
   }
 
-  // --- HELPER METHOD TO REPLICATE EXACT FIGMA BLOCK STRUCTURING ---
   List<Widget> _buildLevelBlock({
     required double scale,
     required double startY,
     required String title,
     required int currentXp,
     required int targetXp,
+    VoidCallback? onTap,
   }) {
+    // Progress calculation based on XP passed in
     final double progressRatio = (currentXp / targetXp).clamp(0.0, 1.0);
     const double trackWidth = 312.64;
 
     return [
-      // Main Yellow Base Container
+      // Base Container
       Positioned(
         left: 21.50 * scale,
         top: startY * scale,
@@ -220,24 +193,22 @@ class ActivityInterface extends StatelessWidget {
           height: 85.82 * scale,
           decoration: ShapeDecoration(
             color: const Color(0xFFFFB800),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14 * scale),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale)),
           ),
         ),
       ),
-
-      // Title Text
+      
+      // Title
       Positioned(
         left: 36 * scale,
         top: (startY + 16.08) * scale,
         child: SizedBox(
-          width: 265 * scale,
+          width: 200 * scale,
           child: Text(
             title,
             style: TextStyle(
               color: Colors.black,
-              fontSize: 54 * scale, // Slightly adjusted from 64 to prevent clipping in Flutter
+              fontSize: 54 * scale,
               fontFamily: 'Inter',
               fontWeight: FontWeight.w800,
               letterSpacing: -3.84 * scale,
@@ -246,7 +217,24 @@ class ActivityInterface extends StatelessWidget {
         ),
       ),
 
-      // White Translucent XP Sub-Container
+      // ARROW BUTTON
+      Positioned(
+        right: 40 * scale,
+        top: (startY + 20) * scale,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12 * scale),
+          ),
+          child: IconButton(
+            onPressed: onTap,
+            icon: Icon(Icons.arrow_forward_ios, size: 20 * scale),
+            color: const Color(0xFFFFB800),
+          ),
+        ),
+      ),
+
+      // XP Sub-Container
       Positioned(
         left: 21.50 * scale,
         top: (startY + 93.5) * scale,
@@ -255,9 +243,7 @@ class ActivityInterface extends StatelessWidget {
           height: 66.50 * scale,
           decoration: ShapeDecoration(
             color: Colors.white.withOpacity(0.18),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14 * scale),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale)),
           ),
         ),
       ),
@@ -266,32 +252,21 @@ class ActivityInterface extends StatelessWidget {
       Positioned(
         left: 42.88 * scale,
         top: (startY + 102.93) * scale,
-        child: Image.asset(
-          "assets/pictures/star.png",
-          width: 39.54 * scale,
-          height: 37.90 * scale,
-          errorBuilder: (c, o, s) => Icon(
-            Icons.star, 
-            color: const Color(0xFFFFB800), 
-            size: 36 * scale
-          ),
-        ),
+        child: Icon(Icons.star, color: const Color(0xFFFFB800), size: 36 * scale),
       ),
 
       // XP Text
       Positioned(
         left: 88.47 * scale,
         top: (startY + 105.4) * scale,
-        child: SizedBox(
-          child: Text(
-            '$currentXp XP',
-            style: TextStyle(
-              color: const Color(0xFFBA8E23),
-              fontSize: 20 * scale,
-              fontFamily: 'Holtwood One SC',
-              fontWeight: FontWeight.w400,
-              letterSpacing: -1.20 * scale,
-            ),
+        child: Text(
+          '$currentXp XP',
+          style: TextStyle(
+            color: const Color(0xFFBA8E23),
+            fontSize: 20 * scale,
+            fontFamily: 'Holtwood One SC',
+            fontWeight: FontWeight.w400,
+            letterSpacing: -1.20 * scale,
           ),
         ),
       ),
@@ -305,14 +280,12 @@ class ActivityInterface extends StatelessWidget {
           height: 8.99 * scale,
           decoration: ShapeDecoration(
             color: const Color(0xFFF1F1FA),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(25 * scale),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
           ),
         ),
       ),
 
-      // Active Progress Track 
+      // Active Progress Track
       Positioned(
         left: 43.13 * scale,
         top: (startY + 143.82) * scale,
@@ -321,9 +294,7 @@ class ActivityInterface extends StatelessWidget {
           height: 8.99 * scale,
           decoration: ShapeDecoration(
             color: const Color(0xFF7DC579),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(25 * scale),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
           ),
         ),
       ),
