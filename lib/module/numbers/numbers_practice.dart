@@ -75,7 +75,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
 
   Future<void> _loadGestureLibrary() async {
     try {
-      String jsonString = await rootBundle.loadString('assets/gestures/${widget.targetNumber}.json');
+      String jsonString = await rootBundle.loadString('assets/numbers/${widget.targetNumber}.json');
       _template = jsonDecode(jsonString);
     } catch (e) {
       debugPrint("Could not find gesture resource profile for: ${widget.targetNumber}");

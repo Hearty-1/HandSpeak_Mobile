@@ -84,7 +84,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     for (int i = 0; i < _alphabet.length; i++) {
       String letter = _alphabet[i];
       try {
-        String jsonString = await rootBundle.loadString('assets/gestures/$letter.json');
+        String jsonString = await rootBundle.loadString('assets/alphabet/$letter.json');
         _gestureLibrary[letter] = jsonDecode(jsonString);
       } catch (e) {
         debugPrint("Could not find gesture resource profile for: $letter");
