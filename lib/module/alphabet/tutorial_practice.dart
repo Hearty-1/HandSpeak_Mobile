@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart'; // Required for HapticFeedback
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
@@ -211,11 +211,18 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     });
   }
 
-  void _onSuccess() {
+  // --- IMMEDIATE PHYSICAL FEEDBACK ADDED HERE ---
+  void _onSuccess() async {
     _isSuccessAchieved = true;
     _startHoldTime = null;
     _holdProgress = 0.0;
     
+    HapticFeedback.heavyImpact(); 
+    await Future.delayed(const Duration(milliseconds: 100));
+    HapticFeedback.heavyImpact(); 
+    
+    if (!mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -248,7 +255,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     String currentLetter = widget.targetLetter.toUpperCase();
     bool isPassing = _currentScore >= successThreshold;
 
-    // Baseline viewport parameters matching template measurements
     const double baseWidth = 393;
     const double baseHeight = 852;
 
@@ -257,7 +263,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Compute dynamic aspect-ratio scale rules
             final double scaleX = constraints.maxWidth / baseWidth;
             final double scaleY = constraints.maxHeight / baseHeight;
             final double scale = math.min(scaleX, scaleY);
@@ -268,7 +273,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
               color: const Color(0xFFFFF9E5),
               child: Stack(
                 children: [
-                  // --- SYSTEM COMPONENT WATERMARK HEADER BACKGROUNDS ---
                   Positioned(
                     left: 0, 
                     top: 0,
@@ -313,7 +317,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                     ),
                   ),
                   
-                  // Navigation back action 
                   Positioned(
                     left: 16 * scaleX, 
                     top: 62 * scaleY,
@@ -331,7 +334,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                     ),
                   ),
 
-                  // --- MAIN INTERACTIVE DISPLAY TARGET ---
                   Positioned(
                     left: 0,
                     right: 0,
@@ -349,7 +351,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                     ),
                   ),
                   
-                  // Top Reference Target Image Card
                   Positioned(
                     left: (constraints.maxWidth - (280 * scaleX)) / 2, 
                     top: 220 * scaleY,
@@ -368,7 +369,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                     ),
                   ),
 
-                  // --- ON-DEVICE LIVE VIEW OVERLAY LAYOUT ---
                   Positioned(
                     left: (constraints.maxWidth - (314 * scaleX)) / 2, 
                     top: 520 * scaleY,
@@ -399,7 +399,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                           ),
                           SizedBox(height: 12 * scaleY),
                           
-                          // --- HOLD TIMING FEEDBACK METRIC UI BAR ---
                           if (_holdProgress > 0.0)
                             Container(
                               width: 314 * scaleX, 
@@ -432,7 +431,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                               ),
                             ),
                             
-                          // --- LIVE PIPELINE DIAGNOSTIC HUD ---
                           SizedBox(height: 8 * scaleY),
                           Container(
                             padding: EdgeInsets.symmetric(horizontal: 10 * scaleX, vertical: 4 * scaleY),

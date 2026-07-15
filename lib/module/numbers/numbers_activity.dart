@@ -1,271 +1,293 @@
 import 'package:flutter/material.dart';
-import 'easyNumAct_mc.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '/services/progress_service.dart';
+import 'easyNumAct_mc.dart'; // Routes to the numbers quiz
 
 class NumbersActivityInterface extends StatelessWidget {
-  final int level1Xp;
-  final int level2Xp;
-  final int level3Xp;
   final int targetXp;
 
   const NumbersActivityInterface({
     super.key,
-    this.level1Xp = 0,
-    this.level2Xp = 0,
-    this.level3Xp = 0,
     this.targetXp = 1000,
   });
 
   @override
   Widget build(BuildContext context) {
-    const double baseWidth = 393;
-    const double baseHeight = 852;
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFF9E5), 
+      body: SafeArea(
+        child: StreamBuilder<DocumentSnapshot>(
+          stream: ProgressService().getUserProgressStream(),
+          builder: (context, snapshot) {
+            
+            // 1. Fetch segregated level-specific XP for Numbers from Firestore
+            int numEasyXp = 0;
+            int numMediumXp = 0;
+            int numHardXp = 0;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final double scale = constraints.maxWidth / baseWidth;
+            if (snapshot.hasData && snapshot.data!.exists) {
+              final data = snapshot.data!.data() as Map<String, dynamic>?;
+              if (data != null) {
+                // Read progress fields, falling back to 0
+                numEasyXp = (data['numEasyXp'] ?? 0).clamp(0, targetXp);
+                numMediumXp = (data['numMediumXp'] ?? 0).clamp(0, targetXp);
+                numHardXp = (data['numHardXp'] ?? 0).clamp(0, targetXp);
+              }
+            }
 
-        return Scaffold(
-          body: SafeArea(
-            child: Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: const Color(0xFFFFF9E5),
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: SizedBox(
-                  height: baseHeight * scale,
-                  width: constraints.maxWidth,
-                  child: Stack(
-                    clipBehavior: Clip.none,
+            // 2. Lock next levels based on the previous level's completion
+            bool isMediumLocked = numEasyXp < targetXp;
+            bool isHardLocked = numMediumXp < targetXp;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // --- HEADER ---
+                Padding(
+                  padding: const EdgeInsets.only(left: 20, top: 20, right: 20, bottom: 10),
+                  child: Row(
                     children: [
-                      // --- TOP BANNERS ---
-                      Positioned(
-                        left: 0,
-                        top: 0,
-                        child: Container(
-                          width: 393 * scale,
-                          height: 50 * scale,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFFFB800),
-                            boxShadow: [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)],
-                          ),
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: const Icon(Icons.arrow_back_ios, color: Color(0xFF322144), size: 24),
+                      ),
+                      const SizedBox(width: 16),
+                      const Text(
+                        'Numbers',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 32,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -1.92,
                         ),
-                      ),
-                      Positioned(
-                        left: 0,
-                        top: 50 * scale,
-                        child: Container(
-                          width: 393 * scale,
-                          height: 50 * scale,
-                          decoration: const BoxDecoration(
-                            color: Color(0xCCF39C12),
-                            boxShadow: [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 142 * scale, // Slightly adjusted for "Numbers" title
-                        top: 61 * scale,
-                        child: Text(
-                          'Numbers',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 20 * scale,
-                            fontFamily: 'Inter',
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.96,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 16 * scale,
-                        top: 51 * scale,
-                        child: GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            width: 46 * scale,
-                            height: 46 * scale,
-                            decoration: ShapeDecoration(
-                              color: const Color(0x33FFF8E7),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14 * scale),
-                              ),
-                            ),
-                            child: Icon(Icons.arrow_back, color: Colors.black87, size: 22 * scale),
-                          ),
-                        ),
-                      ),
-
-                      // --- ACTIVITY LEVELS ---
-                      // Easy
-                      ..._buildLevelBlock(
-                        scale: scale,
-                        startY: 204.0,
-                        title: 'Easy',
-                        currentXp: level1Xp,
-                        targetXp: targetXp,
-                        onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const NumbersQuizScreen()),
-                        );
-                      }
-                      ),
-
-                      // Medium
-                      ..._buildLevelBlock(
-                        scale: scale,
-                        startY: 406.0,
-                        title: 'Medium',
-                        currentXp: level2Xp,
-                        targetXp: targetXp,
-                      ),
-
-                      // Hard
-                      ..._buildLevelBlock(
-                        scale: scale,
-                        startY: 608.0,
-                        title: 'Hard',
-                        currentXp: level3Xp,
-                        targetXp: targetXp,
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-          ),
-        );
-      },
+                
+                // --- LIST OF ACTIVITY CARDS ---
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: Column(
+                      children: [
+                        _buildThemeCard(
+                          context: context,
+                          title: 'Easy Level',
+                          subtitle: 'Basic Numbers',
+                          currentXp: numEasyXp,
+                          targetXp: targetXp,
+                          isLocked: false,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const NumbersQuizScreen()),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 20),
+                        
+                        _buildThemeCard(
+                          context: context,
+                          title: 'Medium Level',
+                          subtitle: 'Double Digits',
+                          currentXp: numMediumXp,
+                          targetXp: targetXp,
+                          isLocked: isMediumLocked,
+                          onTap: isMediumLocked ? () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Complete Easy Level (1000 XP) to unlock!"), 
+                                backgroundColor: Colors.redAccent
+                              ),
+                            );
+                          } : () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Medium challenges are coming soon!")),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 20),
+                        
+                        _buildThemeCard(
+                          context: context,
+                          title: 'Hard Level',
+                          subtitle: 'Math Signs',
+                          currentXp: numHardXp,
+                          targetXp: targetXp,
+                          isLocked: isHardLocked,
+                          onTap: isHardLocked ? () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Complete Medium Level (1000 XP) to unlock!"), 
+                                backgroundColor: Colors.redAccent
+                              ),
+                            );
+                          } : () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Hard challenges are coming soon!")),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 30),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 
-  List<Widget> _buildLevelBlock({
-    required double scale,
-    required double startY,
+  // --- RESTORED ORIGINAL FIGMA THEME CARD ---
+  Widget _buildThemeCard({
+    required BuildContext context,
     required String title,
+    required String subtitle,
     required int currentXp,
     required int targetXp,
-    VoidCallback? onTap,
+    required bool isLocked,
+    required VoidCallback? onTap,
   }) {
     final double progressRatio = (currentXp / targetXp).clamp(0.0, 1.0);
-    const double trackWidth = 312.64;
 
-    return [
-      // Base Container
-      Positioned(
-        left: 21.50 * scale,
-        top: startY * scale,
+    return GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: isLocked ? 0.6 : 1.0,
         child: Container(
-          width: 350 * scale,
-          height: 85.82 * scale,
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
           decoration: ShapeDecoration(
-            color: const Color(0xFFFFB800),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale)),
-          ),
-        ),
-      ),
-      
-      // Title
-      Positioned(
-        left: 36 * scale,
-        top: (startY + 16.08) * scale,
-        child: SizedBox(
-          width: 250 * scale,
-          child: Text(
-            title,
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 54 * scale,
-              fontFamily: 'Inter',
-              fontWeight: FontWeight.w800,
-              letterSpacing: -3.84 * scale,
+            color: Colors.white, 
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: isLocked 
+                  ? const BorderSide(color: Color(0xFFE0E0E0), width: 1)
+                  : const BorderSide(color: Color(0xFFFFB800), width: 2), 
             ),
+            shadows: const [
+              BoxShadow(
+                color: Color(0x05132C4A), 
+                blurRadius: 16,
+                offset: Offset(0, 6),
+              )
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Color(0xFF322144), 
+                          fontSize: 24,
+                          fontFamily: 'Google Sans Flex',
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -1.20,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: Color(0xFF888888), 
+                          fontSize: 14,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Icon(
+                    isLocked ? Icons.lock_rounded : Icons.play_circle_fill_rounded,
+                    color: isLocked ? Colors.grey : const Color(0xFFFFB800),
+                    size: 40,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              Row(
+                children: [
+                  // --- RESTORED STAR ICON ---
+                  Image.asset(
+                    "assets/pictures/star.png",
+                    width: 24,
+                    height: 24,
+                    errorBuilder: (c, o, s) => const Icon(Icons.star, color: Color(0xFFFFB800), size: 24),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$currentXp XP',
+                    style: const TextStyle(
+                      color: Color(0xFFBA8E23), 
+                      fontSize: 20,
+                      fontFamily: 'Holtwood One SC', 
+                      fontWeight: FontWeight.w400,
+                      letterSpacing: -1.20,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              Stack(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    height: 8,
+                    decoration: ShapeDecoration(
+                      color: const Color(0xFFF1F1FA),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                    ),
+                  ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Container(
+                        width: constraints.maxWidth * progressRatio,
+                        height: 8,
+                        decoration: ShapeDecoration(
+                          color: const Color(0xFF7DC579), 
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  currentXp >= targetXp ? 'Level Completed! 🎉' : '${targetXp - currentXp} to next',
+                  style: TextStyle(
+                    color: currentXp >= targetXp ? Colors.green : const Color(0xFF888888),
+                    fontSize: 12,
+                    fontFamily: 'Google Sans Flex',
+                    fontWeight: currentXp >= targetXp ? FontWeight.bold : FontWeight.w400,
+                    letterSpacing: -0.60,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
-
-      // ARROW BUTTON
-      Positioned(
-        right: 40 * scale,
-        top: (startY + 20) * scale,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12 * scale),
-          ),
-          child: IconButton(
-            onPressed: onTap, 
-            icon: Icon(Icons.arrow_forward_ios, size: 20 * scale),
-            color: const Color(0xFFFFB800),
-          ),
-        ),
-      ),
-
-      // XP Sub-Container
-      Positioned(
-        left: 21.50 * scale,
-        top: (startY + 93.5) * scale,
-        child: Container(
-          width: 350 * scale,
-          height: 66.50 * scale,
-          decoration: ShapeDecoration(
-            color: Colors.white.withOpacity(0.18),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale)),
-          ),
-        ),
-      ),
-
-      // Star Icon
-      Positioned(
-        left: 42.88 * scale,
-        top: (startY + 102.93) * scale,
-        child: Icon(Icons.star, color: const Color(0xFFFFB800), size: 36 * scale),
-      ),
-
-      // XP Text
-      Positioned(
-        left: 88.47 * scale,
-        top: (startY + 105.4) * scale,
-        child: Text(
-          '$currentXp XP',
-          style: TextStyle(
-            color: const Color(0xFFBA8E23),
-            fontSize: 20 * scale,
-            fontFamily: 'Holtwood One SC',
-            fontWeight: FontWeight.w400,
-            letterSpacing: -1.20 * scale,
-          ),
-        ),
-      ),
-
-      // Background Progress Track (Grey)
-      Positioned(
-        left: 43.13 * scale,
-        top: (startY + 143.82) * scale,
-        child: Container(
-          width: trackWidth * scale,
-          height: 8.99 * scale,
-          decoration: ShapeDecoration(
-            color: const Color(0xFFF1F1FA),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
-          ),
-        ),
-      ),
-
-      // Active Progress Track
-      Positioned(
-        left: 43.13 * scale,
-        top: (startY + 143.82) * scale,
-        child: Container(
-          width: (trackWidth * progressRatio) * scale,
-          height: 8.99 * scale,
-          decoration: ShapeDecoration(
-            color: const Color(0xFF7DC579),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
-          ),
-        ),
-      ),
-    ];
+    );
   }
 }
