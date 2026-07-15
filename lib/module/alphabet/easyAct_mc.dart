@@ -31,9 +31,6 @@ class QuizQuestion {
   }
 }
 
-// ==========================================
-// 2. API SERVICE (Mocked for now)
-// ==========================================
 class QuizApiService {
   Future<List<QuizQuestion>> fetchEasyQuestions() async {
     await Future.delayed(const Duration(milliseconds: 800));
