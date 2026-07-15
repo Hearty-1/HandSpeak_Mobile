@@ -3,10 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 // ==========================================
-// 1. DATA MODEL (Backend Ready)
+// 1. DATA MODEL
 // ==========================================
 class QuizQuestion {
   final String id;
+  final String type; // Supports sign_to_text vs text_to_sign
   final String imageUrl;
   final String questionText;
   final List<String> options;
@@ -14,6 +15,7 @@ class QuizQuestion {
 
   QuizQuestion({
     required this.id,
+    required this.type,
     required this.imageUrl,
     required this.questionText,
     required this.options,
@@ -23,6 +25,7 @@ class QuizQuestion {
   factory QuizQuestion.fromJson(Map<String, dynamic> json) {
     return QuizQuestion(
       id: json['id']?.toString() ?? '',
+      type: json['type'] ?? 'sign_to_text',
       imageUrl: json['image_url'] ?? '',
       questionText: json['question_text'] ?? '',
       options: List<String>.from(json['options'] ?? []),
@@ -31,49 +34,52 @@ class QuizQuestion {
   }
 }
 
+// ==========================================
+// 2. FIRESTORE API SERVICE
+// ==========================================
 class QuizApiService {
-  Future<List<QuizQuestion>> fetchEasyQuestions() async {
-    await Future.delayed(const Duration(milliseconds: 800));
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-    final mockJsonResponse = [
-      {
-        "id": "1",
-        "image_url": "assets/pictures/A.png",
-        "question_text": "What letter is this?",
-        "options": ["A", "S", "E", "M"],
-        "correct_answer": "A"
-      },
-      {
-        "id": "2",
-        "image_url": "assets/pictures/B.png",
-        "question_text": "What letter is this?",
-        "options": ["B", "D", "P", "R"],
-        "correct_answer": "B"
-      },
-      {
-        "id": "3",
-        "image_url": "assets/pictures/C.png",
-        "question_text": "What letter is this?",
-        "options": ["O", "C", "G", "Q"],
-        "correct_answer": "C"
-      },
-      {
-        "id": "4",
-        "image_url": "assets/pictures/D.png",
-        "question_text": "What letter is this?",
-        "options": ["F", "B", "D", "Z"],
-        "correct_answer": "D"
-      },
-      {
-        "id": "5",
-        "image_url": "assets/pictures/E.png",
-        "question_text": "What letter is this?",
-        "options": ["S", "T", "M", "E"],
-        "correct_answer": "E"
+  Future<List<QuizQuestion>> fetchEasyQuestions(String typeFilter) async {
+    try {
+      // Order by documentId ensures a fixed, non-random sequence from the DB
+      final querySnapshot = await _db
+          .collection('activity_questions')
+          .where('category', isEqualTo: 'alphabet')
+          .where('level', isEqualTo: 'easy')
+          .orderBy(FieldPath.documentId)
+          .get();
+
+      List<QuizQuestion> allQuestions = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id; 
+        return QuizQuestion.fromJson(data);
+      }).toList();
+
+      List<QuizQuestion> filteredQuestions = [];
+      
+      // Filter based on the Level's requirement without randomization
+      if (typeFilter == 'mixed') {
+        // Manually interleave the two types to guarantee a structured mix
+        var signs = allQuestions.where((q) => q.type == 'sign_to_text').toList();
+        var texts = allQuestions.where((q) => q.type == 'text_to_sign').toList();
+        
+        int maxLength = signs.length > texts.length ? signs.length : texts.length;
+        for (int i = 0; i < maxLength; i++) {
+          if (i < signs.length) filteredQuestions.add(signs[i]);
+          if (i < texts.length) filteredQuestions.add(texts[i]);
+        }
+      } else {
+        // Fetch strictly aligned question types in sequential order
+        filteredQuestions = allQuestions.where((q) => q.type == typeFilter).toList();
       }
-    ];
 
-    return mockJsonResponse.map((json) => QuizQuestion.fromJson(json)).toList();
+      // Return a set of 5 questions for this round in a fixed order
+      return filteredQuestions.take(5).toList();
+    } catch (e) {
+      debugPrint("Error fetching alphabet questions: $e");
+      return [];
+    }
   }
 }
 
@@ -81,7 +87,14 @@ class QuizApiService {
 // 3. MAIN UI SCREEN
 // ==========================================
 class EasyActMc extends StatefulWidget {
-  const EasyActMc({super.key});
+  final String levelId;
+  final String questionType; 
+
+  const EasyActMc({
+    super.key, 
+    required this.levelId,
+    required this.questionType,
+  });
 
   @override
   State<EasyActMc> createState() => _EasyActMcState();
@@ -111,7 +124,7 @@ class _EasyActMcState extends State<EasyActMc> {
 
   Future<void> _loadQuestions() async {
     try {
-      final questions = await _apiService.fetchEasyQuestions();
+      final questions = await _apiService.fetchEasyQuestions(widget.questionType);
       setState(() {
         _questions = questions;
         _isLoading = false;
@@ -174,32 +187,85 @@ class _EasyActMcState extends State<EasyActMc> {
     } else {
       setState(() => _isSaving = true);
       
-      int xpEarned = _score * 50; 
+      // Calculate Stars based on remaining hearts
+      int starsEarned = 1;
+      if (_hearts == 5) {
+        starsEarned = 3;
+      } else if (_hearts >= 3) {
+        starsEarned = 2;
+      }
       
       try {
         final user = FirebaseAuth.instance.currentUser;
-        if (user != null && xpEarned > 0) {
-          // --- UPDATED: Saving to 'alpEasyXp' for better field recognition ---
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-            'alpEasyXp': FieldValue.increment(xpEarned), // Alphabet specific XP
-            'xp': FieldValue.increment(xpEarned),        // Global Leaderboard XP
+        if (user != null) {
+          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+          
+          await FirebaseFirestore.instance.runTransaction((transaction) async {
+            final snapshotDoc = await transaction.get(userRef);
+            if (snapshotDoc.exists) {
+              final data = snapshotDoc.data() as Map<String, dynamic>;
+              
+              // Safely extract progress map
+              final Map<String, dynamic> progress = data['progress'] != null 
+                  ? Map<String, dynamic>.from(data['progress']) 
+                  : {};
+                  
+              // Check previous high score for THIS specific level dynamically
+              final int previousStars = progress[widget.levelId] ?? 0;
+              
+              int globalStarsToAdd = 0;
+              // Only award new global stars if they beat their old score!
+              if (starsEarned > previousStars) {
+                globalStarsToAdd = starsEarned - previousStars;
+                progress[widget.levelId] = starsEarned; // Save dynamically
+              }
+
+              final int currentGlobalStars = data['stars'] ?? 0;
+
+              transaction.update(userRef, {
+                'stars': currentGlobalStars + globalStarsToAdd,
+                'progress': progress,
+              });
+            }
           });
         }
       } catch (e) {
-        debugPrint("Error updating XP: $e");
+        debugPrint("Error updating Stars: $e");
       }
 
       setState(() => _isSaving = false);
 
       if (!mounted) return;
 
+      // Show Star-Based Completion Dialog
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text("Activity Complete! 🎉", style: TextStyle(color: Color(0xFF322144), fontWeight: FontWeight.bold)),
-          content: Text("You answered $_score correctly and earned $xpEarned XP!"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("You completed ${widget.levelId.replaceAll('_', ' ').toUpperCase()}!"),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(3, (index) {
+                  return Icon(
+                    index < starsEarned ? Icons.star_rounded : Icons.star_border_rounded,
+                    color: const Color(0xFFFFB800),
+                    size: 42,
+                  );
+                }),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Earned $starsEarned / 3 Stars", 
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF222222))
+              ),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () {
@@ -285,6 +351,7 @@ class _EasyActMcState extends State<EasyActMc> {
 
     final currentQuestion = _questions[_currentIndex];
     final progress = (_currentIndex + 1) / _questions.length;
+    final isImageOption = currentQuestion.type == "text_to_sign";
 
     return SafeArea(
       child: Column(
@@ -295,34 +362,48 @@ class _EasyActMcState extends State<EasyActMc> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // --- IMAGE DISPLAY CARD ---
-                  Container(
-                    width: double.infinity,
-                    height: 240,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        )
-                      ],
+                  // --- PROGRESS TRACKER ---
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: const Color(0xFFE0E0E0),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+                      minHeight: 12,
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.asset(
-                        currentQuestion.imageUrl,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => const Center(
-                          child: Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // --- IMAGE DISPLAY CARD (Only shown for sign_to_text type) ---
+                  if (currentQuestion.imageUrl.isNotEmpty) ...[
+                    Container(
+                      width: double.infinity,
+                      height: 240,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          )
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          currentQuestion.imageUrl,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => const Center(
+                            child: Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 40),
+                    const SizedBox(height: 40),
+                  ],
 
                   // --- QUESTION TEXT ---
                   Text(
@@ -336,14 +417,14 @@ class _EasyActMcState extends State<EasyActMc> {
                   ),
                   const SizedBox(height: 32),
 
-                  // --- 2x2 OPTIONS GRID ---
+                  // --- 2x2 OPTIONS GRID (Text vs Image Option Handler) ---
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     crossAxisCount: 2,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
-                    childAspectRatio: 2.2, 
+                    childAspectRatio: isImageOption ? 1.2 : 2.2, // Adjust aspect ratio for images
                     children: currentQuestion.options.map((option) {
                       return GestureDetector(
                         onTap: () => _handleOptionSelected(option),
@@ -358,14 +439,29 @@ class _EasyActMcState extends State<EasyActMc> {
                             ),
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            option,
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              color: _getButtonTextColor(option, currentQuestion.correctAnswer),
-                            ),
-                          ),
+                          child: isImageOption
+                              ? Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Image.asset(
+                                    option,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) => Text(
+                                      option,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: _getButtonTextColor(option, currentQuestion.correctAnswer),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  option,
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w800,
+                                    color: _getButtonTextColor(option, currentQuestion.correctAnswer),
+                                  ),
+                                ),
                         ),
                       );
                     }).toList(),
@@ -375,61 +471,75 @@ class _EasyActMcState extends State<EasyActMc> {
             ),
           ),
 
-          // BOTTOM NAV BAR with Progress Tracker & NEXT Button
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -2)),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 12,
-                      backgroundColor: Colors.grey[200],
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 24),
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: (_isAnswered && !_isSaving) ? _handleNext : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFB800),
-                      disabledBackgroundColor: Colors.grey.shade300,
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                          )
-                        : Text(
-                            _currentIndex == _questions.length - 1 ? "FINISH" : "NEXT",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              color: _isAnswered ? Colors.black : Colors.grey.shade500,
-                            ),
+          // --- DYNAMIC FEEDBACK BOTTOM SHEET ---
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              decoration: BoxDecoration(
+                color: !_isAnswered 
+                    ? Colors.white 
+                    : (_isCorrect ? const Color(0xFFD7FFB7) : const Color(0xFFFFDFE0)),
+                border: Border(top: BorderSide(color: Colors.grey.shade200, width: 2)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_isAnswered) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          _isCorrect ? Icons.check_circle : Icons.cancel, 
+                          color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B), 
+                          size: 28
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isCorrect 
+                              ? "Awesome!" 
+                              : (isImageOption 
+                                  ? "Try again!" 
+                                  : "Correct answer: ${_questions[_currentIndex].correctAnswer}"),
+                          style: TextStyle(
+                            color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: (_isAnswered && !_isSaving) ? _handleNext : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: !_isAnswered 
+                            ? const Color(0xFFFFB800) 
+                            : (_isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B)),
+                        disabledBackgroundColor: Colors.grey.shade300,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : Text(
+                              _isAnswered ? "CONTINUE" : "CHECK",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: _isAnswered ? Colors.white : Colors.black,
+                              ),
+                            ),
+                    ),
                   ),
-                )
-              ],
+                ],
+              ),
             ),
-          )
+          ),
         ],
       ),
     );

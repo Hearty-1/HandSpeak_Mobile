@@ -188,21 +188,6 @@ class NumbersInterface extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                  // Fixed Module Footer Navigation Row
-                  Container(
-                    width: 375 * scale, height: 78 * scale,
-                    margin: EdgeInsets.only(bottom: 12 * scale),
-                    decoration: ShapeDecoration(color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24 * scale)), shadows: const [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)]),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        IconButton(icon: Icon(Icons.home, color: Colors.grey, size: 26 * scale), onPressed: () => Navigator.pop(context)),
-                        IconButton(icon: Icon(Icons.auto_stories, color: Colors.black, size: 26 * scale), onPressed: () {}),
-                        IconButton(icon: Icon(Icons.person, color: Colors.grey, size: 26 * scale), onPressed: () {}),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             );

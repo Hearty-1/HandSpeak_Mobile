@@ -28,6 +28,7 @@ class AlphabetInterface extends StatelessWidget {
         int liveEasyXp = 0;
         int liveMediumXp = 0;
         int liveHardXp = 0;
+        int globalStars = 0; // Added variable to track stars
 
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
@@ -35,6 +36,7 @@ class AlphabetInterface extends StatelessWidget {
             liveEasyXp = (data['alpEasyXp'] ?? 0).clamp(0, targetXp);
             liveMediumXp = (data['alpMediumXp'] ?? 0).clamp(0, targetXp);
             liveHardXp = (data['alpHardXp'] ?? 0).clamp(0, targetXp);
+            globalStars = data['stars'] ?? 0; // Fetch global stars from DB
           }
         }
 
@@ -181,26 +183,20 @@ class AlphabetInterface extends StatelessWidget {
                               ),
                             ),
 
-                            Positioned(left: 13.75 * scale, top: 665 * scale, child: _buildSubMetricPanel(scale: scale, xpDisplay: "$activeXp XP", progress: activeXp / targetXp)),
-                            Positioned(left: 203.75 * scale, top: 665 * scale, child: _buildSubMetricPanel(scale: scale, xpDisplay: "0 XP", progress: 0.0)),
+                            // Modified sub-metric panels: Activity now uses globalStars (Max 27 stars per standard 9-level track)
+                            Positioned(
+                              left: 13.75 * scale, 
+                              top: 665 * scale, 
+                              child: _buildSubMetricPanel(scale: scale, valueDisplay: "$globalStars Stars", progress: (globalStars / 27).clamp(0.0, 1.0))
+                            ),
+                            Positioned(
+                              left: 203.75 * scale, 
+                              top: 665 * scale, 
+                              child: _buildSubMetricPanel(scale: scale, valueDisplay: "0 XP", progress: 0.0)
+                            ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
-
-                  // Fixed Module Footer
-                  Container(
-                    width: 375 * scale, height: 78 * scale,
-                    margin: EdgeInsets.only(bottom: 12 * scale),
-                    decoration: ShapeDecoration(color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24 * scale)), shadows: const [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)]),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        IconButton(icon: Icon(Icons.home, color: Colors.grey, size: 26 * scale), onPressed: () => Navigator.pop(context)),
-                        IconButton(icon: Icon(Icons.auto_stories, color: Colors.black, size: 26 * scale), onPressed: () {}),
-                        IconButton(icon: Icon(Icons.person, color: Colors.grey, size: 26 * scale), onPressed: () {}),
-                      ],
                     ),
                   ),
                 ],
@@ -238,13 +234,18 @@ class AlphabetInterface extends StatelessWidget {
     );
   }
 
-  Widget _buildSubMetricPanel({required double scale, required String xpDisplay, required double progress}) {
+  // Renamed 'xpDisplay' to 'valueDisplay' to accommodate strings like "12 Stars"
+  Widget _buildSubMetricPanel({required double scale, required String valueDisplay, required double progress}) {
     return Container(
       width: 178 * scale, height: 37 * scale,
       decoration: ShapeDecoration(color: Colors.white.withOpacity(0.18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale))),
       child: Stack(
         children: [
-          Positioned(left: 45 * scale, top: 3 * scale, child: Text(xpDisplay, style: TextStyle(color: const Color(0xFFBA8E23), fontSize: 16 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20))),
+          Positioned(
+            left: 45 * scale, 
+            top: 3 * scale, 
+            child: Text(valueDisplay, style: TextStyle(color: const Color(0xFFBA8E23), fontSize: 15 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20))
+          ),
           Positioned(
             left: 12 * scale, top: 24 * scale,
             child: Container(width: 154 * scale, height: 4 * scale, decoration: ShapeDecoration(color: const Color(0xFFF1F1FA), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)))),

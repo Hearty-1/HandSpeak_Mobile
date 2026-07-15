@@ -23,286 +23,264 @@ class FigmaToCodeApp extends StatelessWidget {
 }
 
 class ActivityInterface extends StatelessWidget {
-  final int targetXpPerLevel;
-
-  const ActivityInterface({
-    super.key,
-    this.targetXpPerLevel = 1000, 
-  });
+  const ActivityInterface({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF9E5), 
+      backgroundColor: const Color(0xFFFFF9E5),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF322144)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Alphabet Path',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 24,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        centerTitle: true,
+      ),
       body: SafeArea(
         child: StreamBuilder<DocumentSnapshot>(
           stream: ProgressService().getUserProgressStream(),
           builder: (context, snapshot) {
-            
-            int easyXp = 0;
-            int mediumXp = 0;
-            int hardXp = 0;
-            
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+            }
+
+            int globalStars = 0;
+            Map<String, dynamic> progressMap = {};
+
             if (snapshot.hasData && snapshot.data!.exists) {
               final data = snapshot.data!.data() as Map<String, dynamic>?;
               if (data != null) {
-                // --- UPDATED: Now safely reading from alpEasyXp, alpMediumXp, alpHardXp ---
-                easyXp = (data['alpEasyXp'] ?? 0).clamp(0, targetXpPerLevel);
-                mediumXp = (data['alpMediumXp'] ?? 0).clamp(0, targetXpPerLevel);
-                hardXp = (data['alpHardXp'] ?? 0).clamp(0, targetXpPerLevel);
+                globalStars = data['stars'] ?? 0;
+                progressMap = data['progress'] != null 
+                    ? Map<String, dynamic>.from(data['progress']) 
+                    : {};
               }
             }
 
-            // Lock next levels based on the previous level's completion
-            bool isMediumLocked = easyXp < targetXpPerLevel;
-            bool isHardLocked = mediumXp < targetXpPerLevel;
+            // --- DEFINE THE 9-LEVEL ROADMAP & STAR GATES ---
+            final List<Map<String, dynamic>> pathNodes = [
+              // 🟢 EASY LEVELS
+              {
+                'id': 'alphabet_easy_1',
+                'title': 'Easy 1: Sign to Text',
+                'isUnlocked': true, 
+                'unlockMessage': '',
+                'alignment': Alignment.center,
+                'destination': const EasyActMc(levelId: 'alphabet_easy_1', questionType: 'sign_to_text'), 
+              },
+              {
+                'id': 'alphabet_easy_2',
+                'title': 'Easy 2: Text to Sign',
+                'isUnlocked': (progressMap['alphabet_easy_1'] ?? 0) >= 2, 
+                'unlockMessage': 'Earn 2 ⭐ in Easy 1 to unlock!',
+                'alignment': Alignment.centerRight,
+                'destination': const EasyActMc(levelId: 'alphabet_easy_2', questionType: 'text_to_sign'), 
+              },
+              {
+                'id': 'alphabet_easy_3',
+                'title': 'Easy 3: Mixed Review', 
+                'isUnlocked': (progressMap['alphabet_easy_2'] ?? 0) >= 2, 
+                'unlockMessage': 'Earn 2 ⭐ in Easy 2 to unlock!',
+                'alignment': Alignment.centerRight, 
+                'destination': const EasyActMc(levelId: 'alphabet_easy_3', questionType: 'mixed'), 
+              },
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // --- HEADER ---
-                Padding(
-                  padding: const EdgeInsets.only(left: 20, top: 20, right: 20, bottom: 10),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: const Icon(Icons.arrow_back_ios, color: Color(0xFF322144), size: 24),
-                      ),
-                      const SizedBox(width: 16),
-                      const Text(
-                        'Activities',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 32,
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -1.92,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                // --- LIST OF ACTIVITY CARDS ---
-                Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    child: Column(
-                      children: [
-                        _buildThemeCard(
-                          context: context,
-                          title: 'Easy Level',
-                          subtitle: 'Basic Signs',
-                          currentXp: easyXp,
-                          targetXp: targetXpPerLevel,
-                          isLocked: false,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const EasyActMc()),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        
-                        _buildThemeCard(
-                          context: context,
-                          title: 'Medium Level',
-                          subtitle: 'Phrases',
-                          currentXp: mediumXp,
-                          targetXp: targetXpPerLevel,
-                          isLocked: isMediumLocked,
-                          onTap: isMediumLocked ? () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Complete Easy Level (1000 XP) to unlock!"), 
-                                backgroundColor: Colors.redAccent
-                              ),
-                            );
-                          } : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Medium challenges are coming soon!")),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        
-                        _buildThemeCard(
-                          context: context,
-                          title: 'Hard Level',
-                          subtitle: 'Sentences',
-                          currentXp: hardXp,
-                          targetXp: targetXpPerLevel,
-                          isLocked: isHardLocked,
-                          onTap: isHardLocked ? () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Complete Medium Level (1000 XP) to unlock!"), 
-                                backgroundColor: Colors.redAccent
-                              ),
-                            );
-                          } : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Hard challenges are coming soon!")),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 30),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
+              // 🟡 MEDIUM LEVELS
+              {
+                'id': 'alphabet_medium_1',
+                'title': 'Medium 1: Sign to Text',
+                'isUnlocked': (progressMap['alphabet_easy_3'] ?? 0) >= 2,
+                'unlockMessage': 'Earn 2 ⭐ in Easy 3 to unlock!',
+                'alignment': Alignment.center,
+                'destination': const Placeholder(), // Replace with Medium screen later
+              },
+              {
+                'id': 'alphabet_medium_2',
+                'title': 'Medium 2: Text to Sign',
+                'isUnlocked': (progressMap['alphabet_medium_1'] ?? 0) >= 2,
+                'unlockMessage': 'Earn 2 ⭐ in Medium 1 to unlock!',
+                'alignment': Alignment.centerLeft,
+                'destination': const Placeholder(),
+              },
+              {
+                'id': 'alphabet_medium_3',
+                'title': 'Medium 3: Mixed Mastery', 
+                'isUnlocked': (progressMap['alphabet_medium_2'] ?? 0) >= 2,
+                'unlockMessage': 'Earn 2 ⭐ in Medium 2 to unlock!',
+                'alignment': Alignment.centerLeft,
+                'destination': const Placeholder(),
+              },
 
-  // --- RESTORED ORIGINAL FIGMA THEME CARD ---
-  Widget _buildThemeCard({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required int currentXp,
-    required int targetXp,
-    required bool isLocked,
-    required VoidCallback? onTap,
-  }) {
-    final double progressRatio = (currentXp / targetXp).clamp(0.0, 1.0);
+              // 🔴 HARD LEVELS
+              {
+                'id': 'alphabet_hard_1',
+                'title': 'Hard 1: Sign to Text',
+                'isUnlocked': (progressMap['alphabet_medium_3'] ?? 0) >= 2,
+                'unlockMessage': 'Earn 2 ⭐ in Medium 3 to unlock!',
+                'alignment': Alignment.center,
+                'destination': const Placeholder(), // Replace with Hard screen later
+              },
+              {
+                'id': 'alphabet_hard_2',
+                'title': 'Hard 2: Text to Sign',
+                'isUnlocked': (progressMap['alphabet_hard_1'] ?? 0) >= 2,
+                'unlockMessage': 'Earn 2 ⭐ in Hard 1 to unlock!',
+                'alignment': Alignment.centerRight,
+                'destination': const Placeholder(),
+              },
+              {
+                'id': 'alphabet_hard_3',
+                'title': 'Hard 3: The Ultimate Test', 
+                'isUnlocked': (progressMap['alphabet_hard_2'] ?? 0) >= 2,
+                'unlockMessage': 'Earn 2 ⭐ in Hard 2 to unlock!',
+                'alignment': Alignment.center, 
+                'destination': const Placeholder(),
+              },
+            ];
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Opacity(
-        opacity: isLocked ? 0.6 : 1.0,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: ShapeDecoration(
-            color: Colors.white, 
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: isLocked 
-                  ? const BorderSide(color: Color(0xFFE0E0E0), width: 1)
-                  : const BorderSide(color: Color(0xFFFFB800), width: 2), 
-            ),
-            shadows: const [
-              BoxShadow(
-                color: Color(0x05132C4A), 
-                blurRadius: 16,
-                offset: Offset(0, 6),
-              )
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              physics: const BouncingScrollPhysics(),
+              child: Column(
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Color(0xFF322144), 
-                          fontSize: 24,
-                          fontFamily: 'Google Sans Flex',
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -1.20,
-                        ),
+                  // --- GLOBAL STAR BADGE ---
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFFFB800), width: 2),
+                        boxShadow: const [BoxShadow(color: Color(0x05132C4A), blurRadius: 10, offset: Offset(0, 4))],
                       ),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          color: Color(0xFF888888), 
-                          fontSize: 14,
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Icon(
-                    isLocked ? Icons.lock_rounded : Icons.play_circle_fill_rounded,
-                    color: isLocked ? Colors.grey : const Color(0xFFFFB800),
-                    size: 40,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              
-              Row(
-                children: [
-                  Image.asset(
-                    "assets/pictures/star.png",
-                    width: 24,
-                    height: 24,
-                    errorBuilder: (c, o, s) => const Icon(Icons.star, color: Color(0xFFFFB800), size: 24),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$currentXp XP',
-                    style: const TextStyle(
-                      color: Color(0xFFBA8E23), 
-                      fontSize: 20,
-                      fontFamily: 'Holtwood One SC', 
-                      fontWeight: FontWeight.w400,
-                      letterSpacing: -1.20,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              
-              Stack(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    height: 8,
-                    decoration: ShapeDecoration(
-                      color: const Color(0xFFF1F1FA),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                    ),
-                  ),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Container(
-                        width: constraints.maxWidth * progressRatio,
-                        height: 8,
-                        decoration: ShapeDecoration(
-                          color: const Color(0xFF7DC579), 
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(25),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 24),
+                          const SizedBox(width: 6),
+                          Text(
+                            "$globalStars Total Stars",
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF222222)),
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // --- WINDING PATH BUILDER ---
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: pathNodes.length,
+                    separatorBuilder: (context, index) {
+                      return Center(
+                        child: Container(
+                          width: 8,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      );
+                    },
+                    itemBuilder: (context, index) {
+                      final node = pathNodes[index];
+                      final String nodeId = node['id'];
+                      final int earnedStars = progressMap[nodeId] ?? 0;
+                      final bool isUnlocked = node['isUnlocked'];
+
+                      return Align(
+                        alignment: node['alignment'],
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Star Rating Row over the Node
+                            if (isUnlocked)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: List.generate(3, (starIdx) {
+                                  return Icon(
+                                    starIdx < earnedStars ? Icons.star_rounded : Icons.star_border_rounded,
+                                    color: const Color(0xFFFFB800),
+                                    size: 20,
+                                  );
+                                }),
+                              )
+                            else
+                              Text(
+                                "🔒 Locked",
+                                style: TextStyle(color: Colors.grey.shade500, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                            const SizedBox(height: 8),
+
+                            // Circular Level Node
+                            GestureDetector(
+                              onTap: isUnlocked
+                                  ? () => Navigator.push(context, MaterialPageRoute(builder: (context) => node['destination']))
+                                  : () {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(node['unlockMessage']),
+                                          backgroundColor: Colors.redAccent,
+                                        ),
+                                      );
+                                    },
+                              child: Container(
+                                width: 90,
+                                height: 90,
+                                decoration: BoxDecoration(
+                                  color: isUnlocked ? const Color(0xFFFFB800) : Colors.grey.shade300,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (isUnlocked ? const Color(0xFFFFB800) : Colors.grey).withOpacity(0.4),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 6),
+                                    )
+                                  ],
+                                  border: Border.all(color: Colors.white, width: 5),
+                                ),
+                                child: Icon(
+                                  isUnlocked ? Icons.play_arrow_rounded : Icons.lock_rounded,
+                                  color: Colors.white,
+                                  size: 46,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+
+                            // Node Label
+                            Text(
+                              node['title'],
+                              style: TextStyle(
+                                color: isUnlocked ? const Color(0xFF322144) : Colors.grey.shade500,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            )
+                          ],
                         ),
                       );
                     },
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  currentXp >= targetXp ? 'Level Completed! 🎉' : '${targetXp - currentXp} to next',
-                  style: TextStyle(
-                    color: currentXp >= targetXp ? Colors.green : const Color(0xFF888888),
-                    fontSize: 12,
-                    fontFamily: 'Google Sans Flex',
-                    fontWeight: currentXp >= targetXp ? FontWeight.bold : FontWeight.w400,
-                    letterSpacing: -0.60,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

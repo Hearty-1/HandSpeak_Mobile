@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 // ==========================================
 class QuizQuestion {
   final String id;
+  final String type; // Added to support sign_to_text vs text_to_sign
   final String imageUrl;
   final String questionText;
   final List<String> options;
@@ -14,6 +15,7 @@ class QuizQuestion {
 
   QuizQuestion({
     required this.id,
+    required this.type,
     required this.imageUrl,
     required this.questionText,
     required this.options,
@@ -23,6 +25,7 @@ class QuizQuestion {
   factory QuizQuestion.fromJson(Map<String, dynamic> json) {
     return QuizQuestion(
       id: json['id']?.toString() ?? '',
+      type: json['type'] ?? 'sign_to_text',
       imageUrl: json['image_url'] ?? '',
       questionText: json['question_text'] ?? '',
       options: List<String>.from(json['options'] ?? []),
@@ -32,37 +35,35 @@ class QuizQuestion {
 }
 
 // ==========================================
-// 2. API SERVICE (Mocked for Numbers)
+// 2. FIRESTORE API SERVICE (Numbers)
 // ==========================================
 class NumbersQuizApiService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
   Future<List<QuizQuestion>> fetchNumberQuestions() async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      // Fetch documents where category is 'numbers' and level is 'easy'
+      final querySnapshot = await _db
+          .collection('activity_questions')
+          .where('category', isEqualTo: 'numbers')
+          .where('level', isEqualTo: 'easy')
+          .get();
 
-    final mockJsonResponse = [
-      {
-        "id": "1",
-        "image_url": "assets/pictures/number_1.png", 
-        "question_text": "What number is this?",
-        "options": ["1", "5", "8", "3"],
-        "correct_answer": "1"
-      },
-      {
-        "id": "2",
-        "image_url": "assets/pictures/number_2.png",
-        "question_text": "What number is this?",
-        "options": ["2", "4", "6", "9"],
-        "correct_answer": "2"
-      },
-      {
-        "id": "3",
-        "image_url": "assets/pictures/number_3.png",
-        "question_text": "What number is this?",
-        "options": ["7", "3", "4", "0"],
-        "correct_answer": "3"
-      }
-    ];
+      List<QuizQuestion> questions = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return QuizQuestion.fromJson(data);
+      }).toList();
 
-    return mockJsonResponse.map((json) => QuizQuestion.fromJson(json)).toList();
+      // Shuffle numbers quiz questions
+      questions.shuffle();
+
+      // Take 5 questions per game round
+      return questions.take(5).toList();
+    } catch (e) {
+      debugPrint("Error fetching number questions: $e");
+      return [];
+    }
   }
 }
 
@@ -285,6 +286,7 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
 
     final currentQuestion = _questions[_currentIndex];
     final progress = (_currentIndex + 1) / _questions.length;
+    final isImageOption = currentQuestion.type == "text_to_sign";
 
     return SafeArea(
       child: Column(
@@ -307,34 +309,36 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // --- IMAGE DISPLAY CARD ---
-                  Container(
-                    width: double.infinity,
-                    height: 240,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        )
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.asset(
-                        currentQuestion.imageUrl,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => const Center(
-                          child: Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
+                  // --- IMAGE DISPLAY CARD (Only shown if image is available) ---
+                  if (currentQuestion.imageUrl.isNotEmpty) ...[
+                    Container(
+                      width: double.infinity,
+                      height: 240,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          )
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          currentQuestion.imageUrl,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => const Center(
+                            child: Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 40),
+                    const SizedBox(height: 40),
+                  ],
 
                   // --- QUESTION TEXT ---
                   Text(
@@ -348,14 +352,14 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
                   ),
                   const SizedBox(height: 32),
 
-                  // --- 2x2 OPTIONS GRID ---
+                  // --- 2x2 OPTIONS GRID (Adapts dynamically to Text or Sign Images) ---
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     crossAxisCount: 2,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
-                    childAspectRatio: 2.2, 
+                    childAspectRatio: isImageOption ? 1.2 : 2.2, 
                     children: currentQuestion.options.map((option) {
                       return GestureDetector(
                         onTap: () => _handleOptionSelected(option),
@@ -370,14 +374,29 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
                             ),
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            option,
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              color: _getButtonTextColor(option, currentQuestion.correctAnswer),
-                            ),
-                          ),
+                          child: isImageOption
+                              ? Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Image.asset(
+                                    option,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) => Text(
+                                      option,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: _getButtonTextColor(option, currentQuestion.correctAnswer),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  option,
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w800,
+                                    color: _getButtonTextColor(option, currentQuestion.correctAnswer),
+                                  ),
+                                ),
                         ),
                       );
                     }).toList(),
@@ -413,7 +432,11 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _isCorrect ? "Awesome!" : "Correct answer: ${_questions[_currentIndex].correctAnswer}",
+                          _isCorrect 
+                              ? "Awesome!" 
+                              : (isImageOption 
+                                  ? "Try again!" 
+                                  : "Correct answer: ${_questions[_currentIndex].correctAnswer}"),
                           style: TextStyle(
                             color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
                             fontSize: 18,

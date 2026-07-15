@@ -5,6 +5,7 @@ import '../services/progress_service.dart';
 import '../module/module.dart'; 
 import '../profile/profile.dart';
 import '../leaderboard/leaderboard.dart'; 
+// import '/services/database_seeder.dart'; Import the new seeder file
 
 void main() {
   runApp(const FigmaToCodeApp());
@@ -108,6 +109,24 @@ class SnedInterafce1 extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9E5),
       
+      /*
+      // --- DEV TOOL SEED BUTTON ---
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 90.0), // Pushes it above your custom bottom nav bar
+        child: ElevatedButton.icon(
+          onPressed: () => DatabaseSeeder.seedActivities(context),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red, // Making it red so you know it's a dev tool
+          ),
+          icon: const Icon(Icons.cloud_upload, color: Colors.white),
+          label: const Text(
+            "DEV: SEED DATABASE", 
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+          ),
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+*/
       // --- 4-TAB BOTTOM NAVIGATION BAR ---
       bottomNavigationBar: SafeArea(
         child: Container(
