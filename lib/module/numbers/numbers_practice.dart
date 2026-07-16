@@ -4,14 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
-// --- NEW IMPORTS FOR XP ---
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class NumbersPractice extends StatefulWidget {
-  final String targetNumber;
-
-  const NumbersPractice({super.key, required this.targetNumber});
+  const NumbersPractice({super.key});
 
   @override
   _NumbersPracticeState createState() => _NumbersPracticeState();
@@ -25,6 +22,11 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   bool _isDetecting = false;
   bool _isSuccessAchieved = false;
 
+  // --- CONTINUOUS GAME SYSTEM (Numbers 1 to 10) ---
+  final List<String> _numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+  int _currentIdx = 0;
+  String get targetNumber => _numbers[_currentIdx];
+
   List<dynamic>? _template;
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
@@ -34,7 +36,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   final double holdDurationSeconds = 1.0;
 
   // --- XP SETTINGS ---
-  final int xpReward = 25;
+  final int xpReward = 10; // Lowered to 10 to balance continuous fast play!
 
   @override
   void initState() {
@@ -44,14 +46,17 @@ class _NumbersPracticeState extends State<NumbersPractice> {
 
   Future<void> _initializePipeline() async {
     try {
-      await _loadGestureLibrary();
+      // 1. Load the first number's gesture template
+      await _loadGestureLibrary(targetNumber);
 
+      // 2. Initialize ML Plugin
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
         minHandDetectionConfidence: 0.5,
         delegate: HandLandmarkerDelegate.gpu, 
       );
 
+      // 3. Initialize Camera
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
 
@@ -79,12 +84,15 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     }
   }
 
-  Future<void> _loadGestureLibrary() async {
+  // Dynamically load the JSON for whichever number we are currently on
+  Future<void> _loadGestureLibrary(String number) async {
     try {
-      String jsonString = await rootBundle.loadString('assets/numbers/${widget.targetNumber}.json');
-      _template = jsonDecode(jsonString);
+      String jsonString = await rootBundle.loadString('assets/numbers/$number.json');
+      setState(() {
+        _template = jsonDecode(jsonString);
+      });
     } catch (e) {
-      debugPrint("Could not find gesture resource profile for: ${widget.targetNumber}");
+      debugPrint("Could not find gesture resource profile for: $number");
     }
   }
 
@@ -217,8 +225,6 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     });
   }
 
-  // --- NEW XP SAVING FUNCTION ---
-  // --- UNIFIED XP & LEADERBOARD SAVING FUNCTION (NUMBERS) ---
   Future<void> _awardXp() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -226,7 +232,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
         final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
         
         await docRef.set({
-          'numbersXp': FieldValue.increment(xpReward),    // <--- Only difference is this line!
+          'numbersXp': FieldValue.increment(xpReward),
           'xp': FieldValue.increment(xpReward),           
           'dailyXp': FieldValue.increment(xpReward),      
           'weeklyXp': FieldValue.increment(xpReward),     
@@ -238,6 +244,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     }
   }
 
+  // --- CONTINUOUS SUCCESS HANDLER ---
   void _onSuccess() async {
     _isSuccessAchieved = true;
     _startHoldTime = null;
@@ -247,72 +254,28 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     await Future.delayed(const Duration(milliseconds: 100));
     HapticFeedback.heavyImpact(); 
     
-    // --- AWARD THE XP ---
+    // Award the XP dynamically
     await _awardXp();
 
     if (!mounted) return;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.stars, color: Colors.amber, size: 28),
-            SizedBox(width: 8),
-            Text("Success! ⭐⭐⭐", style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              "Outstanding job! You have successfully mastered the number ${widget.targetNumber}!",
-              style: const TextStyle(fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            // --- DISPLAY REWARD IN DIALOG ---
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green.shade200, width: 2),
-              ),
-              child: Text(
-                "+$xpReward XP Earned!",
-                style: TextStyle(
-                  fontSize: 18, 
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green.shade800
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFB800),
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () {
-                Navigator.pop(context); 
-                Navigator.pop(context); 
-              },
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text("Back to Tutorial", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ),
-          )
-        ],
-      ),
-    );
+    // Trigger UI change immediately to show the "Success!" green text
+    setState(() {});
+
+    // Wait 1.5 seconds so the user can bask in their victory
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    if (!mounted) return;
+
+    // Move to the next number in the loop!
+    setState(() {
+      _currentIdx = (_currentIdx + 1) % _numbers.length;
+      _isSuccessAchieved = false;
+      _currentScore = 0.0;
+    });
+
+    // Load the new gesture template for the new number
+    await _loadGestureLibrary(targetNumber);
   }
 
   @override
@@ -325,7 +288,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
 
   @override
   Widget build(BuildContext context) {
-    String currentNumber = widget.targetNumber;
+    String currentNumber = targetNumber;
     bool isPassing = _currentScore >= successThreshold;
     final double screenWidth = MediaQuery.of(context).size.width;
 
@@ -510,7 +473,30 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                     ),
                     const SizedBox(height: 20),
 
-                    if (_holdProgress > 0.0) ...[
+                    // --- FEEDBACK SECTION ---
+                    if (_isSuccessAchieved) ...[
+                      Column(
+                        children: [
+                          Text(
+                            "Success! +$xpReward XP",
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            "Loading next number...",
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      )
+                    ] else if (_holdProgress > 0.0) ...[
                       Column(
                         children: [
                           const Text(

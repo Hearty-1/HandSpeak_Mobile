@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '/services/progress_service.dart';
-import '../alphabet/practice.dart'; 
+
+// --- FIXED IMPORT TO POINT TO NUMBERS PRACTICE ---
+import 'numbers_practice.dart'; 
 import 'numbers_tutorial.dart';
 import 'numbers_activity.dart';
 
@@ -30,10 +32,8 @@ class NumbersInterface extends StatelessWidget {
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
           if (data != null) {
-            // Read the single unified numbersXp field
             numbersXp = data['numbersXp'] ?? 0;
             
-            // Calculate Numbers Stars dynamically
             if (data['progress'] != null) {
               Map<String, dynamic> progressMap = Map<String, dynamic>.from(data['progress']);
               progressMap.forEach((key, value) {
@@ -45,7 +45,6 @@ class NumbersInterface extends StatelessWidget {
           }
         }
 
-        // Track raw XP, capping at targetXp (1000) so the progress bar stops perfectly full
         int displayXp = numbersXp > targetXp ? targetXp : numbersXp;
 
         return LayoutBuilder(
@@ -67,7 +66,6 @@ class NumbersInterface extends StatelessWidget {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            // Header Components
                             Positioned(
                               left: 0, top: 0,
                               child: Container(
@@ -105,7 +103,6 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Dynamic Live Progress Tracker
                             Positioned(
                               left: 6 * scale, top: 112 * scale,
                               child: _buildMainProgressPanel(
@@ -115,7 +112,6 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Tutorial Container Row
                             Positioned(
                               left: 24 * scale, top: 180 * scale,
                               child: Container(width: 130 * scale, height: 110 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/tutor.png"), fit: BoxFit.fill))),
@@ -137,7 +133,6 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Practice Container Row
                             Positioned(
                               left: 16 * scale, top: 300 * scale,
                               child: Container(width: 135 * scale, height: 135 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/practice.png"), fit: BoxFit.cover))),
@@ -153,13 +148,16 @@ class NumbersInterface extends StatelessWidget {
                                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20 * scale))),
                                     icon: Icon(Icons.camera_alt, size: 16 * scale),
                                     label: Text('Train Sign', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 13 * scale)),
-                                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PracticeInterface())),
+                                    onPressed: () => Navigator.push(
+                                      context, 
+                                      // --- FIXED TO POINT TO NUMBERS PRACTICE ---
+                                      MaterialPageRoute(builder: (context) => const NumbersPractice())
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
 
-                            // Sub Activity Metrics Section
                             Positioned(left: 56.75 * scale, top: 455 * scale, child: Text('Activity', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
                             Positioned(left: 233.75 * scale, top: 455 * scale, child: Text('Challenges', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
                             
@@ -178,7 +176,6 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Sub-metric panels
                             Positioned(
                               left: 13.75 * scale, 
                               top: 665 * scale, 

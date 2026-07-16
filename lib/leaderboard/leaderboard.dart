@@ -14,16 +14,81 @@ class LeaderboardScreen extends StatefulWidget {
 }
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
-  // Track selected tab: 'weekly' or 'daily'
   String _activeLeaderboardTab = 'weekly'; 
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    // RUNS AUTOMATICALLY WHEN THE SCREEN LOADS
+    _checkAndResetDailyStats(); 
+  }
+
+  // ==========================================
+  // STREAK & DAILY RESET LOGIC
+  // ==========================================
+  Future<void> _checkAndResetDailyStats() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    
+    try {
+      final snapshot = await userRef.get();
+      if (snapshot.exists) {
+        final data = snapshot.data() as Map<String, dynamic>;
+        
+        final Timestamp? lastActiveTimestamp = data['lastActiveDate'];
+        final int currentStreak = data['streak'] ?? 0;
+        
+        // Get Midnight of today to ensure time-of-day doesn't mess up the streak
+        final DateTime now = DateTime.now();
+        final DateTime today = DateTime(now.year, now.month, now.day);
+        
+        if (lastActiveTimestamp != null) {
+          final DateTime lastDate = lastActiveTimestamp.toDate();
+          final DateTime lastActiveDay = DateTime(lastDate.year, lastDate.month, lastDate.day);
+          
+          final int difference = today.difference(lastActiveDay).inDays;
+          
+          if (difference > 0) {
+            // It is a brand new day! Reset daily goals.
+            Map<String, dynamic> updates = {
+              'dailyXp': 0, 
+              'completedLessons': 0,
+              'lastActiveDate': FieldValue.serverTimestamp(),
+            };
+            
+            if (difference == 1) {
+              // Logged in exactly one day later - Streak continues!
+              updates['streak'] = currentStreak + 1;
+            } else if (difference > 1) {
+              // Missed a day - Streak broken!
+              updates['streak'] = 1; 
+            }
+            
+            await userRef.update(updates);
+          }
+        } else {
+          // First time they've ever opened the app
+          await userRef.update({
+            'lastActiveDate': FieldValue.serverTimestamp(),
+            'streak': 1,
+            'dailyXp': 0,
+            'completedLessons': 0,
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error updating daily stats: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
     final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393; 
 
-    // Determine firestore sorting key based on active tab
     final String xpSortField = _activeLeaderboardTab == 'weekly' ? 'weeklyXp' : 'dailyXp';
 
     return Scaffold(
@@ -60,7 +125,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SnedInterface2())),
               ),
               IconButton(
-                icon: const Icon(Icons.emoji_events, color: Colors.black, size: 28), // ACTIVE TAB
+                icon: const Icon(Icons.emoji_events, color: Colors.black, size: 28), 
                 onPressed: () {},
               ),
               IconButton(
@@ -77,7 +142,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           stream: ProgressService().getUserProgressStream(),
           builder: (context, userSnapshot) {
             int currentStreak = 0;
-            int totalXp = 0;
             int dailyXp = 0;
             int completedLessons = 0;
 
@@ -85,7 +149,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
               if (userData != null) {
                 currentStreak = userData['streak'] ?? 0;
-                totalXp = userData['xp'] ?? 0;
                 dailyXp = userData['dailyXp'] ?? 0;
                 completedLessons = userData['completedLessons'] ?? 0;
               }
@@ -110,7 +173,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   }).toList();
                 }
 
-                // Fallback dummy data if Firestore is empty
                 if (players.isEmpty) {
                   players = [
                     {'uid': '1', 'name': 'Jane Doe', 'xp': 2019},
@@ -129,7 +191,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // --- HEADER ---
                       Text(
                         'Leaderboard',
                         style: TextStyle(
@@ -150,12 +211,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       ),
                       SizedBox(height: 15 * scale),
 
-                      // --- WEEKLY VS DAILY TOGGLE ---
                       _buildLeaderboardTabs(scale),
-
                       SizedBox(height: 20 * scale),
 
-                      // --- STAT CARDS ---
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -165,33 +223,26 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       ),
                       
                       SizedBox(height: 25 * scale),
-
-                      // --- DUOLINGO-STYLE DAILY QUESTS ---
                       _buildDailyQuestsCard(scale, dailyXp, completedLessons, currentStreak),
-
                       SizedBox(height: 35 * scale),
 
-                      // --- TOP 3 PODIUM ---
                       SizedBox(
                         height: 220 * scale,
                         child: Stack(
                           alignment: Alignment.bottomCenter,
                           children: [
-                            // 2nd Place (Left)
                             if (players.length > 1)
                               Positioned(
                                 left: 10 * scale,
                                 bottom: 0,
                                 child: _buildPodiumAvatar(scale, players[1]['name'], '${players[1]['xp']} pts', 2, const Color(0xFFF34B1B), 70, 60),
                               ),
-                            // 3rd Place (Right)
                             if (players.length > 2)
                               Positioned(
                                 right: 10 * scale,
                                 bottom: 0,
                                 child: _buildPodiumAvatar(scale, players[2]['name'], '${players[2]['xp']} pts', 3, const Color(0xFFFF8227), 60, 50),
                               ),
-                            // 1st Place (Center)
                             if (players.isNotEmpty)
                               Positioned(
                                 bottom: 20 * scale,
@@ -203,7 +254,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
                       SizedBox(height: 30 * scale),
 
-                      // --- RANKING LIST (4th place and below) ---
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -246,8 +296,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       ),
     );
   }
-
-  // --- WIDGET BUILDERS ---
 
   Widget _buildLeaderboardTabs(double scale) {
     return Container(
@@ -333,13 +381,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             ],
           ),
           SizedBox(height: 12 * scale),
-          // Quest 1: Earn 50 XP
           _buildQuestRow(scale, '⚡ Earn 50 XP today', dailyXp, 50),
           _buildDivider(),
-          // Quest 2: Do 1 Lesson
-          _buildQuestRow(scale, '📚 Complete 1 lesson', completedLessons % 1, 1),
+          _buildQuestRow(scale, '📚 Complete 1 lesson', completedLessons, 1),
           _buildDivider(),
-          // Quest 3: Maintain active streak
           _buildQuestRow(scale, '🔥 Reach a 3-Day streak', currentStreak, 3),
         ],
       ),

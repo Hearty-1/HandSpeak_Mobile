@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-// --- NEW IMPORTS FOR XP ---
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'numbers_practice.dart'; // Ensure this points to your shared practice scanner
+
+// --- CHANGED THIS IMPORT SO IT LINKS TO THE RIGHT FILE ---
+import 'numbers_tutorial_practice.dart'; 
 
 class NumberSign {
   final String label;
@@ -19,7 +20,6 @@ class NumbersTutorialDetail extends StatefulWidget {
 }
 
 class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
-  // Data for numbers 1-10
   final List<NumberSign> _numbersList = const [
     NumberSign(label: '1', imagePath: 'assets/pictures/1.png'),
     NumberSign(label: '2', imagePath: 'assets/pictures/2.png'),
@@ -59,7 +59,6 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
     if (_currentIndex > 0) setState(() => _currentIndex--);
   }
 
-  // --- STREAM FOR LIVE XP ---
   Stream<DocumentSnapshot>? _getUserDocStream() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
@@ -70,7 +69,6 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
   Widget build(BuildContext context) {
     final currentSign = _numbersList[_currentIndex];
     
-    // Constants copied from TutorialInterface3 for consistent layout
     const double baseWidth = 393;
     const double baseHeight = 793;
     const double maxProgressWidth = 295.0;
@@ -97,28 +95,22 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // --- Yellow Top Decorative Banner ---
                       Positioned(
-                        left: 0,
-                        top: 0,
+                        left: 0, top: 0,
                         child: Container(
-                          width: 393 * scale,
-                          height: 50 * scale,
+                          width: 393 * scale, height: 50 * scale,
                           decoration: const BoxDecoration(color: Color(0xFFFFB800)),
                         ),
                       ),
 
-                      // --- XP DISPLAY TAG ---
                       Positioned(
-                        right: 70 * scale,
-                        top: 10 * scale,
+                        right: 70 * scale, top: 10 * scale,
                         child: StreamBuilder<DocumentSnapshot>(
                           stream: _getUserDocStream(),
                           builder: (context, snapshot) {
                             int totalXp = 0;
                             if (snapshot.hasData && snapshot.data!.exists) {
                               final data = snapshot.data!.data() as Map<String, dynamic>;
-                              // FETCH NUMBERS XP SPECIFICALLY
                               totalXp = data['numbersXp'] ?? 0; 
                             }
                             return Container(
@@ -134,11 +126,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                                   SizedBox(width: 4 * scale),
                                   Text(
                                     "$totalXp XP",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14 * scale,
-                                      color: const Color(0xFFBA8E23)
-                                    ),
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14 * scale, color: const Color(0xFFBA8E23)),
                                   )
                                 ],
                               ),
@@ -147,18 +135,14 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         )
                       ),
 
-                      // --- Orange Subtitle Base Accent Bar ---
                       Positioned(
-                        left: 0,
-                        top: 50 * scale,
+                        left: 0, top: 50 * scale,
                         child: Container(
-                          width: 393 * scale,
-                          height: 50 * scale,
+                          width: 393 * scale, height: 50 * scale,
                           decoration: const BoxDecoration(color: Color(0xCCF39C12)),
                         ),
                       ),
 
-                      // --- Tutorial Header Text Label ---
                       Positioned(
                         left: 0, right: 0, top: 61 * scale,
                         child: Center(
@@ -169,10 +153,8 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
 
-                      // --- Dynamic Back Navigation Button ---
                       Positioned(
-                        left: 16 * scale,
-                        top: 51 * scale,
+                        left: 16 * scale, top: 51 * scale,
                         child: GestureDetector(
                           onTap: () => Navigator.pop(context),
                           child: Container(
@@ -183,7 +165,6 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
 
-                      // --- Character Display Value Label Banner ---
                       Positioned(
                         left: 0, right: 0, top: 139 * scale,
                         child: Center(
@@ -194,13 +175,10 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
 
-                      // --- Sign Image Workspace Display Window Canvas ---
                       Positioned(
-                        left: 47 * scale,
-                        top: 225 * scale,
+                        left: 47 * scale, top: 225 * scale,
                         child: Container(
-                          width: 299 * scale,
-                          height: 276 * scale,
+                          width: 299 * scale, height: 276 * scale,
                           decoration: ShapeDecoration(
                             image: DecorationImage(image: AssetImage(currentSign.imagePath), fit: BoxFit.cover),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16 * scale)),
@@ -209,13 +187,10 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
 
-                      // --- Linear Dynamic Progress Step Tracker Indicator Bar ---
                       Positioned(
-                        left: 49 * scale,
-                        top: 531 * scale,
+                        left: 49 * scale, top: 531 * scale,
                         child: SizedBox(
-                          width: maxProgressWidth * scale,
-                          height: 14 * scale,
+                          width: maxProgressWidth * scale, height: 14 * scale,
                           child: Stack(
                             children: [
                               Container(
@@ -232,10 +207,8 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
 
-                      // --- Controller Component Navigation ---
                       Positioned(
-                        left: 36 * scale,
-                        top: 565 * scale,
+                        left: 36 * scale, top: 565 * scale,
                         child: TextButton.icon(
                           onPressed: _goToPrevious,
                           icon: Icon(Icons.arrow_back, color: Colors.black, size: 18 * scale),
@@ -243,8 +216,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
                       Positioned(
-                        right: 36 * scale,
-                        top: 565 * scale,
+                        right: 36 * scale, top: 565 * scale,
                         child: TextButton(
                           onPressed: _goToNext,
                           child: Row(
@@ -257,10 +229,8 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
 
-                      // --- Interface Practice Dynamic Routing Action Button ---
                       Positioned(
-                        left: 47 * scale,
-                        top: 640 * scale,
+                        left: 47 * scale, top: 640 * scale,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFFB800),
@@ -269,10 +239,11 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
                           ),
                           onPressed: () {
+                            // --- CHANGED THIS NAVIGATOR PUSH TO THE NEW CLASS ---
                             Navigator.push(
                               context, 
                               MaterialPageRoute(
-                                builder: (context) => NumbersPractice(
+                                builder: (context) => NumbersTutorialPractice(
                                   targetNumber: _numbersList[_currentIndex].label,
                                 ),
                               ),
