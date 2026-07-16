@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+// --- NEW IMPORTS FOR XP ---
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'numbers_practice.dart'; // Ensure this points to your shared practice scanner
 
 class NumberSign {
@@ -56,6 +59,13 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
     if (_currentIndex > 0) setState(() => _currentIndex--);
   }
 
+  // --- STREAM FOR LIVE XP ---
+  Stream<DocumentSnapshot>? _getUserDocStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentSign = _numbersList[_currentIndex];
@@ -98,15 +108,43 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
 
-                      // --- Consistent Avatar Widget ---
+                      // --- XP DISPLAY TAG ---
                       Positioned(
-                        left: 346.46 * scale,
-                        top: 0,
-                        child: SizedBox(
-                          width: 45.39 * scale,
-                          height: 50.11 * scale,
-                          child: Image.asset("assets/pictures/image 66.png", fit: BoxFit.fill),
-                        ),
+                        right: 70 * scale,
+                        top: 10 * scale,
+                        child: StreamBuilder<DocumentSnapshot>(
+                          stream: _getUserDocStream(),
+                          builder: (context, snapshot) {
+                            int totalXp = 0;
+                            if (snapshot.hasData && snapshot.data!.exists) {
+                              final data = snapshot.data!.data() as Map<String, dynamic>;
+                              // FETCH NUMBERS XP SPECIFICALLY
+                              totalXp = data['numbersXp'] ?? 0; 
+                            }
+                            return Container(
+                              padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 6 * scale),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.9),
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                border: Border.all(color: const Color(0xFFBA8E23), width: 1.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.bolt, color: const Color(0xFFBA8E23), size: 16 * scale),
+                                  SizedBox(width: 4 * scale),
+                                  Text(
+                                    "$totalXp XP",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14 * scale,
+                                      color: const Color(0xFFBA8E23)
+                                    ),
+                                  )
+                                ],
+                              ),
+                            );
+                          }
+                        )
                       ),
 
                       // --- Orange Subtitle Base Accent Bar ---

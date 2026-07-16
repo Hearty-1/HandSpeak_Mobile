@@ -1,17 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
-import '../services/progress_service.dart'; // Make sure this path points to your service
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/progress_service.dart'; // Ensure this service exists or adjust imports
 import '../home/home.dart';
 import '../module/module.dart';
 import '../profile/profile.dart';
 
-class LeaderboardScreen extends StatelessWidget {
+class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
+
+  @override
+  State<LeaderboardScreen> createState() => _LeaderboardScreenState();
+}
+
+class _LeaderboardScreenState extends State<LeaderboardScreen> {
+  // Track selected tab: 'weekly' or 'daily'
+  String _activeLeaderboardTab = 'weekly'; 
+  final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
     final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393; 
+
+    // Determine firestore sorting key based on active tab
+    final String xpSortField = _activeLeaderboardTab == 'weekly' ? 'weeklyXp' : 'dailyXp';
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9E5),
@@ -60,117 +73,332 @@ class LeaderboardScreen extends StatelessWidget {
       ),
 
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 20 * scale),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // --- HEADER ---
-              Text(
-                'Leaderboard',
-                style: TextStyle(
-                  color: const Color(0xFF222222),
-                  fontSize: 28 * scale,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              SizedBox(height: 8 * scale),
-              Text(
-                'See how you rank against other students!',
-                style: TextStyle(
-                  color: const Color(0x99222222),
-                  fontSize: 14 * scale,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              SizedBox(height: 25 * scale),
+        child: StreamBuilder<DocumentSnapshot>(
+          stream: ProgressService().getUserProgressStream(),
+          builder: (context, userSnapshot) {
+            int currentStreak = 0;
+            int totalXp = 0;
+            int dailyXp = 0;
+            int completedLessons = 0;
 
-              // --- DYNAMIC STREAK & ACCURACY STATS ---
-              StreamBuilder<DocumentSnapshot>(
-                stream: ProgressService().getUserProgressStream(),
-                builder: (context, snapshot) {
-                  int currentStreak = 0;
-                  
-                  if (snapshot.hasData && snapshot.data!.exists) {
-                    final data = snapshot.data!.data() as Map<String, dynamic>?;
-                    if (data != null) {
-                      currentStreak = data['streak'] ?? 0;
-                    }
-                  }
+            if (userSnapshot.hasData && userSnapshot.data!.exists) {
+              final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
+              if (userData != null) {
+                currentStreak = userData['streak'] ?? 0;
+                totalXp = userData['xp'] ?? 0;
+                dailyXp = userData['dailyXp'] ?? 0;
+                completedLessons = userData['completedLessons'] ?? 0;
+              }
+            }
 
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .orderBy(xpSortField, descending: true)
+                  .limit(10)
+                  .snapshots(),
+              builder: (context, leaderboardSnapshot) {
+                List<Map<String, dynamic>> players = [];
+                if (leaderboardSnapshot.hasData) {
+                  players = leaderboardSnapshot.data!.docs.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return {
+                      'uid': doc.id,
+                      'name': data['name'] ?? 'Anonymous',
+                      'xp': data[xpSortField] ?? 0,
+                    };
+                  }).toList();
+                }
+
+                // Fallback dummy data if Firestore is empty
+                if (players.isEmpty) {
+                  players = [
+                    {'uid': '1', 'name': 'Jane Doe', 'xp': 2019},
+                    {'uid': '2', 'name': 'Alice G.', 'xp': 1932},
+                    {'uid': '3', 'name': 'Bob M.', 'xp': 1431},
+                    {'uid': '4', 'name': 'Sarah Lee', 'xp': 1205},
+                    {'uid': _currentUserId, 'name': 'You', 'xp': dailyXp},
+                    {'uid': '6', 'name': 'Mike Chen', 'xp': 890},
+                  ];
+                  players.sort((a, b) => b['xp'].compareTo(a['xp']));
+                }
+
+                return SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 20 * scale),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _buildStatCard(scale, '🔥', '$currentStreak DAYS', 'Active Streak', const Color(0xFFFF8227)),
-                      _buildStatCard(scale, '🎯', '88%', 'Avg Accuracy', const Color(0xFFF34B1B)),
+                      // --- HEADER ---
+                      Text(
+                        'Leaderboard',
+                        style: TextStyle(
+                          color: const Color(0xFF222222),
+                          fontSize: 28 * scale,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      SizedBox(height: 8 * scale),
+                      Text(
+                        'Compete in real time with fellow learners!',
+                        style: TextStyle(
+                          color: const Color(0x99222222),
+                          fontSize: 14 * scale,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 15 * scale),
+
+                      // --- WEEKLY VS DAILY TOGGLE ---
+                      _buildLeaderboardTabs(scale),
+
+                      SizedBox(height: 20 * scale),
+
+                      // --- STAT CARDS ---
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildStatCard(scale, '🔥', '$currentStreak DAYS', 'Streak Active', const Color(0xFFFF8227)),
+                          _buildStatCard(scale, '⚡', '$dailyXp XP Today', 'Daily Goal Progress', const Color(0xFFF34B1B)),
+                        ],
+                      ),
+                      
+                      SizedBox(height: 25 * scale),
+
+                      // --- DUOLINGO-STYLE DAILY QUESTS ---
+                      _buildDailyQuestsCard(scale, dailyXp, completedLessons, currentStreak),
+
+                      SizedBox(height: 35 * scale),
+
+                      // --- TOP 3 PODIUM ---
+                      SizedBox(
+                        height: 220 * scale,
+                        child: Stack(
+                          alignment: Alignment.bottomCenter,
+                          children: [
+                            // 2nd Place (Left)
+                            if (players.length > 1)
+                              Positioned(
+                                left: 10 * scale,
+                                bottom: 0,
+                                child: _buildPodiumAvatar(scale, players[1]['name'], '${players[1]['xp']} pts', 2, const Color(0xFFF34B1B), 70, 60),
+                              ),
+                            // 3rd Place (Right)
+                            if (players.length > 2)
+                              Positioned(
+                                right: 10 * scale,
+                                bottom: 0,
+                                child: _buildPodiumAvatar(scale, players[2]['name'], '${players[2]['xp']} pts', 3, const Color(0xFFFF8227), 60, 50),
+                              ),
+                            // 1st Place (Center)
+                            if (players.isNotEmpty)
+                              Positioned(
+                                bottom: 20 * scale,
+                                child: _buildPodiumAvatar(scale, players[0]['name'], '${players[0]['xp']} pts', 1, const Color(0xFFFFCA28), 90, 80),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(height: 30 * scale),
+
+                      // --- RANKING LIST (4th place and below) ---
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24 * scale),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x0A000000), blurRadius: 15, offset: Offset(0, 5))
+                          ],
+                        ),
+                        child: Column(
+                          children: List.generate(
+                            players.length > 3 ? players.length - 3 : 0,
+                            (index) {
+                              final playerIndex = index + 3;
+                              final player = players[playerIndex];
+                              final isCurrent = player['uid'] == _currentUserId;
+
+                              return Column(
+                                children: [
+                                  _buildListRow(
+                                    scale, 
+                                    playerIndex + 1, 
+                                    player['name'], 
+                                    '${player['xp']} pts', 
+                                    isCurrent
+                                  ),
+                                  if (playerIndex < players.length - 1) _buildDivider(),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      )
                     ],
-                  );
-                },
-              ),
-              
-              SizedBox(height: 35 * scale),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
 
-              // --- TOP 3 PODIUM ---
-              SizedBox(
-                height: 220 * scale,
-                child: Stack(
-                  alignment: Alignment.bottomCenter,
-                  children: [
-                    // 2nd Place (Left)
-                    Positioned(
-                      left: 20 * scale,
-                      bottom: 0,
-                      child: _buildPodiumAvatar(scale, 'Alice G.', '1932 pts', 2, const Color(0xFFF34B1B), 70, 60),
-                    ),
-                    // 3rd Place (Right)
-                    Positioned(
-                      right: 20 * scale,
-                      bottom: 0,
-                      child: _buildPodiumAvatar(scale, 'Bob M.', '1431 pts', 3, const Color(0xFFFF8227), 60, 50),
-                    ),
-                    // 1st Place (Center)
-                    Positioned(
-                      bottom: 20 * scale,
-                      child: _buildPodiumAvatar(scale, 'Jane Doe', '2019 pts', 1, const Color(0xFFFFCA28), 90, 80),
-                    ),
-                  ],
-                ),
-              ),
+  // --- WIDGET BUILDERS ---
 
-              SizedBox(height: 30 * scale),
-
-              // --- RANKING LIST ---
-              Container(
+  Widget _buildLeaderboardTabs(double scale) {
+    return Container(
+      height: 45 * scale,
+      decoration: BoxDecoration(
+        color: const Color(0x1F222222),
+        borderRadius: BorderRadius.circular(16 * scale),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _activeLeaderboardTab = 'weekly'),
+              child: Container(
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24 * scale),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x0A000000), blurRadius: 15, offset: Offset(0, 5))
-                  ],
+                  color: _activeLeaderboardTab == 'weekly' ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(14 * scale),
+                  boxShadow: _activeLeaderboardTab == 'weekly' 
+                    ? const [BoxShadow(color: Color(0x1F000000), blurRadius: 4, offset: Offset(0, 2))]
+                    : null,
                 ),
-                child: Column(
-                  children: [
-                    _buildListRow(scale, 4, 'Sarah Lee', '1205 pts', false),
-                    _buildDivider(),
-                    _buildListRow(scale, 5, 'You', '950 pts', true),
-                    _buildDivider(),
-                    _buildListRow(scale, 6, 'Mike Chen', '890 pts', false),
-                    _buildDivider(),
-                    _buildListRow(scale, 7, 'Emma Watson', '720 pts', false),
-                  ],
+                child: Text(
+                  'Weekly League',
+                  style: TextStyle(
+                    fontSize: 14 * scale,
+                    fontWeight: FontWeight.bold,
+                    color: _activeLeaderboardTab == 'weekly' ? Colors.black : Colors.black45,
+                  ),
                 ),
-              )
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _activeLeaderboardTab = 'daily'),
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _activeLeaderboardTab == 'daily' ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(14 * scale),
+                  boxShadow: _activeLeaderboardTab == 'daily' 
+                    ? const [BoxShadow(color: Color(0x1F000000), blurRadius: 4, offset: Offset(0, 2))]
+                    : null,
+                ),
+                child: Text(
+                  'Daily Rank',
+                  style: TextStyle(
+                    fontSize: 14 * scale,
+                    fontWeight: FontWeight.bold,
+                    color: _activeLeaderboardTab == 'daily' ? Colors.black : Colors.black45,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDailyQuestsCard(double scale, int dailyXp, int completedLessons, int currentStreak) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24 * scale),
+        border: Border.all(color: const Color(0xFFF0F0F0), width: 1.5),
+        boxShadow: const [BoxShadow(color: Color(0x05000000), blurRadius: 10, offset: Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Daily Quests',
+                style: TextStyle(fontSize: 18 * scale, fontWeight: FontWeight.w800, color: const Color(0xFF222222)),
+              ),
+              const Icon(Icons.stars, color: Color(0xFFFFB800)),
             ],
           ),
-        ),
+          SizedBox(height: 12 * scale),
+          // Quest 1: Earn 50 XP
+          _buildQuestRow(scale, '⚡ Earn 50 XP today', dailyXp, 50),
+          _buildDivider(),
+          // Quest 2: Do 1 Lesson
+          _buildQuestRow(scale, '📚 Complete 1 lesson', completedLessons % 1, 1),
+          _buildDivider(),
+          // Quest 3: Maintain active streak
+          _buildQuestRow(scale, '🔥 Reach a 3-Day streak', currentStreak, 3),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestRow(double scale, String description, int currentVal, int targetVal) {
+    double progressRatio = (currentVal / targetVal).clamp(0.0, 1.0);
+    bool isCompleted = progressRatio >= 1.0;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 10 * scale),
+      child: Row(
+        children: [
+          Icon(
+            isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+            color: isCompleted ? Colors.green : Colors.grey,
+            size: 24 * scale,
+          ),
+          SizedBox(width: 12 * scale),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 14 * scale,
+                    fontWeight: FontWeight.bold,
+                    color: isCompleted ? Colors.black45 : Colors.black87,
+                    decoration: isCompleted ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                SizedBox(height: 4 * scale),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10 * scale),
+                  child: LinearProgressIndicator(
+                    value: progressRatio,
+                    backgroundColor: const Color(0xFFF1F1FA),
+                    color: isCompleted ? Colors.green : const Color(0xFFFFB800),
+                    minHeight: 6 * scale,
+                  ),
+                )
+              ],
+            ),
+          ),
+          SizedBox(width: 12 * scale),
+          Text(
+            '$currentVal/$targetVal',
+            style: TextStyle(fontSize: 12 * scale, fontWeight: FontWeight.bold, color: Colors.grey),
+          )
+        ],
       ),
     );
   }
 
   Widget _buildStatCard(double scale, String emoji, String value, String label, Color color) {
     return Container(
-      width: 160 * scale,
+      width: 165 * scale,
       padding: EdgeInsets.symmetric(vertical: 16 * scale, horizontal: 12 * scale),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -181,12 +409,22 @@ class LeaderboardScreen extends StatelessWidget {
         children: [
           Text(emoji, style: TextStyle(fontSize: 24 * scale)),
           SizedBox(width: 8 * scale),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(value, style: TextStyle(color: color, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
-              Text(label, style: TextStyle(color: Colors.black45, fontSize: 11 * scale)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value, 
+                  style: TextStyle(color: color, fontSize: 14 * scale, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  label, 
+                  style: TextStyle(color: Colors.black45, fontSize: 11 * scale),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           )
         ],
       ),
@@ -224,7 +462,7 @@ class LeaderboardScreen extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 16 * scale),
       decoration: BoxDecoration(
-        color: isCurrentUser ? const Color(0xFFFFB800).withOpacity(0.1) : Colors.transparent,
+        color: isCurrentUser ? const Color(0xFFFFB800).withOpacity(0.15) : Colors.transparent,
         borderRadius: BorderRadius.circular(isCurrentUser ? 24 * scale : 0),
       ),
       child: Row(

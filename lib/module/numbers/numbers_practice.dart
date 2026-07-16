@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
+// --- NEW IMPORTS FOR XP ---
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class NumbersPractice extends StatefulWidget {
   final String targetNumber;
@@ -29,6 +32,9 @@ class _NumbersPracticeState extends State<NumbersPractice> {
 
   final double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
+
+  // --- XP SETTINGS ---
+  final int xpReward = 25;
 
   @override
   void initState() {
@@ -211,6 +217,27 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     });
   }
 
+  // --- NEW XP SAVING FUNCTION ---
+  // --- UNIFIED XP & LEADERBOARD SAVING FUNCTION (NUMBERS) ---
+  Future<void> _awardXp() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        
+        await docRef.set({
+          'numbersXp': FieldValue.increment(xpReward),    // <--- Only difference is this line!
+          'xp': FieldValue.increment(xpReward),           
+          'dailyXp': FieldValue.increment(xpReward),      
+          'weeklyXp': FieldValue.increment(xpReward),     
+          'completedLessons': FieldValue.increment(1),    
+        }, SetOptions(merge: true));
+      }
+    } catch (e) {
+      debugPrint("Failed to award XP: $e");
+    }
+  }
+
   void _onSuccess() async {
     _isSuccessAchieved = true;
     _startHoldTime = null;
@@ -220,6 +247,9 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     await Future.delayed(const Duration(milliseconds: 100));
     HapticFeedback.heavyImpact(); 
     
+    // --- AWARD THE XP ---
+    await _awardXp();
+
     if (!mounted) return;
 
     showDialog(
@@ -234,24 +264,50 @@ class _NumbersPracticeState extends State<NumbersPractice> {
             Text("Success! ⭐⭐⭐", style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(
-          "Outstanding job! You have successfully mastered the number ${widget.targetNumber}!",
-          style: const TextStyle(fontSize: 16),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "Outstanding job! You have successfully mastered the number ${widget.targetNumber}!",
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            // --- DISPLAY REWARD IN DIALOG ---
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.shade200, width: 2),
+              ),
+              child: Text(
+                "+$xpReward XP Earned!",
+                style: TextStyle(
+                  fontSize: 18, 
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green.shade800
+                ),
+              ),
+            ),
+          ],
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFB800),
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () {
-              Navigator.pop(context); 
-              Navigator.pop(context); 
-            },
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text("Back to Tutorial", style: TextStyle(fontWeight: FontWeight.bold)),
+          Center(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFB800),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                Navigator.pop(context); 
+                Navigator.pop(context); 
+              },
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text("Back to Tutorial", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
             ),
           )
         ],
@@ -320,11 +376,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: 42,
-                    height: 42,
-                    child: Image.asset("assets/pictures/image 66.png", fit: BoxFit.contain),
-                  ),
+                  const SizedBox(width: 42),
                 ],
               ),
             ),
@@ -348,11 +400,10 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                     ),
                     const SizedBox(height: 12),
 
-                    // REFERENCE IMAGE - Made smaller & changed to 1:1 Aspect Ratio
                     SizedBox(
                       width: screenWidth * 0.60, 
                       child: AspectRatio(
-                        aspectRatio: 1 / 1, // 1:1 Square Ratio
+                        aspectRatio: 1 / 1, 
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
@@ -367,7 +418,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16),
                             child: Image.asset(
-                              "assets/pictures/$currentNumber.png",
+                              "assets/pictures/$currentNumber.png", 
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
                                 color: Colors.grey.shade300,
@@ -380,11 +431,10 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                     ),
                     const SizedBox(height: 24),
 
-                    // CAMERA PREVIEW - Made smaller & changed to 1:1 Aspect Ratio
                     SizedBox(
                       width: screenWidth * 0.60, 
                       child: AspectRatio(
-                        aspectRatio: 1 / 1, // 1:1 Square Ratio
+                        aspectRatio: 1 / 1, 
                         child: Stack(
                           alignment: Alignment.center,
                           fit: StackFit.expand,
@@ -422,11 +472,10 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                               ),
                             ),
 
-                            // USER-FRIENDLY HAND-PLACEMENT OVERLAY
                             if (_isInitialized && !_isSuccessAchieved)
                               Center(
                                 child: Container(
-                                  width: 110, // Adjusted size slightly for the neat 1:1 layout
+                                  width: 110, 
                                   height: 110,
                                   decoration: BoxDecoration(
                                     border: Border.all(
@@ -461,7 +510,6 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                     ),
                     const SizedBox(height: 20),
 
-                    // HOLD PROGRESS BAR / ACCURACY INDICATOR
                     if (_holdProgress > 0.0) ...[
                       Column(
                         children: [
@@ -475,7 +523,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                           ),
                           const SizedBox(height: 8),
                           Container(
-                            width: screenWidth * 0.70, // Keep tracking bar neat and slightly wider than the boxes
+                            width: screenWidth * 0.70, 
                             height: 16,
                             decoration: BoxDecoration(
                               color: Colors.grey[300], 

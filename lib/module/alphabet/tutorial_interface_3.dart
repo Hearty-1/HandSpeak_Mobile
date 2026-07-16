@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+// --- NEW IMPORTS FOR XP ---
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'tutorial_practice.dart';
 
 class TutorialSign {
@@ -8,7 +11,7 @@ class TutorialSign {
 }
 
 class TutorialInterface3 extends StatefulWidget {
-  final int initialIndex; // Receives selected entry index value from menu catalog
+  final int initialIndex; 
   
   const TutorialInterface3({super.key, this.initialIndex = 0});
 
@@ -47,7 +50,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
   ];
 
   int _currentIndex = 0;
-  final int _currentStars = 3; // Simulated progress condition check for unlocking
+  final int _currentStars = 3; 
 
   @override
   void initState() {
@@ -78,6 +81,13 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
         _currentIndex--;
       });
     }
+  }
+
+  // --- STREAM FOR LIVE XP ---
+  Stream<DocumentSnapshot>? _getUserDocStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
   }
 
   @override
@@ -123,7 +133,46 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                         ),
                       ),
 
-                      // --- Consistent Avatar Widget (Image 66 Replica) ---
+                      // --- XP DISPLAY TAG ---
+                      Positioned(
+                        right: 70 * scale,
+                        top: 10 * scale,
+                        child: StreamBuilder<DocumentSnapshot>(
+                          stream: _getUserDocStream(),
+                          builder: (context, snapshot) {
+                            int totalXp = 0;
+                            if (snapshot.hasData && snapshot.data!.exists) {
+                              final data = snapshot.data!.data() as Map<String, dynamic>;
+                              // FETCH ALPHABET XP SPECIFICALLY
+                              totalXp = data['alphabetXp'] ?? 0; 
+                            }
+                            return Container(
+                              padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 6 * scale),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.9),
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                border: Border.all(color: const Color(0xFFBA8E23), width: 1.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.bolt, color: const Color(0xFFBA8E23), size: 16 * scale),
+                                  SizedBox(width: 4 * scale),
+                                  Text(
+                                    "$totalXp XP",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14 * scale,
+                                      color: const Color(0xFFBA8E23)
+                                    ),
+                                  )
+                                ],
+                              ),
+                            );
+                          }
+                        )
+                      ),
+
+                      // --- Consistent Avatar Widget ---
                       Positioned(
                         left: 346.46 * scale,
                         top: 0,
@@ -342,7 +391,6 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                             ),
                           ),
                           onPressed: () {
-                            // Extract just the uppercase letter (e.g., "A" from "Aa")
                             String letterToPractice = currentSign.label[0]; 
                             
                             Navigator.push(

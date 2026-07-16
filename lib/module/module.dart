@@ -19,62 +19,32 @@ class SnedInterface2 extends StatelessWidget {
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(),
       builder: (context, snapshot) {
-        // --- 1. DEFAULT BACKEND PROGRESS VALUES ---
-        int alpEasyXp = 0;
-        int alpMediumXp = 0;
-        int alpHardXp = 0;
-
-        int numEasyXp = 0;
-        int numMediumXp = 0;
-        int numHardXp = 0;
-
-        int wordsEasyXp = 0;
-        int civicEasyXp = 0;
+        // --- 1. FETCH CATEGORY-SPECIFIC XP ---
+        int alphabetXp = 0;
+        int numbersXp = 0;
+        int wordsXp = 0;
+        int civicsXp = 0;
 
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
           if (data != null) {
-            alpEasyXp = (data['alpEasyXp'] ?? 0).clamp(0, targetXp);
-            alpMediumXp = (data['alpMediumXp'] ?? 0).clamp(0, targetXp);
-            alpHardXp = (data['alpHardXp'] ?? 0).clamp(0, targetXp);
-
-            numEasyXp = (data['numEasyXp'] ?? 0).clamp(0, targetXp);
-            numMediumXp = (data['numMediumXp'] ?? 0).clamp(0, targetXp);
-            numHardXp = (data['numHardXp'] ?? 0).clamp(0, targetXp);
-
-            wordsEasyXp = (data['wordsEasyXp'] ?? 0).clamp(0, targetXp);
-            civicEasyXp = (data['civicEasyXp'] ?? 0).clamp(0, targetXp);
+            // Pulling the specific unified category fields
+            alphabetXp = data['alphabetXp'] ?? 0;
+            numbersXp = data['numbersXp'] ?? 0;
+            wordsXp = data['wordsXp'] ?? 0;
+            civicsXp = data['civicsXp'] ?? 0;
           }
         }
 
-        // --- 2. ACTIVE LEVEL CALCULATION ---
-        // Alphabets
-        int alpDisplayLevel = 1;
-        int alpDisplayXp = alpEasyXp;
-        if (alpEasyXp >= targetXp) {
-          alpDisplayLevel = 2;
-          alpDisplayXp = alpMediumXp;
-        }
-        if (alpMediumXp >= targetXp) {
-          alpDisplayLevel = 3;
-          alpDisplayXp = alpHardXp;
-        }
+        // --- 2. DYNAMIC PROGRESSION LOCKS ---
+        final bool isWordsLocked = (alphabetXp < targetXp) || (numbersXp < targetXp);
+        final bool isCivicsLocked = isWordsLocked || (wordsXp < targetXp);
 
-        // Numbers
-        int numDisplayLevel = 1;
-        int numDisplayXp = numEasyXp;
-        if (numEasyXp >= targetXp) {
-          numDisplayLevel = 2;
-          numDisplayXp = numMediumXp;
-        }
-        if (numMediumXp >= targetXp) {
-          numDisplayLevel = 3;
-          numDisplayXp = numHardXp;
-        }
-
-        // --- 3. DYNAMIC PROGRESSION LOCKS ---
-        final bool isWordsLocked = (alpEasyXp < targetXp) || (numEasyXp < targetXp);
-        final bool isCivicsLocked = isWordsLocked || (wordsEasyXp < targetXp);
+        // --- 3. DISPLAY XP (Capped at Target for the visual bars) ---
+        int displayAlpXp = alphabetXp > targetXp ? targetXp : alphabetXp;
+        int displayNumXp = numbersXp > targetXp ? targetXp : numbersXp;
+        int displayWordsXp = wordsXp > targetXp ? targetXp : wordsXp;
+        int displayCivicsXp = civicsXp > targetXp ? targetXp : civicsXp;
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -134,8 +104,7 @@ class SnedInterface2 extends StatelessWidget {
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => AlphabetInterface(
-                                      currentLevel: alpDisplayLevel,
-                                      currentXp: alpDisplayXp,
+                                      currentXp: displayAlpXp,
                                       targetXp: targetXp,
                                     ),
                                   ),
@@ -146,7 +115,7 @@ class SnedInterface2 extends StatelessWidget {
                             Positioned(
                               left: 27 * scale, top: 139 * scale,
                               child: GestureDetector(
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AlphabetInterface(currentLevel: alpDisplayLevel, currentXp: alpDisplayXp))),
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AlphabetInterface(currentXp: displayAlpXp, targetXp: targetXp))),
                                 child: Text('Alphabets', style: TextStyle(color: Colors.black, fontSize: 32 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.92)),
                               ),
                             ),
@@ -154,10 +123,10 @@ class SnedInterface2 extends StatelessWidget {
                               left: 12 * scale, top: 315 * scale, 
                               child: _buildProgressPanel(
                                 scale: scale, 
-                                level: "Level $alpDisplayLevel", 
-                                xp: "$alpDisplayXp XP", 
-                                xpNext: "${targetXp - alpDisplayXp} to next",
-                                progressRatio: alpDisplayXp / targetXp,
+                                title: "Progress", 
+                                xp: "$displayAlpXp XP", 
+                                xpNext: "${targetXp - displayAlpXp} to next",
+                                progressRatio: displayAlpXp / targetXp,
                               ),
                             ),
                             Positioned(left: 22 * scale, top: 350 * scale, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale))),
@@ -170,8 +139,7 @@ class SnedInterface2 extends StatelessWidget {
                                   context, 
                                   MaterialPageRoute(
                                     builder: (context) => NumbersInterface(
-                                      currentLevel: numDisplayLevel,
-                                      currentXp: numDisplayXp,
+                                      currentXp: displayNumXp,
                                       targetXp: targetXp,
                                     ),
                                   ),
@@ -182,7 +150,7 @@ class SnedInterface2 extends StatelessWidget {
                             Positioned(
                               left: 228 * scale, top: 137 * scale,
                               child: GestureDetector(
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => NumbersInterface(currentLevel: numDisplayLevel, currentXp: numDisplayXp))),
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => NumbersInterface(currentXp: displayNumXp, targetXp: targetXp))),
                                 child: Text('Numbers', style: TextStyle(color: Colors.black, fontSize: 32 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.92)),
                               ),
                             ),
@@ -190,10 +158,10 @@ class SnedInterface2 extends StatelessWidget {
                               left: 205 * scale, top: 315 * scale, 
                               child: _buildProgressPanel(
                                 scale: scale, 
-                                level: "Level $numDisplayLevel", 
-                                xp: "$numDisplayXp XP", 
-                                xpNext: "${targetXp - numDisplayXp} to next",
-                                progressRatio: numDisplayXp / targetXp,
+                                title: "Progress", 
+                                xp: "$displayNumXp XP", 
+                                xpNext: "${targetXp - displayNumXp} to next",
+                                progressRatio: displayNumXp / targetXp,
                               ),
                             ),
                             Positioned(left: 218 * scale, top: 349 * scale, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale))),
@@ -231,10 +199,10 @@ class SnedInterface2 extends StatelessWidget {
                                 opacity: isWordsLocked ? 0.40 : 1.0, 
                                 child: _buildProgressPanel(
                                   scale: scale, 
-                                  level: "Level 1", 
-                                  xp: "$wordsEasyXp XP", 
-                                  xpNext: "${targetXp - wordsEasyXp} to next",
-                                  progressRatio: wordsEasyXp / targetXp,
+                                  title: "Progress", 
+                                  xp: "$displayWordsXp XP", 
+                                  xpNext: "${targetXp - displayWordsXp} to next",
+                                  progressRatio: displayWordsXp / targetXp,
                                 ),
                               ),
                             ),
@@ -273,10 +241,10 @@ class SnedInterface2 extends StatelessWidget {
                                 opacity: isCivicsLocked ? 0.40 : 1.0, 
                                 child: _buildProgressPanel(
                                   scale: scale, 
-                                  level: "Level 1", 
-                                  xp: "$civicEasyXp XP", 
-                                  xpNext: "${targetXp - civicEasyXp} to next",
-                                  progressRatio: civicEasyXp / targetXp,
+                                  title: "Progress", 
+                                  xp: "$displayCivicsXp XP", 
+                                  xpNext: "${targetXp - displayCivicsXp} to next",
+                                  progressRatio: displayCivicsXp / targetXp,
                                 ),
                               ),
                             ),
@@ -328,10 +296,10 @@ class SnedInterface2 extends StatelessWidget {
     );
   }
 
-  // Helper widget to render progress status card directly over images with responsive layout metrics
+  // Helper widget to render progress status card
   Widget _buildProgressPanel({
     required double scale, 
-    required String level, 
+    required String title, 
     required String xp, 
     required String xpNext,
     required double progressRatio,
@@ -347,7 +315,7 @@ class SnedInterface2 extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned(left: 12 * scale, top: 5 * scale, child: Text(level, style: TextStyle(color: const Color(0xFF322144), fontSize: 16 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.bold))),
+          Positioned(left: 12 * scale, top: 5 * scale, child: Text(title, style: TextStyle(color: const Color(0xFF322144), fontSize: 16 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.bold))),
           Positioned(left: 34 * scale, top: 28 * scale, child: Text(xp, style: TextStyle(color: const Color(0xFFBA8E23), fontSize: 18 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20))),
           
           // Background Bar Track

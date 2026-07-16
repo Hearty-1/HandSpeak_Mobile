@@ -6,13 +6,11 @@ import 'numbers_tutorial.dart';
 import 'numbers_activity.dart';
 
 class NumbersInterface extends StatelessWidget {
-  final int currentLevel;
   final int currentXp;
   final int targetXp;
 
   const NumbersInterface({
     super.key,
-    this.currentLevel = 1,
     this.currentXp = 0,
     this.targetXp = 1000,
   });
@@ -25,19 +23,17 @@ class NumbersInterface extends StatelessWidget {
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(),
       builder: (context, snapshot) {
-        int liveEasyXp = 0;
-        int liveMediumXp = 0;
-        int liveHardXp = 0;
-        int categoryStars = 0; // Added variable to track category-specific stars[cite: 13]
+        
+        int numbersXp = 0;
+        int categoryStars = 0;
 
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
           if (data != null) {
-            liveEasyXp = (data['numEasyXp'] ?? 0).clamp(0, targetXp);
-            liveMediumXp = (data['numMediumXp'] ?? 0).clamp(0, targetXp);
-            liveHardXp = (data['numHardXp'] ?? 0).clamp(0, targetXp);
+            // Read the single unified numbersXp field
+            numbersXp = data['numbersXp'] ?? 0;
             
-            // Calculate Numbers Stars dynamically[cite: 13]
+            // Calculate Numbers Stars dynamically
             if (data['progress'] != null) {
               Map<String, dynamic> progressMap = Map<String, dynamic>.from(data['progress']);
               progressMap.forEach((key, value) {
@@ -49,17 +45,8 @@ class NumbersInterface extends StatelessWidget {
           }
         }
 
-        // Active numbers levels calculations[cite: 13]
-        int activeLevel = 1;
-        int activeXp = liveEasyXp;
-        if (liveEasyXp >= targetXp) {
-          activeLevel = 2;
-          activeXp = liveMediumXp;
-        }
-        if (liveMediumXp >= targetXp) {
-          activeLevel = 3;
-          activeXp = liveHardXp;
-        }
+        // Track raw XP, capping at targetXp (1000) so the progress bar stops perfectly full
+        int displayXp = numbersXp > targetXp ? targetXp : numbersXp;
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -80,7 +67,7 @@ class NumbersInterface extends StatelessWidget {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            // Header Components[cite: 13]
+                            // Header Components
                             Positioned(
                               left: 0, top: 0,
                               child: Container(
@@ -118,18 +105,17 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Dynamic Live Progress Tracker[cite: 13]
+                            // Dynamic Live Progress Tracker
                             Positioned(
                               left: 6 * scale, top: 112 * scale,
                               child: _buildMainProgressPanel(
                                 scale: scale,
-                                level: activeLevel,
-                                currentXp: activeXp,
+                                currentXp: displayXp,
                                 targetXp: targetXp,
                               ),
                             ),
 
-                            // Tutorial Container Row[cite: 13]
+                            // Tutorial Container Row
                             Positioned(
                               left: 24 * scale, top: 180 * scale,
                               child: Container(width: 130 * scale, height: 110 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/tutor.png"), fit: BoxFit.fill))),
@@ -151,7 +137,7 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Practice Container Row[cite: 13]
+                            // Practice Container Row
                             Positioned(
                               left: 16 * scale, top: 300 * scale,
                               child: Container(width: 135 * scale, height: 135 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/practice.png"), fit: BoxFit.cover))),
@@ -173,7 +159,7 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Sub Activity Metrics Section[cite: 13]
+                            // Sub Activity Metrics Section
                             Positioned(left: 56.75 * scale, top: 455 * scale, child: Text('Activity', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
                             Positioned(left: 233.75 * scale, top: 455 * scale, child: Text('Challenges', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
                             
@@ -192,7 +178,7 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Sub-metric panels updated to use categoryStars and match formatting[cite: 13]
+                            // Sub-metric panels
                             Positioned(
                               left: 13.75 * scale, 
                               top: 665 * scale, 
@@ -217,7 +203,7 @@ class NumbersInterface extends StatelessWidget {
     );
   }
 
-  Widget _buildMainProgressPanel({required double scale, required int level, required int currentXp, required int targetXp}) {
+  Widget _buildMainProgressPanel({required double scale, required int currentXp, required int targetXp}) {
     final double progressRatio = (currentXp / targetXp).clamp(0.0, 1.0);
     const double maxTrackWidth = 235.0;
 
@@ -226,8 +212,8 @@ class NumbersInterface extends StatelessWidget {
       decoration: ShapeDecoration(color: Colors.white.withOpacity(0.18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale))),
       child: Stack(
         children: [
-          Positioned(left: 56 * scale, top: 5 * scale, child: Text('Level $level', style: TextStyle(color: const Color(0xFF322144), fontSize: 14 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w600, letterSpacing: -0.90))),
-          Positioned(left: 56 * scale, top: 24 * scale, child: Text('$currentXp XP', style: TextStyle(color: const Color(0xFFBA8E23), fontSize: 17 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20))),
+          Positioned(left: 56 * scale, top: 5 * scale, child: Text('Progress', style: TextStyle(color: const Color(0xFF322144), fontSize: 14 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w600, letterSpacing: -0.90))),
+          Positioned(left: 56 * scale, top: 24 * scale, child: Text('$currentXp / $targetXp XP', style: TextStyle(color: const Color(0xFFBA8E23), fontSize: 16 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.0))),
           
           Positioned(
             left: 130 * scale, top: 26 * scale,
@@ -243,7 +229,6 @@ class NumbersInterface extends StatelessWidget {
     );
   }
 
-  // Renamed 'xpDisplay' to 'valueDisplay' to accommodate stars[cite: 13]
   Widget _buildSubMetricPanel({required double scale, required String valueDisplay, required double progress}) {
     return Container(
       width: 178 * scale, height: 37 * scale,
