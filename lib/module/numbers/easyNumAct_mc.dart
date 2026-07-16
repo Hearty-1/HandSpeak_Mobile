@@ -7,7 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 // ==========================================
 class QuizQuestion {
   final String id;
-  final String type; // 'sign_to_text' or 'text_to_sign'
+  final String type; 
   final String imageUrl;
   final String questionText;
   final List<String> options;
@@ -35,50 +35,60 @@ class QuizQuestion {
 }
 
 // ==========================================
-// 2. FIRESTORE API SERVICE (Numbers)
+// 2. SMART DIAGNOSTIC FIRESTORE API
 // ==========================================
 class NumbersQuizApiService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Future<List<QuizQuestion>> fetchEasyQuestions(String typeFilter) async {
-    try {
-      // Order by documentId ensures a fixed, predictable sequence from the DB
-      final querySnapshot = await _db
-          .collection('activity_questions')
-          .where('category', isEqualTo: 'numbers') // Changed to numbers
-          .where('level', isEqualTo: 'easy')
-          .orderBy(FieldPath.documentId)
-          .get();
+  Future<List<QuizQuestion>> fetchEasyQuestions(String levelId, String typeFilter) async {
+    // STEP 1: Fetch ALL number questions to bypass any Firestore Index errors
+    final querySnapshot = await _db
+        .collection('activity_questions')
+        .where('category', isEqualTo: 'numbers')
+        .get();
 
-      List<QuizQuestion> allQuestions = querySnapshot.docs.map((doc) {
-        final data = doc.data();
-        data['id'] = doc.id; 
-        return QuizQuestion.fromJson(data);
-      }).toList();
-
-      List<QuizQuestion> filteredQuestions = [];
-      
-      if (typeFilter == 'mixed') {
-        // Interleave the two types perfectly to guarantee a structured 50/50 mix
-        var signs = allQuestions.where((q) => q.type == 'sign_to_text').toList();
-        var texts = allQuestions.where((q) => q.type == 'text_to_sign').toList();
-        
-        int maxLength = signs.length > texts.length ? signs.length : texts.length;
-        for (int i = 0; i < maxLength; i++) {
-          if (i < signs.length) filteredQuestions.add(signs[i]);
-          if (i < texts.length) filteredQuestions.add(texts[i]);
-        }
-      } else {
-        // Fetch strictly aligned question types in sequential order
-        filteredQuestions = allQuestions.where((q) => q.type == typeFilter).toList();
-      }
-
-      // Take exactly 5 questions for this round in a fixed order
-      return filteredQuestions.take(5).toList();
-    } catch (e) {
-      debugPrint("Error fetching numbers questions: $e");
-      return [];
+    // ERROR CHECK 1: Is the database empty?
+    if (querySnapshot.docs.isEmpty) {
+      throw Exception("DATABASE IS EMPTY!\n\nPlease go to your Home Screen and press the red 'DEV: SEED DATABASE' button first.");
     }
+
+    // STEP 2: Filter by the requested Level ID
+    List<QuizQuestion> levelQuestions = [];
+    for (var doc in querySnapshot.docs) {
+      final data = doc.data();
+      if (data['level'] == levelId) { 
+        data['id'] = doc.id;
+        levelQuestions.add(QuizQuestion.fromJson(data));
+      }
+    }
+
+    // ERROR CHECK 2: Did the Level ID match anything?
+    if (levelQuestions.isEmpty) {
+      throw Exception("LEVEL NOT FOUND!\n\nThe database has questions, but ZERO questions match the levelId: '$levelId'.\n\nPlease check the Navigator.push code where you open this screen and make sure you are passing exactly 'numbers_easy_3'.");
+    }
+
+    // STEP 3: Filter by Question Type
+    List<QuizQuestion> finalQuestions = [];
+    
+    if (typeFilter == 'mixed') {
+      var signs = levelQuestions.where((q) => q.type == 'sign_to_text').toList()..shuffle();
+      var texts = levelQuestions.where((q) => q.type == 'text_to_sign').toList()..shuffle();
+      
+      int maxLength = signs.length > texts.length ? signs.length : texts.length;
+      for (int i = 0; i < maxLength; i++) {
+        if (i < signs.length) finalQuestions.add(signs[i]);
+        if (i < texts.length) finalQuestions.add(texts[i]);
+      }
+    } else {
+      finalQuestions = levelQuestions.where((q) => q.type == typeFilter).toList()..shuffle();
+    }
+
+    // ERROR CHECK 3: Did the Type Filter hide all questions?
+    if (finalQuestions.isEmpty) {
+      throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but your screen is asking for questionType: '$typeFilter'.\n\nAll your level 3 counting questions are saved as 'text_to_sign'. Change the questionType in your Navigator.push!");
+    }
+
+    return finalQuestions.take(5).toList();
   }
 }
 
@@ -122,14 +132,16 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
 
   Future<void> _loadQuestions() async {
     try {
-      final questions = await _apiService.fetchEasyQuestions(widget.questionType);
+      final questions = await _apiService.fetchEasyQuestions(widget.levelId, widget.questionType);
       setState(() {
         _questions = questions;
         _isLoading = false;
       });
     } catch (e) {
+      // THIS WILL NOW CATCH OUR SMART ERRORS AND DISPLAY THEM!
       setState(() {
-        _errorMessage = "Failed to load questions: $e";
+        // Remove "Exception: " from the display text to make it cleaner
+        _errorMessage = e.toString().replaceAll("Exception: ", "");
         _isLoading = false;
       });
     }
@@ -163,8 +175,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Exit back to the path
+              Navigator.pop(context); 
+              Navigator.pop(context); 
             },
             child: const Text("Exit Activity", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
           )
@@ -183,7 +195,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
     } else {
       setState(() => _isSaving = true);
       
-      // Calculate Stars based on remaining hearts
       int starsEarned = 1;
       if (_hearts == 5) {
         starsEarned = 3;
@@ -205,11 +216,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                   ? Map<String, dynamic>.from(data['progress']) 
                   : {};
                   
-              // Check previous high score for THIS specific level dynamically
               final int previousStars = progress[widget.levelId] ?? 0;
               
               int globalStarsToAdd = 0;
-              // Only award new global stars if they beat their old score!
               if (starsEarned > previousStars) {
                 globalStarsToAdd = starsEarned - previousStars;
                 progress[widget.levelId] = starsEarned; 
@@ -219,7 +228,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
 
               transaction.update(userRef, {
                 'stars': currentGlobalStars + globalStarsToAdd,
-                'progress': progress, // Saves node unlock progress!
+                'progress': progress, 
               });
             }
           });
@@ -232,7 +241,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
 
       if (!mounted) return;
 
-      // Show Star-Based Completion Dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -339,8 +347,25 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
     }
 
+    // --- SMART ERROR MESSAGE DISPLAY ---
     if (_errorMessage != null) {
-      return Center(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 64),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!, 
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold)
+              ),
+            ],
+          ),
+        )
+      );
     }
 
     if (_questions.isEmpty) {
@@ -360,7 +385,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // --- PROGRESS TRACKER ---
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: LinearProgressIndicator(
@@ -372,7 +396,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                   ),
                   const SizedBox(height: 24),
 
-                  // --- IMAGE DISPLAY CARD (Only shown for sign_to_text type) ---
                   if (currentQuestion.imageUrl.isNotEmpty) ...[
                     Container(
                       width: double.infinity,
@@ -403,7 +426,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                     const SizedBox(height: 40),
                   ],
 
-                  // --- QUESTION TEXT ---
                   Text(
                     currentQuestion.questionText,
                     style: const TextStyle(
@@ -415,7 +437,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                   ),
                   const SizedBox(height: 32),
 
-                  // --- 2x2 OPTIONS GRID (Text vs Image Option Handler) ---
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -469,7 +490,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
             ),
           ),
 
-          // --- DYNAMIC FEEDBACK BOTTOM SHEET ---
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(

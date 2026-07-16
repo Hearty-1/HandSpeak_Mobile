@@ -35,51 +35,61 @@ class QuizQuestion {
 }
 
 // ==========================================
-// 2. FIRESTORE API SERVICE
+// 2. SMART DIAGNOSTIC FIRESTORE API
 // ==========================================
 class QuizApiService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Future<List<QuizQuestion>> fetchEasyQuestions(String typeFilter) async {
-    try {
-      // Order by documentId ensures a fixed, non-random sequence from the DB
-      final querySnapshot = await _db
-          .collection('activity_questions')
-          .where('category', isEqualTo: 'alphabet')
-          .where('level', isEqualTo: 'easy')
-          .orderBy(FieldPath.documentId)
-          .get();
+  Future<List<QuizQuestion>> fetchEasyQuestions(String levelId, String typeFilter) async {
+    // STEP 1: Fetch ALL alphabet questions to bypass any Firestore Index errors
+    final querySnapshot = await _db
+        .collection('activity_questions')
+        .where('category', isEqualTo: 'alphabet')
+        .get();
 
-      List<QuizQuestion> allQuestions = querySnapshot.docs.map((doc) {
-        final data = doc.data();
-        data['id'] = doc.id; 
-        return QuizQuestion.fromJson(data);
-      }).toList();
-
-      List<QuizQuestion> filteredQuestions = [];
-      
-      // Filter based on the Level's requirement without randomization
-      if (typeFilter == 'mixed') {
-        // Manually interleave the two types to guarantee a structured mix
-        var signs = allQuestions.where((q) => q.type == 'sign_to_text').toList();
-        var texts = allQuestions.where((q) => q.type == 'text_to_sign').toList();
-        
-        int maxLength = signs.length > texts.length ? signs.length : texts.length;
-        for (int i = 0; i < maxLength; i++) {
-          if (i < signs.length) filteredQuestions.add(signs[i]);
-          if (i < texts.length) filteredQuestions.add(texts[i]);
-        }
-      } else {
-        // Fetch strictly aligned question types in sequential order
-        filteredQuestions = allQuestions.where((q) => q.type == typeFilter).toList();
-      }
-
-      // Return a set of 5 questions for this round in a fixed order
-      return filteredQuestions.take(5).toList();
-    } catch (e) {
-      debugPrint("Error fetching alphabet questions: $e");
-      return [];
+    // ERROR CHECK 1: Is the database empty?
+    if (querySnapshot.docs.isEmpty) {
+      throw Exception("DATABASE IS EMPTY!\n\nPlease press the red 'DEV: SEED DATABASE' button first.");
     }
+
+    // STEP 2: Filter by Level LOCALLY in Dart 
+    // Checks for exact levelId match (or fallback to "easy" just in case your database isn't updated)
+    List<QuizQuestion> levelQuestions = [];
+    for (var doc in querySnapshot.docs) {
+      final data = doc.data();
+      if (data['level'] == levelId || (levelId == 'alphabet_easy_1' && data['level'] == 'easy')) { 
+        data['id'] = doc.id;
+        levelQuestions.add(QuizQuestion.fromJson(data));
+      }
+    }
+
+    // ERROR CHECK 2: Did the Level ID match anything?
+    if (levelQuestions.isEmpty) {
+      throw Exception("LEVEL NOT FOUND!\n\nThe database has alphabet questions, but ZERO questions match levelId: '$levelId'.");
+    }
+
+    // STEP 3: Filter by Question Type & SHUFFLE
+    List<QuizQuestion> finalQuestions = [];
+    
+    if (typeFilter == 'mixed') {
+      var signs = levelQuestions.where((q) => q.type == 'sign_to_text').toList()..shuffle();
+      var texts = levelQuestions.where((q) => q.type == 'text_to_sign').toList()..shuffle();
+      
+      int maxLength = signs.length > texts.length ? signs.length : texts.length;
+      for (int i = 0; i < maxLength; i++) {
+        if (i < signs.length) finalQuestions.add(signs[i]);
+        if (i < texts.length) finalQuestions.add(texts[i]);
+      }
+    } else {
+      finalQuestions = levelQuestions.where((q) => q.type == typeFilter).toList()..shuffle();
+    }
+
+    // ERROR CHECK 3: Did the Type Filter hide all questions?
+    if (finalQuestions.isEmpty) {
+      throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but none matched the requested questionType: '$typeFilter'.");
+    }
+
+    return finalQuestions.take(5).toList();
   }
 }
 
@@ -87,12 +97,12 @@ class QuizApiService {
 // 3. MAIN UI SCREEN
 // ==========================================
 class EasyActMc extends StatefulWidget {
-  final String levelId;
-  final String questionType; 
+  final String levelId; // ADDED: Now perfectly accepts levelId from activity_interface.dart
+  final String questionType;
 
   const EasyActMc({
     super.key, 
-    required this.levelId,
+    required this.levelId, // ADDED REQUIRED PARAMETER
     required this.questionType,
   });
 
@@ -123,14 +133,15 @@ class _EasyActMcState extends State<EasyActMc> {
 
   Future<void> _loadQuestions() async {
     try {
-      final questions = await _apiService.fetchEasyQuestions(widget.questionType);
+      // ADDED: Passing widget.levelId to the API
+      final questions = await _apiService.fetchEasyQuestions(widget.levelId, widget.questionType);
       setState(() {
         _questions = questions;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
-        _errorMessage = "Failed to load questions: $e";
+        _errorMessage = e.toString().replaceAll("Exception: ", "");
         _isLoading = false;
       });
     }
@@ -144,8 +155,7 @@ class _EasyActMcState extends State<EasyActMc> {
       _isAnswered = true;
       _isCorrect = option == _questions[_currentIndex].correctAnswer;
       
-      if (_isCorrect) {
-      } else {
+      if (!_isCorrect) {
         _hearts--; 
         if (_hearts <= 0) {
           _showGameOverDialog();
@@ -165,10 +175,10 @@ class _EasyActMcState extends State<EasyActMc> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Exit quiz
+              Navigator.pop(context); 
+              Navigator.pop(context); 
             },
-            child: const Text("Exit Quiz", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
+            child: const Text("Exit Activity", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
           )
         ],
       ),
@@ -185,7 +195,6 @@ class _EasyActMcState extends State<EasyActMc> {
     } else {
       setState(() => _isSaving = true);
       
-      // Calculate Stars based on remaining hearts
       int starsEarned = 1;
       if (_hearts == 5) {
         starsEarned = 3;
@@ -203,26 +212,24 @@ class _EasyActMcState extends State<EasyActMc> {
             if (snapshotDoc.exists) {
               final data = snapshotDoc.data() as Map<String, dynamic>;
               
-              // Safely extract progress map
               final Map<String, dynamic> progress = data['progress'] != null 
                   ? Map<String, dynamic>.from(data['progress']) 
                   : {};
                   
-              // Check previous high score for THIS specific level dynamically
+              // ADDED: Dynamically saves progress to the exact Level ID passed in
               final int previousStars = progress[widget.levelId] ?? 0;
               
               int globalStarsToAdd = 0;
-              // Only award new global stars if they beat their old score!
               if (starsEarned > previousStars) {
                 globalStarsToAdd = starsEarned - previousStars;
-                progress[widget.levelId] = starsEarned; // Save dynamically
+                progress[widget.levelId] = starsEarned; 
               }
 
               final int currentGlobalStars = data['stars'] ?? 0;
 
               transaction.update(userRef, {
                 'stars': currentGlobalStars + globalStarsToAdd,
-                'progress': progress,
+                'progress': progress, 
               });
             }
           });
@@ -235,7 +242,6 @@ class _EasyActMcState extends State<EasyActMc> {
 
       if (!mounted) return;
 
-      // Show Star-Based Completion Dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -245,7 +251,10 @@ class _EasyActMcState extends State<EasyActMc> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text("You completed ${widget.levelId.replaceAll('_', ' ').toUpperCase()}!"),
+              Text(
+                "You finished ${widget.levelId.replaceAll('_', ' ').toUpperCase()}!",
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -340,7 +349,23 @@ class _EasyActMcState extends State<EasyActMc> {
     }
 
     if (_errorMessage != null) {
-      return Center(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 64),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!, 
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold)
+              ),
+            ],
+          ),
+        )
+      );
     }
 
     if (_questions.isEmpty) {
@@ -360,7 +385,6 @@ class _EasyActMcState extends State<EasyActMc> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // --- PROGRESS TRACKER ---
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: LinearProgressIndicator(
@@ -372,7 +396,6 @@ class _EasyActMcState extends State<EasyActMc> {
                   ),
                   const SizedBox(height: 24),
 
-                  // --- IMAGE DISPLAY CARD (Only shown for sign_to_text type) ---
                   if (currentQuestion.imageUrl.isNotEmpty) ...[
                     Container(
                       width: double.infinity,
@@ -403,7 +426,6 @@ class _EasyActMcState extends State<EasyActMc> {
                     const SizedBox(height: 40),
                   ],
 
-                  // --- QUESTION TEXT ---
                   Text(
                     currentQuestion.questionText,
                     style: const TextStyle(
@@ -415,14 +437,13 @@ class _EasyActMcState extends State<EasyActMc> {
                   ),
                   const SizedBox(height: 32),
 
-                  // --- 2x2 OPTIONS GRID (Text vs Image Option Handler) ---
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     crossAxisCount: 2,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
-                    childAspectRatio: isImageOption ? 1.2 : 2.2, // Adjust aspect ratio for images
+                    childAspectRatio: isImageOption ? 1.2 : 2.2, 
                     children: currentQuestion.options.map((option) {
                       return GestureDetector(
                         onTap: () => _handleOptionSelected(option),
@@ -469,7 +490,6 @@ class _EasyActMcState extends State<EasyActMc> {
             ),
           ),
 
-          // --- DYNAMIC FEEDBACK BOTTOM SHEET ---
           Align(
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
