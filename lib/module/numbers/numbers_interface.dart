@@ -28,6 +28,7 @@ class NumbersInterface extends StatelessWidget {
         int liveEasyXp = 0;
         int liveMediumXp = 0;
         int liveHardXp = 0;
+        int categoryStars = 0; // Added variable to track category-specific stars[cite: 13]
 
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
@@ -35,10 +36,20 @@ class NumbersInterface extends StatelessWidget {
             liveEasyXp = (data['numEasyXp'] ?? 0).clamp(0, targetXp);
             liveMediumXp = (data['numMediumXp'] ?? 0).clamp(0, targetXp);
             liveHardXp = (data['numHardXp'] ?? 0).clamp(0, targetXp);
+            
+            // Calculate Numbers Stars dynamically[cite: 13]
+            if (data['progress'] != null) {
+              Map<String, dynamic> progressMap = Map<String, dynamic>.from(data['progress']);
+              progressMap.forEach((key, value) {
+                if (key.startsWith('numbers_')) {
+                  categoryStars += (value as num).toInt();
+                }
+              });
+            }
           }
         }
 
-        // Active numbers levels calculations
+        // Active numbers levels calculations[cite: 13]
         int activeLevel = 1;
         int activeXp = liveEasyXp;
         if (liveEasyXp >= targetXp) {
@@ -69,7 +80,7 @@ class NumbersInterface extends StatelessWidget {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            // Header Components
+                            // Header Components[cite: 13]
                             Positioned(
                               left: 0, top: 0,
                               child: Container(
@@ -107,7 +118,7 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Dynamic Live Progress Tracker
+                            // Dynamic Live Progress Tracker[cite: 13]
                             Positioned(
                               left: 6 * scale, top: 112 * scale,
                               child: _buildMainProgressPanel(
@@ -118,7 +129,7 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Tutorial Container Row
+                            // Tutorial Container Row[cite: 13]
                             Positioned(
                               left: 24 * scale, top: 180 * scale,
                               child: Container(width: 130 * scale, height: 110 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/tutor.png"), fit: BoxFit.fill))),
@@ -140,7 +151,7 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Practice Container Row
+                            // Practice Container Row[cite: 13]
                             Positioned(
                               left: 16 * scale, top: 300 * scale,
                               child: Container(width: 135 * scale, height: 135 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/practice.png"), fit: BoxFit.cover))),
@@ -162,7 +173,7 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Sub Activity Metrics Section
+                            // Sub Activity Metrics Section[cite: 13]
                             Positioned(left: 56.75 * scale, top: 455 * scale, child: Text('Activity', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
                             Positioned(left: 233.75 * scale, top: 455 * scale, child: Text('Challenges', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
                             
@@ -181,8 +192,17 @@ class NumbersInterface extends StatelessWidget {
                               ),
                             ),
 
-                            Positioned(left: 13.75 * scale, top: 665 * scale, child: _buildSubMetricPanel(scale: scale, xpDisplay: "$activeXp XP", progress: activeXp / targetXp)),
-                            Positioned(left: 203.75 * scale, top: 665 * scale, child: _buildSubMetricPanel(scale: scale, xpDisplay: "0 XP", progress: 0.0)),
+                            // Sub-metric panels updated to use categoryStars and match formatting[cite: 13]
+                            Positioned(
+                              left: 13.75 * scale, 
+                              top: 665 * scale, 
+                              child: _buildSubMetricPanel(scale: scale, valueDisplay: "$categoryStars Stars", progress: (categoryStars / 27).clamp(0.0, 1.0))
+                            ),
+                            Positioned(
+                              left: 203.75 * scale, 
+                              top: 665 * scale, 
+                              child: _buildSubMetricPanel(scale: scale, valueDisplay: "0 XP", progress: 0.0)
+                            ),
                           ],
                         ),
                       ),
@@ -223,13 +243,18 @@ class NumbersInterface extends StatelessWidget {
     );
   }
 
-  Widget _buildSubMetricPanel({required double scale, required String xpDisplay, required double progress}) {
+  // Renamed 'xpDisplay' to 'valueDisplay' to accommodate stars[cite: 13]
+  Widget _buildSubMetricPanel({required double scale, required String valueDisplay, required double progress}) {
     return Container(
       width: 178 * scale, height: 37 * scale,
       decoration: ShapeDecoration(color: Colors.white.withOpacity(0.18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale))),
       child: Stack(
         children: [
-          Positioned(left: 45 * scale, top: 3 * scale, child: Text(xpDisplay, style: TextStyle(color: const Color(0xFFBA8E23), fontSize: 16 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20))),
+          Positioned(
+            left: 45 * scale, 
+            top: 3 * scale, 
+            child: Text(valueDisplay, style: TextStyle(color: const Color(0xFFBA8E23), fontSize: 15 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20))
+          ),
           Positioned(
             left: 12 * scale, top: 24 * scale,
             child: Container(width: 154 * scale, height: 4 * scale, decoration: ShapeDecoration(color: const Color(0xFFF1F1FA), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)))),

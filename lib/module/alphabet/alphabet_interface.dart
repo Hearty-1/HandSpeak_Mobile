@@ -28,7 +28,7 @@ class AlphabetInterface extends StatelessWidget {
         int liveEasyXp = 0;
         int liveMediumXp = 0;
         int liveHardXp = 0;
-        int globalStars = 0; // Added variable to track stars
+        int categoryStars = 0; // Changed to track category-specific stars[cite: 12]
 
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
@@ -36,11 +36,20 @@ class AlphabetInterface extends StatelessWidget {
             liveEasyXp = (data['alpEasyXp'] ?? 0).clamp(0, targetXp);
             liveMediumXp = (data['alpMediumXp'] ?? 0).clamp(0, targetXp);
             liveHardXp = (data['alpHardXp'] ?? 0).clamp(0, targetXp);
-            globalStars = data['stars'] ?? 0; // Fetch global stars from DB
+            
+            // Calculate Alphabet Stars dynamically[cite: 12]
+            if (data['progress'] != null) {
+              Map<String, dynamic> progressMap = Map<String, dynamic>.from(data['progress']);
+              progressMap.forEach((key, value) {
+                if (key.startsWith('alphabet_')) {
+                  categoryStars += (value as num).toInt();
+                }
+              });
+            }
           }
         }
 
-        // Active levels calculations
+        // Active levels calculations[cite: 12]
         int activeLevel = 1;
         int activeXp = liveEasyXp;
         if (liveEasyXp >= targetXp) {
@@ -71,7 +80,7 @@ class AlphabetInterface extends StatelessWidget {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            // Header UI Bar
+                            // Header UI Bar[cite: 12]
                             Positioned(
                               left: 0, top: 0,
                               child: Container(
@@ -109,7 +118,7 @@ class AlphabetInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Dynamic Live Sub-Level Progress Bar
+                            // Dynamic Live Sub-Level Progress Bar[cite: 12]
                             Positioned(
                               left: 6 * scale, top: 112 * scale,
                               child: _buildMainProgressPanel(
@@ -120,7 +129,7 @@ class AlphabetInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Tutorial Row Container
+                            // Tutorial Row Container[cite: 12]
                             Positioned(
                               left: 24 * scale, top: 180 * scale,
                               child: Container(width: 130 * scale, height: 110 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/tutor.png"), fit: BoxFit.fill))),
@@ -142,7 +151,7 @@ class AlphabetInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Practice Row Container
+                            // Practice Row Container[cite: 12]
                             Positioned(
                               left: 16 * scale, top: 300 * scale,
                               child: Container(width: 135 * scale, height: 135 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/practice.png"), fit: BoxFit.cover))),
@@ -164,7 +173,7 @@ class AlphabetInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Sub Activity Metrics Section
+                            // Sub Activity Metrics Section[cite: 12]
                             Positioned(left: 56.75 * scale, top: 455 * scale, child: Text('Activity', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
                             Positioned(left: 233.75 * scale, top: 455 * scale, child: Text('Challenges', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
                             
@@ -183,11 +192,11 @@ class AlphabetInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Modified sub-metric panels: Activity now uses globalStars (Max 27 stars per standard 9-level track)
+                            // Sub-metric panels updated to use calculated categoryStars[cite: 12]
                             Positioned(
                               left: 13.75 * scale, 
                               top: 665 * scale, 
-                              child: _buildSubMetricPanel(scale: scale, valueDisplay: "$globalStars Stars", progress: (globalStars / 27).clamp(0.0, 1.0))
+                              child: _buildSubMetricPanel(scale: scale, valueDisplay: "$categoryStars Stars", progress: (categoryStars / 27).clamp(0.0, 1.0))
                             ),
                             Positioned(
                               left: 203.75 * scale, 
@@ -234,7 +243,6 @@ class AlphabetInterface extends StatelessWidget {
     );
   }
 
-  // Renamed 'xpDisplay' to 'valueDisplay' to accommodate strings like "12 Stars"
   Widget _buildSubMetricPanel({required double scale, required String valueDisplay, required double progress}) {
     return Container(
       width: 178 * scale, height: 37 * scale,

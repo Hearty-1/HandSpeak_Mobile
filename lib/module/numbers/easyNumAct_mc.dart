@@ -3,11 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 // ==========================================
-// 1. DATA MODEL (Backend Ready)
+// 1. DATA MODEL
 // ==========================================
 class QuizQuestion {
   final String id;
-  final String type; // Added to support sign_to_text vs text_to_sign
+  final String type; // 'sign_to_text' or 'text_to_sign'
   final String imageUrl;
   final String questionText;
   final List<String> options;
@@ -40,28 +40,43 @@ class QuizQuestion {
 class NumbersQuizApiService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Future<List<QuizQuestion>> fetchNumberQuestions() async {
+  Future<List<QuizQuestion>> fetchEasyQuestions(String typeFilter) async {
     try {
-      // Fetch documents where category is 'numbers' and level is 'easy'
+      // Order by documentId ensures a fixed, predictable sequence from the DB
       final querySnapshot = await _db
           .collection('activity_questions')
-          .where('category', isEqualTo: 'numbers')
+          .where('category', isEqualTo: 'numbers') // Changed to numbers
           .where('level', isEqualTo: 'easy')
+          .orderBy(FieldPath.documentId)
           .get();
 
-      List<QuizQuestion> questions = querySnapshot.docs.map((doc) {
+      List<QuizQuestion> allQuestions = querySnapshot.docs.map((doc) {
         final data = doc.data();
-        data['id'] = doc.id;
+        data['id'] = doc.id; 
         return QuizQuestion.fromJson(data);
       }).toList();
 
-      // Shuffle numbers quiz questions
-      questions.shuffle();
+      List<QuizQuestion> filteredQuestions = [];
+      
+      if (typeFilter == 'mixed') {
+        // Interleave the two types perfectly to guarantee a structured 50/50 mix
+        var signs = allQuestions.where((q) => q.type == 'sign_to_text').toList();
+        var texts = allQuestions.where((q) => q.type == 'text_to_sign').toList();
+        
+        int maxLength = signs.length > texts.length ? signs.length : texts.length;
+        for (int i = 0; i < maxLength; i++) {
+          if (i < signs.length) filteredQuestions.add(signs[i]);
+          if (i < texts.length) filteredQuestions.add(texts[i]);
+        }
+      } else {
+        // Fetch strictly aligned question types in sequential order
+        filteredQuestions = allQuestions.where((q) => q.type == typeFilter).toList();
+      }
 
-      // Take 5 questions per game round
-      return questions.take(5).toList();
+      // Take exactly 5 questions for this round in a fixed order
+      return filteredQuestions.take(5).toList();
     } catch (e) {
-      debugPrint("Error fetching number questions: $e");
+      debugPrint("Error fetching numbers questions: $e");
       return [];
     }
   }
@@ -70,14 +85,21 @@ class NumbersQuizApiService {
 // ==========================================
 // 3. MAIN UI SCREEN
 // ==========================================
-class NumbersQuizScreen extends StatefulWidget {
-  const NumbersQuizScreen({super.key});
+class EasyNumActMc extends StatefulWidget {
+  final String levelId;
+  final String questionType; 
+
+  const EasyNumActMc({
+    super.key, 
+    required this.levelId,
+    required this.questionType,
+  });
 
   @override
-  State<NumbersQuizScreen> createState() => _NumbersQuizScreenState();
+  State<EasyNumActMc> createState() => _EasyNumActMcState();
 }
 
-class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
+class _EasyNumActMcState extends State<EasyNumActMc> {
   final NumbersQuizApiService _apiService = NumbersQuizApiService();
   
   List<QuizQuestion> _questions = [];
@@ -87,10 +109,8 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
   int _currentIndex = 0;
   String? _selectedAnswer;
   bool _isAnswered = false;
-  int _score = 0;
   bool _isSaving = false;
 
-  // --- GAMIFICATION STATE ---
   int _hearts = 5;
   bool _isCorrect = false;
 
@@ -102,7 +122,7 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
 
   Future<void> _loadQuestions() async {
     try {
-      final questions = await _apiService.fetchNumberQuestions();
+      final questions = await _apiService.fetchEasyQuestions(widget.questionType);
       setState(() {
         _questions = questions;
         _isLoading = false;
@@ -123,9 +143,7 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
       _isAnswered = true;
       _isCorrect = option == _questions[_currentIndex].correctAnswer;
       
-      if (_isCorrect) {
-        _score++;
-      } else {
+      if (!_isCorrect) {
         _hearts--; 
         if (_hearts <= 0) {
           _showGameOverDialog();
@@ -141,14 +159,14 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text("Out of Hearts! 💔", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-        content: const Text("You made a few mistakes. Take a break and review the numbers, then try again!"),
+        content: const Text("You made a few mistakes. Take a break and review the tutorials, then try again!"),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Exit quiz
+              Navigator.pop(context); // Exit back to the path
             },
-            child: const Text("Exit Quiz", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
+            child: const Text("Exit Activity", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
           )
         ],
       ),
@@ -165,42 +183,87 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
     } else {
       setState(() => _isSaving = true);
       
-      // Calculate XP Earned
-      final int xpEarned = _score * 100;
-      final user = FirebaseAuth.instance.currentUser;
-
-      if (user != null) {
-        final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        try {
+      // Calculate Stars based on remaining hearts
+      int starsEarned = 1;
+      if (_hearts == 5) {
+        starsEarned = 3;
+      } else if (_hearts >= 3) {
+        starsEarned = 2;
+      }
+      
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+          
           await FirebaseFirestore.instance.runTransaction((transaction) async {
             final snapshotDoc = await transaction.get(userRef);
             if (snapshotDoc.exists) {
               final data = snapshotDoc.data() as Map<String, dynamic>;
-              final currentGlobalXp = data['xp'] ?? 0;
-              final currentNumEasyXp = data['numEasyXp'] ?? 0;
+              
+              final Map<String, dynamic> progress = data['progress'] != null 
+                  ? Map<String, dynamic>.from(data['progress']) 
+                  : {};
+                  
+              // Check previous high score for THIS specific level dynamically
+              final int previousStars = progress[widget.levelId] ?? 0;
+              
+              int globalStarsToAdd = 0;
+              // Only award new global stars if they beat their old score!
+              if (starsEarned > previousStars) {
+                globalStarsToAdd = starsEarned - previousStars;
+                progress[widget.levelId] = starsEarned; 
+              }
+
+              final int currentGlobalStars = data['stars'] ?? 0;
 
               transaction.update(userRef, {
-                'xp': currentGlobalXp + xpEarned,
-                'numEasyXp': (currentNumEasyXp + xpEarned).clamp(0, 1000), // Target progression cap
+                'stars': currentGlobalStars + globalStarsToAdd,
+                'progress': progress, // Saves node unlock progress!
               });
             }
           });
-        } catch (e) {
-          debugPrint("Error updating Numbers Easy XP: $e");
         }
+      } catch (e) {
+        debugPrint("Error updating Stars: $e");
       }
 
       setState(() => _isSaving = false);
 
       if (!mounted) return;
 
+      // Show Star-Based Completion Dialog
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text("Activity Complete! 🎉", style: TextStyle(color: Color(0xFF322144), fontWeight: FontWeight.bold)),
-          content: Text("You answered $_score correctly and earned $xpEarned XP!"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "You finished ${widget.levelId.replaceAll('_', ' ').toUpperCase()}!",
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(3, (index) {
+                  return Icon(
+                    index < starsEarned ? Icons.star_rounded : Icons.star_border_rounded,
+                    color: const Color(0xFFFFB800),
+                    size: 42,
+                  );
+                }),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Earned $starsEarned / 3 Stars", 
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF222222))
+              ),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () {
@@ -243,12 +306,12 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
         backgroundColor: const Color(0xFFFFB800),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.close, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          "Easy Level",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
+          "Numbers Activities",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         actions: [
@@ -309,7 +372,7 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // --- IMAGE DISPLAY CARD (Only shown if image is available) ---
+                  // --- IMAGE DISPLAY CARD (Only shown for sign_to_text type) ---
                   if (currentQuestion.imageUrl.isNotEmpty) ...[
                     Container(
                       width: double.infinity,
@@ -352,7 +415,7 @@ class _NumbersQuizScreenState extends State<NumbersQuizScreen> {
                   ),
                   const SizedBox(height: 32),
 
-                  // --- 2x2 OPTIONS GRID (Adapts dynamically to Text or Sign Images) ---
+                  // --- 2x2 OPTIONS GRID (Text vs Image Option Handler) ---
                   GridView.count(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),

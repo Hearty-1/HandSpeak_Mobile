@@ -110,7 +110,6 @@ class _EasyActMcState extends State<EasyActMc> {
   int _currentIndex = 0;
   String? _selectedAnswer;
   bool _isAnswered = false;
-  int _score = 0;
   bool _isSaving = false;
 
   int _hearts = 5;
@@ -146,7 +145,6 @@ class _EasyActMcState extends State<EasyActMc> {
       _isCorrect = option == _questions[_currentIndex].correctAnswer;
       
       if (_isCorrect) {
-        _score++;
       } else {
         _hearts--; 
         if (_hearts <= 0) {

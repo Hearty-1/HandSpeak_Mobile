@@ -25,6 +25,45 @@ class FigmaToCodeApp extends StatelessWidget {
 class ActivityInterface extends StatelessWidget {
   const ActivityInterface({super.key});
 
+  // Helper to build the horizontal section dividers
+  Widget _buildSectionDivider(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: Colors.grey.shade400, thickness: 2)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(color: Colors.grey.shade400, thickness: 2)),
+        ],
+      ),
+    );
+  }
+
+  // Helper to build the vertical path lines
+  Widget _buildVerticalPathLine() {
+    return Center(
+      child: Container(
+        width: 8,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -37,7 +76,7 @@ class ActivityInterface extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Alphabet Path',
+          'Alphabet Activity',
           style: TextStyle(
             color: Colors.black,
             fontSize: 24,
@@ -55,16 +94,22 @@ class ActivityInterface extends StatelessWidget {
               return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
             }
 
-            int globalStars = 0;
+            int categoryStars = 0; 
             Map<String, dynamic> progressMap = {};
 
             if (snapshot.hasData && snapshot.data!.exists) {
               final data = snapshot.data!.data() as Map<String, dynamic>?;
               if (data != null) {
-                globalStars = data['stars'] ?? 0;
                 progressMap = data['progress'] != null 
                     ? Map<String, dynamic>.from(data['progress']) 
                     : {};
+                
+                // ONLY calculate stars for Alphabet levels
+                progressMap.forEach((key, value) {
+                  if (key.startsWith('alphabet_')) {
+                    categoryStars += (value as num).toInt();
+                  }
+                });
               }
             }
 
@@ -73,7 +118,7 @@ class ActivityInterface extends StatelessWidget {
               // 🟢 EASY LEVELS
               {
                 'id': 'alphabet_easy_1',
-                'title': 'Easy 1: Sign to Text',
+                'title': 'Level 1: Sign to Text',
                 'isUnlocked': true, 
                 'unlockMessage': '',
                 'alignment': Alignment.center,
@@ -81,7 +126,7 @@ class ActivityInterface extends StatelessWidget {
               },
               {
                 'id': 'alphabet_easy_2',
-                'title': 'Easy 2: Text to Sign',
+                'title': 'Level 2: Text to Sign',
                 'isUnlocked': (progressMap['alphabet_easy_1'] ?? 0) >= 2, 
                 'unlockMessage': 'Earn 2 ⭐ in Easy 1 to unlock!',
                 'alignment': Alignment.centerRight,
@@ -89,7 +134,7 @@ class ActivityInterface extends StatelessWidget {
               },
               {
                 'id': 'alphabet_easy_3',
-                'title': 'Easy 3: Mixed Review', 
+                'title': 'Level 3: Mixed Review', 
                 'isUnlocked': (progressMap['alphabet_easy_2'] ?? 0) >= 2, 
                 'unlockMessage': 'Earn 2 ⭐ in Easy 2 to unlock!',
                 'alignment': Alignment.centerRight, 
@@ -99,7 +144,7 @@ class ActivityInterface extends StatelessWidget {
               // 🟡 MEDIUM LEVELS
               {
                 'id': 'alphabet_medium_1',
-                'title': 'Medium 1: Sign to Text',
+                'title': 'Level 4: Sign to Text',
                 'isUnlocked': (progressMap['alphabet_easy_3'] ?? 0) >= 2,
                 'unlockMessage': 'Earn 2 ⭐ in Easy 3 to unlock!',
                 'alignment': Alignment.center,
@@ -107,7 +152,7 @@ class ActivityInterface extends StatelessWidget {
               },
               {
                 'id': 'alphabet_medium_2',
-                'title': 'Medium 2: Text to Sign',
+                'title': 'Level 5: Text to Sign',
                 'isUnlocked': (progressMap['alphabet_medium_1'] ?? 0) >= 2,
                 'unlockMessage': 'Earn 2 ⭐ in Medium 1 to unlock!',
                 'alignment': Alignment.centerLeft,
@@ -115,7 +160,7 @@ class ActivityInterface extends StatelessWidget {
               },
               {
                 'id': 'alphabet_medium_3',
-                'title': 'Medium 3: Mixed Mastery', 
+                'title': 'Level 6: Mixed Mastery', 
                 'isUnlocked': (progressMap['alphabet_medium_2'] ?? 0) >= 2,
                 'unlockMessage': 'Earn 2 ⭐ in Medium 2 to unlock!',
                 'alignment': Alignment.centerLeft,
@@ -125,7 +170,7 @@ class ActivityInterface extends StatelessWidget {
               // 🔴 HARD LEVELS
               {
                 'id': 'alphabet_hard_1',
-                'title': 'Hard 1: Sign to Text',
+                'title': 'Level 7: Sign to Text',
                 'isUnlocked': (progressMap['alphabet_medium_3'] ?? 0) >= 2,
                 'unlockMessage': 'Earn 2 ⭐ in Medium 3 to unlock!',
                 'alignment': Alignment.center,
@@ -133,7 +178,7 @@ class ActivityInterface extends StatelessWidget {
               },
               {
                 'id': 'alphabet_hard_2',
-                'title': 'Hard 2: Text to Sign',
+                'title': 'Level 8: Text to Sign',
                 'isUnlocked': (progressMap['alphabet_hard_1'] ?? 0) >= 2,
                 'unlockMessage': 'Earn 2 ⭐ in Hard 1 to unlock!',
                 'alignment': Alignment.centerRight,
@@ -141,7 +186,7 @@ class ActivityInterface extends StatelessWidget {
               },
               {
                 'id': 'alphabet_hard_3',
-                'title': 'Hard 3: The Ultimate Test', 
+                'title': 'Level 9: The Ultimate Test', 
                 'isUnlocked': (progressMap['alphabet_hard_2'] ?? 0) >= 2,
                 'unlockMessage': 'Earn 2 ⭐ in Hard 2 to unlock!',
                 'alignment': Alignment.center, 
@@ -154,7 +199,7 @@ class ActivityInterface extends StatelessWidget {
               physics: const BouncingScrollPhysics(),
               child: Column(
                 children: [
-                  // --- GLOBAL STAR BADGE ---
+                  // --- ALPHABET STAR BADGE ---
                   Align(
                     alignment: Alignment.centerRight,
                     child: Container(
@@ -171,14 +216,18 @@ class ActivityInterface extends StatelessWidget {
                           const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 24),
                           const SizedBox(width: 6),
                           Text(
-                            "$globalStars Total Stars",
+                            "$categoryStars Stars",
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF222222)),
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 30),
+
+                  // Initial EASY divider
+                  _buildSectionDivider("EASY"),
+                  const SizedBox(height: 10),
 
                   // --- WINDING PATH BUILDER ---
                   ListView.separated(
@@ -186,16 +235,25 @@ class ActivityInterface extends StatelessWidget {
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: pathNodes.length,
                     separatorBuilder: (context, index) {
-                      return Center(
-                        child: Container(
-                          width: 8,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      );
+                      // Insert Section Dividers exactly where sections transition
+                      if (index == 2) { 
+                        return Column(
+                          children: [
+                            _buildVerticalPathLine(),
+                            _buildSectionDivider("MEDIUM"),
+                            _buildVerticalPathLine(),
+                          ],
+                        );
+                      } else if (index == 5) { 
+                        return Column(
+                          children: [
+                            _buildVerticalPathLine(),
+                            _buildSectionDivider("HARD"),
+                            _buildVerticalPathLine(),
+                          ],
+                        );
+                      }
+                      return _buildVerticalPathLine();
                     },
                     itemBuilder: (context, index) {
                       final node = pathNodes[index];
@@ -208,7 +266,6 @@ class ActivityInterface extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Star Rating Row over the Node
                             if (isUnlocked)
                               Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -227,7 +284,6 @@ class ActivityInterface extends StatelessWidget {
                               ),
                             const SizedBox(height: 8),
 
-                            // Circular Level Node
                             GestureDetector(
                               onTap: isUnlocked
                                   ? () => Navigator.push(context, MaterialPageRoute(builder: (context) => node['destination']))
@@ -263,7 +319,6 @@ class ActivityInterface extends StatelessWidget {
                             ),
                             const SizedBox(height: 10),
 
-                            // Node Label
                             Text(
                               node['title'],
                               style: TextStyle(
