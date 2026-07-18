@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui'; // Required for ImageFilter (Glassmorphism & Blurs)
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:camera/camera.dart';
@@ -36,7 +37,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   final double holdDurationSeconds = 1.0;
 
   // --- XP SETTINGS ---
-  final int xpReward = 10; // Lowered to 10 to balance continuous fast play!
+  final int xpReward = 10; 
 
   @override
   void initState() {
@@ -46,17 +47,14 @@ class _NumbersPracticeState extends State<NumbersPractice> {
 
   Future<void> _initializePipeline() async {
     try {
-      // 1. Load the first number's gesture template
       await _loadGestureLibrary(targetNumber);
 
-      // 2. Initialize ML Plugin
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
         minHandDetectionConfidence: 0.5,
         delegate: HandLandmarkerDelegate.gpu, 
       );
 
-      // 3. Initialize Camera
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
 
@@ -84,7 +82,6 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     }
   }
 
-  // Dynamically load the JSON for whichever number we are currently on
   Future<void> _loadGestureLibrary(String number) async {
     try {
       String jsonString = await rootBundle.loadString('assets/numbers/$number.json');
@@ -244,7 +241,6 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     }
   }
 
-  // --- CONTINUOUS SUCCESS HANDLER ---
   void _onSuccess() async {
     _isSuccessAchieved = true;
     _startHoldTime = null;
@@ -254,27 +250,22 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     await Future.delayed(const Duration(milliseconds: 100));
     HapticFeedback.heavyImpact(); 
     
-    // Award the XP dynamically
     await _awardXp();
 
     if (!mounted) return;
 
-    // Trigger UI change immediately to show the "Success!" green text
     setState(() {});
 
-    // Wait 1.5 seconds so the user can bask in their victory
     await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
 
-    // Move to the next number in the loop!
     setState(() {
       _currentIdx = (_currentIdx + 1) % _numbers.length;
       _isSuccessAchieved = false;
       _currentScore = 0.0;
     });
 
-    // Load the new gesture template for the new number
     await _loadGestureLibrary(targetNumber);
   }
 
@@ -290,136 +281,149 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   Widget build(BuildContext context) {
     String currentNumber = targetNumber;
     bool isPassing = _currentScore >= successThreshold;
-    final double screenWidth = MediaQuery.of(context).size.width;
+    const double baseWidth = 393;
 
     return Scaffold(
+      extendBodyBehindAppBar: true, 
       backgroundColor: const Color(0xFFFFF9E5),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // TOP HEADER BAR
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFB800),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  )
-                ],
-              ),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 42, 
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: Colors.white24, 
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(Icons.arrow_back, color: Colors.black, size: 22),
-                    ),
+      appBar: AppBar(
+        backgroundColor: Colors.white.withOpacity(0.7),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.black),
+        flexibleSpace: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.black.withOpacity(0.05),
+                    width: 0.5,
                   ),
-                  const Expanded(
-                    child: Center(
-                      child: Text(
-                        'PRACTICE MODE', 
-                        style: TextStyle(
-                          color: Colors.black, 
-                          fontSize: 16, 
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                          fontFamily: 'Inter',
-                        )
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 42),
-                ],
+                ),
               ),
             ),
+          ),
+        ),
+        title: const Text(
+          'Continuous Practice',
+          style: TextStyle(
+            color: Colors.black, 
+            fontSize: 22, 
+            fontFamily: 'Inter', 
+            fontWeight: FontWeight.w800, 
+            letterSpacing: -0.96
+          ),
+        ),
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final double scale = constraints.maxWidth / baseWidth;
 
-            // DYNAMIC SCROLLABLE BODY
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      currentNumber,
-                      style: const TextStyle(
-                        color: Colors.black, 
-                        fontSize: 42, 
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Inter',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
+          return Stack(
+            children: [
+              Positioned(
+                top: 180 * scale, left: -50 * scale,
+                child: Container(
+                  width: 200 * scale, 
+                  height: 200 * scale, 
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle, 
+                    color: const Color(0xFFFFB800).withOpacity(0.2),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 100 * scale, right: -60 * scale,
+                child: Container(
+                  width: 250 * scale, 
+                  height: 250 * scale, 
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle, 
+                    color: const Color(0xFF7DC579).withOpacity(0.18),
+                  ),
+                ),
+              ),
 
-                    SizedBox(
-                      width: screenWidth * 0.60, 
-                      child: AspectRatio(
-                        aspectRatio: 1 / 1, 
-                        child: Container(
+              // 3. UI Content Structure
+              SafeArea(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.symmetric(horizontal: 24.0 * scale, vertical: 20.0 * scale),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          currentNumber,
+                          style: TextStyle(
+                            color: Colors.black, 
+                            fontSize: 52 * scale, 
+                            fontWeight: FontWeight.w900,
+                            fontFamily: 'Inter',
+                            letterSpacing: -1.5,
+                          ),
+                        ),
+                        SizedBox(height: 16 * scale),
+
+                        // Flashcard Container
+                        Container(
+                          width: 240 * scale, 
+                          height: 240 * scale,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
+                            color: Colors.white.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(20 * scale),
+                            border: Border.all(color: Colors.white.withOpacity(0.6), width: 2 * scale),
                             boxShadow: const [
                               BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 10,
+                                color: Color(0x0C132C4A),
+                                blurRadius: 12,
                                 offset: Offset(0, 4),
                               )
                             ],
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(18 * scale),
                             child: Image.asset(
                               "assets/pictures/$currentNumber.png", 
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.grey.shade300,
+                                color: Colors.black.withOpacity(0.05),
                                 child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
+                        SizedBox(height: 28 * scale),
 
-                    SizedBox(
-                      width: screenWidth * 0.60, 
-                      child: AspectRatio(
-                        aspectRatio: 1 / 1, 
-                        child: Stack(
-                          alignment: Alignment.center,
-                          fit: StackFit.expand,
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  width: 5.0,
-                                  color: isPassing ? Colors.green : const Color(0xFFCBD0DC),
-                                ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black12,
-                                    blurRadius: 8,
-                                    offset: Offset(0, 4),
-                                  )
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(15),
+                        // Live Camera Preview Container
+                        Container(
+                          width: 240 * scale, 
+                          height: 240 * scale,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(24 * scale),
+                            border: Border.all(
+                              width: 4.0 * scale,
+                              color: isPassing ? const Color(0xFF7DC579) : Colors.white.withOpacity(0.8),
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x0C132C4A),
+                                blurRadius: 16,
+                                offset: Offset(0, 6),
+                              )
+                            ],
+                          ),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            fit: StackFit.expand,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(19 * scale),
                                 child: _isInitialized && _controller != null
                                     ? FittedBox(
                                         fit: BoxFit.cover,
@@ -430,132 +434,145 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                                         ),
                                       )
                                     : const Center(
-                                        child: CircularProgressIndicator(color: Colors.amber),
+                                        child: CircularProgressIndicator(color: Color(0xFFFFB800)),
                                       ),
                               ),
-                            ),
 
-                            if (_isInitialized && !_isSuccessAchieved)
-                              Center(
-                                child: Container(
-                                  width: 110, 
-                                  height: 110,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: isPassing ? Colors.green.withOpacity(0.8) : Colors.white54,
-                                      width: 3.0,
-                                      style: BorderStyle.solid,
-                                    ),
-                                    borderRadius: BorderRadius.circular(60),
-                                  ),
-                                  child: Center(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black54,
-                                        borderRadius: BorderRadius.circular(8),
+                              if (_isInitialized && !_isSuccessAchieved)
+                                Center(
+                                  child: Container(
+                                    width: 110 * scale, 
+                                    height: 110 * scale,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: isPassing ? const Color(0xFF7DC579).withOpacity(0.8) : Colors.white54,
+                                        width: 2.5 * scale,
                                       ),
-                                      child: Text(
-                                        "Position Hand",
-                                        style: TextStyle(
-                                          color: isPassing ? Colors.greenAccent : Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 5 * scale),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.4),
+                                          borderRadius: BorderRadius.circular(8 * scale),
+                                        ),
+                                        child: Text(
+                                          "Position Hand",
+                                          style: TextStyle(
+                                            color: isPassing ? const Color(0xFF2ECC71) : Colors.white,
+                                            fontSize: 10 * scale,
+                                            fontWeight: FontWeight.bold,
+                                            fontFamily: 'Inter',
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+                        SizedBox(height: 28 * scale),
 
-                    // --- FEEDBACK SECTION ---
-                    if (_isSuccessAchieved) ...[
-                      Column(
-                        children: [
-                          Text(
-                            "Success! +$xpReward XP",
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            "Loading next number...",
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      )
-                    ] else if (_holdProgress > 0.0) ...[
-                      Column(
-                        children: [
-                          const Text(
-                            "Hold steady...",
-                            style: TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            width: screenWidth * 0.70, 
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300], 
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: FractionallySizedBox(
-                                widthFactor: _holdProgress,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [Colors.greenAccent, Colors.green],
+                        // --- FEEDBACK SECTION ---
+                        if (_isSuccessAchieved) ...[
+                          Column(
+                            children: [
+                              Text(
+                                "Success! +$xpReward XP",
+                                style: TextStyle(
+                                  color: const Color(0xFF27AE60),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 22 * scale,
+                                  fontFamily: 'Inter',
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              SizedBox(height: 6 * scale),
+                              Text(
+                                "Loading next number...",
+                                style: TextStyle(
+                                  color: Colors.black54,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14 * scale,
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                            ],
+                          )
+                        ] else if (_holdProgress > 0.0) ...[
+                          Column(
+                            children: [
+                              Text(
+                                "Hold steady...",
+                                style: TextStyle(
+                                  color: const Color(0xFF27AE60),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18 * scale,
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                              SizedBox(height: 10 * scale),
+                              Container(
+                                width: 260 * scale, 
+                                height: 14 * scale,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.06), 
+                                  borderRadius: BorderRadius.circular(25 * scale),
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FractionallySizedBox(
+                                    widthFactor: _holdProgress,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF7DC579),
+                                        borderRadius: BorderRadius.circular(25 * scale),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF7DC579).withOpacity(0.4),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 1),
+                                          )
+                                        ],
+                                      ),
                                     ),
-                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
                               ),
+                            ],
+                          )
+                        ] else ...[
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 12 * scale),
+                            decoration: BoxDecoration(
+                              color: isPassing ? const Color(0xFF7DC579).withOpacity(0.15) : Colors.black.withOpacity(0.04),
+                              borderRadius: BorderRadius.circular(30 * scale),
+                              border: Border.all(
+                                color: isPassing ? const Color(0xFF7DC579).withOpacity(0.25) : Colors.transparent, 
+                                width: 1 * scale,
+                              ),
+                            ),
+                            child: Text(
+                              "Score: ${_currentScore.toStringAsFixed(1)}%",
+                              style: TextStyle(
+                                color: isPassing ? const Color(0xFF27AE60) : Colors.black54,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16 * scale,
+                                fontFamily: 'Inter',
+                              ),
                             ),
                           ),
                         ],
-                      )
-                    ] else ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: isPassing ? Colors.green.withOpacity(0.15) : Colors.black.withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: Text(
-                          "Score: ${_currentScore.toStringAsFixed(1)}%",
-                          style: TextStyle(
-                            color: isPassing ? Colors.green : Colors.black54,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            fontFamily: 'Inter',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }

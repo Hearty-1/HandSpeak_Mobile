@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:camera/camera.dart';
@@ -36,7 +37,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   final double holdDurationSeconds = 1.0;
   
   // --- XP SETTINGS ---
-  final int xpReward = 10; // Lower than tutorial because you can do many in a row!
+  final int xpReward = 10; 
 
   @override
   void initState() {
@@ -46,17 +47,14 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
   Future<void> _initializePipeline() async {
     try {
-      // 1. Load the first letter's gesture template
       await _loadGestureLibrary(targetLetter);
 
-      // 2. Initialize ML Plugin exactly like tutorial_practice.dart
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
         minHandDetectionConfidence: 0.5,
         delegate: HandLandmarkerDelegate.gpu, 
       );
 
-      // 3. Initialize Camera
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
 
@@ -84,7 +82,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     }
   }
 
-  // Dynamically load the JSON for whichever letter we are currently on
   Future<void> _loadGestureLibrary(String letter) async {
     try {
       String jsonString = await rootBundle.loadString('assets/alphabet/$letter.json');
@@ -242,7 +239,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     }
   }
 
-  // --- CONTINUOUS SUCCESS HANDLER ---
   void _onSuccess() async {
     _isSuccessAchieved = true;
     _startHoldTime = null;
@@ -256,22 +252,18 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     
     if (!mounted) return;
 
-    // Trigger UI change immediately (Handled in the build method below)
     setState(() {});
 
-    // Wait 1.5 seconds so the user can see the "Success!" message
     await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
 
-    // Move to the next letter
     setState(() {
       _currentIdx = (_currentIdx + 1) % _alphabet.length;
       _isSuccessAchieved = false;
       _currentScore = 0.0;
     });
 
-    // Load the new gesture template for the new letter
     await _loadGestureLibrary(targetLetter);
   }
 
@@ -290,69 +282,57 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     final double screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
+      extendBodyBehindAppBar: true, 
       backgroundColor: const Color(0xFFFFF9E5),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // TOP HEADER BAR (Matches Tutorial exactly)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFB800),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  )
-                ],
-              ),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 42, 
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: Colors.white24, 
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(Icons.arrow_back, color: Colors.black, size: 22),
-                    ),
-                  ),
-                  const Expanded(
-                    child: Center(
-                      child: Text(
-                        'PRACTICE MODE', 
-                        style: TextStyle(
-                          color: Colors.black, 
-                          fontSize: 16, 
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                          fontFamily: 'Inter',
-                        )
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 42),
-                ],
-              ),
-            ),
-
-            // DYNAMIC SCROLLABLE BODY
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.all(20.0),
+      
+      // --- GLASSMORPHISM APP BAR ---
+      appBar: AppBar(
+        backgroundColor: Colors.white.withOpacity(0.4), 
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.black87),
+        flexibleSpace: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        title: const Text(
+          'Continuous Practice',
+          style: TextStyle(
+            color: Colors.black87, 
+            fontSize: 22, 
+            fontFamily: 'Inter', 
+            fontWeight: FontWeight.w800, 
+            letterSpacing: -0.96
+          ),
+        ),
+      ),
+      body: Stack(
+        children: [
+          // Ambient blurred background drops
+          Positioned(
+            top: -30, right: -30,
+            child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFFB800).withOpacity(0.2))),
+          ),
+          Positioned(
+            bottom: 50, left: -50,
+            child: Container(width: 260, height: 260, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7DC579).withOpacity(0.15))),
+          ),
+          
+          SafeArea(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: SizedBox(
+                width: double.infinity, 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
                       '$currentLetter${currentLetter.toLowerCase()}',
                       style: const TextStyle(
-                        color: Colors.black, 
+                        color: Colors.black87, 
                         fontSize: 42, 
                         fontWeight: FontWeight.w900,
                         fontFamily: 'Inter',
@@ -367,11 +347,11 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
-                            boxShadow: const [
+                            boxShadow: [
                               BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 10,
-                                offset: Offset(0, 4),
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
                               )
                             ],
                           ),
@@ -391,6 +371,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                     ),
                     const SizedBox(height: 24),
 
+                    // Front Camera Preview Container Envelope
                     SizedBox(
                       width: screenWidth * 0.60, 
                       child: AspectRatio(
@@ -404,19 +385,19 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  width: 5.0,
-                                  color: isPassing ? Colors.green : const Color(0xFFCBD0DC),
+                                  width: 4.0,
+                                  color: isPassing ? Colors.green : const Color(0xFFCBD0DC).withOpacity(0.6),
                                 ),
-                                boxShadow: const [
+                                boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black12,
-                                    blurRadius: 8,
-                                    offset: Offset(0, 4),
+                                    color: Colors.black.withOpacity(0.06),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
                                   )
                                 ],
                               ),
                               child: ClipRRect(
-                                borderRadius: BorderRadius.circular(15),
+                                borderRadius: BorderRadius.circular(16),
                                 child: _isInitialized && _controller != null
                                     ? FittedBox(
                                         fit: BoxFit.cover,
@@ -441,23 +422,25 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                     border: Border.all(
                                       color: isPassing ? Colors.green.withOpacity(0.8) : Colors.white54,
                                       width: 3.0,
-                                      style: BorderStyle.solid,
                                     ),
-                                    borderRadius: BorderRadius.circular(60),
+                                    shape: BoxShape.circle,
                                   ),
                                   child: Center(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black54,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        "Position Hand",
-                                        style: TextStyle(
-                                          color: isPassing ? Colors.greenAccent : Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          color: Colors.black45,
+                                          child: Text(
+                                            "Position Hand",
+                                            style: TextStyle(
+                                              color: isPassing ? Colors.greenAccent : Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -468,60 +451,76 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
 
-                    // --- FEEDBACK SECTION ---
+                    // --- GLASSMORPHISM FEEDBACK TRACK ---
                     if (_isSuccessAchieved) ...[
-                      Column(
-                        children: [
-                          Text(
-                            "Success! +$xpReward XP",
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  "Success! +$xpReward XP",
+                                  style: const TextStyle(
+                                    color: Colors.green,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 20,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                const Text(
+                                  "Loading next letter...",
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            "Loading next letter...",
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
+                        ),
                       )
                     ] else if (_holdProgress > 0.0) ...[
                       Column(
                         children: [
                           const Text(
                             "Hold steady...",
-                            style: TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
+                            style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
                           ),
-                          const SizedBox(height: 8),
-                          Container(
-                            width: screenWidth * 0.70, 
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300], 
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: FractionallySizedBox(
-                                widthFactor: _holdProgress,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [Colors.greenAccent, Colors.green],
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(
+                                width: screenWidth * 0.70, 
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.4), 
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 1)
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FractionallySizedBox(
+                                    widthFactor: _holdProgress,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
                                     ),
-                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
                               ),
@@ -530,19 +529,29 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                         ],
                       )
                     ] else ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: isPassing ? Colors.green.withOpacity(0.15) : Colors.black.withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: Text(
-                          "Score: ${_currentScore.toStringAsFixed(1)}%",
-                          style: TextStyle(
-                            color: isPassing ? Colors.green : Colors.black54,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            fontFamily: 'Inter',
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: isPassing ? Colors.green.withOpacity(0.2) : Colors.white.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(
+                                color: isPassing ? Colors.green.withOpacity(0.4) : Colors.white.withOpacity(0.8),
+                                width: 1.5
+                              ),
+                            ),
+                            child: Text(
+                              "Score: ${_currentScore.toStringAsFixed(1)}%",
+                              style: TextStyle(
+                                color: isPassing ? Colors.green.shade700 : Colors.black54,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -551,8 +560,8 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

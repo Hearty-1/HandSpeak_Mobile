@@ -1,3 +1,4 @@
+import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -69,18 +70,35 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
     final currentSign = _numbersList[_currentIndex];
     
     const double baseWidth = 393;
-    const double baseHeight = 693; // Reduced by 100 to account for AppBar
+    const double baseHeight = 693; 
     const double maxProgressWidth = 295.0;
     
     double progressPercentage = (_currentIndex + 1) / _numbersList.length;
 
     return Scaffold(
+      extendBodyBehindAppBar: true, 
       backgroundColor: const Color(0xFFFFF9E5),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFFB800),
+        backgroundColor: Colors.white.withOpacity(0.7),
         elevation: 0,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.black),
+        flexibleSpace: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.black.withOpacity(0.05),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         title: const Text(
           'Tutorial',
           style: TextStyle(
@@ -128,117 +146,154 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
           )
         ],
       ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final double scale = constraints.maxWidth / baseWidth;
-            final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final double scale = constraints.maxWidth / baseWidth;
+          final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
 
-            return SizedBox(
-              width: double.infinity,
-              height: double.infinity,
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: SizedBox(
-                  height: baseHeight * scale,
-                  width: constraints.maxWidth,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      // Elements shifted up by 100 to seamlessly fit under new AppBar
-                      Positioned(
-                        left: 0, right: 0, top: 39 * scale,
-                        child: Center(
-                          child: Text(
-                            currentSign.label,
-                            style: TextStyle(color: Colors.black, fontSize: 52 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5),
-                          ),
-                        ),
-                      ),
-
-                      Positioned(
-                        left: 47 * scale, top: 125 * scale,
-                        child: Container(
-                          width: 299 * scale, height: 276 * scale,
-                          decoration: ShapeDecoration(
-                            image: DecorationImage(image: AssetImage(currentSign.imagePath), fit: BoxFit.cover),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16 * scale)),
-                            shadows: const [BoxShadow(color: Color(0x0C132C4A), blurRadius: 12, offset: Offset(0, 4))],
-                          ),
-                        ),
-                      ),
-
-                      Positioned(
-                        left: 49 * scale, top: 431 * scale,
-                        child: SizedBox(
-                          width: maxProgressWidth * scale, height: 14 * scale,
-                          child: Stack(
-                            children: [
-                              Container(
-                                width: maxProgressWidth * scale, height: 14 * scale,
-                                decoration: BoxDecoration(color: const Color(0xFFF1F1FA), borderRadius: BorderRadius.circular(25 * scale)),
-                              ),
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 250),
-                                width: calculatedProgressWidth * scale, height: 14 * scale,
-                                decoration: BoxDecoration(color: const Color(0xFF7DC579), borderRadius: BorderRadius.circular(25 * scale)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      Positioned(
-                        left: 36 * scale, top: 465 * scale,
-                        child: TextButton.icon(
-                          onPressed: _goToPrevious,
-                          icon: Icon(Icons.arrow_back, color: Colors.black, size: 18 * scale),
-                          label: Text('Previous', style: TextStyle(color: Colors.black, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      Positioned(
-                        right: 36 * scale, top: 465 * scale,
-                        child: TextButton(
-                          onPressed: _goToNext,
-                          child: Row(
-                            children: [
-                              Text('Next', style: TextStyle(color: Colors.black, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
-                              SizedBox(width: 8 * scale),
-                              Icon(Icons.arrow_forward, color: Colors.black, size: 18 * scale),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      Positioned(
-                        left: 47 * scale, top: 540 * scale,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFFB800),
-                            foregroundColor: Colors.white,
-                            minimumSize: Size(299 * scale, 50 * scale),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
-                          ),
-                          onPressed: () {
-                            Navigator.push(
-                              context, 
-                              MaterialPageRoute(
-                                builder: (context) => NumbersTutorialPractice(
-                                  targetNumber: _numbersList[_currentIndex].label,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Text('Practice', style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
-                        ),
-                      ),
-                    ],
+          return Stack(
+            children: [
+              // 2. High-Fidelity Ambient Lighting Orbs (Matches other pages)
+              Positioned(
+                top: 180 * scale, left: -50 * scale,
+                child: Container(
+                  width: 200 * scale, 
+                  height: 200 * scale, 
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle, 
+                    color: const Color(0xFFFFB800).withOpacity(0.2),
                   ),
                 ),
               ),
-            );
-          },
-        ),
+              Positioned(
+                bottom: 100 * scale, right: -60 * scale,
+                child: Container(
+                  width: 250 * scale, 
+                  height: 250 * scale, 
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle, 
+                    color: const Color(0xFF7DC579).withOpacity(0.18),
+                  ),
+                ),
+              ),
+
+              // 3. UI Control Layer
+              SafeArea(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: SizedBox(
+                    height: baseHeight * scale,
+                    width: constraints.maxWidth,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Positioned(
+                          left: 0, right: 0, top: 39 * scale,
+                          child: Center(
+                            child: Text(
+                              currentSign.label,
+                              style: TextStyle(color: Colors.black, fontSize: 52 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5),
+                            ),
+                          ),
+                        ),
+
+                        Positioned(
+                          left: 47 * scale, top: 125 * scale,
+                          child: Container(
+                            width: 299 * scale, height: 276 * scale,
+                            decoration: ShapeDecoration(
+                              image: DecorationImage(image: AssetImage(currentSign.imagePath), fit: BoxFit.cover),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16 * scale)),
+                              shadows: const [BoxShadow(color: Color(0x0C132C4A), blurRadius: 12, offset: Offset(0, 4))],
+                            ),
+                          ),
+                        ),
+
+                        Positioned(
+                          left: 49 * scale, top: 431 * scale,
+                          child: SizedBox(
+                            width: maxProgressWidth * scale, height: 14 * scale,
+                            child: Stack(
+                              children: [
+                                Container(
+                                  width: maxProgressWidth * scale, height: 14 * scale,
+                                  decoration: BoxDecoration(color: const Color(0xFFF1F1FA), borderRadius: BorderRadius.circular(25 * scale)),
+                                ),
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 250),
+                                  width: calculatedProgressWidth * scale, height: 14 * scale,
+                                  decoration: BoxDecoration(color: const Color(0xFF7DC579), borderRadius: BorderRadius.circular(25 * scale)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        Positioned(
+                          left: 36 * scale, top: 465 * scale,
+                          child: TextButton.icon(
+                            onPressed: _goToPrevious,
+                            icon: Icon(Icons.arrow_back, color: Colors.black, size: 18 * scale),
+                            label: Text('Previous', style: TextStyle(color: Colors.black, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        Positioned(
+                          right: 36 * scale, top: 465 * scale,
+                          child: TextButton(
+                            onPressed: _goToNext,
+                            child: Row(
+                              children: [
+                                Text('Next', style: TextStyle(color: Colors.black, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                                SizedBox(width: 8 * scale),
+                                Icon(Icons.arrow_forward, color: Colors.black, size: 18 * scale),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        Positioned(
+                          left: 47 * scale, top: 540 * scale,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(25 * scale),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFFB800).withOpacity(0.3),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFFFB800),
+                                foregroundColor: Colors.white,
+                                minimumSize: Size(299 * scale, 50 * scale),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context, 
+                                  MaterialPageRoute(
+                                    builder: (context) => NumbersTutorialPractice(
+                                      targetNumber: _numbersList[_currentIndex].label,
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Text('Practice', style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

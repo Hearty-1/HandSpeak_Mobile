@@ -1,3 +1,4 @@
+import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,7 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 // ==========================================
 class QuizQuestion {
   final String id;
-  final String type; // Supports sign_to_text vs text_to_sign
+  final String type; 
   final String imageUrl;
   final String questionText;
   final List<String> options;
@@ -41,18 +42,15 @@ class QuizApiService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   Future<List<QuizQuestion>> fetchEasyQuestions(String levelId, String typeFilter) async {
-    // STEP 1: Fetch ALL alphabet questions to bypass any Firestore Index errors
     final querySnapshot = await _db
         .collection('activity_questions')
         .where('category', isEqualTo: 'alphabet')
         .get();
 
-    // ERROR CHECK 1: Is the database empty?
     if (querySnapshot.docs.isEmpty) {
       throw Exception("DATABASE IS EMPTY!\n\nPlease press the red 'DEV: SEED DATABASE' button first.");
     }
 
-    // STEP 2: Filter by Level LOCALLY in Dart 
     List<QuizQuestion> levelQuestions = [];
     for (var doc in querySnapshot.docs) {
       final data = doc.data();
@@ -62,12 +60,10 @@ class QuizApiService {
       }
     }
 
-    // ERROR CHECK 2: Did the Level ID match anything?
     if (levelQuestions.isEmpty) {
       throw Exception("LEVEL NOT FOUND!\n\nThe database has alphabet questions, but ZERO questions match levelId: '$levelId'.");
     }
 
-    // STEP 3: Filter by Question Type & SHUFFLE
     List<QuizQuestion> finalQuestions = [];
     
     if (typeFilter == 'mixed') {
@@ -83,12 +79,10 @@ class QuizApiService {
       finalQuestions = levelQuestions.where((q) => q.type == typeFilter).toList()..shuffle();
     }
 
-    // ERROR CHECK 3: Did the Type Filter hide all questions?
     if (finalQuestions.isEmpty) {
       throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but none matched the requested questionType: '$typeFilter'.");
     }
 
-    // REMOVED .take(5) TO RETURN ALL MATCHING QUESTIONS
     return finalQuestions; 
   }
 }
@@ -308,17 +302,31 @@ class _EasyActMcState extends State<EasyActMc> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true, // Allows the plain content to flow naturally behind the frosted bar
       backgroundColor: const Color(0xFFFFF9E5),
+      
+      // --- EXCLUSIVE GLASSMORPHISM APP BAR ---
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFFB800),
+        backgroundColor: Colors.white.withOpacity(0.4), // Semi-translucent base tint
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black),
+          icon: const Icon(Icons.close, color: Colors.black87),
           onPressed: () => Navigator.pop(context),
+        ),
+        flexibleSpace: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), // Premium iOS frosted effect
+            child: Container(color: Colors.transparent),
+          ),
         ),
         title: const Text(
           "Alphabet Activities",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: Colors.black87, 
+            fontWeight: FontWeight.w800,
+            fontFamily: 'Inter',
+            letterSpacing: -0.5
+          ),
         ),
         centerTitle: true,
         actions: [
@@ -330,7 +338,7 @@ class _EasyActMcState extends State<EasyActMc> {
                 const SizedBox(width: 4),
                 Text(
                   "$_hearts",
-                  style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -373,8 +381,6 @@ class _EasyActMcState extends State<EasyActMc> {
     final currentQuestion = _questions[_currentIndex];
     final progress = (_currentIndex + 1) / _questions.length;
     
-    // UPDATED: Now supports image options for both 'text_to_sign' and 'true_false'
-// Check if the first option contains a common image file extension
     final isImageOption = currentQuestion.options.isNotEmpty && 
                           (currentQuestion.options[0].contains('.png') || 
                            currentQuestion.options[0].contains('.jpg'));
@@ -384,7 +390,7 @@ class _EasyActMcState extends State<EasyActMc> {
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
