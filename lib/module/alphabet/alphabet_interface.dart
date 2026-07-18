@@ -18,7 +18,7 @@ class AlphabetInterface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const double baseWidth = 393;
-    const double baseHeight = 793;
+    const double baseHeight = 693; // Reduced by 100 to account for standard AppBar
 
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(),
@@ -48,156 +48,126 @@ class AlphabetInterface extends StatelessWidget {
         // Track raw XP, capping at targetXp (1000) so the progress bar stops perfectly full
         int displayXp = alphabetXp > targetXp ? targetXp : alphabetXp;
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final double scale = constraints.maxWidth / baseWidth;
+        return Scaffold(
+          backgroundColor: const Color(0xFFFFF9E5),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFFFFB800),
+            elevation: 0,
+            centerTitle: true,
+            iconTheme: const IconThemeData(color: Colors.black),
+            title: const Text(
+              'Alphabets',
+              style: TextStyle(color: Colors.black, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96),
+            ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16.0),
+                child: Image.asset("assets/pictures/image 66.png", width: 45),
+              ),
+            ],
+          ),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final double scale = constraints.maxWidth / baseWidth;
 
-            return Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: const Color(0xFFFFF9E5),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: SizedBox(
-                        height: baseHeight * scale,
-                        width: constraints.maxWidth,
-                        child: Stack(
-                          clipBehavior: Clip.none,
+              return SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: SizedBox(
+                  height: baseHeight * scale,
+                  width: constraints.maxWidth,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Dynamic Live Progress Bar
+                      Positioned(
+                        left: 6 * scale, top: 12 * scale,
+                        child: _buildMainProgressPanel(
+                          scale: scale,
+                          currentXp: displayXp,
+                          targetXp: targetXp,
+                        ),
+                      ),
+
+                      // Tutorial Row Container
+                      Positioned(
+                        left: 24 * scale, top: 80 * scale,
+                        child: Container(width: 130 * scale, height: 110 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/tutor.png"), fit: BoxFit.fill))),
+                      ),
+                      Positioned(
+                        left: 165 * scale, top: 95 * scale,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Header UI Bar
-                            Positioned(
-                              left: 0, top: 0,
-                              child: Container(
-                                width: 393 * scale, height: 50 * scale,
-                                decoration: const BoxDecoration(color: Color(0xFFFFB800), boxShadow: [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)]),
-                              ),
-                            ),
-                            Positioned(
-                              left: 0, top: 50 * scale,
-                              child: Container(
-                                width: 393 * scale, height: 50 * scale,
-                                decoration: const BoxDecoration(color: Color(0xCCF39C12), boxShadow: [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)]),
-                              ),
-                            ),
-                            Positioned(
-                              left: 150 * scale, top: 61 * scale,
-                              child: Text('Alphabets', style: TextStyle(color: Colors.black, fontSize: 20 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96)),
-                            ),
-                            Positioned(
-                              left: 16 * scale, top: 51 * scale,
-                              child: GestureDetector(
-                                onTap: () => Navigator.pop(context),
-                                child: Container(
-                                  width: 46 * scale, height: 46 * scale,
-                                  decoration: ShapeDecoration(color: const Color(0x33FFF8E7), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale))),
-                                  child: Icon(Icons.arrow_back, color: Colors.black87, size: 22 * scale),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              left: 346.46 * scale, top: 0,
-                              child: Container(
-                                width: 45.39 * scale, height: 50.11 * scale,
-                                decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/image 66.png"), fit: BoxFit.fill)),
-                              ),
-                            ),
-
-                            // Dynamic Live Progress Bar
-                            Positioned(
-                              left: 6 * scale, top: 112 * scale,
-                              child: _buildMainProgressPanel(
-                                scale: scale,
-                                currentXp: displayXp,
-                                targetXp: targetXp,
-                              ),
-                            ),
-
-                            // Tutorial Row Container
-                            Positioned(
-                              left: 24 * scale, top: 180 * scale,
-                              child: Container(width: 130 * scale, height: 110 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/tutor.png"), fit: BoxFit.fill))),
-                            ),
-                            Positioned(
-                              left: 165 * scale, top: 195 * scale,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Tutorial', style: TextStyle(color: Colors.black, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5)),
-                                  SizedBox(height: 6 * scale),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20 * scale))),
-                                    icon: Icon(Icons.play_arrow, size: 16 * scale),
-                                    label: Text('Start Learn', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 13 * scale)),
-                                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TutorialInterface())),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Practice Row Container
-                            Positioned(
-                              left: 16 * scale, top: 300 * scale,
-                              child: Container(width: 135 * scale, height: 135 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/practice.png"), fit: BoxFit.cover))),
-                            ),
-                            Positioned(
-                              left: 165 * scale, top: 325 * scale,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Practice', style: TextStyle(color: Colors.black, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5)),
-                                  SizedBox(height: 6 * scale),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20 * scale))),
-                                    icon: Icon(Icons.camera_alt, size: 14 * scale),
-                                    label: Text('Train Sign', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 13 * scale)),
-                                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PracticeInterface())),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Sub Activity Metrics Section
-                            Positioned(left: 56.75 * scale, top: 455 * scale, child: Text('Activity', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
-                            Positioned(left: 233.75 * scale, top: 455 * scale, child: Text('Challenges', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
-                            
-                            Positioned(
-                              left: 20.75 * scale, top: 492 * scale,
-                              child: GestureDetector(
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ActivityInterface())),
-                                child: Container(width: 164 * scale, height: 160 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/activity.png"), fit: BoxFit.cover))),
-                              ),
-                            ),
-                            Positioned(
-                              left: 215.75 * scale, top: 492 * scale,
-                              child: GestureDetector(
-                                onTap: () {},
-                                child: Container(width: 159 * scale, height: 159 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/challenge.png"), fit: BoxFit.cover))),
-                              ),
-                            ),
-
-                            // Activity & Challenge progress bars
-                            Positioned(
-                              left: 13.75 * scale, 
-                              top: 665 * scale, 
-                              child: _buildSubMetricPanel(scale: scale, valueDisplay: "$alphabetStars Stars", progress: (alphabetStars / 27).clamp(0.0, 1.0))
-                            ),
-                            Positioned(
-                              left: 203.75 * scale, 
-                              top: 665 * scale, 
-                              child: _buildSubMetricPanel(scale: scale, valueDisplay: "0 XP", progress: 0.0)
+                            Text('Tutorial', style: TextStyle(color: Colors.black, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5)),
+                            SizedBox(height: 6 * scale),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20 * scale))),
+                              icon: Icon(Icons.play_arrow, size: 16 * scale),
+                              label: Text('Start Learn', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 13 * scale)),
+                              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TutorialInterface())),
                             ),
                           ],
                         ),
                       ),
-                    ),
+
+                      // Practice Row Container
+                      Positioned(
+                        left: 16 * scale, top: 200 * scale,
+                        child: Container(width: 135 * scale, height: 135 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/practice.png"), fit: BoxFit.cover))),
+                      ),
+                      Positioned(
+                        left: 165 * scale, top: 225 * scale,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Practice', style: TextStyle(color: Colors.black, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5)),
+                            SizedBox(height: 6 * scale),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20 * scale))),
+                              icon: Icon(Icons.camera_alt, size: 14 * scale),
+                              label: Text('Train Sign', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 13 * scale)),
+                              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PracticeInterface())),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Sub Activity Metrics Section
+                      Positioned(left: 56.75 * scale, top: 355 * scale, child: Text('Activity', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
+                      Positioned(left: 233.75 * scale, top: 355 * scale, child: Text('Challenges', style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44))),
+                      
+                      Positioned(
+                        left: 20.75 * scale, top: 392 * scale,
+                        child: GestureDetector(
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ActivityInterface())),
+                          child: Container(width: 164 * scale, height: 160 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/activity.png"), fit: BoxFit.cover))),
+                        ),
+                      ),
+                      Positioned(
+                        left: 215.75 * scale, top: 392 * scale,
+                        child: GestureDetector(
+                          onTap: () {},
+                          child: Container(width: 159 * scale, height: 159 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/challenge.png"), fit: BoxFit.cover))),
+                        ),
+                      ),
+
+                      // Activity & Challenge progress bars
+                      Positioned(
+                        left: 13.75 * scale, 
+                        top: 565 * scale, 
+                        child: _buildSubMetricPanel(scale: scale, valueDisplay: "$alphabetStars Stars", progress: (alphabetStars / 27).clamp(0.0, 1.0))
+                      ),
+                      Positioned(
+                        left: 203.75 * scale, 
+                        top: 565 * scale, 
+                        child: _buildSubMetricPanel(scale: scale, valueDisplay: "0 XP", progress: 0.0)
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          },
+                ),
+              );
+            },
+          ),
         );
       },
     );

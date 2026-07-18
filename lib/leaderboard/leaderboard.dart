@@ -94,6 +94,23 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9E5),
       
+      // --- NEW APP BAR ADDED HERE ---
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFFFB800),
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          "Leaderboard",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Image.asset("assets/pictures/image 66.png", width: 45),
+          ),
+        ],
+      ),
+
       // --- 4-TAB BOTTOM NAVIGATION BAR ---
       bottomNavigationBar: SafeArea(
         child: Container(
@@ -191,16 +208,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        'Leaderboard',
-                        style: TextStyle(
-                          color: const Color(0xFF222222),
-                          fontSize: 28 * scale,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      SizedBox(height: 8 * scale),
+                      // Subtitle kept, Main title removed to prevent duplication with AppBar
                       Text(
                         'Compete in real time with fellow learners!',
                         style: TextStyle(
@@ -218,7 +226,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           _buildStatCard(scale, '🔥', '$currentStreak DAYS', 'Streak Active', const Color(0xFFFF8227)),
-                          _buildStatCard(scale, '⚡', '$dailyXp XP Today', 'Daily Goal Progress', const Color(0xFFF34B1B)),
+                          _buildStatCard(scale, '🎯', '$dailyXp XP Today', 'Daily Goal Progress', const Color(0xFFF34B1B)),
                         ],
                       ),
                       
@@ -381,7 +389,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             ],
           ),
           SizedBox(height: 12 * scale),
-          _buildQuestRow(scale, '⚡ Earn 50 XP today', dailyXp, 50),
+          _buildQuestRow(scale, '🎯 Earn 50 XP today', dailyXp, 50),
           _buildDivider(),
           _buildQuestRow(scale, '📚 Complete 1 lesson', completedLessons, 1),
           _buildDivider(),

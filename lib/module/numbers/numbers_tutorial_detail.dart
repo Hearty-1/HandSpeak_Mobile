@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-// --- CHANGED THIS IMPORT SO IT LINKS TO THE RIGHT FILE ---
 import 'numbers_tutorial_practice.dart'; 
 
 class NumberSign {
@@ -70,23 +69,74 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
     final currentSign = _numbersList[_currentIndex];
     
     const double baseWidth = 393;
-    const double baseHeight = 793;
+    const double baseHeight = 693; // Reduced by 100 to account for AppBar
     const double maxProgressWidth = 295.0;
     
     double progressPercentage = (_currentIndex + 1) / _numbersList.length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9E5),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFFFB800),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.black),
+        title: const Text(
+          'Tutorial',
+          style: TextStyle(
+            color: Colors.black, 
+            fontSize: 22, 
+            fontFamily: 'Inter', 
+            fontWeight: FontWeight.w800, 
+            letterSpacing: -0.96
+          ),
+        ),
+        actions: [
+          StreamBuilder<DocumentSnapshot>(
+            stream: _getUserDocStream(),
+            builder: (context, snapshot) {
+              int totalXp = 0;
+              if (snapshot.hasData && snapshot.data!.exists) {
+                final data = snapshot.data!.data() as Map<String, dynamic>;
+                totalXp = data['numbersXp'] ?? 0; 
+              }
+              return Padding(
+                padding: const EdgeInsets.only(right: 16.0),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFBA8E23), width: 1.5),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.bolt, color: Color(0xFFBA8E23), size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          "$totalXp XP",
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFFBA8E23)),
+                        )
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          )
+        ],
+      ),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final double scale = constraints.maxWidth / baseWidth;
             final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
 
-            return Container(
+            return SizedBox(
               width: double.infinity,
               height: double.infinity,
-              color: const Color(0xFFFFF9E5),
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 child: SizedBox(
@@ -95,78 +145,9 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
+                      // Elements shifted up by 100 to seamlessly fit under new AppBar
                       Positioned(
-                        left: 0, top: 0,
-                        child: Container(
-                          width: 393 * scale, height: 50 * scale,
-                          decoration: const BoxDecoration(color: Color(0xFFFFB800)),
-                        ),
-                      ),
-
-                      Positioned(
-                        right: 70 * scale, top: 10 * scale,
-                        child: StreamBuilder<DocumentSnapshot>(
-                          stream: _getUserDocStream(),
-                          builder: (context, snapshot) {
-                            int totalXp = 0;
-                            if (snapshot.hasData && snapshot.data!.exists) {
-                              final data = snapshot.data!.data() as Map<String, dynamic>;
-                              totalXp = data['numbersXp'] ?? 0; 
-                            }
-                            return Container(
-                              padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 6 * scale),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.9),
-                                borderRadius: BorderRadius.circular(16 * scale),
-                                border: Border.all(color: const Color(0xFFBA8E23), width: 1.5),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.bolt, color: const Color(0xFFBA8E23), size: 16 * scale),
-                                  SizedBox(width: 4 * scale),
-                                  Text(
-                                    "$totalXp XP",
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14 * scale, color: const Color(0xFFBA8E23)),
-                                  )
-                                ],
-                              ),
-                            );
-                          }
-                        )
-                      ),
-
-                      Positioned(
-                        left: 0, top: 50 * scale,
-                        child: Container(
-                          width: 393 * scale, height: 50 * scale,
-                          decoration: const BoxDecoration(color: Color(0xCCF39C12)),
-                        ),
-                      ),
-
-                      Positioned(
-                        left: 0, right: 0, top: 61 * scale,
-                        child: Center(
-                          child: Text(
-                            'Tutorial',
-                            style: TextStyle(color: Colors.black, fontSize: 18 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ),
-
-                      Positioned(
-                        left: 16 * scale, top: 51 * scale,
-                        child: GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            width: 46 * scale, height: 46 * scale,
-                            decoration: BoxDecoration(color: const Color(0x33FFF8E7), borderRadius: BorderRadius.circular(14 * scale)),
-                            child: Icon(Icons.arrow_back, color: Colors.black, size: 20 * scale),
-                          ),
-                        ),
-                      ),
-
-                      Positioned(
-                        left: 0, right: 0, top: 139 * scale,
+                        left: 0, right: 0, top: 39 * scale,
                         child: Center(
                           child: Text(
                             currentSign.label,
@@ -176,7 +157,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                       ),
 
                       Positioned(
-                        left: 47 * scale, top: 225 * scale,
+                        left: 47 * scale, top: 125 * scale,
                         child: Container(
                           width: 299 * scale, height: 276 * scale,
                           decoration: ShapeDecoration(
@@ -188,7 +169,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                       ),
 
                       Positioned(
-                        left: 49 * scale, top: 531 * scale,
+                        left: 49 * scale, top: 431 * scale,
                         child: SizedBox(
                           width: maxProgressWidth * scale, height: 14 * scale,
                           child: Stack(
@@ -208,7 +189,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                       ),
 
                       Positioned(
-                        left: 36 * scale, top: 565 * scale,
+                        left: 36 * scale, top: 465 * scale,
                         child: TextButton.icon(
                           onPressed: _goToPrevious,
                           icon: Icon(Icons.arrow_back, color: Colors.black, size: 18 * scale),
@@ -216,7 +197,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                         ),
                       ),
                       Positioned(
-                        right: 36 * scale, top: 565 * scale,
+                        right: 36 * scale, top: 465 * scale,
                         child: TextButton(
                           onPressed: _goToNext,
                           child: Row(
@@ -230,7 +211,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                       ),
 
                       Positioned(
-                        left: 47 * scale, top: 640 * scale,
+                        left: 47 * scale, top: 540 * scale,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFFB800),
@@ -239,7 +220,6 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
                           ),
                           onPressed: () {
-                            // --- CHANGED THIS NAVIGATOR PUSH TO THE NEW CLASS ---
                             Navigator.push(
                               context, 
                               MaterialPageRoute(

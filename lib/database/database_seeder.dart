@@ -28,6 +28,7 @@ class DatabaseSeeder {
 
     try {
       final List<Map<String, dynamic>> questionsToUpload = [
+        // Alphabet and Numbers: Easy 1 & 2 (Text to Sign and Sign to Text)
         {
           "category": "alphabet", "level": "alphabet_easy_2", "type": "text_to_sign",
           "image_url": "assets/pictures/letter_P.jpg",
@@ -238,7 +239,7 @@ class DatabaseSeeder {
           "options": ["10", "2", "4", "9"],
           "correct_answer": "4"
         },
-        // --- 5 NEW COUNTING-TO-SIGN QUESTIONS (LEVEL 3) ---
+        // --- 5 NEW NUMBERS COUNTING-TO-SIGN QUESTIONS (LEVEL 3) ---
         {
           "category": "numbers", 
           "level": "numbers_easy_3", 
@@ -283,8 +284,410 @@ class DatabaseSeeder {
           "question_text": "Count the items in the picture. Which sign represents this number?",
           "options": ["assets/pictures/6.png", "assets/pictures/7.png", "assets/pictures/8.png", "assets/pictures/9.png"],
           "correct_answer": "assets/pictures/8.png"
-        }
-      ];
+        },
+        // ==========================================
+        // ALPHABET: MEDIUM 1 (TRUE OR FALSE)
+        // ==========================================
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_H.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'H'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs up.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_D.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'D'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs up.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_Z.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'Z'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs up.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_G.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'G'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs down.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_B.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'B'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs down.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_A.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'A'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs up.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_J.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'J'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs down.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_C.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'C'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs up.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_F.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'F'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs up.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_1", 
+          "type": "true_false",
+          "image_url": "assets/pictures/tf_I.jpg",
+          "question_text": "True or False: This hand sign represents the letter 'I'.",
+          "options": ["assets/pictures/thumbs up.jpg", "assets/pictures/thumbs down.jpg"],
+          "correct_answer": "assets/pictures/thumbs up.jpg"
+        },
+        // ==========================================
+        // ALPHABET: MEDIUM 2 (FILL)
+        // ==========================================
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_2", 
+          "type": "fill_in",
+          "image_url": "assets/pictures/ate.jpg",
+          "question_text": "Which hand sign is missing to complete the word?",
+          "options": [
+            "assets/pictures/E.jpg", 
+            "assets/pictures/L.jpg", 
+            "assets/pictures/N.jpg", 
+            "assets/pictures/O.jpg"
+          ],
+          "correct_answer": "assets/pictures/E.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_2", 
+          "type": "fill_in",
+          "image_url": "assets/pictures/kuya.jpg",
+          "question_text": "Which hand sign is missing to complete the word?",
+          "options": [
+            "assets/pictures/U.jpg", 
+            "assets/pictures/Y.jpg", 
+            "assets/pictures/E.jpg", 
+            "assets/pictures/L.jpg"
+          ],
+          "correct_answer": "assets/pictures/U.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_2", 
+          "type": "fill_in",
+          "image_url": "assets/pictures/lola.jpg",
+          "question_text": "Which hand sign is missing to complete the word?",
+          "options": [
+            "assets/pictures/N.jpg", 
+            "assets/pictures/E.jpg", 
+            "assets/pictures/O.jpg", 
+            "assets/pictures/L.jpg"
+          ],
+          "correct_answer": "assets/pictures/O.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_2", 
+          "type": "fill_in",
+          "image_url": "assets/pictures/lolo.jpg",
+          "question_text": "Which hand sign is missing to complete the word?",
+          "options": [
+            "assets/pictures/L.jpg", 
+            "assets/pictures/N.jpg", 
+            "assets/pictures/U.jpg", 
+            "assets/pictures/O.jpg"
+          ],
+          "correct_answer": "assets/pictures/L.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_2", 
+          "type": "fill_in",
+          "image_url": "assets/pictures/nanay.jpg",
+          "question_text": "Which hand sign is missing to complete the word?",
+          "options": [
+            "assets/pictures/Y.jpg", 
+            "assets/pictures/N.jpg", 
+            "assets/pictures/E.jpg", 
+            "assets/pictures/O.jpg"
+          ],
+          "correct_answer": "assets/pictures/N.jpg"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_medium_2", 
+          "type": "fill_in",
+          "image_url": "assets/pictures/tatay.jpg",
+          "question_text": "Which hand sign is missing to complete the word?",
+          "options": [
+            "assets/pictures/Y.jpg", 
+            "assets/pictures/U.jpg", 
+            "assets/pictures/L.jpg", 
+            "assets/pictures/N.jpg"
+          ],
+          "correct_answer": "assets/pictures/Y.jpg"
+        },
+        /*// ==========================================
+        // ALPHABET: HARD 1 (SIGN THE LETTERS)
+        // Camera activates, user must sign the target letter
+        // ==========================================
+        {
+          "category": "alphabet", 
+          "level": "alphabet_hard_1", 
+          "type": "sign_recognition",
+          "image_url": "assets/pictures/sign_N.jpg", 
+          "question_text": "Sign the letter: N",
+          "options": [], // Empty because the user inputs via camera
+          "correct_answer": "assets/alphabet/N.json" // The target sign for ML validation
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_hard_1", 
+          "type": "sign_recognition",
+          "image_url": "",
+          "question_text": "Sign the letter: M",
+          "options": [],
+          "correct_answer": "M"
+        },
+        {
+          "category": "alphabet", 
+          "level": "alphabet_hard_1", 
+          "type": "sign_recognition",
+          "image_url": "",
+          "question_text": "Sign the letter: Y",
+          "options": [],
+          "correct_answer": "Y"
+        }, */
+
+        // ==========================================
+        // NUMBERS: MEDIUM 1 (ADDITION)
+        // ==========================================
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_1", 
+          "type": "addition",
+          "image_url": "assets/pictures/add1.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/1.png", "assets/pictures/2.png", "assets/pictures/3.png", "assets/pictures/4.png"
+          ],
+          "correct_answer": "assets/pictures/4.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_1", 
+          "type": "addition",
+          "image_url": "assets/pictures/add2.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/5.png", 
+            "assets/pictures/6.png", 
+            "assets/pictures/7.png", 
+            "assets/pictures/8.png"
+          ],
+          "correct_answer": "assets/pictures/7.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_1", 
+          "type": "addition",
+          "image_url": "assets/pictures/add3.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/2.png", 
+            "assets/pictures/4.png", 
+            "assets/pictures/3.png", 
+            "assets/pictures/5.png"
+          ],
+          "correct_answer": "assets/pictures/4.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_1", 
+          "type": "addition",
+          "image_url": "assets/pictures/add4.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/6.png", 
+            "assets/pictures/5.png", 
+            "assets/pictures/4.png", 
+            "assets/pictures/7.png"
+          ],
+          "correct_answer": "assets/pictures/6.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_1", 
+          "type": "addition",
+          "image_url": "assets/pictures/add5.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/6.png", 
+            "assets/pictures/7.png", 
+            "assets/pictures/9.png", 
+            "assets/pictures/8.png"
+          ],
+          "correct_answer": "assets/pictures/8.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_1", 
+          "type": "addition",
+          "image_url": "assets/pictures/add6.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/6.png", 
+            "assets/pictures/8.png", 
+            "assets/pictures/7.png", 
+            "assets/pictures/9.png"
+          ],
+          "correct_answer": "assets/pictures/8.png"
+        },
+
+       // ==========================================
+        // NUMBERS: MEDIUM 2 (SUBTRACTION)
+        // ==========================================
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_2", 
+          "type": "subtraction",
+          "image_url": "assets/pictures/sub5.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/4.png", 
+            "assets/pictures/5.png", 
+            "assets/pictures/6.png", 
+            "assets/pictures/7.png"
+          ],
+          "correct_answer": "assets/pictures/5.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_2", 
+          "type": "subtraction",
+          "image_url": "assets/pictures/sub1.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/1.png", 
+            "assets/pictures/2.png", 
+            "assets/pictures/3.png", 
+            "assets/pictures/4.png"
+          ],
+          "correct_answer": "assets/pictures/1.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_2", 
+          "type": "subtraction",
+          "image_url": "assets/pictures/sub2.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/1.png", 
+            "assets/pictures/2.png", 
+            "assets/pictures/4.png", 
+            "assets/pictures/3.png"
+          ],
+          "correct_answer": "assets/pictures/3.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_2", 
+          "type": "subtraction",
+          "image_url": "assets/pictures/sub3.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/4.png", 
+            "assets/pictures/3.png", 
+            "assets/pictures/2.png", 
+            "assets/pictures/5.png"
+          ],
+          "correct_answer": "assets/pictures/4.png"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_medium_2", 
+          "type": "subtraction",
+          "image_url": "assets/pictures/sub4.jpg",
+          "question_text": "Solve:",
+          "options": [
+            "assets/pictures/1.png", 
+            "assets/pictures/3.png", 
+            "assets/pictures/4.png",
+            "assets/pictures/2.png"
+          ],
+          "correct_answer": "assets/pictures/2.png"
+        },
+
+        /*// ==========================================
+        // NUMBERS: HARD 1 (SIGN THE NUMBERS)
+        // Camera activates, user must sign the target number
+        // ==========================================
+        {
+          "category": "numbers", 
+          "level": "numbers_hard_1", 
+          "type": "sign_recognition",
+          "image_url": "",
+          "question_text": "Sign the number: 6",
+          "options": [],
+          "correct_answer": "6"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_hard_1", 
+          "type": "sign_recognition",
+          "image_url": "",
+          "question_text": "Sign the number: 9",
+          "options": [],
+          "correct_answer": "9"
+        },
+        {
+          "category": "numbers", 
+          "level": "numbers_hard_1", 
+          "type": "sign_recognition",
+          "image_url": "",
+          "question_text": "Sign the number: 4",
+          "options": [],
+          "correct_answer": "4"
+        } */
+      ]; 
 
       // 3. THE WIPE: Get and delete existing random ID questions in Firestore.
       final QuerySnapshot existingDocs = await ref.get();

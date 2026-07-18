@@ -118,7 +118,7 @@ class ActivityInterface extends StatelessWidget {
               // 🟢 EASY LEVELS
               {
                 'id': 'alphabet_easy_1',
-                'title': 'Level 1: Sign to Text',
+                'title': 'Level 1: Sign => Text',
                 'isUnlocked': true, 
                 'unlockMessage': '',
                 'alignment': Alignment.center,
@@ -126,61 +126,61 @@ class ActivityInterface extends StatelessWidget {
               },
               {
                 'id': 'alphabet_easy_2',
-                'title': 'Level 2: Text to Sign',
+                'title': 'Level 2: Text => Sign',
                 'isUnlocked': (progressMap['alphabet_easy_1'] ?? 0) >= 2, 
-                'unlockMessage': 'Earn 2 ⭐ in Easy 1 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 1 to unlock!',
                 'alignment': Alignment.centerRight,
                 'destination': const EasyActMc(levelId: 'alphabet_easy_2', questionType: 'text_to_sign'), 
               },
               {
                 'id': 'alphabet_easy_3',
-                'title': 'Level 3: Mixed Review', 
+                'title': 'Level 3: Text vv Sign', 
                 'isUnlocked': (progressMap['alphabet_easy_2'] ?? 0) >= 2, 
-                'unlockMessage': 'Earn 2 ⭐ in Easy 2 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 2 to unlock!',
                 'alignment': Alignment.centerRight, 
                 'destination': const EasyActMc(levelId: 'alphabet_easy_3', questionType: 'mixed'), 
               },
 
-              // 🟡 MEDIUM LEVELS
+              // 🟡 MEDIUM LEVELS (UPDATED)
               {
                 'id': 'alphabet_medium_1',
-                'title': 'Level 4: Sign to Text',
+                'title': 'Level 4: Right/Wrong',
                 'isUnlocked': (progressMap['alphabet_easy_3'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Easy 3 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 3 to unlock!',
                 'alignment': Alignment.center,
-                'destination': const Placeholder(), // Replace with Medium screen later
+                'destination': const EasyActMc(levelId: 'alphabet_medium_1', questionType: 'true_false'),
               },
               {
                 'id': 'alphabet_medium_2',
-                'title': 'Level 5: Text to Sign',
+                'title': 'Level 5: Fill Me!',
                 'isUnlocked': (progressMap['alphabet_medium_1'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Medium 1 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 4 to unlock!',
                 'alignment': Alignment.centerLeft,
-                'destination': const Placeholder(),
+                'destination': const EasyActMc(levelId: 'alphabet_medium_2', questionType: 'fill_in'), 
               },
               {
                 'id': 'alphabet_medium_3',
-                'title': 'Level 6: Mixed Mastery', 
+                'title': 'Level 6: Spell', 
                 'isUnlocked': (progressMap['alphabet_medium_2'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Medium 2 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 5 to unlock!',
                 'alignment': Alignment.centerLeft,
-                'destination': const Placeholder(),
+                'destination': const EasyActMc(levelId: 'alphabet_medium_3', questionType: 'spell'), 
               },
 
               // 🔴 HARD LEVELS
               {
                 'id': 'alphabet_hard_1',
-                'title': 'Level 7: Sign to Text',
+                'title': 'Level 7: Sign Me!',
                 'isUnlocked': (progressMap['alphabet_medium_3'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Medium 3 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 6 to unlock!',
                 'alignment': Alignment.center,
                 'destination': const Placeholder(), // Replace with Hard screen later
               },
               {
                 'id': 'alphabet_hard_2',
-                'title': 'Level 8: Text to Sign',
+                'title': 'Level 8: Finger Spell',
                 'isUnlocked': (progressMap['alphabet_hard_1'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Hard 1 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 7 to unlock!',
                 'alignment': Alignment.centerRight,
                 'destination': const Placeholder(),
               },
@@ -188,7 +188,7 @@ class ActivityInterface extends StatelessWidget {
                 'id': 'alphabet_hard_3',
                 'title': 'Level 9: The Ultimate Test', 
                 'isUnlocked': (progressMap['alphabet_hard_2'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Hard 2 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 8 to unlock!',
                 'alignment': Alignment.center, 
                 'destination': const Placeholder(),
               },

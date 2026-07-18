@@ -109,15 +109,15 @@ class NumbersActivityInterface extends StatelessWidget {
                 'id': 'numbers_easy_2',
                 'title': 'Level 2: Text to Sign',
                 'isUnlocked': (progressMap['numbers_easy_1'] ?? 0) >= 2, 
-                'unlockMessage': 'Earn 2 ⭐ in Easy 1 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 1 to unlock!',
                 'alignment': Alignment.centerRight,
                 'destination': const EasyNumActMc(levelId: 'numbers_easy_2', questionType: 'text_to_sign'), 
               },
               {
                 'id': 'numbers_easy_3',
-                'title': 'Level 3: Mixed Review', 
+                'title': 'Level 3: Count & Sign', 
                 'isUnlocked': (progressMap['numbers_easy_2'] ?? 0) >= 2, 
-                'unlockMessage': 'Earn 2 ⭐ in Easy 2 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 2 to unlock!',
                 'alignment': Alignment.centerRight, 
                 'destination': const EasyNumActMc(levelId: 'numbers_easy_3', questionType: 'mixed'), 
               },
@@ -125,27 +125,30 @@ class NumbersActivityInterface extends StatelessWidget {
               // 🟡 MEDIUM LEVELS
               {
                 'id': 'numbers_medium_1',
-                'title': 'Level 4: Sign to Text',
+                'title': 'Level 4: Addition (+)',
                 'isUnlocked': (progressMap['numbers_easy_3'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Easy 3 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 3 to unlock!',
                 'alignment': Alignment.center,
-                'destination': const Placeholder(), // Replace with Medium screen later
+                // Replace Placeholder with EasyNumActMc and set type to 'addition'
+                'destination': const EasyNumActMc(levelId: 'numbers_medium_1', questionType: 'addition'), 
               },
               {
                 'id': 'numbers_medium_2',
-                'title': 'Level 5: Text to Sign',
+                'title': 'Level 5: Subtraction (-)',
                 'isUnlocked': (progressMap['numbers_medium_1'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Medium 1 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 4 to unlock!',
                 'alignment': Alignment.centerLeft,
-                'destination': const Placeholder(),
+                // Replace Placeholder with EasyNumActMc and set type to 'subtraction'
+                'destination': const EasyNumActMc(levelId: 'numbers_medium_2', questionType: 'subtraction'),
               },
               {
                 'id': 'numbers_medium_3',
-                'title': 'Levle 6: Mixed Mastery', 
+                'title': 'Level 6: Mixed Math', 
                 'isUnlocked': (progressMap['numbers_medium_2'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Medium 2 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 5 to unlock!',
                 'alignment': Alignment.centerLeft,
-                'destination': const Placeholder(),
+                // Replace Placeholder with EasyNumActMc and set type to 'mixed'
+                'destination': const EasyNumActMc(levelId: 'numbers_medium_3', questionType: 'mixed'),
               },
 
               // 🔴 HARD LEVELS
@@ -153,7 +156,7 @@ class NumbersActivityInterface extends StatelessWidget {
                 'id': 'numbers_hard_1',
                 'title': 'Level 7: Sign to Text',
                 'isUnlocked': (progressMap['numbers_medium_3'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Medium 3 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 6 to unlock!',
                 'alignment': Alignment.center,
                 'destination': const Placeholder(), // Replace with Hard screen later
               },
@@ -161,7 +164,7 @@ class NumbersActivityInterface extends StatelessWidget {
                 'id': 'numbers_hard_2',
                 'title': 'Level 8: Text to Sign',
                 'isUnlocked': (progressMap['numbers_hard_1'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Hard 1 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 7 to unlock!',
                 'alignment': Alignment.centerRight,
                 'destination': const Placeholder(),
               },
@@ -169,7 +172,7 @@ class NumbersActivityInterface extends StatelessWidget {
                 'id': 'numbers_hard_3',
                 'title': 'Level 9: The Ultimate Test', 
                 'isUnlocked': (progressMap['numbers_hard_2'] ?? 0) >= 2,
-                'unlockMessage': 'Earn 2 ⭐ in Hard 2 to unlock!',
+                'unlockMessage': 'Earn 2 ⭐ in Level 8 to unlock!',
                 'alignment': Alignment.center, 
                 'destination': const Placeholder(),
               },

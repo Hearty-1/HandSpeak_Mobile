@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
-import 'numbers_tutorial_detail.dart'; // Updated import
+import 'numbers_tutorial_detail.dart'; 
 
-class NumbersTutorialInterface extends StatelessWidget {
+class NumbersTutorialInterface extends StatefulWidget {
+  const NumbersTutorialInterface({super.key});
+
+  @override
+  State<NumbersTutorialInterface> createState() => _NumbersTutorialInterfaceState();
+}
+
+class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
   final List<Map<String, String>> lessons = [
     {'title': '1', 'status': 'completed'},
     {'title': '2', 'status': 'completed'},
@@ -15,18 +22,50 @@ class NumbersTutorialInterface extends StatelessWidget {
     {'title': '10', 'status': 'completed'},
   ];
 
-  NumbersTutorialInterface({super.key});
+  List<Map<String, String>> filteredLessons = [];
+
+  @override
+  void initState() {
+    super.initState();
+    filteredLessons = lessons;
+  }
+
+  void _runFilter(String enteredKeyword) {
+    List<Map<String, String>> results = [];
+    if (enteredKeyword.isEmpty) {
+      results = lessons;
+    } else {
+      results = lessons
+          .where((lesson) =>
+              lesson['title']!.toLowerCase().contains(enteredKeyword.toLowerCase()))
+          .toList();
+    }
+
+    setState(() {
+      filteredLessons = results;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFFFF9E5),
       appBar: AppBar(
         backgroundColor: const Color(0xFFFFB800),
-        title: const Text("Number List", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        iconTheme: const IconThemeData(color: Colors.black),
         elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.black),
+        title: const Text(
+          'Number List',
+          style: TextStyle(
+            color: Colors.black, 
+            fontSize: 22, 
+            fontFamily: 'Inter', 
+            fontWeight: FontWeight.w800, 
+            letterSpacing: -0.96
+          ),
+        ),
       ),
-      backgroundColor: const Color(0xFFFFF9E5),
       body: Column(
         children: [
           Padding(
@@ -38,9 +77,10 @@ class NumbersTutorialInterface extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
               ),
-              child: const TextField(
-                decoration: InputDecoration(
-                  hintText: 'Search number...', // Changed hint
+              child: TextField(
+                onChanged: (value) => _runFilter(value), // Trigger the filter
+                decoration: const InputDecoration(
+                  hintText: 'Search number...', 
                   prefixIcon: Icon(Icons.search, color: Colors.grey),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(vertical: 12),
@@ -49,34 +89,41 @@ class NumbersTutorialInterface extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: lessons.length,
-              itemBuilder: (context, index) {
-                final bool isLocked = lessons[index]['status'] == 'locked';
-                return LessonCard(
-                  title: lessons[index]['title']!,
-                  isLocked: isLocked,
-                  onTap: () {
-                    if (!isLocked) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => NumbersTutorialDetail(initialIndex: index),
-                        ),
+            child: filteredLessons.isEmpty
+                ? const Center(child: Text("No numbers found.", style: TextStyle(fontSize: 18)))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: filteredLessons.length, // Use filtered list
+                    itemBuilder: (context, index) {
+                      final lesson = filteredLessons[index];
+                      final bool isLocked = lesson['status'] == 'locked';
+                      
+                      return LessonCard(
+                        title: lesson['title']!,
+                        isLocked: isLocked,
+                        onTap: () {
+                          if (!isLocked) {
+                            // Find original index
+                            final originalIndex = lessons.indexOf(lesson);
+                            
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => NumbersTutorialDetail(initialIndex: originalIndex),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("Complete previous numbers to unlock ${lesson['title']}!"),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        },
                       );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("Complete previous numbers to unlock ${lessons[index]['title']}!"),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
-                    }
-                  },
-                );
-              },
-            ),
+                    },
+                  ),
           ),
         ],
       ),

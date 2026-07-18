@@ -2,7 +2,14 @@ import 'package:flutter/material.dart';
 // Import the slide-deck screen to allow routing
 import 'tutorial_interface_3.dart'; 
 
-class TutorialInterface extends StatelessWidget {
+class TutorialInterface extends StatefulWidget {
+  const TutorialInterface({super.key});
+
+  @override
+  State<TutorialInterface> createState() => _TutorialInterfaceState();
+}
+
+class _TutorialInterfaceState extends State<TutorialInterface> {
   // Centralized tracking list for alphabet progress status
   final List<Map<String, String>> lessons = [
     {'title': 'Aa', 'status': 'completed'},
@@ -33,7 +40,32 @@ class TutorialInterface extends StatelessWidget {
     {'title': 'Zz', 'status': 'completed'},
   ];
 
-  TutorialInterface({super.key});
+  // This list holds the data we actually display on screen
+  List<Map<String, String>> filteredLessons = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Initially, show all lessons
+    filteredLessons = lessons;
+  }
+
+  // The function that runs every time the user types in the search bar
+  void _runFilter(String enteredKeyword) {
+    List<Map<String, String>> results = [];
+    if (enteredKeyword.isEmpty) {
+      results = lessons;
+    } else {
+      results = lessons
+          .where((lesson) =>
+              lesson['title']!.toLowerCase().contains(enteredKeyword.toLowerCase()))
+          .toList();
+    }
+
+    setState(() {
+      filteredLessons = results;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,8 +89,9 @@ class TutorialInterface extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
               ),
-              child: const TextField(
-                decoration: InputDecoration(
+              child: TextField(
+                onChanged: (value) => _runFilter(value), // Trigger the filter
+                decoration: const InputDecoration(
                   hintText: 'Search letter...',
                   prefixIcon: Icon(Icons.search, color: Colors.grey),
                   border: InputBorder.none,
@@ -70,35 +103,42 @@ class TutorialInterface extends StatelessWidget {
 
           // Lesson List Directory Builder
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: lessons.length,
-              itemBuilder: (context, index) {
-                final bool isLocked = lessons[index]['status'] == 'locked';
-                return LessonCard(
-                  title: lessons[index]['title']!,
-                  isLocked: isLocked,
-                  onTap: () {
-                    if (!isLocked) {
-                      // ROUTING LINK: Pass the exact chosen letter index into the view slider
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => TutorialInterface3(initialIndex: index),
-                        ),
+            child: filteredLessons.isEmpty
+                ? const Center(child: Text("No letters found.", style: TextStyle(fontSize: 18)))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: filteredLessons.length, // Use filtered list
+                    itemBuilder: (context, index) {
+                      final lesson = filteredLessons[index];
+                      final bool isLocked = lesson['status'] == 'locked';
+                      
+                      return LessonCard(
+                        title: lesson['title']!,
+                        isLocked: isLocked,
+                        onTap: () {
+                          if (!isLocked) {
+                            // Find the original index so the slider opens to the correct letter
+                            final originalIndex = lessons.indexOf(lesson);
+                            
+                            // ROUTING LINK
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TutorialInterface3(initialIndex: originalIndex),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("Complete previous letters to unlock ${lesson['title']}!"),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        },
                       );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("Complete previous letters to unlock ${lessons[index]['title']}!"),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
-                    }
-                  },
-                );
-              },
-            ),
+                    },
+                  ),
           ),
         ],
       ),

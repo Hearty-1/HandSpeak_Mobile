@@ -44,21 +44,24 @@ class ProfileScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9E5),
       
-      // --- APP BAR WITH SETTINGS ---
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFFFFB800),
         elevation: 0,
-        title: const Text("My Profile", style: TextStyle(color: Color(0xFF222222), fontWeight: FontWeight.bold)),
         centerTitle: true,
+        automaticallyImplyLeading: true, 
+        iconTheme: const IconThemeData(color: Colors.black), 
+        title: const Text(
+          "My Profile",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings, color: Color(0xFF222222)),
-            onPressed: () => _showSettingsDialog(context, currentUser),
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Image.asset("assets/pictures/image 66.png", width: 45),
           ),
         ],
       ),
 
-      // --- 4-TAB BOTTOM NAVIGATION BAR ---
       bottomNavigationBar: SafeArea(
         child: Container(
           width: double.infinity,
@@ -88,7 +91,7 @@ class ProfileScreen extends StatelessWidget {
                 onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LeaderboardScreen())),
               ),
               IconButton(
-                icon: const Icon(Icons.person, color: Colors.black, size: 28), // ACTIVE
+                icon: const Icon(Icons.person, color: Colors.black, size: 28), 
                 onPressed: () {}, 
               ),
             ],
@@ -106,22 +109,25 @@ class ProfileScreen extends StatelessWidget {
 
             String name = currentUser.displayName ?? "Guest Student";
             String email = currentUser.email ?? "student@handspeak.edu";
-            int stars = 0, xp = 0, unlocks = 0;
+            String avatarUrl = currentUser.photoURL ?? "";
+            int stars = 0, xp = 0, streak = 0, followers = 0, following = 0;
             Map<String, dynamic> progressMap = {};
 
             if (snapshot.hasData && snapshot.data!.exists) {
               final userData = snapshot.data!.data() as Map<String, dynamic>?;
               if (userData != null) {
-                // Prioritize Firestore name if it exists over Auth display name
                 name = userData['name'] ?? name;
                 email = userData['email'] ?? email;
+                avatarUrl = userData['avatar'] ?? avatarUrl;
                 stars = userData['stars'] ?? 0;
+                streak = userData['streak'] ?? 0;
+                followers = userData['followers'] ?? 0;
+                following = userData['following'] ?? 0;
                 
                 if (userData.containsKey('progress') && userData['progress'] is Map) {
                   progressMap = Map<String, dynamic>.from(userData['progress']);
                   xp = userData['xp'] ?? 0;
                   if (xp == 0) progressMap.forEach((key, val) { if (val is num) xp += val.toInt(); });
-                  unlocks = userData['unlocks'] ?? progressMap.length;
                 }
               }
             }
@@ -130,28 +136,68 @@ class ProfileScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20.0),
               child: Column(
                 children: [
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 20),
                   Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      const CircleAvatar(
-                        radius: 50, 
-                        backgroundColor: Color(0xFFFFEFA7), 
-                        child: Icon(Icons.person_rounded, size: 60, color: Color(0xFFFFB800))
-                      ),
-                      Container(
-                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                        child: IconButton(
-                          icon: const Icon(Icons.edit, size: 20, color: Color(0xFF222222)),
-                          onPressed: () => _showSettingsDialog(context, currentUser, currentName: name),
-                        ),
-                      )
-                    ],
-                  ),
+  alignment: Alignment.bottomRight,
+  children: [
+    ClipOval(
+      child: avatarUrl.isNotEmpty
+          ? Image.network(
+              avatarUrl,
+              width: 100,
+              height: 100,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                // If the link is bad, show the default icon instead of crashing
+                return Container(
+                  width: 100, height: 100, color: const Color(0xFFFFEFA7),
+                  child: const Icon(Icons.person_rounded, size: 60, color: Color(0xFFFFB800)),
+                );
+              },
+            )
+          : Container(
+              width: 100, height: 100, color: const Color(0xFFFFEFA7),
+              child: const Icon(Icons.person_rounded, size: 60, color: Color(0xFFFFB800)),
+            ),
+    ),
+    Container(
+      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+      child: IconButton(
+        icon: const Icon(Icons.edit, size: 20, color: Color(0xFF222222)),
+        onPressed: () => _showSettingsDialog(context, currentUser, currentName: name, currentAvatar: avatarUrl),
+      ),
+    )
+  ],
+),
                   const SizedBox(height: 16),
                   Text(name, style: const TextStyle(color: Color(0xFF222222), fontSize: 24, fontWeight: FontWeight.w700)),
                   Text(email, style: const TextStyle(color: Color(0x7F222222), fontSize: 14, decoration: TextDecoration.underline)),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Column(
+                        children: [
+                          Text('$followers', style: const TextStyle(color: Color(0xFF222222), fontSize: 20, fontWeight: FontWeight.bold)),
+                          const Text('Followers', style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                      Container(
+                        height: 30,
+                        width: 1.5,
+                        color: Colors.grey.shade300,
+                        margin: const EdgeInsets.symmetric(horizontal: 25),
+                      ),
+                      Column(
+                        children: [
+                          Text('$following', style: const TextStyle(color: Color(0xFF222222), fontSize: 20, fontWeight: FontWeight.bold)),
+                          const Text('Following', style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 25),
 
                   Container(
                     padding: const EdgeInsets.all(20),
@@ -163,9 +209,9 @@ class ProfileScreen extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
+                        _buildStatItem("Streak", "$streak", Icons.local_fire_department_rounded),
                         _buildStatItem("Stars", "$stars", Icons.star_rounded),
                         _buildStatItem("XP", "$xp", Icons.bolt_rounded),
-                        _buildStatItem("Unlocks", "$unlocks", Icons.lock_open_rounded),
                       ],
                     ),
                   ),
@@ -182,9 +228,9 @@ class ProfileScreen extends StatelessWidget {
                     crossAxisSpacing: 16, 
                     childAspectRatio: 0.8,
                     children: [
-                      _buildBadge("First Sign", "assets/pictures/image 1.png", isUnlocked: xp > 0),
-                      _buildBadge("Star Scholar", "assets/pictures/image 1.png", isUnlocked: stars >= 10),
-                      _buildBadge("Sign Master", "assets/pictures/image 1.png", isUnlocked: unlocks >= 3),
+                      _buildBadge("First Sign", "assets/pictures/alphabet.png", isUnlocked: xp > 0),
+                      _buildBadge("Star Scholar", "assets/pictures/large star.png", isUnlocked: stars >= 10),
+                      _buildBadge("Sign Master", "assets/pictures/sign.png", isUnlocked: xp >= 1000), 
                     ],
                   ),
                   const SizedBox(height: 40),
@@ -213,8 +259,9 @@ class ProfileScreen extends StatelessWidget {
   }
 
   // --- SETTINGS / EDIT PROFILE DIALOG ---
-  void _showSettingsDialog(BuildContext context, User user, {String? currentName}) {
+  void _showSettingsDialog(BuildContext context, User user, {String? currentName, String? currentAvatar}) {
     final TextEditingController nameController = TextEditingController(text: currentName ?? user.displayName ?? "");
+    final TextEditingController avatarController = TextEditingController(text: currentAvatar ?? user.photoURL ?? "");
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -238,11 +285,12 @@ class ProfileScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Display Name Field
                     TextFormField(
                       controller: nameController,
                       decoration: InputDecoration(
                         labelText: "Display Name",
-                        labelStyle: const TextStyle(color: Colors.grey),
+                        prefixIcon: const Icon(Icons.person_outline, color: Colors.grey),
                         focusedBorder: OutlineInputBorder(
                           borderSide: const BorderSide(color: Color(0xFFFFB800), width: 2),
                           borderRadius: BorderRadius.circular(12),
@@ -260,10 +308,24 @@ class ProfileScreen extends StatelessWidget {
                       },
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      "Note: Email address updates require re-authentication and are currently restricted to admin modifications.",
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    )
+                    
+                    // Avatar URL Field
+                    TextFormField(
+                      controller: avatarController,
+                      decoration: InputDecoration(
+                        labelText: "Avatar Image URL",
+                        hintText: "https://example.com/image.png",
+                        prefixIcon: const Icon(Icons.image_outlined, color: Colors.grey),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: const BorderSide(color: Color(0xFFFFB800), width: 2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -281,15 +343,22 @@ class ProfileScreen extends StatelessWidget {
                           
                           try {
                             final newName = nameController.text.trim();
+                            final newAvatar = avatarController.text.trim();
                             
                             // 1. Update Firebase Auth Profile
                             await user.updateDisplayName(newName);
+                            if (newAvatar.isNotEmpty) {
+                              await user.updatePhotoURL(newAvatar);
+                            }
                             
                             // 2. Update Firestore Database Document
                             await FirebaseFirestore.instance
                                 .collection('users')
                                 .doc(user.uid)
-                                .set({'name': newName}, SetOptions(merge: true));
+                                .set({
+                                  'name': newName,
+                                  'avatar': newAvatar,
+                                }, SetOptions(merge: true));
 
                             if (context.mounted) {
                               Navigator.pop(context);

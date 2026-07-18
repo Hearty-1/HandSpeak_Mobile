@@ -13,7 +13,8 @@ class SnedInterface2 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const double baseWidth = 393;
-    const double baseHeight = 793;
+    // Adjusted height since we removed the search bar gap
+    const double baseHeight = 693; 
     const int targetXp = 1000;
 
     return StreamBuilder<DocumentSnapshot>(
@@ -28,7 +29,6 @@ class SnedInterface2 extends StatelessWidget {
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
           if (data != null) {
-            // Pulling the specific unified category fields
             alphabetXp = data['alphabetXp'] ?? 0;
             numbersXp = data['numbersXp'] ?? 0;
             wordsXp = data['wordsXp'] ?? 0;
@@ -50,11 +50,24 @@ class SnedInterface2 extends StatelessWidget {
           builder: (context, constraints) {
             final double scale = constraints.maxWidth / baseWidth;
 
-            return Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: const Color(0xFFFFF9E5),
-              child: Column(
+            return Scaffold(
+              backgroundColor: const Color(0xFFFFF9E5),
+              appBar: AppBar(
+                backgroundColor: const Color(0xFFFFB800),
+                elevation: 0,
+                centerTitle: true, // ADD THIS LINE 
+                title: const Text(
+                  "Modules",
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                ),
+                actions: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16.0),
+                    child: Image.asset("assets/pictures/image 66.png", width: 45),
+                  ),
+                ],
+              ),
+              body: Column(
                 children: [
                   Expanded(
                     child: SingleChildScrollView(
@@ -65,40 +78,9 @@ class SnedInterface2 extends StatelessWidget {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            // Title & Search Row
-                            Positioned(
-                              left: 0, top: 0,
-                              child: Container(
-                                width: 393 * scale, height: 50 * scale,
-                                decoration: const BoxDecoration(color: Color(0xFFFFB800), boxShadow: [BoxShadow(color: Color(0x0C132C4A), blurRadius: 16)]),
-                              ),
-                            ),
-                            Positioned(
-                              left: 346.46 * scale, top: 0,
-                              child: Container(
-                                width: 45.39 * scale, height: 50.11 * scale,
-                                decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/image 66.png"), fit: BoxFit.fill)),
-                              ),
-                            ),
-                            Positioned(
-                              left: 11.45 * scale, top: 58.22 * scale,
-                              child: Container(
-                                width: 370.11 * scale, height: 48 * scale,
-                                decoration: ShapeDecoration(color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14 * scale)), shadows: const [BoxShadow(color: Color(0x05132C4A), blurRadius: 16, offset: Offset(0, 6))]),
-                              ),
-                            ),
-                            Positioned(
-                              left: 70.48 * scale, top: 74.22 * scale,
-                              child: Text('Search now...', style: TextStyle(color: const Color(0xFFAEAEAE), fontSize: 16 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w500)),
-                            ),
-                            Positioned(
-                              left: 32.70 * scale, top: 72 * scale,
-                              child: Icon(Icons.search, color: const Color(0xFFAEAEAE), size: 20 * scale),
-                            ),
-
                             // --- MODULE: ALPHABETS ---
                             Positioned(
-                              left: 7 * scale, top: 151 * scale,
+                              left: 7 * scale, top: 51 * scale,
                               child: GestureDetector(
                                 onTap: () => Navigator.push(
                                   context,
@@ -113,14 +95,14 @@ class SnedInterface2 extends StatelessWidget {
                               ),
                             ),
                             Positioned(
-                              left: 27 * scale, top: 139 * scale,
+                              left: 27 * scale, top: 39 * scale,
                               child: GestureDetector(
                                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AlphabetInterface(currentXp: displayAlpXp, targetXp: targetXp))),
                                 child: Text('Alphabets', style: TextStyle(color: Colors.black, fontSize: 32 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.92)),
                               ),
                             ),
                             Positioned(
-                              left: 12 * scale, top: 315 * scale, 
+                              left: 12 * scale, top: 215 * scale, 
                               child: _buildProgressPanel(
                                 scale: scale, 
                                 title: "Progress", 
@@ -129,11 +111,11 @@ class SnedInterface2 extends StatelessWidget {
                                 progressRatio: displayAlpXp / targetXp,
                               ),
                             ),
-                            Positioned(left: 22 * scale, top: 350 * scale, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale))),
+                            Positioned(left: 22 * scale, top: 250 * scale, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale))),
                             
                             // --- MODULE: NUMBERS ---
                             Positioned(
-                              left: 214 * scale, top: 177 * scale,
+                              left: 214 * scale, top: 77 * scale,
                               child: GestureDetector(
                                 onTap: () => Navigator.push(
                                   context, 
@@ -148,14 +130,14 @@ class SnedInterface2 extends StatelessWidget {
                               ),
                             ),
                             Positioned(
-                              left: 228 * scale, top: 137 * scale,
+                              left: 228 * scale, top: 37 * scale,
                               child: GestureDetector(
                                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => NumbersInterface(currentXp: displayNumXp, targetXp: targetXp))),
                                 child: Text('Numbers', style: TextStyle(color: Colors.black, fontSize: 32 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.92)),
                               ),
                             ),
                             Positioned(
-                              left: 205 * scale, top: 315 * scale, 
+                              left: 205 * scale, top: 215 * scale, 
                               child: _buildProgressPanel(
                                 scale: scale, 
                                 title: "Progress", 
@@ -164,28 +146,28 @@ class SnedInterface2 extends StatelessWidget {
                                 progressRatio: displayNumXp / targetXp,
                               ),
                             ),
-                            Positioned(left: 218 * scale, top: 349 * scale, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale))),
+                            Positioned(left: 218 * scale, top: 249 * scale, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale))),
                             
                             // --- MODULE: WORDS / PHRASES (LOCKED/UNLOCKED) ---
                             Positioned(
-                              left: 30 * scale, top: 486 * scale, 
+                              left: 30 * scale, top: 386 * scale, 
                               child: Opacity(
                                 opacity: isWordsLocked ? 0.40 : 1.0, 
                                 child: Container(width: 144 * scale, height: 144 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/commons.png"), fit: BoxFit.cover))),
                               ),
                             ),
                             Positioned(
-                              left: 18 * scale, top: 462 * scale, 
+                              left: 18 * scale, top: 362 * scale, 
                               child: Opacity(
                                 opacity: isWordsLocked ? 0.60 : 1.0,
                                 child: Text('Words/ Phrases', textAlign: TextAlign.center, style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44)),
                               ),
                             ),
                             if (isWordsLocked)
-                              Positioned(left: 55 * scale, top: 486 * scale, child: Container(width: 90 * scale, height: 119 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/locked.png"), fit: BoxFit.fill))))
+                              Positioned(left: 55 * scale, top: 386 * scale, child: Container(width: 90 * scale, height: 119 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/locked.png"), fit: BoxFit.fill))))
                             else
                               Positioned(
-                                left: 55 * scale, top: 486 * scale,
+                                left: 55 * scale, top: 386 * scale,
                                 child: GestureDetector(
                                   onTap: () {
                                     // Router pathway to words interface screen
@@ -194,7 +176,7 @@ class SnedInterface2 extends StatelessWidget {
                                 ),
                               ),
                             Positioned(
-                              left: 13 * scale, top: 626 * scale, 
+                              left: 13 * scale, top: 526 * scale, 
                               child: Opacity(
                                 opacity: isWordsLocked ? 0.40 : 1.0, 
                                 child: _buildProgressPanel(
@@ -206,28 +188,28 @@ class SnedInterface2 extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            Positioned(left: 24 * scale, top: 661 * scale, child: Opacity(opacity: isWordsLocked ? 0.40 : 1.0, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale)))),
+                            Positioned(left: 24 * scale, top: 561 * scale, child: Opacity(opacity: isWordsLocked ? 0.40 : 1.0, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale)))),
                             
                             // --- MODULE: CIVIC OBSERVANCES (LOCKED/UNLOCKED) ---
                             Positioned(
-                              left: 217 * scale, top: 481 * scale, 
+                              left: 217 * scale, top: 381 * scale, 
                               child: Opacity(
                                 opacity: isCivicsLocked ? 0.40 : 1.0, 
                                 child: Container(width: 154 * scale, height: 153 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/civic.png"), fit: BoxFit.cover))),
                               ),
                             ),
                             Positioned(
-                              left: 218 * scale, top: 453 * scale, 
+                              left: 218 * scale, top: 353 * scale, 
                               child: Opacity(
                                 opacity: isCivicsLocked ? 0.60 : 1.0,
                                 child: Text('Civic Observances', textAlign: TextAlign.center, style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44)),
                               ),
                             ),
                             if (isCivicsLocked)
-                              Positioned(left: 253.50 * scale, top: 486 * scale, child: Container(width: 90 * scale, height: 119 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/locked.png"), fit: BoxFit.fill))))
+                              Positioned(left: 253.50 * scale, top: 386 * scale, child: Container(width: 90 * scale, height: 119 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/locked.png"), fit: BoxFit.fill))))
                             else
                               Positioned(
-                                left: 253.50 * scale, top: 486 * scale,
+                                left: 253.50 * scale, top: 386 * scale,
                                 child: GestureDetector(
                                   onTap: () {
                                     // Router pathway to civics interface screen
@@ -236,7 +218,7 @@ class SnedInterface2 extends StatelessWidget {
                                 ),
                               ),
                             Positioned(
-                              left: 205 * scale, top: 626 * scale, 
+                              left: 205 * scale, top: 526 * scale, 
                               child: Opacity(
                                 opacity: isCivicsLocked ? 0.40 : 1.0, 
                                 child: _buildProgressPanel(
@@ -248,7 +230,7 @@ class SnedInterface2 extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            Positioned(left: 216 * scale, top: 661 * scale, child: Opacity(opacity: isCivicsLocked ? 0.40 : 1.0, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale)))),
+                            Positioned(left: 216 * scale, top: 561 * scale, child: Opacity(opacity: isCivicsLocked ? 0.40 : 1.0, child: Image.asset("assets/pictures/star.png", width: 22 * scale, height: 21 * scale, errorBuilder: (c, e, s) => Icon(Icons.star, color: const Color(0xFFFFB800), size: 20 * scale)))),
                           ],
                         ),
                       ),

@@ -53,7 +53,6 @@ class QuizApiService {
     }
 
     // STEP 2: Filter by Level LOCALLY in Dart 
-    // Checks for exact levelId match (or fallback to "easy" just in case your database isn't updated)
     List<QuizQuestion> levelQuestions = [];
     for (var doc in querySnapshot.docs) {
       final data = doc.data();
@@ -89,7 +88,8 @@ class QuizApiService {
       throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but none matched the requested questionType: '$typeFilter'.");
     }
 
-    return finalQuestions.take(5).toList();
+    // REMOVED .take(5) TO RETURN ALL MATCHING QUESTIONS
+    return finalQuestions; 
   }
 }
 
@@ -97,12 +97,12 @@ class QuizApiService {
 // 3. MAIN UI SCREEN
 // ==========================================
 class EasyActMc extends StatefulWidget {
-  final String levelId; // ADDED: Now perfectly accepts levelId from activity_interface.dart
+  final String levelId; 
   final String questionType;
 
   const EasyActMc({
     super.key, 
-    required this.levelId, // ADDED REQUIRED PARAMETER
+    required this.levelId, 
     required this.questionType,
   });
 
@@ -133,7 +133,6 @@ class _EasyActMcState extends State<EasyActMc> {
 
   Future<void> _loadQuestions() async {
     try {
-      // ADDED: Passing widget.levelId to the API
       final questions = await _apiService.fetchEasyQuestions(widget.levelId, widget.questionType);
       setState(() {
         _questions = questions;
@@ -216,7 +215,6 @@ class _EasyActMcState extends State<EasyActMc> {
                   ? Map<String, dynamic>.from(data['progress']) 
                   : {};
                   
-              // ADDED: Dynamically saves progress to the exact Level ID passed in
               final int previousStars = progress[widget.levelId] ?? 0;
               
               int globalStarsToAdd = 0;
@@ -374,7 +372,12 @@ class _EasyActMcState extends State<EasyActMc> {
 
     final currentQuestion = _questions[_currentIndex];
     final progress = (_currentIndex + 1) / _questions.length;
-    final isImageOption = currentQuestion.type == "text_to_sign";
+    
+    // UPDATED: Now supports image options for both 'text_to_sign' and 'true_false'
+// Check if the first option contains a common image file extension
+    final isImageOption = currentQuestion.options.isNotEmpty && 
+                          (currentQuestion.options[0].contains('.png') || 
+                           currentQuestion.options[0].contains('.jpg'));
 
     return SafeArea(
       child: Column(

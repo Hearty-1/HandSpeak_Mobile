@@ -88,7 +88,8 @@ class NumbersQuizApiService {
       throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but your screen is asking for questionType: '$typeFilter'.\n\nAll your level 3 counting questions are saved as 'text_to_sign'. Change the questionType in your Navigator.push!");
     }
 
-    return finalQuestions.take(5).toList();
+    // REMOVED .take(5) TO RETURN ALL MATCHING QUESTIONS
+    return finalQuestions;
   }
 }
 
@@ -374,7 +375,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
 
     final currentQuestion = _questions[_currentIndex];
     final progress = (_currentIndex + 1) / _questions.length;
-    final isImageOption = currentQuestion.type == "text_to_sign";
+    final isImageOption = currentQuestion.options.isNotEmpty && 
+                          (currentQuestion.options[0].contains('.png') || 
+                           currentQuestion.options[0].contains('.jpg'));
 
     return SafeArea(
       child: Column(
