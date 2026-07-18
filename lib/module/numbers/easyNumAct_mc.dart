@@ -1,3 +1,6 @@
+import 'dart:ui';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -312,33 +315,43 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9E5),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFFB800),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          "Numbers Activities",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Row(
-              children: [
-                const Icon(Icons.favorite, color: Colors.red, size: 24),
-                const SizedBox(width: 4),
-                Text(
-                  "$_hearts",
-                  style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          )
+  backgroundColor: Colors.white.withOpacity(0.4), 
+  elevation: 0,
+  leading: IconButton(
+    icon: const Icon(CupertinoIcons.xmark, color: Colors.black87, size: 22),
+    onPressed: () => Navigator.pop(context),
+  ),
+  flexibleSpace: ClipRRect(
+    child: BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), 
+      child: Container(color: Colors.transparent),
+    ),
+  ),
+  title: const Text(
+    "Numbers Activities",
+    style: TextStyle(
+      color: Colors.black87, 
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.5
+    ),
+  ),
+  centerTitle: true,
+  actions: [
+    Padding(
+      padding: const EdgeInsets.only(right: 20.0),
+      child: Row(
+        children: [
+          const Icon(CupertinoIcons.heart_fill, color: CupertinoColors.systemRed, size: 22),
+          const SizedBox(width: 5),
+          Text(
+            "$_hearts",
+            style: const TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
+    )
+  ],
+),
       body: _buildBody(),
     );
   }
