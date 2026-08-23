@@ -1,4 +1,6 @@
 import 'dart:ui'; 
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
@@ -8,7 +10,8 @@ import '../services/progress_service.dart';
 import '../module/module.dart'; 
 import '../profile/profile.dart'; 
 import '../leaderboard/leaderboard.dart'; 
-// import '../database/database_seeder.dart'; 
+import '../home/settings_screen.dart';
+import '../home/notifications.dart';
 
 void main() {
   runApp(const FigmaToCodeApp()); 
@@ -34,13 +37,34 @@ class SnedInterafce1 extends StatelessWidget {
 
   const SnedInterafce1({super.key, required this.userName}); 
 
+  Widget _buildAvatarImage(String? avatarData, double scale, {double size = 48}) {
+    if (avatarData == null || avatarData.isEmpty) {
+      return Icon(Icons.person, color: const Color(0xFFFFB800), size: 26 * scale);
+    }
+    
+    if (avatarData.startsWith('data:image')) {
+      try {
+        final String base64String = avatarData.split(',').last;
+        final Uint8List bytes = base64Decode(base64String);
+        return Image.memory(bytes, width: size * scale, height: size * scale, fit: BoxFit.cover);
+      } catch (e) {
+        return Icon(Icons.broken_image_rounded, color: Colors.grey, size: 26 * scale);
+      }
+    } else {
+      return Image.network(
+        avatarData,
+        width: size * scale,
+        height: size * scale,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Icon(Icons.person, color: const Color(0xFFFFB800), size: 26 * scale),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width; 
     final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393; 
-
-    final DateTime now = DateTime.now(); 
-    final todayStr = now.toIso8601String().split('T')[0]; 
 
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
@@ -95,7 +119,10 @@ class SnedInterafce1 extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.settings, color: Color(0xFFFFB800)), 
                     title: const Text('Settings', style: TextStyle(color: Color(0xFF222222), fontWeight: FontWeight.w600)), 
-                    onTap: () => Navigator.pop(context), 
+                    onTap: () {
+                      Navigator.pop(context); 
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                    }, 
                   ),
                   ListTile(
                     leading: const Icon(Icons.help_outline, color: Color(0xFFFFB800)), 
@@ -138,28 +165,6 @@ class SnedInterafce1 extends StatelessWidget {
         ],
       ),
       
-      /*
-      // --- DEV TOOL SEED BUTTON ---
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 100.0), 
-        child: ElevatedButton.icon(
-          onPressed: () => DatabaseSeeder.seedActivities(context), 
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.redAccent.withOpacity(0.9), 
-            elevation: 8,
-            shadowColor: Colors.redAccent.withOpacity(0.5),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          ),
-          icon: const Icon(Icons.cloud_upload, color: Colors.white), 
-          label: const Text(
-            "DEV: SEED DATABASE", 
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
-          ),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat, 
-      */
-    
       // --- GLASSMORPHISM 4-TAB BOTTOM NAVIGATION BAR ---
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -234,8 +239,8 @@ class SnedInterafce1 extends StatelessWidget {
               int streak = 0; 
               int totalXp = 0; 
               int stars = 0; 
-              String? avatarUrl; // NEW: Added to hold avatar URL
-              bool isChallengeCompleted = false; 
+              String? avatarUrl; 
+              bool hasUnreadNotifications = false;
 
               if (userSnapshot.hasData && userSnapshot.data!.exists) { 
                 final userData = userSnapshot.data!.data() as Map<String, dynamic>?; 
@@ -244,8 +249,13 @@ class SnedInterafce1 extends StatelessWidget {
                   streak = userData['streak'] ?? 0; 
                   totalXp = userData['xp'] ?? 0; 
                   stars = userData['stars'] ?? (totalXp ~/ 1000);  
-                  avatarUrl = userData['avatar'] ?? userData['photoURL']; // NEW: Extract avatar
-                  isChallengeCompleted = userData['lastCompletedChallengeDate'] == todayStr; 
+                  avatarUrl = userData['avatar'] ?? userData['photoURL']; 
+
+                  // Check if there are any unread notifications
+                  final List<dynamic> rawNotifications = userData['notifications'] ?? [];
+                  hasUnreadNotifications = rawNotifications.any(
+                    (n) => (n is Map) && (n['isRead'] == false),
+                  );
                 }
               }
 
@@ -270,7 +280,6 @@ class SnedInterafce1 extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                       children: [
-                        // --- UPDATED AVATAR DISPLAY WITH LIVE IMAGE LOADING ---
                         GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen())), 
                           child: Container(
@@ -282,13 +291,7 @@ class SnedInterafce1 extends StatelessWidget {
                               border: Border.all(color: const Color(0xFFFFB800).withOpacity(0.5), width: 1.5),
                             ),
                             child: ClipOval(
-                              child: (avatarUrl != null && avatarUrl.isNotEmpty)
-                                  ? Image.network(
-                                      avatarUrl,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) => Icon(Icons.person, color: const Color(0xFFFFB800), size: 26 * scale),
-                                    )
-                                  : Icon(Icons.person, color: const Color(0xFFFFB800), size: 26 * scale),
+                              child: _buildAvatarImage(avatarUrl, scale),
                             ),
                           ),
                         ),
@@ -372,7 +375,6 @@ class SnedInterafce1 extends StatelessWidget {
                           ),
                           SizedBox(width: 15 * scale), 
                           
-                          // --- REPLACED ROCKET ICON WITH WAVING HAND FOR "HELLO" ---
                           Container(
                             padding: EdgeInsets.all(12 * scale),
                             decoration: BoxDecoration(
@@ -398,12 +400,12 @@ class SnedInterafce1 extends StatelessWidget {
 
                     SizedBox(height: 25 * scale), 
 
-                    // --- DAILY CHALLENGES GLASS BANNER ---
+                    // --- NOTIFICATIONS GLASS BANNER (REPLACES DAILY CHALLENGES) ---
                     GestureDetector(
                       onTap: () {
                         Navigator.push( 
                           context,
-                          MaterialPageRoute(builder: (context) => const LeaderboardScreen()), 
+                          MaterialPageRoute(builder: (context) => const NotificationsScreen()), 
                         );
                       },
                       child: _buildGlassContainer(
@@ -414,21 +416,35 @@ class SnedInterafce1 extends StatelessWidget {
                             Stack(
                               clipBehavior: Clip.none, 
                               children: [
-                                Icon(Icons.notifications_active_rounded, color: const Color(0xFFFFB800), size: 36 * scale), 
-                                if (!isChallengeCompleted) 
+                                Icon(
+                                  Icons.notifications_active_rounded, 
+                                  color: const Color(0xFFFFB800), 
+                                  size: 36 * scale,
+                                ), 
+                                if (hasUnreadNotifications) 
                                   Positioned(
                                     top: -2, right: -2, 
                                     child: Container(
-                                      width: 12 * scale, height: 12 * scale, 
-                                      decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), 
+                                      width: 12 * scale, 
+                                      height: 12 * scale, 
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFF3B30), 
+                                        shape: BoxShape.circle, 
+                                        border: Border.all(color: Colors.white, width: 2),
+                                      ), 
                                     ),
                                   )
                               ],
                             ),
                             SizedBox(width: 16 * scale), 
                             Text(
-                              'Daily\nChallenges!', 
-                              style: TextStyle(color: const Color(0xFF222222), fontSize: 18 * scale, fontWeight: FontWeight.w800, height: 1.1, letterSpacing: -0.5), 
+                              'Notifications', 
+                              style: TextStyle(
+                                color: const Color(0xFF222222), 
+                                fontSize: 18 * scale, 
+                                fontWeight: FontWeight.w800, 
+                                letterSpacing: -0.5,
+                              ), 
                             ),
                             const Spacer(), 
                             Icon(Icons.arrow_forward_ios_rounded, color: Colors.black45, size: 22 * scale), 

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
-import '../home/home.dart';
 import '../services/auth_service.dart';
 
 class CreateAccount extends StatefulWidget {
@@ -14,7 +13,9 @@ class CreateAccount extends StatefulWidget {
 class _CreateAccountState extends State<CreateAccount> {
   final _formKey = GlobalKey<FormState>();
 
-  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _middleNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
@@ -35,18 +36,9 @@ class _CreateAccountState extends State<CreateAccount> {
     if (!_formKey.currentState!.validate() || _gradeLevel == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please fill all required fields and select a grade."),
+          content: Text("Please fix the errors in the form and select a grade."),
           behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    if (_passController.text != _confirmPassController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Passwords do not match!"),
-          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.redAccent,
         ),
       );
       return;
@@ -57,7 +49,9 @@ class _CreateAccountState extends State<CreateAccount> {
     var user = await _authService.signUpWithStudentDetails(
       email: _emailController.text.trim(),
       password: _passController.text.trim(),
-      fullName: _nameController.text.trim(),
+      firstName: _firstNameController.text.trim(),
+      middleName: _middleNameController.text.trim(),
+      lastName: _lastNameController.text.trim(),
       studentId: _idController.text.trim(),
       section: _sectionController.text.trim(),
       gradeLevel: _gradeLevel!,
@@ -67,16 +61,23 @@ class _CreateAccountState extends State<CreateAccount> {
 
     if (user != null) {
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => SnedInterafce1(userName: _nameController.text)),
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Account created successfully! Please wait for faculty approval."),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.green,
+        ),
       );
+      
+      Navigator.pop(context); 
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Failed to create account. Email might be in use or invalid."),
           behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.redAccent,
         ),
       );
     }
@@ -117,7 +118,6 @@ class _CreateAccountState extends State<CreateAccount> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Side-by-side Images with equal sizing
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -138,21 +138,65 @@ class _CreateAccountState extends State<CreateAccount> {
                 ),
                 const SizedBox(height: 32),
 
-                // Standard full-width fields with examples
                 _buildInputField(
-                  label: "Full Name", 
-                  hintText: "e.g. Juan Dela Cruz",
-                  controller: _nameController,
+                  label: "First Name", 
+                  hintText: "e.g. Juan",
+                  controller: _firstNameController,
                   keyboardType: TextInputType.name,
+                  maxLength: 50, // Industry standard for single name fields
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s\-\.]'))],
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return "First name is required";
+                    if (!RegExp(r'^[a-zA-Z\s\-\.]+$').hasMatch(v)) return "Letters, spaces, and hyphens only";
+                    return null;
+                  },
                 ),
+                
+                _buildInputField(
+                  label: "Middle Name (Optional)", 
+                  hintText: "e.g. Santos",
+                  controller: _middleNameController,
+                  keyboardType: TextInputType.name,
+                  isRequired: false, 
+                  maxLength: 50,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s\-\.]'))],
+                  validator: (v) {
+                    if (v != null && v.trim().isNotEmpty && !RegExp(r'^[a-zA-Z\s\-\.]+$').hasMatch(v)) {
+                      return "Letters, spaces, and hyphens only";
+                    }
+                    return null;
+                  },
+                ),
+                
+                _buildInputField(
+                  label: "Last Name", 
+                  hintText: "e.g. Dela Cruz",
+                  controller: _lastNameController,
+                  keyboardType: TextInputType.name,
+                  maxLength: 50,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s\-\.]'))],
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return "Last name is required";
+                    if (!RegExp(r'^[a-zA-Z\s\-\.]+$').hasMatch(v)) return "Letters, spaces, and hyphens only";
+                    return null;
+                  },
+                ),
+
                 _buildInputField(
                   label: "Email Address", 
                   hintText: "e.g. juan@handspeak.edu",
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  maxLength: 254, // RFC 5321 Standard for maximum email length
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return "Email is required";
+                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v)) {
+                      return "Enter a valid email format (e.g. name@domain.com)";
+                    }
+                    return null;
+                  },
                 ),
 
-                // Side-by-side Row
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
                   child: Row(
@@ -173,17 +217,25 @@ class _CreateAccountState extends State<CreateAccount> {
                           hintText: "e.g. Narra",
                           controller: _sectionController,
                           isBottomPadded: false, 
+                          maxLength: 20, 
+                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s\-\.]'))],
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) return "Section required";
+                            if (!RegExp(r'^[a-zA-Z\s\-\.]+$').hasMatch(v)) return "Letters only";
+                            return null;
+                          },
                         ),
                       ),
                     ],
                   ),
                 ),
 
-                // Fields below the row with examples
                 _buildInputField(
                   label: "Student ID", 
                   hintText: "e.g. 26001",
                   controller: _idController,
+                  maxLength: 20, // Standard limit for alphanumeric IDs
+                  validator: (v) => v == null || v.trim().isEmpty ? "Student ID is required" : null,
                 ),
                 
                 _buildInputField(
@@ -191,6 +243,12 @@ class _CreateAccountState extends State<CreateAccount> {
                   hintText: "••••••••",
                   controller: _passController, 
                   obscureText: _obscurePassword,
+                  maxLength: 128, // Complies with NIST SP 800-63B allowing long passphrases
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return "Password is required";
+                    if (v.length < 8) return "Must be at least 8 characters long";
+                    return null;
+                  },
                   suffixIcon: Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: IconButton(
@@ -209,6 +267,12 @@ class _CreateAccountState extends State<CreateAccount> {
                   hintText: "••••••••",
                   controller: _confirmPassController, 
                   obscureText: _obscureConfirmPassword,
+                  maxLength: 128,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return "Please confirm your password";
+                    if (v != _passController.text) return "Passwords do not match";
+                    return null;
+                  },
                   suffixIcon: Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: IconButton(
@@ -224,7 +288,6 @@ class _CreateAccountState extends State<CreateAccount> {
 
                 const SizedBox(height: 24),
 
-                // Sign Up Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -264,7 +327,6 @@ class _CreateAccountState extends State<CreateAccount> {
     );
   }
 
-  // Helper updated to accept hintText
   Widget _buildInputField({
     required String label, 
     required TextEditingController controller, 
@@ -273,7 +335,19 @@ class _CreateAccountState extends State<CreateAccount> {
     TextInputType keyboardType = TextInputType.text,
     Widget? suffixIcon,
     bool isBottomPadded = true,
+    bool isRequired = true,
+    String? Function(String?)? validator,
+    List<TextInputFormatter>? inputFormatters,
+    int? maxLength,
   }) {
+    List<TextInputFormatter> formatters = [];
+    if (maxLength != null) {
+      formatters.add(LengthLimitingTextInputFormatter(maxLength));
+    }
+    if (inputFormatters != null) {
+      formatters.addAll(inputFormatters);
+    }
+
     return Padding(
       padding: EdgeInsets.only(bottom: isBottomPadded ? 16.0 : 0.0),
       child: Column(
@@ -290,8 +364,10 @@ class _CreateAccountState extends State<CreateAccount> {
             controller: controller,
             obscureText: obscureText,
             keyboardType: keyboardType,
+            inputFormatters: formatters, 
+            autovalidateMode: AutovalidateMode.onUserInteraction,
             style: const TextStyle(fontSize: 16, color: Colors.black, fontWeight: FontWeight.w400),
-            validator: (v) => v == null || v.isEmpty ? "Required" : null,
+            validator: validator ?? (isRequired ? (v) => v == null || v.trim().isEmpty ? "Required" : null : null),
             decoration: InputDecoration(
               hintText: hintText,
               hintStyle: const TextStyle(color: Color(0xFFC7C7CC), fontSize: 15), 
@@ -304,11 +380,17 @@ class _CreateAccountState extends State<CreateAccount> {
               ),
               errorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(32),
-                borderSide: const BorderSide(color: Colors.redAccent, width: 1),
+                borderSide: const BorderSide(color: Colors.red, width: 1.5),
               ),
               focusedErrorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(32),
-                borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+                borderSide: const BorderSide(color: Colors.red, width: 2.5),
+              ),
+              errorStyle: const TextStyle(
+                height: 1.0, 
+                color: Colors.red, 
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
               ),
               suffixIcon: suffixIcon,
             ),
@@ -318,7 +400,6 @@ class _CreateAccountState extends State<CreateAccount> {
     );
   }
 
-  // Refactored Helper for Dropdown
   Widget _buildDropdown({
     required String label, 
     required List<String> items, 

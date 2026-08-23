@@ -6,7 +6,7 @@ import '../services/progress_service.dart';
 import '../home/home.dart';
 import '../module/module.dart';
 import '../profile/profile.dart';
-
+import '../profile/add_friend_screen.dart';
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
 
@@ -97,17 +97,22 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         backgroundColor: Colors.white.withOpacity(0.4),
         elevation: 0,
         centerTitle: true,
-        automaticallyImplyLeading: true, 
-        leading: Navigator.canPop(context)
-            ? IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded, 
-                  color: Colors.black87, 
-                  size: 20,
-                ),
-                onPressed: () => Navigator.maybePop(context),
-              )
-            : null,
+        automaticallyImplyLeading: false, 
+        leading: IconButton(
+          icon: const Icon(
+            Icons.person_add_rounded, 
+            color: Colors.black87, 
+            size: 22,
+          ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AddFriendScreen(), // Replace with your destination screen widget
+              ),
+            );
+          },
+        ),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),

@@ -1,15 +1,46 @@
-import 'dart:ui'; // Crucial for structural ImageFilter blurs
+import 'dart:ui';
+import 'dart:convert'; 
+import 'dart:typed_data'; 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart'; 
+
 import '../services/progress_service.dart'; 
 import '../auth/login_screen.dart';        
 import '../home/home.dart'; 
 import '../module/module.dart'; 
 import '../leaderboard/leaderboard.dart';
+import '../home/settings_screen.dart'; 
+import 'add_friend_screen.dart'; 
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
+
+  // Helper to safely render either a Base64 image, a network URL, or a fallback icon
+  Widget _buildAvatarImage(String avatarData, double scale, {double size = 100}) {
+    if (avatarData.isEmpty) {
+      return Icon(Icons.person_rounded, size: size * 0.55 * scale, color: const Color(0xFFFFB800));
+    }
+    
+    if (avatarData.startsWith('data:image')) {
+      try {
+        final String base64String = avatarData.split(',').last;
+        final Uint8List bytes = base64Decode(base64String);
+        return Image.memory(bytes, width: size * scale, height: size * scale, fit: BoxFit.cover);
+      } catch (e) {
+        return Icon(Icons.broken_image_rounded, size: size * 0.55 * scale, color: Colors.grey);
+      }
+    } else {
+      return Image.network(
+        avatarData,
+        width: size * scale,
+        height: size * scale,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Icon(Icons.person_rounded, size: size * 0.55 * scale, color: const Color(0xFFFFB800)),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +86,16 @@ class ProfileScreen extends StatelessWidget {
         backgroundColor: Colors.white.withOpacity(0.4),
         elevation: 0,
         centerTitle: true,
-        automaticallyImplyLeading: true, 
+        automaticallyImplyLeading: false, 
+        leading: IconButton( 
+          icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.black87, size: 26),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const AddFriendScreen()),
+            );
+          },
+        ),
         iconTheme: const IconThemeData(color: Colors.black87), 
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
@@ -93,7 +133,11 @@ class ProfileScreen extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(25),
-                child: Image.asset("assets/pictures/image 66.png", width: 40, height: 40, fit: BoxFit.cover,
+                child: Image.asset(
+                  "assets/pictures/image 66.png", 
+                  width: 40, 
+                  height: 40, 
+                  fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const Icon(Icons.account_circle, size: 40, color: Colors.grey),
                 ),
               ),
@@ -160,7 +204,6 @@ class ProfileScreen extends StatelessWidget {
       
       body: Stack(
         children: [
-          // Background soft ambient blur shapes to match Leaderboard theme
           Positioned(
             top: 120 * scale, left: -40 * scale,
             child: Container(
@@ -192,8 +235,13 @@ class ProfileScreen extends StatelessWidget {
 
                 String name = currentUser.displayName ?? "Guest Student";
                 String email = currentUser.email ?? "student@handspeak.edu";
-                String avatarUrl = currentUser.photoURL ?? "";
-                int stars = 0, xp = 0, streak = 0, followers = 0, following = 0;
+                String avatarUrl = "";
+                int stars = 0, xp = 0, streak = 0, followersCount = 0, followingCount = 0;
+                
+                List<dynamic> followersList = [];
+                List<dynamic> followingList = [];
+                List<dynamic> outgoingRequests = [];
+
                 Map<String, dynamic> progressMap = {};
 
                 if (snapshot.hasData && snapshot.data!.exists) {
@@ -201,11 +249,16 @@ class ProfileScreen extends StatelessWidget {
                   if (userData != null) {
                     name = userData['name'] ?? name;
                     email = userData['email'] ?? email;
-                    avatarUrl = userData['avatar'] ?? avatarUrl;
+                    avatarUrl = userData['avatar'] ?? ""; 
                     stars = userData['stars'] ?? 0;
                     streak = userData['streak'] ?? 0;
-                    followers = userData['followers'] ?? 0;
-                    following = userData['following'] ?? 0;
+                    
+                    followersList = userData['followers'] as List<dynamic>? ?? [];
+                    followingList = userData['following'] as List<dynamic>? ?? [];
+                    outgoingRequests = userData['outgoingRequests'] as List<dynamic>? ?? [];
+                    
+                    followersCount = followersList.length;
+                    followingCount = followingList.length + outgoingRequests.length;
                     
                     if (userData.containsKey('progress') && userData['progress'] is Map) {
                       progressMap = Map<String, dynamic>.from(userData['progress']);
@@ -246,21 +299,12 @@ class ProfileScreen extends StatelessWidget {
                               radius: 50 * scale,
                               backgroundColor: const Color(0xFFFFEFA7),
                               child: ClipOval(
-                                child: avatarUrl.isNotEmpty
-                                    ? Image.network(
-                                        avatarUrl,
-                                        width: 100 * scale,
-                                        height: 100 * scale,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) => 
-                                            Icon(Icons.person_rounded, size: 55 * scale, color: const Color(0xFFFFB800)),
-                                      )
-                                    : Icon(Icons.person_rounded, size: 55 * scale, color: const Color(0xFFFFB800)),
+                                child: _buildAvatarImage(avatarUrl, scale),
                               ),
                             ),
                           ),
                           GestureDetector(
-                            onTap: () => _showSettingsDialog(context, currentUser, currentName: name, currentAvatar: avatarUrl, scale: scale),
+                            onTap: () => _showEditAvatarDialog(context, currentUser, currentAvatar: avatarUrl, scale: scale),
                             child: Container(
                               height: 32 * scale,
                               width: 32 * scale,
@@ -302,16 +346,20 @@ class ProfileScreen extends StatelessWidget {
                       
                       SizedBox(height: 20 * scale),
 
-                      // --- NATIVE FOLLOWERS DISPLAY ---
+                      // --- NATIVE FOLLOWERS DISPLAY (CLICKABLE WITH UNFOLLOW/REMOVE OPTION) ---
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Column(
-                            children: [
-                              Text('$followers', style: TextStyle(color: const Color(0xFF222222), fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
-                              SizedBox(height: 2 * scale),
-                              Text('Followers', style: TextStyle(color: Colors.black45, fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
-                            ],
+                          GestureDetector(
+                            onTap: () => _showFriendsList(context, "Followers", List.from(followersList), scale, currentUser.uid, false),
+                            behavior: HitTestBehavior.opaque,
+                            child: Column(
+                              children: [
+                                Text('$followersCount', style: TextStyle(color: const Color(0xFF222222), fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                                SizedBox(height: 2 * scale),
+                                Text('Followers', style: TextStyle(color: Colors.black45, fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+                              ],
+                            ),
                           ),
                           Container(
                             height: 24 * scale,
@@ -319,12 +367,19 @@ class ProfileScreen extends StatelessWidget {
                             color: Colors.black.withOpacity(0.1),
                             margin: EdgeInsets.symmetric(horizontal: 30 * scale),
                           ),
-                          Column(
-                            children: [
-                              Text('$following', style: TextStyle(color: const Color(0xFF222222), fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
-                              SizedBox(height: 2 * scale),
-                              Text('Following', style: TextStyle(color: Colors.black45, fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
-                            ],
+                          GestureDetector(
+                            onTap: () {
+                              List<dynamic> combinedList = [...followingList, ...outgoingRequests];
+                              _showFriendsList(context, "Following", List.from(combinedList), scale, currentUser.uid, true);
+                            },
+                            behavior: HitTestBehavior.opaque,
+                            child: Column(
+                              children: [
+                                Text('$followingCount', style: TextStyle(color: const Color(0xFF222222), fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                                SizedBox(height: 2 * scale),
+                                Text('Following', style: TextStyle(color: Colors.black45, fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -418,10 +473,15 @@ class ProfileScreen extends StatelessWidget {
                               children: [
                                 _buildActionRow(
                                   scale: scale,
-                                  icon: Icons.manage_accounts_rounded,
+                                  icon: Icons.settings_rounded,
                                   iconColor: const Color(0xFFFFB800),
-                                  title: "Edit Account Profile",
-                                  onTap: () => _showSettingsDialog(context, currentUser, currentName: name, currentAvatar: avatarUrl, scale: scale),
+                                  title: "Settings",
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                                    );
+                                  },
                                 ),
                                 Divider(height: 1, thickness: 0.8, color: Colors.black.withOpacity(0.06)),
                                 _buildActionRow(
@@ -445,6 +505,201 @@ class ProfileScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  // --- SHOW FRIENDS LIST BOTTOM SHEET (WITH UNFOLLOW/REMOVE ABILITY) ---
+  void _showFriendsList(BuildContext context, String title, List<dynamic> initialUids, double scale, String currentUserId, bool isFollowingList) {
+    List<dynamic> uids = List.from(initialUids);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFFFFF9E5),
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24 * scale))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.6,
+              padding: EdgeInsets.all(20 * scale),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40 * scale, 
+                      height: 5 * scale, 
+                      decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(10))
+                    ),
+                  ),
+                  SizedBox(height: 20 * scale),
+                  Text(
+                    title, 
+                    style: TextStyle(
+                      fontSize: 20 * scale, 
+                      fontWeight: FontWeight.w800, 
+                      fontFamily: 'Inter',
+                      letterSpacing: -0.5
+                    )
+                  ),
+                  SizedBox(height: 16 * scale),
+                  Expanded(
+                    child: uids.isEmpty
+                        ? Center(
+                            child: Text(
+                              "No $title yet.", 
+                              style: TextStyle(color: Colors.black54, fontSize: 14 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')
+                            )
+                          )
+                        : ListView.separated(
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: uids.length,
+                            separatorBuilder: (_, __) => SizedBox(height: 12 * scale),
+                            itemBuilder: (context, index) {
+                              String targetUid = uids[index];
+
+                              return FutureBuilder<DocumentSnapshot>(
+                                future: FirebaseFirestore.instance.collection('users').doc(targetUid).get(),
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData || !snapshot.data!.exists) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final data = snapshot.data!.data() as Map<String, dynamic>;
+                                  String name = data['name'] ?? 'Student';
+                                  String avatar = data['avatar'] ?? '';
+                                  int xp = data['xp'] ?? 0;
+
+                                  return Container(
+                                    padding: EdgeInsets.all(12 * scale),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16 * scale),
+                                      border: Border.all(color: Colors.black.withOpacity(0.04)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 20 * scale,
+                                          backgroundColor: const Color(0xFFFFEFA7),
+                                          child: ClipOval(child: _buildAvatarImage(avatar, scale, size: 40)),
+                                        ),
+                                        SizedBox(width: 12 * scale),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                name, 
+                                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14 * scale, fontFamily: 'Inter'),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              SizedBox(height: 2 * scale),
+                                              Row(
+                                                children: [
+                                                  Icon(Icons.bolt_rounded, size: 12 * scale, color: Colors.blue.shade400),
+                                                  SizedBox(width: 2 * scale),
+                                                  Text(
+                                                    "$xp XP", 
+                                                    style: TextStyle(color: Colors.blue.shade600, fontSize: 11 * scale, fontWeight: FontWeight.w700)
+                                                  ),
+                                                ],
+                                              )
+                                            ],
+                                          ),
+                                        ),
+                                        // --- ACTION BUTTONS (UNFOLLOW vs REMOVE) ---
+                                        SizedBox(width: 8 * scale),
+                                        if (isFollowingList) 
+                                          GestureDetector(
+                                            onTap: () async {
+                                              setState(() {
+                                                uids.removeAt(index);
+                                              });
+                                              try {
+                                                final currentRef = FirebaseFirestore.instance.collection('users').doc(currentUserId);
+                                                final targetRef = FirebaseFirestore.instance.collection('users').doc(targetUid);
+                                                final batch = FirebaseFirestore.instance.batch();
+                                                
+                                                batch.update(currentRef, {
+                                                  'following': FieldValue.arrayRemove([targetUid]),
+                                                  'outgoingRequests': FieldValue.arrayRemove([targetUid]),
+                                                });
+                                                
+                                                batch.update(targetRef, {
+                                                  'followers': FieldValue.arrayRemove([currentUserId]),
+                                                  'incomingRequests': FieldValue.arrayRemove([currentUserId]),
+                                                });
+                                                await batch.commit();
+                                              } catch (e) {
+                                                debugPrint("Error unfollowing: $e");
+                                              }
+                                            },
+                                            child: Container(
+                                              padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.shade200,
+                                                borderRadius: BorderRadius.circular(12 * scale),
+                                              ),
+                                              child: Text(
+                                                "Unfollow", 
+                                                style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w700, fontSize: 12 * scale, fontFamily: 'Inter')
+                                              ),
+                                            ),
+                                          )
+                                        else 
+                                          GestureDetector(
+                                            onTap: () async {
+                                              // Optimistic UI Update for removing a follower
+                                              setState(() {
+                                                uids.removeAt(index);
+                                              });
+                                              try {
+                                                final currentRef = FirebaseFirestore.instance.collection('users').doc(currentUserId);
+                                                final targetRef = FirebaseFirestore.instance.collection('users').doc(targetUid);
+                                                final batch = FirebaseFirestore.instance.batch();
+                                                
+                                                // Remove the target user from YOUR followers list
+                                                batch.update(currentRef, {
+                                                  'followers': FieldValue.arrayRemove([targetUid]),
+                                                });
+                                                
+                                                // Remove YOU from the target user's following list
+                                                batch.update(targetRef, {
+                                                  'following': FieldValue.arrayRemove([currentUserId]),
+                                                });
+                                                await batch.commit();
+                                              } catch (e) {
+                                                debugPrint("Error removing follower: $e");
+                                              }
+                                            },
+                                            child: Container(
+                                              padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.shade200,
+                                                borderRadius: BorderRadius.circular(12 * scale),
+                                              ),
+                                              child: Text(
+                                                "Remove", 
+                                                style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w700, fontSize: 12 * scale, fontFamily: 'Inter')
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          }
+        );
+      }
     );
   }
 
@@ -486,12 +741,10 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- SETTINGS / EDIT PROFILE SHEET DIALOG ---
-  // --- SETTINGS / EDIT PROFILE SHEET DIALOG (URL BASED) ---
-  void _showSettingsDialog(BuildContext context, User user, {String? currentName, String? currentAvatar, required double scale}) {
-    final TextEditingController nameController = TextEditingController(text: currentName ?? user.displayName ?? "");
-    final TextEditingController avatarController = TextEditingController(text: currentAvatar ?? user.photoURL ?? "");
-    final formKey = GlobalKey<FormState>();
+  // --- EDIT AVATAR SHEET DIALOG (LOCAL IMAGE UPLOAD ONLY) ---
+  void _showEditAvatarDialog(BuildContext context, User user, {String? currentAvatar, required double scale}) {
+    final ImagePicker picker = ImagePicker();
+    String selectedAvatarData = currentAvatar ?? ""; 
 
     showDialog(
       context: context,
@@ -507,80 +760,52 @@ class ProfileScreen extends StatelessWidget {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24 * scale)),
               title: Row(
                 children: [
-                  Container(
-                    padding: EdgeInsets.all(6 * scale),
-                    decoration: BoxDecoration(color: const Color(0xFFFFB800).withOpacity(0.15), shape: BoxShape.circle),
-                    child: Icon(Icons.mode_edit_outline_rounded, color: const Color(0xFFFFB800), size: 22 * scale),
-                  ),
+                  Container(padding: EdgeInsets.all(6 * scale), decoration: BoxDecoration(color: const Color(0xFFFFB800).withOpacity(0.15), shape: BoxShape.circle), child: Icon(Icons.photo_camera_rounded, color: const Color(0xFFFFB800), size: 22 * scale)),
                   SizedBox(width: 10 * scale),
-                  Text(
-                    "Edit Profile", 
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19 * scale, fontFamily: 'Inter', color: Colors.black87)
-                  ),
+                  Text("Update Avatar", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19 * scale, fontFamily: 'Inter', color: Colors.black87)),
                 ],
               ),
-              content: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // --- NAME FIELD ---
-                    TextFormField(
-                      controller: nameController,
-                      style: TextStyle(fontSize: 14 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter'),
-                      decoration: InputDecoration(
-                        labelText: "Display Name",
-                        labelStyle: const TextStyle(color: Colors.black45, fontWeight: FontWeight.w500),
-                        prefixIcon: const Icon(Icons.person_outline_rounded, color: Colors.black38),
-                        filled: true,
-                        fillColor: Colors.black.withOpacity(0.03),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Color(0xFFFFB800), width: 1.5),
-                          borderRadius: BorderRadius.circular(14 * scale),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.black.withOpacity(0.06), width: 1),
-                          borderRadius: BorderRadius.circular(14 * scale),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return "Name cannot be empty";
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // --- AVATAR UPLOAD PREVIEW ---
+                  GestureDetector(
+                    onTap: () async {
+                      try {
+                        final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40);
+                        if (image != null) {
+                          final bytes = await image.readAsBytes();
+                          final String base64Image = base64Encode(bytes);
+                          
+                          String mimeType = 'image/jpeg';
+                          if (image.name.toLowerCase().endsWith('.png')) mimeType = 'image/png';
+                          
+                          setState(() {
+                            selectedAvatarData = 'data:$mimeType;base64,$base64Image';
+                          });
                         }
-                        return null;
-                      },
-                    ),
-                    SizedBox(height: 14 * scale),
-                    
-                    // --- AVATAR URL FIELD ---
-                    TextFormField(
-                      controller: avatarController,
-                      style: TextStyle(fontSize: 14 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter'),
-                      decoration: InputDecoration(
-                        labelText: "Avatar Image URL",
-                        labelStyle: const TextStyle(color: Colors.black45, fontWeight: FontWeight.w500),
-                        hintText: "Paste an image link here...",
-                        prefixIcon: const Icon(Icons.link_rounded, color: Colors.black38),
-                        filled: true,
-                        fillColor: Colors.black.withOpacity(0.03),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Color(0xFFFFB800), width: 1.5),
-                          borderRadius: BorderRadius.circular(14 * scale),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.black.withOpacity(0.06), width: 1),
-                          borderRadius: BorderRadius.circular(14 * scale),
-                        ),
+                      } catch (e) {
+                        debugPrint("Image picking error: $e");
+                      }
+                    },
+                    child: Container(
+                      height: 80 * scale,
+                      width: 80 * scale,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withOpacity(0.05),
+                        border: Border.all(color: const Color(0xFFFFB800), width: 2),
+                      ),
+                      child: ClipOval(
+                        child: selectedAvatarData.isNotEmpty
+                            ? _buildAvatarImage(selectedAvatarData, scale, size: 80)
+                            : Icon(Icons.add_a_photo_rounded, color: Colors.black45, size: 30 * scale),
                       ),
                     ),
-                    SizedBox(height: 8 * scale),
-                    Text(
-                      "Paste a direct link to an image (e.g., from Google Images or Imgur).",
-                      style: TextStyle(color: Colors.black45, fontSize: 10 * scale, fontFamily: 'Inter'),
-                      textAlign: TextAlign.center,
-                    )
-                  ],
-                ),
+                  ),
+                  SizedBox(height: 8 * scale),
+                  Text("Tap to upload photo", style: TextStyle(color: Colors.black45, fontSize: 11 * scale, fontWeight: FontWeight.w600)),
+                ],
               ),
               actions: [
                 TextButton(
@@ -591,48 +816,27 @@ class ProfileScreen extends StatelessWidget {
                   onPressed: isSaving 
                     ? null 
                     : () async {
-                        if (formKey.currentState!.validate()) {
-                          setState(() => isSaving = true);
-                          
-                          try {
-                            final newName = nameController.text.trim();
-                            final newAvatarUrl = avatarController.text.trim();
-                            
-                            // --- UPDATE FIREBASE AUTH & FIRESTORE DIRECTLY ---
-                            await user.updateDisplayName(newName);
-                            if (newAvatarUrl.isNotEmpty) {
-                              await user.updatePhotoURL(newAvatarUrl);
-                            }
-                            
-                            await FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(user.uid)
-                                .set({
-                                  'name': newName,
-                                  'avatar': newAvatarUrl,
-                                }, SetOptions(merge: true));
+                        setState(() => isSaving = true);
+                        try {
+                          await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user.uid)
+                              .set({
+                                'avatar': selectedAvatarData, 
+                              }, SetOptions(merge: true));
 
-                            if (context.mounted) {
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Profile updated successfully!"), backgroundColor: Colors.green),
-                              );
-                            }
-                          } catch (e) {
-                            setState(() => isSaving = false);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Error updating profile: $e"), backgroundColor: Colors.red),
-                              );
-                            }
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avatar updated successfully!"), backgroundColor: Colors.green));
+                          }
+                        } catch (e) {
+                          setState(() => isSaving = false);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error updating avatar: $e"), backgroundColor: Colors.red));
                           }
                         }
                       },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFB800),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12 * scale)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12 * scale))),
                   child: isSaving 
                       ? SizedBox(width: 18 * scale, height: 18 * scale, child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Text("Save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
@@ -651,6 +855,7 @@ class ProfileScreen extends StatelessWidget {
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const SnedStudentLogin()), (route) => false);
   }
 
+  // --- STAT ITEM WIDGET ---
   Widget _buildStatItem(double scale, String label, String value, IconData icon, Color elementColor) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -669,6 +874,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  // --- BADGE WIDGET ---
   Widget _buildBadge(double scale, String label, String imagePath, {required bool isUnlocked}) {
     return Opacity(
       opacity: isUnlocked ? 1.0 : 0.3,

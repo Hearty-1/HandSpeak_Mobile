@@ -1,21 +1,105 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:intl/intl.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Sign Up with Email and Password + Save student details to Firestore
+  // --- ACTIVITY LOG HELPER ---
+  Future<void> _logAccountActivity({
+    required String uid,
+    required String action,
+    required String description,
+  }) async {
+    try {
+      String formattedTime = DateFormat("MMMM d, yyyy 'at' h:mm:ss a").format(DateTime.now());
+
+      await _db
+          .collection('users')
+          .doc(uid)
+          .collection('login_activity')
+          .add({
+        'action': action,
+        'description': description,
+        'status': 'active',
+        'timestamp': formattedTime,
+        'uid': uid,
+      });
+    } catch (e) {
+      debugPrint("Failed to log activity: $e");
+    }
+  }
+
+  // --- PUBLIC DEVICE HISTORY HELPER ---
+  Future<void> registerDeviceSession(String uid) async {
+    try {
+      final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+      String deviceName = "Unknown Device";
+      String os = "Unknown OS";
+      String deviceId = "unknown_device_id";
+
+      if (kIsWeb) {
+        final webInfo = await deviceInfo.webBrowserInfo;
+        deviceName = webInfo.browserName.name;
+        os = "Web Browser";
+        deviceId = webInfo.userAgent?.hashCode.toString() ?? "web_client";
+      } else if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        String manufacturer = androidInfo.manufacturer.isNotEmpty 
+            ? androidInfo.manufacturer 
+            : "Android";
+        String model = androidInfo.model.isNotEmpty 
+            ? androidInfo.model 
+            : "Device";
+            
+        deviceName = "$manufacturer $model".trim();
+        os = "Android ${androidInfo.version.release}";
+        deviceId = androidInfo.id.isNotEmpty ? androidInfo.id : "android_${uid.substring(0, 5)}";
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        deviceName = iosInfo.name;
+        os = "${iosInfo.systemName} ${iosInfo.systemVersion}";
+        deviceId = iosInfo.identifierForVendor ?? "ios_device";
+      }
+
+      print("Attempting to write device session: $deviceName ($deviceId) for UID: $uid");
+
+      // Path: users -> [UID] -> device_sessions -> [deviceId]
+      await _db
+          .collection('users')
+          .doc(uid)
+          .collection('device_sessions')
+          .doc(deviceId)
+          .set({
+        'deviceId': deviceId,
+        'deviceName': deviceName,
+        'os': os,
+        'lastLogin': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print("Device session successfully written to Firestore!");
+    } catch (e, stack) {
+      print("Error registering device session: $e");
+      print(stack);
+    }
+  }
+
+  // Sign Up with Student Details
   Future<User?> signUpWithStudentDetails({
     required String email,
     required String password,
-    required String fullName,
+    required String firstName,
+    required String middleName,
+    required String lastName,
     required String studentId,
     required String section,
     required String gradeLevel,
   }) async {
     try {
-      // 1. Create user in Firebase Authentication
       UserCredential credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -24,27 +108,40 @@ class AuthService {
       User? user = credential.user;
 
       if (user != null) {
-        // 2. Create a corresponding profile document in Cloud Firestore
+        String fullName = middleName.trim().isNotEmpty 
+            ? "${firstName.trim()} ${middleName.trim()} ${lastName.trim()}" 
+            : "${firstName.trim()} ${lastName.trim()}";
+
         await _db.collection('users').doc(user.uid).set({
           'uid': user.uid,
           'name': fullName,
+          'firstName': firstName.trim(),
+          'middleName': middleName.trim(),
+          'lastName': lastName.trim(),
           'email': email,
           'studentId': studentId,
           'section': section,
           'gradeLevel': gradeLevel,
           'role': 'student',
-          'status': 'approved', // Hardcoded as 'approved' for now. Flip to 'pending' later when web dashboard is built!
+          'status': 'pending', 
           'createdAt': FieldValue.serverTimestamp(),
         });
+
+        await _logAccountActivity(
+          uid: user.uid,
+          action: "Account Created",
+          description: "Student registered a new account.",
+        );
+        await registerDeviceSession(user.uid);
       }
       return user;
     } catch (e) {
-      print("Sign Up Error: $e");
+      debugPrint("Sign Up Error: $e");
       return null;
     }
   }
 
-  // Sign In with Verification Check
+  // Sign In with Status Check
   Future<Map<String, dynamic>?> signInWithStatusCheck(String email, String password) async {
     try {
       UserCredential credential = await _auth.signInWithEmailAndPassword(
@@ -54,15 +151,21 @@ class AuthService {
 
       User? user = credential.user;
       if (user != null) {
-        // Fetch student document profile from Firestore
         DocumentSnapshot doc = await _db.collection('users').doc(user.uid).get();
         if (doc.exists) {
+          await _logAccountActivity(
+            uid: user.uid,
+            action: "User Logged In",
+            description: "Successful authentication into the app.",
+          );
+          await registerDeviceSession(user.uid);
+
           return doc.data() as Map<String, dynamic>;
         }
       }
       return null;
     } catch (e) {
-      print("Sign In Error: $e");
+      debugPrint("Sign In Error: $e");
       return null;
     }
   }
