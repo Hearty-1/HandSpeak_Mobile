@@ -18,7 +18,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     // 1. Mark as read in Firestore
     if (notification['isRead'] == false) {
-      // Find the exact notification in the list and update its read status locally
       final updatedNotifications = allNotifications.map((n) {
         if (n['timestamp'] == notification['timestamp'] && n['fromUserId'] == notification['fromUserId']) {
           return {...n as Map<String, dynamic>, 'isRead': true};
@@ -26,14 +25,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return n;
       }).toList();
 
-      // Write the updated array back to Firestore
       await FirebaseFirestore.instance.collection('users').doc(currentUserId).update({
         'notifications': updatedNotifications,
       });
     }
 
-    // 2. Navigate based on notification type
-    if (notification['type'] == 'friend_request' && mounted) {
+    // 2. Navigate based on the new MLBB-style notification types
+    if ((notification['type'] == 'new_follower' || notification['type'] == 'follow_back') && mounted) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const FriendRequestsScreen()),
@@ -100,14 +98,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               final String body = notification['body'] ?? '';
               final String type = notification['type'] ?? 'general';
 
-              // Determine icon based on notification type
+              // Update icons based on the new notification types
               IconData iconData = Icons.notifications_rounded;
               Color iconColor = const Color(0xFFFFB800);
-              if (type == 'friend_request') {
+              if (type == 'new_follower') {
                 iconData = Icons.person_add_alt_1_rounded;
                 iconColor = const Color(0xFF2196F3);
-              } else if (type == 'request_accepted') {
-                iconData = Icons.handshake_rounded;
+              } else if (type == 'follow_back') {
+                iconData = Icons.people_alt_rounded; 
                 iconColor = const Color(0xFF4CAF50);
               }
 
@@ -117,7 +115,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isRead ? Colors.white : const Color(0xFFFFF4D1), // Highlight unread
+                    color: isRead ? Colors.white : const Color(0xFFFFF4D1), 
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: isRead ? Colors.black.withOpacity(0.04) : const Color(0xFFFFB800).withOpacity(0.5), 

@@ -4,6 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import '/providers/sound_provider.dart'; // Adjust path if needed
 
 // ==========================================
 // 1. DATA MODEL
@@ -44,18 +46,15 @@ class NumbersQuizApiService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   Future<List<QuizQuestion>> fetchEasyQuestions(String levelId, String typeFilter) async {
-    // STEP 1: Fetch ALL number questions to bypass any Firestore Index errors
     final querySnapshot = await _db
         .collection('activity_questions')
         .where('category', isEqualTo: 'numbers')
         .get();
 
-    // ERROR CHECK 1: Is the database empty?
     if (querySnapshot.docs.isEmpty) {
       throw Exception("DATABASE IS EMPTY!\n\nPlease go to your Home Screen and press the red 'DEV: SEED DATABASE' button first.");
     }
 
-    // STEP 2: Filter by the requested Level ID
     List<QuizQuestion> levelQuestions = [];
     for (var doc in querySnapshot.docs) {
       final data = doc.data();
@@ -65,12 +64,10 @@ class NumbersQuizApiService {
       }
     }
 
-    // ERROR CHECK 2: Did the Level ID match anything?
     if (levelQuestions.isEmpty) {
       throw Exception("LEVEL NOT FOUND!\n\nThe database has questions, but ZERO questions match the levelId: '$levelId'.\n\nPlease check the Navigator.push code where you open this screen and make sure you are passing exactly 'numbers_easy_3'.");
     }
 
-    // STEP 3: Filter by Question Type
     List<QuizQuestion> finalQuestions = [];
     
     if (typeFilter == 'mixed') {
@@ -86,12 +83,10 @@ class NumbersQuizApiService {
       finalQuestions = levelQuestions.where((q) => q.type == typeFilter).toList()..shuffle();
     }
 
-    // ERROR CHECK 3: Did the Type Filter hide all questions?
     if (finalQuestions.isEmpty) {
       throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but your screen is asking for questionType: '$typeFilter'.\n\nAll your level 3 counting questions are saved as 'text_to_sign'. Change the questionType in your Navigator.push!");
     }
 
-    // REMOVED .take(5) TO RETURN ALL MATCHING QUESTIONS
     return finalQuestions;
   }
 }
@@ -142,9 +137,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
         _isLoading = false;
       });
     } catch (e) {
-      // THIS WILL NOW CATCH OUR SMART ERRORS AND DISPLAY THEM!
       setState(() {
-        // Remove "Exception: " from the display text to make it cleaner
         _errorMessage = e.toString().replaceAll("Exception: ", "");
         _isLoading = false;
       });
@@ -159,6 +152,10 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
       _isAnswered = true;
       _isCorrect = option == _questions[_currentIndex].correctAnswer;
       
+      // Trigger sound effects for correct/incorrect answers
+      final soundProvider = Provider.of<SoundProvider>(context, listen: false);
+      _isCorrect ? soundProvider.playCorrect() : soundProvider.playIncorrect();
+
       if (!_isCorrect) {
         _hearts--; 
         if (_hearts <= 0) {
@@ -169,6 +166,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
   }
 
   void _showGameOverDialog() {
+    // Play Game Over Sound
+    Provider.of<SoundProvider>(context, listen: false).playGameOver();
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -245,6 +245,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
 
       if (!mounted) return;
 
+      // Play Level Complete Sound
+      Provider.of<SoundProvider>(context, listen: false).playLevelComplete();
+
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -315,43 +318,43 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9E5),
       appBar: AppBar(
-  backgroundColor: Colors.white.withOpacity(0.4), 
-  elevation: 0,
-  leading: IconButton(
-    icon: const Icon(CupertinoIcons.xmark, color: Colors.black87, size: 22),
-    onPressed: () => Navigator.pop(context),
-  ),
-  flexibleSpace: ClipRRect(
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), 
-      child: Container(color: Colors.transparent),
-    ),
-  ),
-  title: const Text(
-    "Numbers Activities",
-    style: TextStyle(
-      color: Colors.black87, 
-      fontWeight: FontWeight.w700,
-      letterSpacing: -0.5
-    ),
-  ),
-  centerTitle: true,
-  actions: [
-    Padding(
-      padding: const EdgeInsets.only(right: 20.0),
-      child: Row(
-        children: [
-          const Icon(CupertinoIcons.heart_fill, color: CupertinoColors.systemRed, size: 22),
-          const SizedBox(width: 5),
-          Text(
-            "$_hearts",
-            style: const TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w600),
+        backgroundColor: Colors.white.withOpacity(0.4), 
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.xmark, color: Colors.black87, size: 22),
+          onPressed: () => Navigator.pop(context),
+        ),
+        flexibleSpace: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), 
+            child: Container(color: Colors.transparent),
           ),
+        ),
+        title: const Text(
+          "Numbers Activities",
+          style: TextStyle(
+            color: Colors.black87, 
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 20.0),
+            child: Row(
+              children: [
+                const Icon(CupertinoIcons.heart_fill, color: CupertinoColors.systemRed, size: 22),
+                const SizedBox(width: 5),
+                Text(
+                  "$_hearts",
+                  style: const TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          )
         ],
       ),
-    )
-  ],
-),
       body: _buildBody(),
     );
   }
@@ -361,7 +364,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
     }
 
-    // --- SMART ERROR MESSAGE DISPLAY ---
     if (_errorMessage != null) {
       return Center(
         child: Padding(

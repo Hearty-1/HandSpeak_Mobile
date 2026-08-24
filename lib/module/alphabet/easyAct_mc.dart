@@ -1,36 +1,38 @@
-import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:ui'; // Required for ImageFilter (Glassmorphism) //[cite: 13]
+import 'package:flutter/material.dart'; //[cite: 13]
+import 'package:cloud_firestore/cloud_firestore.dart'; //[cite: 13]
+import 'package:firebase_auth/firebase_auth.dart'; //[cite: 13]
+import 'package:provider/provider.dart';
+import '/providers/sound_provider.dart'; // Adjust this path if needed
 
 // ==========================================
 // 1. DATA MODEL
 // ==========================================
 class QuizQuestion {
-  final String id;
-  final String type; 
-  final String imageUrl;
-  final String questionText;
-  final List<String> options;
-  final String correctAnswer;
+  final String id; //[cite: 13]
+  final String type; //[cite: 13]
+  final String imageUrl; //[cite: 13]
+  final String questionText; //[cite: 13]
+  final List<String> options; //[cite: 13]
+  final String correctAnswer; //[cite: 13]
 
-  QuizQuestion({
-    required this.id,
-    required this.type,
-    required this.imageUrl,
-    required this.questionText,
-    required this.options,
-    required this.correctAnswer,
+  QuizQuestion({ //[cite: 13]
+    required this.id, //[cite: 13]
+    required this.type, //[cite: 13]
+    required this.imageUrl, //[cite: 13]
+    required this.questionText, //[cite: 13]
+    required this.options, //[cite: 13]
+    required this.correctAnswer, //[cite: 13]
   });
 
-  factory QuizQuestion.fromJson(Map<String, dynamic> json) {
-    return QuizQuestion(
-      id: json['id']?.toString() ?? '',
-      type: json['type'] ?? 'sign_to_text',
-      imageUrl: json['image_url'] ?? '',
-      questionText: json['question_text'] ?? '',
-      options: List<String>.from(json['options'] ?? []),
-      correctAnswer: json['correct_answer'] ?? '',
+  factory QuizQuestion.fromJson(Map<String, dynamic> json) { //[cite: 13]
+    return QuizQuestion( //[cite: 13]
+      id: json['id']?.toString() ?? '', //[cite: 13]
+      type: json['type'] ?? 'sign_to_text', //[cite: 13]
+      imageUrl: json['image_url'] ?? '', //[cite: 13]
+      questionText: json['question_text'] ?? '', //[cite: 13]
+      options: List<String>.from(json['options'] ?? []), //[cite: 13]
+      correctAnswer: json['correct_answer'] ?? '', //[cite: 13]
     );
   }
 }
@@ -39,51 +41,51 @@ class QuizQuestion {
 // 2. SMART DIAGNOSTIC FIRESTORE API
 // ==========================================
 class QuizApiService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance; //[cite: 13]
 
-  Future<List<QuizQuestion>> fetchEasyQuestions(String levelId, String typeFilter) async {
-    final querySnapshot = await _db
-        .collection('activity_questions')
-        .where('category', isEqualTo: 'alphabet')
-        .get();
+  Future<List<QuizQuestion>> fetchEasyQuestions(String levelId, String typeFilter) async { //[cite: 13]
+    final querySnapshot = await _db //[cite: 13]
+        .collection('activity_questions') //[cite: 13]
+        .where('category', isEqualTo: 'alphabet') //[cite: 13]
+        .get(); //[cite: 13]
 
-    if (querySnapshot.docs.isEmpty) {
-      throw Exception("DATABASE IS EMPTY!\n\nPlease press the red 'DEV: SEED DATABASE' button first.");
+    if (querySnapshot.docs.isEmpty) { //[cite: 13]
+      throw Exception("DATABASE IS EMPTY!\n\nPlease press the red 'DEV: SEED DATABASE' button first."); //[cite: 13]
     }
 
-    List<QuizQuestion> levelQuestions = [];
-    for (var doc in querySnapshot.docs) {
-      final data = doc.data();
-      if (data['level'] == levelId || (levelId == 'alphabet_easy_1' && data['level'] == 'easy')) { 
-        data['id'] = doc.id;
-        levelQuestions.add(QuizQuestion.fromJson(data));
+    List<QuizQuestion> levelQuestions = []; //[cite: 13]
+    for (var doc in querySnapshot.docs) { //[cite: 13]
+      final data = doc.data(); //[cite: 13]
+      if (data['level'] == levelId || (levelId == 'alphabet_easy_1' && data['level'] == 'easy')) { //[cite: 13]
+        data['id'] = doc.id; //[cite: 13]
+        levelQuestions.add(QuizQuestion.fromJson(data)); //[cite: 13]
       }
     }
 
-    if (levelQuestions.isEmpty) {
-      throw Exception("LEVEL NOT FOUND!\n\nThe database has alphabet questions, but ZERO questions match levelId: '$levelId'.");
+    if (levelQuestions.isEmpty) { //[cite: 13]
+      throw Exception("LEVEL NOT FOUND!\n\nThe database has alphabet questions, but ZERO questions match levelId: '$levelId'."); //[cite: 13]
     }
 
-    List<QuizQuestion> finalQuestions = [];
+    List<QuizQuestion> finalQuestions = []; //[cite: 13]
     
-    if (typeFilter == 'mixed') {
-      var signs = levelQuestions.where((q) => q.type == 'sign_to_text').toList()..shuffle();
-      var texts = levelQuestions.where((q) => q.type == 'text_to_sign').toList()..shuffle();
+    if (typeFilter == 'mixed') { //[cite: 13]
+      var signs = levelQuestions.where((q) => q.type == 'sign_to_text').toList()..shuffle(); //[cite: 13]
+      var texts = levelQuestions.where((q) => q.type == 'text_to_sign').toList()..shuffle(); //[cite: 13]
       
-      int maxLength = signs.length > texts.length ? signs.length : texts.length;
-      for (int i = 0; i < maxLength; i++) {
-        if (i < signs.length) finalQuestions.add(signs[i]);
-        if (i < texts.length) finalQuestions.add(texts[i]);
+      int maxLength = signs.length > texts.length ? signs.length : texts.length; //[cite: 13]
+      for (int i = 0; i < maxLength; i++) { //[cite: 13]
+        if (i < signs.length) finalQuestions.add(signs[i]); //[cite: 13]
+        if (i < texts.length) finalQuestions.add(texts[i]); //[cite: 13]
       }
     } else {
-      finalQuestions = levelQuestions.where((q) => q.type == typeFilter).toList()..shuffle();
+      finalQuestions = levelQuestions.where((q) => q.type == typeFilter).toList()..shuffle(); //[cite: 13]
     }
 
-    if (finalQuestions.isEmpty) {
-      throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but none matched the requested questionType: '$typeFilter'.");
+    if (finalQuestions.isEmpty) { //[cite: 13]
+      throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but none matched the requested questionType: '$typeFilter'."); //[cite: 13]
     }
 
-    return finalQuestions; 
+    return finalQuestions; //[cite: 13]
   }
 }
 
@@ -91,87 +93,94 @@ class QuizApiService {
 // 3. MAIN UI SCREEN
 // ==========================================
 class EasyActMc extends StatefulWidget {
-  final String levelId; 
-  final String questionType;
+  final String levelId; //[cite: 13]
+  final String questionType; //[cite: 13]
 
-  const EasyActMc({
-    super.key, 
-    required this.levelId, 
-    required this.questionType,
+  const EasyActMc({ //[cite: 13]
+    super.key, //[cite: 13]
+    required this.levelId, //[cite: 13]
+    required this.questionType, //[cite: 13]
   });
 
   @override
-  State<EasyActMc> createState() => _EasyActMcState();
+  State<EasyActMc> createState() => _EasyActMcState(); //[cite: 13]
 }
 
 class _EasyActMcState extends State<EasyActMc> {
-  final QuizApiService _apiService = QuizApiService();
+  final QuizApiService _apiService = QuizApiService(); //[cite: 13]
   
-  List<QuizQuestion> _questions = [];
-  bool _isLoading = true;
-  String? _errorMessage;
+  List<QuizQuestion> _questions = []; //[cite: 13]
+  bool _isLoading = true; //[cite: 13]
+  String? _errorMessage; //[cite: 13]
 
-  int _currentIndex = 0;
-  String? _selectedAnswer;
-  bool _isAnswered = false;
-  bool _isSaving = false;
+  int _currentIndex = 0; //[cite: 13]
+  String? _selectedAnswer; //[cite: 13]
+  bool _isAnswered = false; //[cite: 13]
+  bool _isSaving = false; //[cite: 13]
 
-  int _hearts = 5;
-  bool _isCorrect = false;
+  int _hearts = 5; //[cite: 13]
+  bool _isCorrect = false; //[cite: 13]
 
   @override
   void initState() {
-    super.initState();
-    _loadQuestions();
+    super.initState(); //[cite: 13]
+    _loadQuestions(); //[cite: 13]
   }
 
   Future<void> _loadQuestions() async {
     try {
-      final questions = await _apiService.fetchEasyQuestions(widget.levelId, widget.questionType);
+      final questions = await _apiService.fetchEasyQuestions(widget.levelId, widget.questionType); //[cite: 13]
       setState(() {
-        _questions = questions;
-        _isLoading = false;
+        _questions = questions; //[cite: 13]
+        _isLoading = false; //[cite: 13]
       });
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString().replaceAll("Exception: ", "");
-        _isLoading = false;
+        _errorMessage = e.toString().replaceAll("Exception: ", ""); //[cite: 13]
+        _isLoading = false; //[cite: 13]
       });
     }
   }
 
   void _handleOptionSelected(String option) {
-    if (_isAnswered) return;
+    if (_isAnswered) return; //[cite: 13]
     
     setState(() {
-      _selectedAnswer = option;
-      _isAnswered = true;
-      _isCorrect = option == _questions[_currentIndex].correctAnswer;
+      _selectedAnswer = option; //[cite: 13]
+      _isAnswered = true; //[cite: 13]
+      _isCorrect = option == _questions[_currentIndex].correctAnswer; //[cite: 13]
       
-      if (!_isCorrect) {
-        _hearts--; 
-        if (_hearts <= 0) {
-          _showGameOverDialog();
+      // Trigger sound effects for correct/incorrect answers
+      final soundProvider = Provider.of<SoundProvider>(context, listen: false);
+      _isCorrect ? soundProvider.playCorrect() : soundProvider.playIncorrect();
+
+      if (!_isCorrect) { //[cite: 13]
+        _hearts--; //[cite: 13]
+        if (_hearts <= 0) { //[cite: 13]
+          _showGameOverDialog(); //[cite: 13]
         }
       }
     });
   }
 
   void _showGameOverDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text("Out of Hearts! 💔", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-        content: const Text("You made a few mistakes. Take a break and review the tutorials, then try again!"),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); 
-              Navigator.pop(context); 
+    // Play Game Over Sound
+    Provider.of<SoundProvider>(context, listen: false).playGameOver();
+
+    showDialog( //[cite: 13]
+      context: context, //[cite: 13]
+      barrierDismissible: false, //[cite: 13]
+      builder: (context) => AlertDialog( //[cite: 13]
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), //[cite: 13]
+        title: const Text("Out of Hearts! 💔", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)), //[cite: 13]
+        content: const Text("You made a few mistakes. Take a break and review the tutorials, then try again!"), //[cite: 13]
+        actions: [ //[cite: 13]
+          TextButton( //[cite: 13]
+            onPressed: () { //[cite: 13]
+              Navigator.pop(context); //[cite: 13]
+              Navigator.pop(context); //[cite: 13]
             },
-            child: const Text("Exit Activity", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
+            child: const Text("Exit Activity", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)), //[cite: 13]
           )
         ],
       ),
@@ -179,99 +188,102 @@ class _EasyActMcState extends State<EasyActMc> {
   }
 
   Future<void> _handleNext() async {
-    if (_currentIndex < _questions.length - 1) {
+    if (_currentIndex < _questions.length - 1) { //[cite: 13]
       setState(() {
-        _currentIndex++;
-        _selectedAnswer = null;
-        _isAnswered = false;
+        _currentIndex++; //[cite: 13]
+        _selectedAnswer = null; //[cite: 13]
+        _isAnswered = false; //[cite: 13]
       });
     } else {
-      setState(() => _isSaving = true);
+      setState(() => _isSaving = true); //[cite: 13]
       
-      int starsEarned = 1;
-      if (_hearts == 5) {
-        starsEarned = 3;
-      } else if (_hearts >= 3) {
-        starsEarned = 2;
+      int starsEarned = 1; //[cite: 13]
+      if (_hearts == 5) { //[cite: 13]
+        starsEarned = 3; //[cite: 13]
+      } else if (_hearts >= 3) { //[cite: 13]
+        starsEarned = 2; //[cite: 13]
       }
       
       try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final user = FirebaseAuth.instance.currentUser; //[cite: 13]
+        if (user != null) { //[cite: 13]
+          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid); //[cite: 13]
           
-          await FirebaseFirestore.instance.runTransaction((transaction) async {
-            final snapshotDoc = await transaction.get(userRef);
-            if (snapshotDoc.exists) {
-              final data = snapshotDoc.data() as Map<String, dynamic>;
+          await FirebaseFirestore.instance.runTransaction((transaction) async { //[cite: 13]
+            final snapshotDoc = await transaction.get(userRef); //[cite: 13]
+            if (snapshotDoc.exists) { //[cite: 13]
+              final data = snapshotDoc.data() as Map<String, dynamic>; //[cite: 13]
               
-              final Map<String, dynamic> progress = data['progress'] != null 
-                  ? Map<String, dynamic>.from(data['progress']) 
-                  : {};
+              final Map<String, dynamic> progress = data['progress'] != null //[cite: 13]
+                  ? Map<String, dynamic>.from(data['progress']) //[cite: 13]
+                  : {}; //[cite: 13]
                   
-              final int previousStars = progress[widget.levelId] ?? 0;
+              final int previousStars = progress[widget.levelId] ?? 0; //[cite: 13]
               
-              int globalStarsToAdd = 0;
-              if (starsEarned > previousStars) {
-                globalStarsToAdd = starsEarned - previousStars;
-                progress[widget.levelId] = starsEarned; 
+              int globalStarsToAdd = 0; //[cite: 13]
+              if (starsEarned > previousStars) { //[cite: 13]
+                globalStarsToAdd = starsEarned - previousStars; //[cite: 13]
+                progress[widget.levelId] = starsEarned;  //[cite: 13]
               }
 
-              final int currentGlobalStars = data['stars'] ?? 0;
+              final int currentGlobalStars = data['stars'] ?? 0; //[cite: 13]
 
-              transaction.update(userRef, {
-                'stars': currentGlobalStars + globalStarsToAdd,
-                'progress': progress, 
+              transaction.update(userRef, { //[cite: 13]
+                'stars': currentGlobalStars + globalStarsToAdd, //[cite: 13]
+                'progress': progress,  //[cite: 13]
               });
             }
           });
         }
       } catch (e) {
-        debugPrint("Error updating Stars: $e");
+        debugPrint("Error updating Stars: $e"); //[cite: 13]
       }
 
-      setState(() => _isSaving = false);
+      setState(() => _isSaving = false); //[cite: 13]
 
-      if (!mounted) return;
+      if (!mounted) return; //[cite: 13]
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text("Activity Complete! 🎉", style: TextStyle(color: Color(0xFF322144), fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "You finished ${widget.levelId.replaceAll('_', ' ').toUpperCase()}!",
-                textAlign: TextAlign.center,
+      // Play Level Complete Sound
+      Provider.of<SoundProvider>(context, listen: false).playLevelComplete();
+
+      showDialog( //[cite: 13]
+        context: context, //[cite: 13]
+        barrierDismissible: false, //[cite: 13]
+        builder: (context) => AlertDialog( //[cite: 13]
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), //[cite: 13]
+          title: const Text("Activity Complete! 🎉", style: TextStyle(color: Color(0xFF322144), fontWeight: FontWeight.bold)), //[cite: 13]
+          content: Column( //[cite: 13]
+            mainAxisSize: MainAxisSize.min, //[cite: 13]
+            children: [ //[cite: 13]
+              Text( //[cite: 13]
+                "You finished ${widget.levelId.replaceAll('_', ' ').toUpperCase()}!", //[cite: 13]
+                textAlign: TextAlign.center, //[cite: 13]
               ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) {
-                  return Icon(
-                    index < starsEarned ? Icons.star_rounded : Icons.star_border_rounded,
-                    color: const Color(0xFFFFB800),
-                    size: 42,
+              const SizedBox(height: 16), //[cite: 13]
+              Row( //[cite: 13]
+                mainAxisAlignment: MainAxisAlignment.center, //[cite: 13]
+                children: List.generate(3, (index) { //[cite: 13]
+                  return Icon( //[cite: 13]
+                    index < starsEarned ? Icons.star_rounded : Icons.star_border_rounded, //[cite: 13]
+                    color: const Color(0xFFFFB800), //[cite: 13]
+                    size: 42, //[cite: 13]
                   );
                 }),
               ),
-              const SizedBox(height: 8),
-              Text(
-                "Earned $starsEarned / 3 Stars", 
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF222222))
+              const SizedBox(height: 8), //[cite: 13]
+              Text( //[cite: 13]
+                "Earned $starsEarned / 3 Stars",  //[cite: 13]
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF222222)) //[cite: 13]
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); 
-                Navigator.of(context).pop(); 
+          actions: [ //[cite: 13]
+            TextButton( //[cite: 13]
+              onPressed: () { //[cite: 13]
+                Navigator.of(context).pop();  //[cite: 13]
+                Navigator.of(context).pop();  //[cite: 13]
               },
-              child: const Text("Awesome!", style: TextStyle(color: Color(0xFFFFB800), fontWeight: FontWeight.bold, fontSize: 16)),
+              child: const Text("Awesome!", style: TextStyle(color: Color(0xFFFFB800), fontWeight: FontWeight.bold, fontSize: 16)), //[cite: 13]
             )
           ],
         ),
@@ -280,93 +292,92 @@ class _EasyActMcState extends State<EasyActMc> {
   }
 
   Color _getButtonColor(String option, String correctAnswer) {
-    if (!_isAnswered) return Colors.white;
-    if (option == correctAnswer) return Colors.green; 
-    if (option == _selectedAnswer && option != correctAnswer) return Colors.red; 
-    return Colors.white; 
+    if (!_isAnswered) return Colors.white; //[cite: 13]
+    if (option == correctAnswer) return Colors.green;  //[cite: 13]
+    if (option == _selectedAnswer && option != correctAnswer) return Colors.red;  //[cite: 13]
+    return Colors.white;  //[cite: 13]
   }
 
   Color _getButtonTextColor(String option, String correctAnswer) {
-    if (!_isAnswered) return Colors.black;
-    if (option == correctAnswer || option == _selectedAnswer) return Colors.white;
-    return Colors.black;
+    if (!_isAnswered) return Colors.black; //[cite: 13]
+    if (option == correctAnswer || option == _selectedAnswer) return Colors.white; //[cite: 13]
+    return Colors.black; //[cite: 13]
   }
 
   Color _getButtonBorderColor(String option, String correctAnswer) {
-    if (!_isAnswered) return const Color(0xFFE0E0E0);
-    if (option == correctAnswer) return Colors.green;
-    if (option == _selectedAnswer && option != correctAnswer) return Colors.red;
-    return const Color(0xFFE0E0E0);
+    if (!_isAnswered) return const Color(0xFFE0E0E0); //[cite: 13]
+    if (option == correctAnswer) return Colors.green; //[cite: 13]
+    if (option == _selectedAnswer && option != correctAnswer) return Colors.red; //[cite: 13]
+    return const Color(0xFFE0E0E0); //[cite: 13]
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true, // Allows the plain content to flow naturally behind the frosted bar
-      backgroundColor: const Color(0xFFFFF9E5),
+    return Scaffold( //[cite: 13]
+      extendBodyBehindAppBar: true,  //[cite: 13]
+      backgroundColor: const Color(0xFFFFF9E5), //[cite: 13]
       
-      // --- EXCLUSIVE GLASSMORPHISM APP BAR ---
-      appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), // Semi-translucent base tint
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
+      appBar: AppBar( //[cite: 13]
+        backgroundColor: Colors.white.withOpacity(0.4),  //[cite: 13]
+        elevation: 0, //[cite: 13]
+        leading: IconButton( //[cite: 13]
+          icon: const Icon(Icons.close, color: Colors.black87), //[cite: 13]
+          onPressed: () => Navigator.pop(context), //[cite: 13]
         ),
-        flexibleSpace: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), // Premium iOS frosted effect
-            child: Container(color: Colors.transparent),
+        flexibleSpace: ClipRRect( //[cite: 13]
+          child: BackdropFilter( //[cite: 13]
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),  //[cite: 13]
+            child: Container(color: Colors.transparent), //[cite: 13]
           ),
         ),
-        title: const Text(
-          "Alphabet Activities",
-          style: TextStyle(
-            color: Colors.black87, 
-            fontWeight: FontWeight.w800,
-            fontFamily: 'Inter',
-            letterSpacing: -0.5
+        title: const Text( //[cite: 13]
+          "Alphabet Activities", //[cite: 13]
+          style: TextStyle( //[cite: 13]
+            color: Colors.black87,  //[cite: 13]
+            fontWeight: FontWeight.w800, //[cite: 13]
+            fontFamily: 'Inter', //[cite: 13]
+            letterSpacing: -0.5 //[cite: 13]
           ),
         ),
-        centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Row(
-              children: [
-                const Icon(Icons.favorite, color: Colors.red, size: 24),
-                const SizedBox(width: 4),
-                Text(
-                  "$_hearts",
-                  style: const TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
+        centerTitle: true, //[cite: 13]
+        actions: [ //[cite: 13]
+          Padding( //[cite: 13]
+            padding: const EdgeInsets.only(right: 16.0), //[cite: 13]
+            child: Row( //[cite: 13]
+              children: [ //[cite: 13]
+                const Icon(Icons.favorite, color: Colors.red, size: 24), //[cite: 13]
+                const SizedBox(width: 4), //[cite: 13]
+                Text( //[cite: 13]
+                  "$_hearts", //[cite: 13]
+                  style: const TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold), //[cite: 13]
                 ),
               ],
             ),
           )
         ],
       ),
-      body: _buildBody(),
+      body: _buildBody(), //[cite: 13]
     );
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+    if (_isLoading) { //[cite: 13]
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800))); //[cite: 13]
     }
 
-    if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 64),
-              const SizedBox(height: 16),
-              Text(
-                _errorMessage!, 
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold)
+    if (_errorMessage != null) { //[cite: 13]
+      return Center( //[cite: 13]
+        child: Padding( //[cite: 13]
+          padding: const EdgeInsets.all(32.0), //[cite: 13]
+          child: Column( //[cite: 13]
+            mainAxisSize: MainAxisSize.min, //[cite: 13]
+            children: [ //[cite: 13]
+              const Icon(Icons.error_outline, color: Colors.red, size: 64), //[cite: 13]
+              const SizedBox(height: 16), //[cite: 13]
+              Text( //[cite: 13]
+                _errorMessage!,  //[cite: 13]
+                textAlign: TextAlign.center, //[cite: 13]
+                style: const TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold) //[cite: 13]
               ),
             ],
           ),
@@ -374,191 +385,191 @@ class _EasyActMcState extends State<EasyActMc> {
       );
     }
 
-    if (_questions.isEmpty) {
-      return const Center(child: Text("No questions available."));
+    if (_questions.isEmpty) { //[cite: 13]
+      return const Center(child: Text("No questions available.")); //[cite: 13]
     }
 
-    final currentQuestion = _questions[_currentIndex];
-    final progress = (_currentIndex + 1) / _questions.length;
+    final currentQuestion = _questions[_currentIndex]; //[cite: 13]
+    final progress = (_currentIndex + 1) / _questions.length; //[cite: 13]
     
-    final isImageOption = currentQuestion.options.isNotEmpty && 
-                          (currentQuestion.options[0].contains('.png') || 
-                           currentQuestion.options[0].contains('.jpg'));
+    final isImageOption = currentQuestion.options.isNotEmpty &&  //[cite: 13]
+                          (currentQuestion.options[0].contains('.png') ||  //[cite: 13]
+                           currentQuestion.options[0].contains('.jpg')); //[cite: 13]
 
-    return SafeArea(
-      child: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: const Color(0xFFE0E0E0),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
-                      minHeight: 12,
+    return SafeArea( //[cite: 13]
+      child: Column( //[cite: 13]
+        children: [ //[cite: 13]
+          Expanded( //[cite: 13]
+            child: SingleChildScrollView( //[cite: 13]
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0), //[cite: 13]
+              child: Column( //[cite: 13]
+                crossAxisAlignment: CrossAxisAlignment.center, //[cite: 13]
+                children: [ //[cite: 13]
+                  ClipRRect( //[cite: 13]
+                    borderRadius: BorderRadius.circular(10), //[cite: 13]
+                    child: LinearProgressIndicator( //[cite: 13]
+                      value: progress, //[cite: 13]
+                      backgroundColor: const Color(0xFFE0E0E0), //[cite: 13]
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.green), //[cite: 13]
+                      minHeight: 12, //[cite: 13]
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 24), //[cite: 13]
 
-                  if (currentQuestion.imageUrl.isNotEmpty) ...[
-                    Container(
-                      width: double.infinity,
-                      height: 240,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                  if (currentQuestion.imageUrl.isNotEmpty) ...[ //[cite: 13]
+                    Container( //[cite: 13]
+                      width: double.infinity, //[cite: 13]
+                      height: 240, //[cite: 13]
+                      padding: const EdgeInsets.all(16), //[cite: 13]
+                      decoration: BoxDecoration( //[cite: 13]
+                        color: Colors.white, //[cite: 13]
+                        borderRadius: BorderRadius.circular(20), //[cite: 13]
+                        boxShadow: [ //[cite: 13]
+                          BoxShadow( //[cite: 13]
+                            color: Colors.black.withOpacity(0.04), //[cite: 13]
+                            blurRadius: 10, //[cite: 13]
+                            offset: const Offset(0, 4), //[cite: 13]
                           )
                         ],
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.asset(
-                          currentQuestion.imageUrl,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => const Center(
-                            child: Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
+                      child: ClipRRect( //[cite: 13]
+                        borderRadius: BorderRadius.circular(12), //[cite: 13]
+                        child: Image.asset( //[cite: 13]
+                          currentQuestion.imageUrl, //[cite: 13]
+                          fit: BoxFit.contain, //[cite: 13]
+                          errorBuilder: (context, error, stackTrace) => const Center( //[cite: 13]
+                            child: Icon(Icons.image_not_supported, size: 40, color: Colors.grey), //[cite: 13]
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 40), //[cite: 13]
                   ],
 
-                  Text(
-                    currentQuestion.questionText,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black,
+                  Text( //[cite: 13]
+                    currentQuestion.questionText, //[cite: 13]
+                    style: const TextStyle( //[cite: 13]
+                      fontSize: 22, //[cite: 13]
+                      fontWeight: FontWeight.w800, //[cite: 13]
+                      color: Colors.black, //[cite: 13]
                     ),
-                    textAlign: TextAlign.center,
+                    textAlign: TextAlign.center, //[cite: 13]
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 32), //[cite: 13]
 
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: isImageOption ? 1.2 : 2.2, 
-                    children: currentQuestion.options.map((option) {
-                      return GestureDetector(
-                        onTap: () => _handleOptionSelected(option),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            color: _getButtonColor(option, currentQuestion.correctAnswer),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: _getButtonBorderColor(option, currentQuestion.correctAnswer), 
-                              width: 2
+                  GridView.count( //[cite: 13]
+                    shrinkWrap: true, //[cite: 13]
+                    physics: const NeverScrollableScrollPhysics(), //[cite: 13]
+                    crossAxisCount: 2, //[cite: 13]
+                    mainAxisSpacing: 16, //[cite: 13]
+                    crossAxisSpacing: 16, //[cite: 13]
+                    childAspectRatio: isImageOption ? 1.2 : 2.2,  //[cite: 13]
+                    children: currentQuestion.options.map((option) { //[cite: 13]
+                      return GestureDetector( //[cite: 13]
+                        onTap: () => _handleOptionSelected(option), //[cite: 13]
+                        child: AnimatedContainer( //[cite: 13]
+                          duration: const Duration(milliseconds: 200), //[cite: 13]
+                          decoration: BoxDecoration( //[cite: 13]
+                            color: _getButtonColor(option, currentQuestion.correctAnswer), //[cite: 13]
+                            borderRadius: BorderRadius.circular(16), //[cite: 13]
+                            border: Border.all( //[cite: 13]
+                              color: _getButtonBorderColor(option, currentQuestion.correctAnswer),  //[cite: 13]
+                              width: 2 //[cite: 13]
                             ),
                           ),
-                          alignment: Alignment.center,
-                          child: isImageOption
-                              ? Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: Image.asset(
-                                    option,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) => Text(
-                                      option,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: _getButtonTextColor(option, currentQuestion.correctAnswer),
+                          alignment: Alignment.center, //[cite: 13]
+                          child: isImageOption //[cite: 13]
+                              ? Padding( //[cite: 13]
+                                  padding: const EdgeInsets.all(8.0), //[cite: 13]
+                                  child: Image.asset( //[cite: 13]
+                                    option, //[cite: 13]
+                                    fit: BoxFit.contain, //[cite: 13]
+                                    errorBuilder: (context, error, stackTrace) => Text( //[cite: 13]
+                                      option, //[cite: 13]
+                                      style: TextStyle( //[cite: 13]
+                                        fontSize: 14, //[cite: 13]
+                                        color: _getButtonTextColor(option, currentQuestion.correctAnswer), //[cite: 13]
                                       ),
                                     ),
                                   ),
                                 )
-                              : Text(
-                                  option,
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w800,
-                                    color: _getButtonTextColor(option, currentQuestion.correctAnswer),
+                              : Text( //[cite: 13]
+                                  option, //[cite: 13]
+                                  style: TextStyle( //[cite: 13]
+                                    fontSize: 24, //[cite: 13]
+                                    fontWeight: FontWeight.w800, //[cite: 13]
+                                    color: _getButtonTextColor(option, currentQuestion.correctAnswer), //[cite: 13]
                                   ),
                                 ),
                         ),
                       );
-                    }).toList(),
+                    }).toList(), //[cite: 13]
                   ),
                 ],
               ),
             ),
           ),
 
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              decoration: BoxDecoration(
-                color: !_isAnswered 
-                    ? Colors.white 
-                    : (_isCorrect ? const Color(0xFFD7FFB7) : const Color(0xFFFFDFE0)),
-                border: Border(top: BorderSide(color: Colors.grey.shade200, width: 2)),
+          Align( //[cite: 13]
+            alignment: Alignment.bottomCenter, //[cite: 13]
+            child: AnimatedContainer( //[cite: 13]
+              duration: const Duration(milliseconds: 300), //[cite: 13]
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24), //[cite: 13]
+              decoration: BoxDecoration( //[cite: 13]
+                color: !_isAnswered  //[cite: 13]
+                    ? Colors.white  //[cite: 13]
+                    : (_isCorrect ? const Color(0xFFD7FFB7) : const Color(0xFFFFDFE0)), //[cite: 13]
+                border: Border(top: BorderSide(color: Colors.grey.shade200, width: 2)), //[cite: 13]
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_isAnswered) ...[
-                    Row(
-                      children: [
-                        Icon(
-                          _isCorrect ? Icons.check_circle : Icons.cancel, 
-                          color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B), 
-                          size: 28
+              child: Column( //[cite: 13]
+                mainAxisSize: MainAxisSize.min, //[cite: 13]
+                crossAxisAlignment: CrossAxisAlignment.start, //[cite: 13]
+                children: [ //[cite: 13]
+                  if (_isAnswered) ...[ //[cite: 13]
+                    Row( //[cite: 13]
+                      children: [ //[cite: 13]
+                        Icon( //[cite: 13]
+                          _isCorrect ? Icons.check_circle : Icons.cancel,  //[cite: 13]
+                          color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),  //[cite: 13]
+                          size: 28 //[cite: 13]
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _isCorrect 
-                              ? "Awesome!" 
-                              : (isImageOption 
-                                  ? "Try again!" 
-                                  : "Correct answer: ${_questions[_currentIndex].correctAnswer}"),
-                          style: TextStyle(
-                            color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                        const SizedBox(width: 8), //[cite: 13]
+                        Text( //[cite: 13]
+                          _isCorrect  //[cite: 13]
+                              ? "Awesome!"  //[cite: 13]
+                              : (isImageOption  //[cite: 13]
+                                  ? "Try again!"  //[cite: 13]
+                                  : "Correct answer: ${_questions[_currentIndex].correctAnswer}"), //[cite: 13]
+                          style: TextStyle( //[cite: 13]
+                            color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B), //[cite: 13]
+                            fontSize: 18, //[cite: 13]
+                            fontWeight: FontWeight.bold, //[cite: 13]
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 16), //[cite: 13]
                   ],
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: ElevatedButton(
-                      onPressed: (_isAnswered && !_isSaving) ? _handleNext : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: !_isAnswered 
-                            ? const Color(0xFFFFB800) 
-                            : (_isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B)),
-                        disabledBackgroundColor: Colors.grey.shade300,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  SizedBox( //[cite: 13]
+                    width: double.infinity, //[cite: 13]
+                    height: 54, //[cite: 13]
+                    child: ElevatedButton( //[cite: 13]
+                      onPressed: (_isAnswered && !_isSaving) ? _handleNext : null, //[cite: 13]
+                      style: ElevatedButton.styleFrom( //[cite: 13]
+                        backgroundColor: !_isAnswered  //[cite: 13]
+                            ? const Color(0xFFFFB800)  //[cite: 13]
+                            : (_isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B)), //[cite: 13]
+                        disabledBackgroundColor: Colors.grey.shade300, //[cite: 13]
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), //[cite: 13]
                       ),
-                      child: _isSaving
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : Text(
-                              _isAnswered ? "CONTINUE" : "CHECK",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: _isAnswered ? Colors.white : Colors.black,
+                      child: _isSaving //[cite: 13]
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) //[cite: 13]
+                          : Text( //[cite: 13]
+                              _isAnswered ? "CONTINUE" : "CHECK", //[cite: 13]
+                              style: TextStyle( //[cite: 13]
+                                fontSize: 16, //[cite: 13]
+                                fontWeight: FontWeight.w900, //[cite: 13]
+                                color: _isAnswered ? Colors.white : Colors.black, //[cite: 13]
                               ),
                             ),
                     ),

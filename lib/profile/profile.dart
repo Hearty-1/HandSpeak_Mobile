@@ -17,7 +17,6 @@ import 'add_friend_screen.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
-  // Helper to safely render either a Base64 image, a network URL, or a fallback icon
   Widget _buildAvatarImage(String avatarData, double scale, {double size = 100}) {
     if (avatarData.isEmpty) {
       return Icon(Icons.person_rounded, size: size * 0.55 * scale, color: const Color(0xFFFFB800));
@@ -81,7 +80,6 @@ class ProfileScreen extends StatelessWidget {
       extendBody: true, 
       backgroundColor: const Color(0xFFFFF9E5),
       
-      // --- PREMIUM TRANSLUCENT IOS APP BAR ---
       appBar: AppBar(
         backgroundColor: Colors.white.withOpacity(0.4),
         elevation: 0,
@@ -146,7 +144,6 @@ class ProfileScreen extends StatelessWidget {
         ],
       ),
 
-      // --- TRANSLUCENT FLOATING NAVIGATION ENVIRONMENT ---
       bottomNavigationBar: SafeArea(
         child: Container(
           width: double.infinity,
@@ -240,7 +237,6 @@ class ProfileScreen extends StatelessWidget {
                 
                 List<dynamic> followersList = [];
                 List<dynamic> followingList = [];
-                List<dynamic> outgoingRequests = [];
 
                 Map<String, dynamic> progressMap = {};
 
@@ -253,12 +249,12 @@ class ProfileScreen extends StatelessWidget {
                     stars = userData['stars'] ?? 0;
                     streak = userData['streak'] ?? 0;
                     
+                    // MLBB Follow Scheme: Pure Followers and Following
                     followersList = userData['followers'] as List<dynamic>? ?? [];
                     followingList = userData['following'] as List<dynamic>? ?? [];
-                    outgoingRequests = userData['outgoingRequests'] as List<dynamic>? ?? [];
                     
                     followersCount = followersList.length;
-                    followingCount = followingList.length + outgoingRequests.length;
+                    followingCount = followingList.length;
                     
                     if (userData.containsKey('progress') && userData['progress'] is Map) {
                       progressMap = Map<String, dynamic>.from(userData['progress']);
@@ -279,7 +275,6 @@ class ProfileScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // --- AVATAR LAYOUT WITH MICRO-EDIT ACTION ---
                       Stack(
                         alignment: Alignment.bottomRight,
                         children: [
@@ -346,7 +341,6 @@ class ProfileScreen extends StatelessWidget {
                       
                       SizedBox(height: 20 * scale),
 
-                      // --- NATIVE FOLLOWERS DISPLAY (CLICKABLE WITH UNFOLLOW/REMOVE OPTION) ---
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -368,10 +362,7 @@ class ProfileScreen extends StatelessWidget {
                             margin: EdgeInsets.symmetric(horizontal: 30 * scale),
                           ),
                           GestureDetector(
-                            onTap: () {
-                              List<dynamic> combinedList = [...followingList, ...outgoingRequests];
-                              _showFriendsList(context, "Following", List.from(combinedList), scale, currentUser.uid, true);
-                            },
+                            onTap: () => _showFriendsList(context, "Following", List.from(followingList), scale, currentUser.uid, true),
                             behavior: HitTestBehavior.opaque,
                             child: Column(
                               children: [
@@ -386,7 +377,6 @@ class ProfileScreen extends StatelessWidget {
                       
                       SizedBox(height: 24 * scale),
 
-                      // --- TRANSLUCENT PREMIUM METRICS DASHBOARD ---
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24 * scale),
                         child: BackdropFilter(
@@ -412,7 +402,6 @@ class ProfileScreen extends StatelessWidget {
                       
                       SizedBox(height: 28 * scale),
 
-                      // --- ACCOMPLISHMENTS SECTION ---
                       Align(
                         alignment: Alignment.centerLeft, 
                         child: Text(
@@ -458,7 +447,6 @@ class ProfileScreen extends StatelessWidget {
                       
                       SizedBox(height: 28 * scale),
 
-                      // --- IOS GROUPED OPTIONS CELL VIEW ---
                       ClipRRect(
                         borderRadius: BorderRadius.circular(20 * scale),
                         child: BackdropFilter(
@@ -508,7 +496,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- SHOW FRIENDS LIST BOTTOM SHEET (WITH UNFOLLOW/REMOVE ABILITY) ---
   void _showFriendsList(BuildContext context, String title, List<dynamic> initialUids, double scale, String currentUserId, bool isFollowingList) {
     List<dynamic> uids = List.from(initialUids);
 
@@ -609,7 +596,6 @@ class ProfileScreen extends StatelessWidget {
                                             ],
                                           ),
                                         ),
-                                        // --- ACTION BUTTONS (UNFOLLOW vs REMOVE) ---
                                         SizedBox(width: 8 * scale),
                                         if (isFollowingList) 
                                           GestureDetector(
@@ -622,9 +608,9 @@ class ProfileScreen extends StatelessWidget {
                                                 final targetRef = FirebaseFirestore.instance.collection('users').doc(targetUid);
                                                 final batch = FirebaseFirestore.instance.batch();
                                                 
+                                                // MLBB Unfollow: Remove target from my following, remove me from target's followers
                                                 batch.update(currentRef, {
                                                   'following': FieldValue.arrayRemove([targetUid]),
-                                                  'outgoingRequests': FieldValue.arrayRemove([targetUid]),
                                                 });
                                                 
                                                 batch.update(targetRef, {
@@ -651,7 +637,6 @@ class ProfileScreen extends StatelessWidget {
                                         else 
                                           GestureDetector(
                                             onTap: () async {
-                                              // Optimistic UI Update for removing a follower
                                               setState(() {
                                                 uids.removeAt(index);
                                               });
@@ -660,12 +645,12 @@ class ProfileScreen extends StatelessWidget {
                                                 final targetRef = FirebaseFirestore.instance.collection('users').doc(targetUid);
                                                 final batch = FirebaseFirestore.instance.batch();
                                                 
-                                                // Remove the target user from YOUR followers list
+                                                // MLBB Remove Follower: Remove target from my followers & requests, remove me from target's following
                                                 batch.update(currentRef, {
                                                   'followers': FieldValue.arrayRemove([targetUid]),
+                                                  'incomingRequests': FieldValue.arrayRemove([targetUid]),
                                                 });
                                                 
-                                                // Remove YOU from the target user's following list
                                                 batch.update(targetRef, {
                                                   'following': FieldValue.arrayRemove([currentUserId]),
                                                 });
@@ -703,7 +688,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- IOS ROW CELL VIEW ---
   Widget _buildActionRow({
     required double scale,
     required IconData icon,
@@ -741,7 +725,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- EDIT AVATAR SHEET DIALOG (LOCAL IMAGE UPLOAD ONLY) ---
   void _showEditAvatarDialog(BuildContext context, User user, {String? currentAvatar, required double scale}) {
     final ImagePicker picker = ImagePicker();
     String selectedAvatarData = currentAvatar ?? ""; 
@@ -768,7 +751,6 @@ class ProfileScreen extends StatelessWidget {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // --- AVATAR UPLOAD PREVIEW ---
                   GestureDetector(
                     onTap: () async {
                       try {
@@ -855,7 +837,6 @@ class ProfileScreen extends StatelessWidget {
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const SnedStudentLogin()), (route) => false);
   }
 
-  // --- STAT ITEM WIDGET ---
   Widget _buildStatItem(double scale, String label, String value, IconData icon, Color elementColor) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -874,7 +855,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- BADGE WIDGET ---
   Widget _buildBadge(double scale, String label, String imagePath, {required bool isUnlocked}) {
     return Opacity(
       opacity: isUnlocked ? 1.0 : 0.3,

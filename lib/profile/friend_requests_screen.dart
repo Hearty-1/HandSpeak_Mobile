@@ -12,7 +12,7 @@ class FriendRequestsScreen extends StatefulWidget {
 class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-  // Mutual friendship connection logic
+  // MLBB-Style Follow Back Logic
   Future<void> _acceptRequest(String requesterUid) async {
     if (currentUserId.isEmpty) return;
 
@@ -21,32 +21,29 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
     final currentUserDoc = await currentRef.get();
     final currentUserData = currentUserDoc.data() ?? {};
-    final String currentUserName = currentUserData['name'] ?? currentUserData['displayName'] ?? 'A user';
+    final String currentUserName = currentUserData['name'] ?? currentUserData['displayName'] ?? 'A player';
 
     final batch = FirebaseFirestore.instance.batch();
 
-    // 1. Current User: Add Requester to BOTH followers & following lists, remove from incoming
+    // 1. Current User: Add them to your following list, clear the notification.
     batch.update(currentRef, {
-      'followers': FieldValue.arrayUnion([requesterUid]),
       'following': FieldValue.arrayUnion([requesterUid]),
       'incomingRequests': FieldValue.arrayRemove([requesterUid]),
     });
 
-    // Notification payload for Requester
     final notificationPayload = {
-      'type': 'request_accepted',
-      'title': 'Friend Request Accepted',
-      'body': '$currentUserName accepted your friend request. You are now connected!',
+      'type': 'follow_back',
+      'title': 'New Friend!',
+      'body': '$currentUserName followed you back. You are now friends!',
       'fromUserId': currentUserId,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'isRead': false,
     };
 
-    // 2. Requester: Add Current User to BOTH followers & following lists, remove from outgoing
+    // 2. Requester: Add you to their followers. You are now mutuals (Friends).
     batch.update(requesterRef, {
       'followers': FieldValue.arrayUnion([currentUserId]),
-      'following': FieldValue.arrayUnion([currentUserId]),
-      'outgoingRequests': FieldValue.arrayRemove([currentUserId]),
+      'incomingRequests': FieldValue.arrayUnion([currentUserId]), // Send them a notification back
       'notifications': FieldValue.arrayUnion([notificationPayload]),
     });
 
@@ -57,21 +54,12 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     if (currentUserId.isEmpty) return;
 
     final currentRef = FirebaseFirestore.instance.collection('users').doc(currentUserId);
-    final requesterRef = FirebaseFirestore.instance.collection('users').doc(requesterUid);
 
-    final batch = FirebaseFirestore.instance.batch();
-
-    // Remove from current user's incoming requests
-    batch.update(currentRef, {
+    // ONLY remove from incomingRequests to clear the notification UI. 
+    // They safely remain in your followers list, just like ignoring in MLBB!
+    await currentRef.update({
       'incomingRequests': FieldValue.arrayRemove([requesterUid]),
     });
-
-    // Remove from requester's outgoing requests
-    batch.update(requesterRef, {
-      'outgoingRequests': FieldValue.arrayRemove([currentUserId]),
-    });
-
-    await batch.commit();
   }
 
   @override
@@ -80,7 +68,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
       backgroundColor: const Color(0xFFFFF9E5),
       appBar: AppBar(
         title: const Text(
-          "Friend Requests",
+          "Followers",
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
@@ -91,7 +79,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
         stream: FirebaseFirestore.instance.collection('users').doc(currentUserId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {
@@ -104,8 +92,8 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           if (incomingRequests.isEmpty) {
             return const Center(
               child: Text(
-                "No pending friend requests.",
-                style: TextStyle(color: Colors.black54, fontSize: 16),
+                "No new followers.",
+                style: TextStyle(color: Colors.black54, fontSize: 16, fontWeight: FontWeight.w600),
               ),
             );
           }
@@ -150,7 +138,7 @@ class _RequestTile extends StatelessWidget {
         }
 
         final data = snapshot.data!.data() as Map<String, dynamic>?;
-        final name = data?['name'] ?? data?['displayName'] ?? 'User';
+        final name = data?['name'] ?? data?['displayName'] ?? 'Player';
         final avatar = data?['avatar'] ?? data?['photoURL'];
 
         return Container(
@@ -192,7 +180,7 @@ class _RequestTile extends StatelessWidget {
                 ),
               ),
 
-              // --- ACCEPT BUTTON ---
+              // --- FOLLOW BACK BUTTON ---
               GestureDetector(
                 onTap: onAccept,
                 child: Container(
@@ -202,10 +190,10 @@ class _RequestTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Text(
-                    "Accept",
+                    "Follow Back",
                     style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
                       fontSize: 13,
                     ),
                   ),
@@ -213,7 +201,7 @@ class _RequestTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
 
-              // --- DECLINE BUTTON ---
+              // --- IGNORE BUTTON ---
               GestureDetector(
                 onTap: onDecline,
                 child: Container(
@@ -223,7 +211,7 @@ class _RequestTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Text(
-                    "Decline",
+                    "Ignore",
                     style: TextStyle(
                       color: Colors.black54,
                       fontWeight: FontWeight.w700,

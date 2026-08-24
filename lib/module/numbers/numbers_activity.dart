@@ -1,12 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
-import 'easyNumAct_mc.dart'; // Routes to the numbers quiz
+import 'easyNumAct_mc.dart';
 
-class NumbersActivityInterface extends StatelessWidget {
+class NumbersActivityInterface extends StatefulWidget {
   const NumbersActivityInterface({super.key});
 
-  // Helper to build the horizontal section dividers
+  @override
+  State<NumbersActivityInterface> createState() => _NumbersActivityInterfaceState();
+}
+
+class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
+  late SoundProvider _soundProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    Provider.of<SoundProvider>(context, listen: false).playBgm();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _soundProvider = Provider.of<SoundProvider>(context, listen: false);
+  }
+
+  @override
+  void dispose() {
+    _soundProvider.stopBgm();
+    super.dispose();
+  }
+
   Widget _buildSectionDivider(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -18,7 +44,7 @@ class NumbersActivityInterface extends StatelessWidget {
             child: Text(
               title,
               style: TextStyle(
-                color: Colors.grey.shade700, // Darkened for better readability against graphics
+                color: Colors.grey.shade700,
                 fontWeight: FontWeight.w900,
                 fontSize: 18,
                 letterSpacing: 1.2,
@@ -31,14 +57,13 @@ class NumbersActivityInterface extends StatelessWidget {
     );
   }
 
-  // Helper to build the vertical path lines
   Widget _buildVerticalPathLine() {
     return Center(
       child: Container(
         width: 8,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.grey.shade400, // Darkened for structural visibility
+          color: Colors.grey.shade400,
           borderRadius: BorderRadius.circular(4),
         ),
       ),
@@ -48,8 +73,8 @@ class NumbersActivityInterface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true, // Allows the landscape artwork to flow behind the AppBar
-      backgroundColor: const Color(0xFFFFF9E5), // Fallback base color if image loading fails
+      extendBodyBehindAppBar: true,
+      backgroundColor: const Color(0xFFFFF9E5),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -68,18 +93,14 @@ class NumbersActivityInterface extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-      // --- STACK BODY FOR GRAPHIC LAYERING & VISUAL ASSET DEBUGGING ---
       body: Stack(
         children: [
-          // Layer 1: The Pastel Background Image Canvas
           Positioned.fill(
             child: Image.asset(
               'assets/pictures/background1.jpg', 
               fit: BoxFit.cover,
-              // Applies the pastel filter wash directly over the source asset
               color: Colors.white.withOpacity(0.45),
               colorBlendMode: BlendMode.lighten,
-              // Error protection: Displays target paths on the device screen if paths break
               errorBuilder: (context, error, stackTrace) {
                 return Container(
                   color: const Color(0xFFFFF9E5), 
@@ -109,7 +130,6 @@ class NumbersActivityInterface extends StatelessWidget {
             ),
           ),
 
-          // Layer 2: Interactive Level Roadmap UI Layout
           SafeArea(
             child: StreamBuilder<DocumentSnapshot>(
               stream: ProgressService().getUserProgressStream(),
@@ -128,7 +148,6 @@ class NumbersActivityInterface extends StatelessWidget {
                         ? Map<String, dynamic>.from(data['progress']) 
                         : {};
                     
-                    // ONLY calculate stars for Numbers levels
                     progressMap.forEach((key, value) {
                       if (key.startsWith('numbers_')) {
                         categoryStars += (value as num).toInt();
@@ -137,9 +156,7 @@ class NumbersActivityInterface extends StatelessWidget {
                   }
                 }
 
-                // --- DEFINE THE 9-LEVEL ROADMAP & STAR GATES ---
                 final List<Map<String, dynamic>> pathNodes = [
-                  // 🟢 EASY LEVELS
                   {
                     'id': 'numbers_easy_1',
                     'title': 'Level 1: Sign to Text',
@@ -164,8 +181,6 @@ class NumbersActivityInterface extends StatelessWidget {
                     'alignment': Alignment.centerRight, 
                     'destination': const EasyNumActMc(levelId: 'numbers_easy_3', questionType: 'mixed'), 
                   },
-
-                  // 🟡 MEDIUM LEVELS
                   {
                     'id': 'numbers_medium_1',
                     'title': 'Level 4: Addition (+)',
@@ -190,8 +205,6 @@ class NumbersActivityInterface extends StatelessWidget {
                     'alignment': Alignment.centerLeft,
                     'destination': const EasyNumActMc(levelId: 'numbers_medium_3', questionType: 'mixed'),
                   },
-
-                  // 🔴 HARD LEVELS
                   {
                     'id': 'numbers_hard_1',
                     'title': 'Level 7: Sign to Text',
@@ -223,13 +236,12 @@ class NumbersActivityInterface extends StatelessWidget {
                   physics: const BouncingScrollPhysics(),
                   child: Column(
                     children: [
-                      // --- NUMBERS STAR BADGE ---
                       Align(
                         alignment: Alignment.centerRight,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9), // Subtle opacity addition to match style
+                            color: Colors.white.withOpacity(0.9),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: const Color(0xFFFFB800), width: 2),
                             boxShadow: const [BoxShadow(color: Color(0x05132C4A), blurRadius: 10, offset: Offset(0, 4))],
@@ -249,11 +261,9 @@ class NumbersActivityInterface extends StatelessWidget {
                       ),
                       const SizedBox(height: 30),
 
-                      // Initial EASY divider
                       _buildSectionDivider("EASY"),
                       const SizedBox(height: 10),
 
-                      // --- WINDING PATH BUILDER ---
                       ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -303,13 +313,21 @@ class NumbersActivityInterface extends StatelessWidget {
                                 else
                                   Text(
                                     "🔒 Locked",
-                                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12, fontWeight: FontWeight.bold), // High-contrast adjustment
+                                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12, fontWeight: FontWeight.bold),
                                   ),
                                 const SizedBox(height: 8),
 
                                 GestureDetector(
                                   onTap: isUnlocked
-                                      ? () => Navigator.push(context, MaterialPageRoute(builder: (context) => node['destination']))
+                                      ? () {
+                                          _soundProvider.stopBgm();
+                                          Navigator.push(
+                                            context, 
+                                            MaterialPageRoute(builder: (context) => node['destination'])
+                                          ).then((_) {
+                                            _soundProvider.playBgm();
+                                          });
+                                        }
                                       : () {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
@@ -345,7 +363,7 @@ class NumbersActivityInterface extends StatelessWidget {
                                 Text(
                                   node['title'],
                                   style: TextStyle(
-                                    color: isUnlocked ? const Color(0xFF322144) : Colors.grey.shade700, // High-contrast adjustment
+                                    color: isUnlocked ? const Color(0xFF322144) : Colors.grey.shade700,
                                     fontWeight: FontWeight.w800,
                                     fontSize: 16,
                                   ),
