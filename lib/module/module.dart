@@ -8,7 +8,7 @@ import 'numbers/numbers_interface.dart';
 import 'phrases/phrase_interface.dart'; 
 import '../profile/profile.dart';  
 import '../home/home.dart';  
-import '../leaderboard/leaderboard.dart'; 
+import '../leaderboard/arena.dart'; 
 
 class SnedInterface2 extends StatelessWidget {
   const SnedInterface2({super.key}); 
@@ -117,7 +117,7 @@ class SnedInterface2 extends StatelessWidget {
                               onPressed: () {},  
                             ),
                             IconButton(
-                              icon: const Icon(Icons.emoji_events, color: Colors.black54, size: 28), 
+                              icon: const Icon(Icons.sports_esports, color: Colors.black54, size: 28), 
                               onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LeaderboardScreen())), 
                             ),
                             IconButton(

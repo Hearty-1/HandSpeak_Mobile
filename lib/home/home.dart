@@ -9,7 +9,7 @@ import 'package:flutter_application_1/module/numbers/numbers_interface.dart';
 import '../services/progress_service.dart'; 
 import '../module/module.dart'; 
 import '../profile/profile.dart'; 
-import '../leaderboard/leaderboard.dart'; 
+import '../leaderboard/arena.dart'; 
 import '../home/settings_screen.dart';
 import '../home/notifications.dart';
 
@@ -167,42 +167,72 @@ class SnedInterafce1 extends StatelessWidget {
       
       // --- GLASSMORPHISM 4-TAB BOTTOM NAVIGATION BAR ---
       bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(32),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                height: 72,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.5), 
-                  borderRadius: BorderRadius.circular(32), 
-                  border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5), 
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
-                  children: [
-                    IconButton(icon: const Icon(Icons.home, color: Color(0xFFFFB800), size: 30), onPressed: () {}), 
-                    IconButton(
-                      icon: const Icon(Icons.auto_stories, color: Colors.black54, size: 28), 
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SnedInterface2())), 
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.emoji_events, color: Colors.black54, size: 28), 
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LeaderboardScreen())), 
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.person, color: Colors.black54, size: 28), 
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen())), 
-                    ),
-                  ],
+  child: Container(
+    width: double.infinity,
+    height: 74,
+    margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.45),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.65),
+              width: 1.5,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x08132C4A),
+                blurRadius: 20,
+                offset: Offset(0, 8),
+              )
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.home_rounded, color: Colors.black45, size: 28),
+                onPressed: () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SnedInterafce1(userName: "Student")),
+                    (route) => false,
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.auto_stories_rounded, color: Colors.black45, size: 28),
+                onPressed: () => Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SnedInterface2()),
                 ),
               ),
-            ),
+              // Highlighted Arena Icon
+              IconButton(
+                icon: const Icon(Icons.sports_esports_rounded, color: Colors.black54, size: 28), 
+                onPressed: () => Navigator.push(
+                  context, 
+                  MaterialPageRoute(builder: (context) => const LeaderboardScreen()),
+                ), 
+              ),
+              IconButton(
+                icon: const Icon(Icons.person_rounded, color: Colors.black45, size: 28),
+                onPressed: () => Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                ),
+              ),
+            ],
           ),
         ),
       ),
+    ),
+  ),
+),
 
       // --- BODY WITH AMBIENT BACKGROUND ---
       body: Stack(

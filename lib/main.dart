@@ -153,7 +153,7 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
                   ),
                   SizedBox(height: 8),
                   Text(
-                    "Your journey to sign language starts here.",
+                    "Your journey to Filipino Sign Language starts here.",
                     style: TextStyle(
                       color: Colors.black54,
                       fontSize: 16,

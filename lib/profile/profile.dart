@@ -10,7 +10,7 @@ import '../services/progress_service.dart';
 import '../auth/login_screen.dart';        
 import '../home/home.dart'; 
 import '../module/module.dart'; 
-import '../leaderboard/leaderboard.dart';
+import '../leaderboard/arena.dart';
 import '../home/settings_screen.dart'; 
 import 'add_friend_screen.dart'; 
 
@@ -184,7 +184,7 @@ class ProfileScreen extends StatelessWidget {
                       onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SnedInterface2())),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.emoji_events_rounded, color: Colors.black45, size: 28), 
+                      icon: const Icon(Icons.sports_esports_rounded, color: Colors.black45, size: 28), 
                       onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LeaderboardScreen())),
                     ),
                     IconButton(
