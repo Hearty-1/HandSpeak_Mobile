@@ -17,9 +17,10 @@ import 'add_friend_screen.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
-  Widget _buildAvatarImage(String avatarData, double scale, {double size = 100}) {
+  Widget _buildAvatarImage(BuildContext context, String avatarData, double scale, {double size = 100}) {
+    final theme = Theme.of(context);
     if (avatarData.isEmpty) {
-      return Icon(Icons.person_rounded, size: size * 0.55 * scale, color: const Color(0xFFFFB800));
+      return Icon(Icons.person_rounded, size: size * 0.55 * scale, color: theme.primaryColor);
     }
     
     if (avatarData.startsWith('data:image')) {
@@ -28,7 +29,7 @@ class ProfileScreen extends StatelessWidget {
         final Uint8List bytes = base64Decode(base64String);
         return Image.memory(bytes, width: size * scale, height: size * scale, fit: BoxFit.cover);
       } catch (e) {
-        return Icon(Icons.broken_image_rounded, size: size * 0.55 * scale, color: Colors.grey);
+        return Icon(Icons.broken_image_rounded, size: size * 0.55 * scale, color: theme.disabledColor);
       }
     } else {
       return Image.network(
@@ -36,13 +37,16 @@ class ProfileScreen extends StatelessWidget {
         width: size * scale,
         height: size * scale,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Icon(Icons.person_rounded, size: size * 0.55 * scale, color: const Color(0xFFFFB800)),
+        errorBuilder: (_, __, ___) => Icon(Icons.person_rounded, size: size * 0.55 * scale, color: theme.primaryColor),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     final User? currentUser = FirebaseAuth.instance.currentUser;
     final double screenWidth = MediaQuery.of(context).size.width;
     const double baseWidth = 393;
@@ -50,22 +54,22 @@ class ProfileScreen extends StatelessWidget {
     
     if (currentUser == null) {
       return Scaffold(
-        backgroundColor: const Color(0xFFFFF9E5),
+        backgroundColor: theme.scaffoldBackgroundColor,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.account_circle, size: 80, color: Color(0xFFFFB800)),
+              Icon(Icons.account_circle, size: 80, color: theme.primaryColor),
               const SizedBox(height: 16),
-              const Text('No student account found.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF222222))),
+              Text('No student account found.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
               const SizedBox(height: 20),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFB800), 
+                  backgroundColor: theme.primaryColor, 
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                 ),
                 onPressed: () => Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const SnedStudentLogin()), (route) => false),
-                child: const Text('Go to Login', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: Text('Go to Login', style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
               )
             ],
           ),
@@ -78,15 +82,15 @@ class ProfileScreen extends StatelessWidget {
     return Scaffold(
       extendBodyBehindAppBar: true, 
       extendBody: true, 
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withOpacity(0.4),
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false, 
         leading: IconButton( 
-          icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.black87, size: 26),
+          icon: Icon(Icons.person_add_alt_1_rounded, color: textColor, size: 26),
           onPressed: () {
             Navigator.push(
               context,
@@ -94,8 +98,9 @@ class ProfileScreen extends StatelessWidget {
             );
           },
         ),
-        iconTheme: const IconThemeData(color: Colors.black87), 
+        iconTheme: theme.iconTheme.copyWith(color: textColor), 
         flexibleSpace: ClipRRect(
+          clipBehavior: Clip.antiAlias,
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
@@ -103,18 +108,18 @@ class ProfileScreen extends StatelessWidget {
                 color: Colors.transparent,
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.black.withOpacity(0.06),
-                    width: 0.5,
+                    color: Colors.white.withOpacity(0.15),
+                    width: 1.0,
                   ),
                 ),
               ),
             ),
           ),
         ),
-        title: const Text(
+        title: Text(
           "My Profile",
           style: TextStyle(
-            color: Colors.black, 
+            color: textColor, 
             fontWeight: FontWeight.w800,
             fontFamily: 'Inter',
             fontSize: 22,
@@ -127,7 +132,7 @@ class ProfileScreen extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5),
+                border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(25),
@@ -136,7 +141,7 @@ class ProfileScreen extends StatelessWidget {
                   width: 40, 
                   height: 40, 
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.account_circle, size: 40, color: Colors.grey),
+                  errorBuilder: (_, __, ___) => Icon(Icons.account_circle, size: 40, color: theme.disabledColor),
                 ),
               ),
             ),
@@ -151,15 +156,16 @@ class ProfileScreen extends StatelessWidget {
           margin: EdgeInsets.only(bottom: 12 * scale, left: 16 * scale, right: 16 * scale),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(28 * scale),
+            clipBehavior: Clip.antiAlias,
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.45),
+                  color: theme.cardColor.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(28 * scale),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.65),
-                    width: 1.5 * scale,
+                    color: Colors.white.withOpacity(0.15),
+                    width: 1.0,
                   ),
                   boxShadow: const [
                     BoxShadow(
@@ -173,22 +179,22 @@ class ProfileScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.home_rounded, color: Colors.black45, size: 28), 
+                      icon: Icon(Icons.home_rounded, color: textColor.withOpacity(0.6), size: 28), 
                       onPressed: () {
                         String displayName = currentUser.displayName ?? currentUser.email?.split('@')[0] ?? "Student";
                         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => SnedInterafce1(userName: displayName)), (route) => false);
                       },
                     ),
                     IconButton(
-                      icon: const Icon(Icons.auto_stories_rounded, color: Colors.black45, size: 28), 
+                      icon: Icon(Icons.auto_stories_rounded, color: textColor.withOpacity(0.6), size: 28), 
                       onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SnedInterface2())),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.sports_esports_rounded, color: Colors.black45, size: 28), 
+                      icon: Icon(Icons.sports_esports_rounded, color: textColor.withOpacity(0.6), size: 28), 
                       onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LeaderboardScreen())),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.person_rounded, color: Color(0xFFFFB800), size: 30), 
+                      icon: Icon(Icons.person_rounded, color: theme.primaryColor, size: 30), 
                       onPressed: () {}, 
                     ),
                   ],
@@ -207,7 +213,7 @@ class ProfileScreen extends StatelessWidget {
               width: 200 * scale, height: 200 * scale,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFFFFB800).withOpacity(0.2),
+                color: theme.primaryColor.withOpacity(0.2),
               ),
             ),
           ),
@@ -217,7 +223,7 @@ class ProfileScreen extends StatelessWidget {
               width: 220 * scale, height: 220 * scale,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFFF34B1B).withOpacity(0.08),
+                color: theme.colorScheme.secondary.withOpacity(0.12),
               ),
             ),
           ),
@@ -227,7 +233,7 @@ class ProfileScreen extends StatelessWidget {
               stream: progressService.getUserProgressStream(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFFB800))));
+                  return Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor)));
                 }
 
                 String name = currentUser.displayName ?? "Guest Student";
@@ -249,7 +255,6 @@ class ProfileScreen extends StatelessWidget {
                     stars = userData['stars'] ?? 0;
                     streak = userData['streak'] ?? 0;
                     
-                    // MLBB Follow Scheme: Pure Followers and Following
                     followersList = userData['followers'] as List<dynamic>? ?? [];
                     followingList = userData['following'] as List<dynamic>? ?? [];
                     
@@ -281,7 +286,7 @@ class ProfileScreen extends StatelessWidget {
                           Container(
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 4 * scale),
+                              border: Border.all(color: theme.cardColor, width: 4 * scale),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.08),
@@ -292,9 +297,9 @@ class ProfileScreen extends StatelessWidget {
                             ),
                             child: CircleAvatar(
                               radius: 50 * scale,
-                              backgroundColor: const Color(0xFFFFEFA7),
+                              backgroundColor: theme.primaryColor.withOpacity(0.2),
                               child: ClipOval(
-                                child: _buildAvatarImage(avatarUrl, scale),
+                                child: _buildAvatarImage(context, avatarUrl, scale),
                               ),
                             ),
                           ),
@@ -304,14 +309,14 @@ class ProfileScreen extends StatelessWidget {
                               height: 32 * scale,
                               width: 32 * scale,
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: theme.cardColor,
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, offset: const Offset(0, 2))
                                 ],
-                                border: Border.all(color: Colors.black.withOpacity(0.04), width: 0.5)
+                                border: Border.all(color: theme.dividerColor.withOpacity(0.3), width: 0.5)
                               ),
-                              child: Icon(Icons.edit_rounded, size: 16 * scale, color: const Color(0xFF222222)),
+                              child: Icon(Icons.edit_rounded, size: 16 * scale, color: textColor),
                             ),
                           )
                         ],
@@ -321,7 +326,7 @@ class ProfileScreen extends StatelessWidget {
                       Text(
                         name, 
                         style: TextStyle(
-                          color: const Color(0xFF222222), 
+                          color: textColor, 
                           fontSize: 24 * scale, 
                           fontWeight: FontWeight.w800,
                           fontFamily: 'Inter',
@@ -332,7 +337,7 @@ class ProfileScreen extends StatelessWidget {
                       Text(
                         email, 
                         style: TextStyle(
-                          color: Colors.black45, 
+                          color: textColor.withOpacity(0.6), 
                           fontSize: 14 * scale,
                           fontFamily: 'Inter',
                           fontWeight: FontWeight.w500
@@ -349,16 +354,16 @@ class ProfileScreen extends StatelessWidget {
                             behavior: HitTestBehavior.opaque,
                             child: Column(
                               children: [
-                                Text('$followersCount', style: TextStyle(color: const Color(0xFF222222), fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                                Text('$followersCount', style: TextStyle(color: textColor, fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
                                 SizedBox(height: 2 * scale),
-                                Text('Followers', style: TextStyle(color: Colors.black45, fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+                                Text('Followers', style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
                               ],
                             ),
                           ),
                           Container(
                             height: 24 * scale,
                             width: 1,
-                            color: Colors.black.withOpacity(0.1),
+                            color: theme.dividerColor.withOpacity(0.4),
                             margin: EdgeInsets.symmetric(horizontal: 30 * scale),
                           ),
                           GestureDetector(
@@ -366,9 +371,9 @@ class ProfileScreen extends StatelessWidget {
                             behavior: HitTestBehavior.opaque,
                             child: Column(
                               children: [
-                                Text('$followingCount', style: TextStyle(color: const Color(0xFF222222), fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                                Text('$followingCount', style: TextStyle(color: textColor, fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
                                 SizedBox(height: 2 * scale),
-                                Text('Following', style: TextStyle(color: Colors.black45, fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+                                Text('Following', style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
                               ],
                             ),
                           ),
@@ -379,21 +384,22 @@ class ProfileScreen extends StatelessWidget {
 
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24 * scale),
+                        clipBehavior: Clip.antiAlias,
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                           child: Container(
                             padding: EdgeInsets.symmetric(vertical: 16 * scale),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.45), 
+                              color: theme.cardColor.withOpacity(0.6), 
                               borderRadius: BorderRadius.circular(24 * scale), 
-                              border: Border.all(color: Colors.white.withOpacity(0.6), width: 1.5 * scale),
+                              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
-                                _buildStatItem(scale, "Streak", "$streak", Icons.local_fire_department_rounded, const Color(0xFFFF8227)),
-                                _buildStatItem(scale, "Stars", "$stars", Icons.star_rounded, const Color(0xFFFFB800)),
-                                _buildStatItem(scale, "XP Total", "$xp", Icons.bolt_rounded, const Color(0xFF2196F3)),
+                                _buildStatItem(context, scale, "Streak", "$streak", Icons.local_fire_department_rounded, theme.colorScheme.secondary),
+                                _buildStatItem(context, scale, "Stars", "$stars", Icons.star_rounded, theme.primaryColor),
+                                _buildStatItem(context, scale, "XP Total", "$xp", Icons.bolt_rounded, const Color(0xFF2196F3)),
                               ],
                             ),
                           ),
@@ -407,7 +413,7 @@ class ProfileScreen extends StatelessWidget {
                         child: Text(
                           'My Badges', 
                           style: TextStyle(
-                            color: const Color(0xFF222222), 
+                            color: textColor, 
                             fontSize: 18 * scale, 
                             fontWeight: FontWeight.w800,
                             fontFamily: 'Inter',
@@ -419,14 +425,15 @@ class ProfileScreen extends StatelessWidget {
 
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24 * scale),
+                        clipBehavior: Clip.antiAlias,
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                           child: Container(
                             padding: EdgeInsets.all(18 * scale),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.4),
+                              color: theme.cardColor.withOpacity(0.6),
                               borderRadius: BorderRadius.circular(24 * scale),
-                              border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5 * scale),
+                              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
                             ),
                             child: GridView.count(
                               crossAxisCount: 3, 
@@ -436,9 +443,9 @@ class ProfileScreen extends StatelessWidget {
                               crossAxisSpacing: 12 * scale, 
                               childAspectRatio: 0.82,
                               children: [
-                                _buildBadge(scale, "First Sign", "assets/pictures/alphabet.png", isUnlocked: xp > 0),
-                                _buildBadge(scale, "Star Scholar", "assets/pictures/large star.png", isUnlocked: stars >= 10),
-                                _buildBadge(scale, "Sign Master", "assets/pictures/sign.png", isUnlocked: xp >= 1000), 
+                                _buildBadge(context, scale, "First Sign", "assets/pictures/alphabet.png", isUnlocked: xp > 0),
+                                _buildBadge(context, scale, "Star Scholar", "assets/pictures/large star.png", isUnlocked: stars >= 10),
+                                _buildBadge(context, scale, "Sign Master", "assets/pictures/sign.png", isUnlocked: xp >= 1000), 
                               ],
                             ),
                           ),
@@ -449,20 +456,22 @@ class ProfileScreen extends StatelessWidget {
 
                       ClipRRect(
                         borderRadius: BorderRadius.circular(20 * scale),
+                        clipBehavior: Clip.antiAlias,
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.45),
+                              color: theme.cardColor.withOpacity(0.6),
                               borderRadius: BorderRadius.circular(20 * scale),
-                              border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5 * scale),
+                              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
                             ),
                             child: Column(
                               children: [
                                 _buildActionRow(
+                                  context: context,
                                   scale: scale,
                                   icon: Icons.settings_rounded,
-                                  iconColor: const Color(0xFFFFB800),
+                                  iconColor: theme.primaryColor,
                                   title: "Settings",
                                   onTap: () {
                                     Navigator.push(
@@ -471,8 +480,9 @@ class ProfileScreen extends StatelessWidget {
                                     );
                                   },
                                 ),
-                                Divider(height: 1, thickness: 0.8, color: Colors.black.withOpacity(0.06)),
+                                Divider(height: 1, thickness: 0.8, color: theme.dividerColor.withOpacity(0.2)),
                                 _buildActionRow(
+                                  context: context,
                                   scale: scale,
                                   icon: Icons.logout_rounded,
                                   iconColor: const Color(0xFFF34B1B),
@@ -498,10 +508,12 @@ class ProfileScreen extends StatelessWidget {
 
   void _showFriendsList(BuildContext context, String title, List<dynamic> initialUids, double scale, String currentUserId, bool isFollowingList) {
     List<dynamic> uids = List.from(initialUids);
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       isScrollControlled: true,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24 * scale))),
       builder: (context) {
@@ -517,13 +529,14 @@ class ProfileScreen extends StatelessWidget {
                     child: Container(
                       width: 40 * scale, 
                       height: 5 * scale, 
-                      decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(10))
+                      decoration: BoxDecoration(color: textColor.withOpacity(0.2), borderRadius: BorderRadius.circular(10))
                     ),
                   ),
                   SizedBox(height: 20 * scale),
                   Text(
                     title, 
                     style: TextStyle(
+                      color: textColor,
                       fontSize: 20 * scale, 
                       fontWeight: FontWeight.w800, 
                       fontFamily: 'Inter',
@@ -536,7 +549,7 @@ class ProfileScreen extends StatelessWidget {
                         ? Center(
                             child: Text(
                               "No $title yet.", 
-                              style: TextStyle(color: Colors.black54, fontSize: 14 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')
+                              style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 14 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')
                             )
                           )
                         : ListView.separated(
@@ -560,16 +573,16 @@ class ProfileScreen extends StatelessWidget {
                                   return Container(
                                     padding: EdgeInsets.all(12 * scale),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: theme.cardColor,
                                       borderRadius: BorderRadius.circular(16 * scale),
-                                      border: Border.all(color: Colors.black.withOpacity(0.04)),
+                                      border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
                                     ),
                                     child: Row(
                                       children: [
                                         CircleAvatar(
                                           radius: 20 * scale,
-                                          backgroundColor: const Color(0xFFFFEFA7),
-                                          child: ClipOval(child: _buildAvatarImage(avatar, scale, size: 40)),
+                                          backgroundColor: theme.primaryColor.withOpacity(0.2),
+                                          child: ClipOval(child: _buildAvatarImage(context, avatar, scale, size: 40)),
                                         ),
                                         SizedBox(width: 12 * scale),
                                         Expanded(
@@ -578,18 +591,18 @@ class ProfileScreen extends StatelessWidget {
                                             children: [
                                               Text(
                                                 name, 
-                                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14 * scale, fontFamily: 'Inter'),
+                                                style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontSize: 14 * scale, fontFamily: 'Inter'),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                               SizedBox(height: 2 * scale),
                                               Row(
                                                 children: [
-                                                  Icon(Icons.bolt_rounded, size: 12 * scale, color: Colors.blue.shade400),
+                                                  Icon(Icons.bolt_rounded, size: 12 * scale, color: const Color(0xFF2196F3)),
                                                   SizedBox(width: 2 * scale),
                                                   Text(
                                                     "$xp XP", 
-                                                    style: TextStyle(color: Colors.blue.shade600, fontSize: 11 * scale, fontWeight: FontWeight.w700)
+                                                    style: TextStyle(color: const Color(0xFF2196F3), fontSize: 11 * scale, fontWeight: FontWeight.w700)
                                                   ),
                                                 ],
                                               )
@@ -597,80 +610,50 @@ class ProfileScreen extends StatelessWidget {
                                           ),
                                         ),
                                         SizedBox(width: 8 * scale),
-                                        if (isFollowingList) 
-                                          GestureDetector(
-                                            onTap: () async {
-                                              setState(() {
-                                                uids.removeAt(index);
-                                              });
-                                              try {
-                                                final currentRef = FirebaseFirestore.instance.collection('users').doc(currentUserId);
-                                                final targetRef = FirebaseFirestore.instance.collection('users').doc(targetUid);
-                                                final batch = FirebaseFirestore.instance.batch();
-                                                
-                                                // MLBB Unfollow: Remove target from my following, remove me from target's followers
+                                        GestureDetector(
+                                          onTap: () async {
+                                            setState(() {
+                                              uids.removeAt(index);
+                                            });
+                                            try {
+                                              final currentRef = FirebaseFirestore.instance.collection('users').doc(currentUserId);
+                                              final targetRef = FirebaseFirestore.instance.collection('users').doc(targetUid);
+                                              final batch = FirebaseFirestore.instance.batch();
+                                              
+                                              if (isFollowingList) {
                                                 batch.update(currentRef, {
                                                   'following': FieldValue.arrayRemove([targetUid]),
                                                 });
-                                                
                                                 batch.update(targetRef, {
                                                   'followers': FieldValue.arrayRemove([currentUserId]),
                                                   'incomingRequests': FieldValue.arrayRemove([currentUserId]),
                                                 });
-                                                await batch.commit();
-                                              } catch (e) {
-                                                debugPrint("Error unfollowing: $e");
-                                              }
-                                            },
-                                            child: Container(
-                                              padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale),
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey.shade200,
-                                                borderRadius: BorderRadius.circular(12 * scale),
-                                              ),
-                                              child: Text(
-                                                "Unfollow", 
-                                                style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w700, fontSize: 12 * scale, fontFamily: 'Inter')
-                                              ),
-                                            ),
-                                          )
-                                        else 
-                                          GestureDetector(
-                                            onTap: () async {
-                                              setState(() {
-                                                uids.removeAt(index);
-                                              });
-                                              try {
-                                                final currentRef = FirebaseFirestore.instance.collection('users').doc(currentUserId);
-                                                final targetRef = FirebaseFirestore.instance.collection('users').doc(targetUid);
-                                                final batch = FirebaseFirestore.instance.batch();
-                                                
-                                                // MLBB Remove Follower: Remove target from my followers & requests, remove me from target's following
+                                              } else {
                                                 batch.update(currentRef, {
                                                   'followers': FieldValue.arrayRemove([targetUid]),
                                                   'incomingRequests': FieldValue.arrayRemove([targetUid]),
                                                 });
-                                                
                                                 batch.update(targetRef, {
                                                   'following': FieldValue.arrayRemove([currentUserId]),
                                                 });
-                                                await batch.commit();
-                                              } catch (e) {
-                                                debugPrint("Error removing follower: $e");
                                               }
-                                            },
-                                            child: Container(
-                                              padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale),
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey.shade200,
-                                                borderRadius: BorderRadius.circular(12 * scale),
-                                              ),
-                                              child: Text(
-                                                "Remove", 
-                                                style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w700, fontSize: 12 * scale, fontFamily: 'Inter')
-                                              ),
+                                              await batch.commit();
+                                            } catch (e) {
+                                              debugPrint("Error updating social relation: $e");
+                                            }
+                                          },
+                                          child: Container(
+                                            padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale),
+                                            decoration: BoxDecoration(
+                                              color: textColor.withOpacity(0.08),
+                                              borderRadius: BorderRadius.circular(12 * scale),
+                                            ),
+                                            child: Text(
+                                              isFollowingList ? "Unfollow" : "Remove", 
+                                              style: TextStyle(color: textColor.withOpacity(0.7), fontWeight: FontWeight.w700, fontSize: 12 * scale, fontFamily: 'Inter')
                                             ),
                                           ),
+                                        )
                                       ],
                                     ),
                                   );
@@ -689,6 +672,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildActionRow({
+    required BuildContext context,
     required double scale,
     required IconData icon,
     required Color iconColor,
@@ -696,6 +680,9 @@ class ProfileScreen extends StatelessWidget {
     required VoidCallback onTap,
     bool isDestructive = false,
   }) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return ListTile(
       onTap: onTap,
       dense: true,
@@ -714,13 +701,13 @@ class ProfileScreen extends StatelessWidget {
           fontSize: 15 * scale,
           fontWeight: FontWeight.w700,
           fontFamily: 'Inter',
-          color: isDestructive ? const Color(0xFFF34B1B) : Colors.black87,
+          color: isDestructive ? const Color(0xFFF34B1B) : textColor,
         ),
       ),
       trailing: Icon(
         Icons.arrow_forward_ios_rounded,
         size: 14 * scale,
-        color: Colors.black26,
+        color: textColor.withOpacity(0.3),
       ),
     );
   }
@@ -728,6 +715,8 @@ class ProfileScreen extends StatelessWidget {
   void _showEditAvatarDialog(BuildContext context, User user, {String? currentAvatar, required double scale}) {
     final ImagePicker picker = ImagePicker();
     String selectedAvatarData = currentAvatar ?? ""; 
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
 
     showDialog(
       context: context,
@@ -738,14 +727,18 @@ class ProfileScreen extends StatelessWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              backgroundColor: const Color(0xFFFFFDF6),
+              backgroundColor: theme.cardColor,
               surfaceTintColor: Colors.transparent,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24 * scale)),
               title: Row(
                 children: [
-                  Container(padding: EdgeInsets.all(6 * scale), decoration: BoxDecoration(color: const Color(0xFFFFB800).withOpacity(0.15), shape: BoxShape.circle), child: Icon(Icons.photo_camera_rounded, color: const Color(0xFFFFB800), size: 22 * scale)),
+                  Container(
+                    padding: EdgeInsets.all(6 * scale), 
+                    decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.15), shape: BoxShape.circle), 
+                    child: Icon(Icons.photo_camera_rounded, color: theme.primaryColor, size: 22 * scale)
+                  ),
                   SizedBox(width: 10 * scale),
-                  Text("Update Avatar", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19 * scale, fontFamily: 'Inter', color: Colors.black87)),
+                  Text("Update Avatar", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19 * scale, fontFamily: 'Inter', color: textColor)),
                 ],
               ),
               content: Column(
@@ -775,24 +768,24 @@ class ProfileScreen extends StatelessWidget {
                       width: 80 * scale,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.black.withOpacity(0.05),
-                        border: Border.all(color: const Color(0xFFFFB800), width: 2),
+                        color: textColor.withOpacity(0.05),
+                        border: Border.all(color: theme.primaryColor, width: 2),
                       ),
                       child: ClipOval(
                         child: selectedAvatarData.isNotEmpty
-                            ? _buildAvatarImage(selectedAvatarData, scale, size: 80)
-                            : Icon(Icons.add_a_photo_rounded, color: Colors.black45, size: 30 * scale),
+                            ? _buildAvatarImage(context, selectedAvatarData, scale, size: 80)
+                            : Icon(Icons.add_a_photo_rounded, color: textColor.withOpacity(0.4), size: 30 * scale),
                       ),
                     ),
                   ),
                   SizedBox(height: 8 * scale),
-                  Text("Tap to upload photo", style: TextStyle(color: Colors.black45, fontSize: 11 * scale, fontWeight: FontWeight.w600)),
+                  Text("Tap to upload photo", style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 11 * scale, fontWeight: FontWeight.w600)),
                 ],
               ),
               actions: [
                 TextButton(
                   onPressed: isSaving ? null : () => Navigator.pop(context),
-                  child: const Text("Cancel", style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+                  child: Text("Cancel", style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w700, fontFamily: 'Inter')),
                 ),
                 ElevatedButton(
                   onPressed: isSaving 
@@ -818,10 +811,14 @@ class ProfileScreen extends StatelessWidget {
                           }
                         }
                       },
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12 * scale))),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.primaryColor, 
+                    elevation: 0, 
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12 * scale))
+                  ),
                   child: isSaving 
-                      ? SizedBox(width: 18 * scale, height: 18 * scale, child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text("Save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                      ? SizedBox(width: 18 * scale, height: 18 * scale, child: CircularProgressIndicator(color: theme.colorScheme.onPrimary, strokeWidth: 2))
+                      : Text("Save", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
                 ),
               ],
             );
@@ -837,7 +834,10 @@ class ProfileScreen extends StatelessWidget {
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const SnedStudentLogin()), (route) => false);
   }
 
-  Widget _buildStatItem(double scale, String label, String value, IconData icon, Color elementColor) {
+  Widget _buildStatItem(BuildContext context, double scale, String label, String value, IconData icon, Color elementColor) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -845,17 +845,20 @@ class ProfileScreen extends StatelessWidget {
         SizedBox(height: 4 * scale),
         Text(
           value, 
-          style: TextStyle(color: Colors.black87, fontSize: 22 * scale, fontWeight: FontWeight.w900, fontFamily: 'Inter')
+          style: TextStyle(color: textColor, fontSize: 22 * scale, fontWeight: FontWeight.w900, fontFamily: 'Inter')
         ),
         Text(
           label, 
-          style: TextStyle(color: Colors.black45, fontSize: 11 * scale, fontWeight: FontWeight.w700, fontFamily: 'Inter')
+          style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 11 * scale, fontWeight: FontWeight.w700, fontFamily: 'Inter')
         ),
       ],
     );
   }
 
-  Widget _buildBadge(double scale, String label, String imagePath, {required bool isUnlocked}) {
+  Widget _buildBadge(BuildContext context, double scale, String label, String imagePath, {required bool isUnlocked}) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return Opacity(
       opacity: isUnlocked ? 1.0 : 0.3,
       child: Column(
@@ -866,14 +869,14 @@ class ProfileScreen extends StatelessWidget {
             width: 68 * scale, 
             height: 68 * scale,
             decoration: BoxDecoration(
-              color: isUnlocked ? Colors.white.withOpacity(0.8) : Colors.black.withOpacity(0.04), 
+              color: isUnlocked ? theme.cardColor.withOpacity(0.8) : textColor.withOpacity(0.04), 
               borderRadius: BorderRadius.circular(16 * scale),
               border: Border.all(
-                color: isUnlocked ? const Color(0xFFFFB800).withOpacity(0.5) : Colors.transparent, 
+                color: isUnlocked ? theme.primaryColor.withOpacity(0.5) : Colors.transparent, 
                 width: 1.5 * scale
               ),
               boxShadow: isUnlocked ? [
-                BoxShadow(color: const Color(0xFFFFB800).withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 3))
+                BoxShadow(color: theme.primaryColor.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 3))
               ] : null,
               image: DecorationImage(image: AssetImage(imagePath), fit: BoxFit.contain),
             ),
@@ -885,7 +888,7 @@ class ProfileScreen extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.black87, 
+              color: textColor, 
               fontSize: 11 * scale, 
               fontFamily: 'Inter',
               fontWeight: isUnlocked ? FontWeight.w800 : FontWeight.w600

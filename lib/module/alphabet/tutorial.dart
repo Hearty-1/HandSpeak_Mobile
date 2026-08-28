@@ -68,33 +68,36 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
 
     return Scaffold(
-      extendBodyBehindAppBar: true, // Allow layout under glass app bar
-      backgroundColor: const Color(0xFFFFF9E5),
+      extendBodyBehindAppBar: true, 
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       // --- GLASSMORPHISM APP BAR ---
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), // Frosted glass
+        backgroundColor: theme.cardColor.withOpacity(0.4), 
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Tutorial List',
           style: TextStyle(
-            color: Colors.black87, 
+            color: theme.colorScheme.onSurface, 
             fontSize: 22, 
             fontFamily: 'Inter', 
             fontWeight: FontWeight.w800, 
@@ -114,7 +117,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFFFFB800).withOpacity(0.25),
+                color: theme.primaryColor.withOpacity(0.25),
               ),
             ),
           ),
@@ -126,7 +129,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
               height: 280,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF7DC579).withOpacity(0.15),
+                color: theme.colorScheme.secondary.withOpacity(0.15),
               ),
             ),
           ),
@@ -145,9 +148,9 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                       child: Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.6),
+                          color: theme.cardColor.withOpacity(0.6),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white.withOpacity(0.7), width: 1.5),
+                          border: Border.all(color: theme.colorScheme.surface.withOpacity(0.7), width: 1.5),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.03), 
@@ -158,12 +161,13 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                         ),
                         child: TextField(
                           onChanged: (value) => _runFilter(value), 
-                          decoration: const InputDecoration(
+                          style: TextStyle(color: theme.colorScheme.onSurface),
+                          decoration: InputDecoration(
                             hintText: 'Search letter...',
-                            hintStyle: TextStyle(color: Colors.black45, fontWeight: FontWeight.w500),
-                            prefixIcon: Icon(Icons.search, color: Colors.black45),
+                            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.w500),
+                            prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurface.withOpacity(0.5)),
                             border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(vertical: 12),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
                           ),
                         ),
                       ),
@@ -173,7 +177,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                 
                 Expanded(
                   child: filteredLessons.isEmpty
-                      ? const Center(child: Text("No letters found.", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black54)))
+                      ? Center(child: Text("No letters found.", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7))))
                       : ListView.builder(
                           physics: const BouncingScrollPhysics(),
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -199,7 +203,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text("Complete previous letters to unlock ${lesson['title']}!"),
-                                      backgroundColor: Colors.redAccent,
+                                      backgroundColor: theme.colorScheme.error,
                                     ),
                                   );
                                 }
@@ -231,6 +235,9 @@ class LessonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: ClipRRect(
@@ -245,13 +252,13 @@ class LessonCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
                 decoration: BoxDecoration(
                   color: isLocked 
-                      ? Colors.white.withOpacity(0.4) 
-                      : Colors.white.withOpacity(0.7),
+                      ? theme.cardColor.withOpacity(0.2) 
+                      : theme.cardColor.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isLocked 
-                        ? Colors.white.withOpacity(0.4) 
-                        : const Color(0xFFFFB800).withOpacity(0.5), 
+                        ? theme.colorScheme.surface.withOpacity(0.4) 
+                        : theme.primaryColor.withOpacity(0.5), 
                     width: 1.5
                   ),
                   boxShadow: [
@@ -271,7 +278,9 @@ class LessonCard extends StatelessWidget {
                         fontSize: 30,
                         fontWeight: FontWeight.w900,
                         fontFamily: 'Inter',
-                        color: isLocked ? Colors.black45 : Colors.black87,
+                        color: isLocked 
+                            ? theme.colorScheme.onSurface.withOpacity(0.4) 
+                            : theme.colorScheme.onSurface,
                         letterSpacing: -1.0,
                       ),
                     ),
@@ -279,27 +288,27 @@ class LessonCard extends StatelessWidget {
                         ? Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.05),
+                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.lock_outline, color: Colors.black45, size: 22),
+                            child: Icon(Icons.lock_outline, color: theme.colorScheme.onSurface.withOpacity(0.5), size: 22),
                           )
                         : Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: theme.cardColor,
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFFFFB800).withOpacity(0.3),
+                                  color: theme.primaryColor.withOpacity(0.3),
                                   blurRadius: 8,
                                   spreadRadius: 1,
                                 )
                               ],
                             ),
-                            child: const Icon(
-                              Icons.play_arrow_rounded, // Customized theme item badge
-                              color: Color(0xFFFFB800),
+                            child: Icon(
+                              Icons.play_arrow_rounded, 
+                              color: theme.primaryColor,
                               size: 22,
                             ),
                           ),

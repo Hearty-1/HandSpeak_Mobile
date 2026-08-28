@@ -67,9 +67,9 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Earn 3 stars in Practice mode to unlock the next letter!'),
-            backgroundColor: Color(0xCCF39C12),
+          SnackBar(
+            content: const Text('Earn 3 stars in Practice mode to unlock the next letter!'),
+            backgroundColor: Theme.of(context).primaryColor, 
           ),
         );
       }
@@ -92,6 +92,8 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final currentSign = _alphabetList[_currentIndex];
     
     const double baseWidth = 393;
@@ -101,32 +103,32 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
     double progressPercentage = (_currentIndex + 1) / _alphabetList.length;
 
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
 
     return Scaffold(
       extendBodyBehindAppBar: true, 
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       // --- GLASSMORPHISM APPBAR ---
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), 
+        backgroundColor: theme.cardColor.withOpacity(0.4), 
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Tutorial',
           style: TextStyle(
-            color: Colors.black87, 
+            color: theme.colorScheme.onSurface, 
             fontSize: 22, 
             fontFamily: 'Inter', 
             fontWeight: FontWeight.w800, 
@@ -152,18 +154,18 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.6),
+                          color: theme.cardColor.withOpacity(0.6),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFFFB800).withOpacity(0.5), width: 1.5),
+                          border: Border.all(color: theme.primaryColor.withOpacity(0.5), width: 1.5),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.bolt, color: Color(0xFFBA8E23), size: 16),
+                            Icon(Icons.bolt, color: theme.primaryColor, size: 16),
                             const SizedBox(width: 4),
                             Text(
                               "$totalXp XP",
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFFBA8E23)),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: theme.primaryColor),
                             )
                           ],
                         ),
@@ -181,11 +183,11 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
           // Ambient backgrounds
           Positioned(
             top: -50, left: -50,
-            child: Container(width: 250, height: 250, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFFB800).withOpacity(0.2))),
+            child: Container(width: 250, height: 250, decoration: BoxDecoration(shape: BoxShape.circle, color: theme.primaryColor.withOpacity(0.2))),
           ),
           Positioned(
             bottom: 150, right: -100,
-            child: Container(width: 300, height: 300, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7DC579).withOpacity(0.15))),
+            child: Container(width: 300, height: 300, decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.secondary.withOpacity(0.15))),
           ),
           
           SafeArea(
@@ -211,7 +213,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                               child: Text(
                                 currentSign.label,
                                 style: TextStyle(
-                                  color: Colors.black87, 
+                                  color: theme.colorScheme.onSurface, 
                                   fontSize: 52 * scale, 
                                   fontFamily: 'Inter', 
                                   fontWeight: FontWeight.w800, 
@@ -247,9 +249,9 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                                 child: Container(
                                   width: maxProgressWidth * scale, height: 14 * scale,
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.4), 
+                                    color: theme.cardColor.withOpacity(0.4), 
                                     borderRadius: BorderRadius.circular(25 * scale),
-                                    border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.0)
+                                    border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1.0)
                                   ),
                                   child: Stack(
                                     children: [
@@ -257,9 +259,9 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                                         duration: const Duration(milliseconds: 250),
                                         width: calculatedProgressWidth * scale, height: 14 * scale,
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF7DC579), 
+                                          color: theme.colorScheme.secondary, 
                                           borderRadius: BorderRadius.circular(25 * scale),
-                                          boxShadow: [BoxShadow(color: const Color(0xFF7DC579).withOpacity(0.4), blurRadius: 4)]
+                                          boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withOpacity(0.4), blurRadius: 4)]
                                         ),
                                       ),
                                     ],
@@ -273,8 +275,8 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                             left: 36 * scale, top: 455 * scale,
                             child: TextButton.icon(
                               onPressed: _goToPrevious,
-                              icon: Icon(Icons.arrow_back, color: Colors.black87, size: 18 * scale),
-                              label: Text('Previous', style: TextStyle(color: Colors.black87, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                              icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface, size: 18 * scale),
+                              label: Text('Previous', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
                             ),
                           ),
                           Positioned(
@@ -283,9 +285,9 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                               onPressed: _goToNext,
                               child: Row(
                                 children: [
-                                  Text('Next', style: TextStyle(color: Colors.black87, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                                  Text('Next', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
                                   SizedBox(width: 8 * scale),
-                                  Icon(Icons.arrow_forward, color: Colors.black87, size: 18 * scale),
+                                  Icon(Icons.arrow_forward, color: theme.colorScheme.onSurface, size: 18 * scale),
                                 ],
                               ),
                             ),
@@ -298,7 +300,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                                 borderRadius: BorderRadius.circular(25 * scale),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFFFFB800).withOpacity(0.3),
+                                    color: theme.primaryColor.withOpacity(0.3),
                                     blurRadius: 12,
                                     offset: const Offset(0, 5),
                                   )
@@ -306,8 +308,8 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                               ),
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFFFB800),
-                                  foregroundColor: Colors.white,
+                                  backgroundColor: theme.primaryColor,
+                                  foregroundColor: theme.colorScheme.onPrimary,
                                   minimumSize: Size(299 * scale, 50 * scale),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
                                   elevation: 0,

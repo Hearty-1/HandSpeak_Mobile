@@ -1,13 +1,70 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui'; // Required for ImageFilter (Glassmorphism & Blurs)
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; 
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+/// Dynamic theme visual mapping for thematic icons & graphics
+class _ThemeVisuals {
+  final IconData mainBadgeIcon;
+  final IconData secondaryIcon;
+  final IconData ambientIcon1;
+  final IconData ambientIcon2;
+
+  const _ThemeVisuals({
+    required this.mainBadgeIcon,
+    required this.secondaryIcon,
+    required this.ambientIcon1,
+    required this.ambientIcon2,
+  });
+
+  factory _ThemeVisuals.fromTheme(ThemeData theme) {
+    final primary = theme.primaryColor;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 1. DEEP OCEAN THEME (Blue Primary)
+    if (primary.blue > 160 && primary.red < 120) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.water_drop_rounded,
+        secondaryIcon: Icons.waves_rounded,
+        ambientIcon1: Icons.bubble_chart_rounded,
+        ambientIcon2: Icons.sailing_rounded,
+      );
+    } 
+    // 2. FOREST NATURE THEME (Green Primary)
+    else if (primary.green > 160 && primary.red < 120) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.eco_rounded,
+        secondaryIcon: Icons.forest_rounded,
+        ambientIcon1: Icons.park_rounded,
+        ambientIcon2: Icons.energy_savings_leaf_rounded,
+      );
+    } 
+    // 3. COSMIC SPACE THEME (Dark Theme with High Contrast)
+    else if (isDark) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.auto_awesome_rounded,
+        secondaryIcon: Icons.nights_stay_rounded,
+        ambientIcon1: Icons.star_border_rounded,
+        ambientIcon2: Icons.wb_twilight_rounded,
+      );
+    } 
+    // 4. GOLDEN PLAYFUL THEME (Default / Warm Colors)
+    else {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.stars_rounded,
+        secondaryIcon: Icons.workspace_premium_rounded,
+        ambientIcon1: Icons.wb_sunny_rounded,
+        ambientIcon2: Icons.auto_awesome_rounded,
+      );
+    }
+  }
+}
 
 class NumbersPractice extends StatefulWidget {
   const NumbersPractice({super.key});
@@ -20,7 +77,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _landmarkSubscription;
-  
+
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
 
@@ -36,9 +93,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
 
   final double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
-
-  // --- XP SETTINGS ---
-  final int xpReward = 10; 
+  final int xpReward = 10;
 
   @override
   void initState() {
@@ -53,25 +108,25 @@ class _NumbersPracticeState extends State<NumbersPractice> {
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
         minHandDetectionConfidence: 0.5,
-        delegate: HandLandmarkerDelegate.gpu, 
+        delegate: HandLandmarkerDelegate.gpu,
       );
 
       _landmarkSubscription = _landmarkerPlugin!.landmarkStream.listen((List<Hand> detectedHands) {
         if (!mounted || _isSuccessAchieved || _template == null) return;
-        
+
         if (detectedHands.isNotEmpty) {
           double highestScoreAcrossAllHands = 0.0;
 
           for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
             final double score = _calculateScore(
-              detectedHands[handIdx].landmarks, 
+              detectedHands[handIdx].landmarks,
               _template!,
             );
             if (score > highestScoreAcrossAllHands) {
               highestScoreAcrossAllHands = score;
             }
           }
-          
+
           _updateGameLogic(highestScoreAcrossAllHands);
         } else {
           if (mounted) {
@@ -93,8 +148,8 @@ class _NumbersPracticeState extends State<NumbersPractice> {
       );
 
       _controller = CameraController(
-        frontCamera, 
-        ResolutionPreset.medium, 
+        frontCamera,
+        ResolutionPreset.medium,
         enableAudio: false,
       );
 
@@ -114,9 +169,11 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   Future<void> _loadGestureLibrary(String number) async {
     try {
       String jsonString = await rootBundle.loadString('assets/numbers/$number.json');
-      setState(() {
-        _template = jsonDecode(jsonString);
-      });
+      if (mounted) {
+        setState(() {
+          _template = jsonDecode(jsonString);
+        });
+      }
     } catch (e) {
       debugPrint("Could not find gesture resource profile for: $number");
     }
@@ -137,16 +194,16 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
 
     final Landmark wrist = liveLms[0];
-    final Landmark mBase = liveLms[9]; 
-    
+    final Landmark mBase = liveLms[9];
+
     double dist = math.sqrt(
-      math.pow(wrist.x - mBase.x, 2) + 
-      math.pow(wrist.y - mBase.y, 2) + 
+      math.pow(wrist.x - mBase.x, 2) +
+      math.pow(wrist.y - mBase.y, 2) +
       math.pow(wrist.z - mBase.z, 2)
     );
-    
+
     if (dist == 0) dist = 1.0;
-    
+
     double bestScore = 0.0;
 
     final orientationMatrices = [
@@ -179,13 +236,13 @@ class _NumbersPracticeState extends State<NumbersPractice> {
         double rx = dx * xx + dy * xy;
         double ry = dx * yx + dy * yy;
 
-        double tx = template[i]['x'];
-        double ty = template[i]['y'];
-        double tz = template[i]['z'];
+        double tx = (template[i]['x'] as num).toDouble();
+        double ty = (template[i]['y'] as num).toDouble();
+        double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
 
         double pointDiff = math.sqrt(
-          math.pow(rx - tx, 2) + 
-          math.pow(ry - ty, 2) + 
+          math.pow(rx - tx, 2) +
+          math.pow(ry - ty, 2) +
           math.pow(dz - tz, 2)
         );
         totalDifference += pointDiff;
@@ -193,7 +250,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
 
       double meanDiff = totalDifference / 21.0;
       double score = (100.0 - (meanDiff * 80.0)).clamp(0.0, 100.0);
-      
+
       if (score > bestScore) {
         bestScore = score;
       }
@@ -229,13 +286,13 @@ class _NumbersPracticeState extends State<NumbersPractice> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        
+
         await docRef.set({
           'numbersXp': FieldValue.increment(xpReward),
-          'xp': FieldValue.increment(xpReward),           
-          'dailyXp': FieldValue.increment(xpReward),      
-          'weeklyXp': FieldValue.increment(xpReward),     
-          'completedLessons': FieldValue.increment(1),    
+          'xp': FieldValue.increment(xpReward),
+          'dailyXp': FieldValue.increment(xpReward),
+          'weeklyXp': FieldValue.increment(xpReward),
+          'completedLessons': FieldValue.increment(1),
         }, SetOptions(merge: true));
       }
     } catch (e) {
@@ -247,15 +304,14 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     _isSuccessAchieved = true;
     _startHoldTime = null;
     _holdProgress = 0.0;
-    
-    HapticFeedback.heavyImpact(); 
+
+    HapticFeedback.heavyImpact();
     await Future.delayed(const Duration(milliseconds: 100));
-    HapticFeedback.heavyImpact(); 
-    
+    HapticFeedback.heavyImpact();
+
     await _awardXp();
 
     if (!mounted) return;
-
     setState(() {});
 
     await Future.delayed(const Duration(milliseconds: 1500));
@@ -284,149 +340,155 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   Widget build(BuildContext context) {
     String currentNumber = targetNumber;
     bool isPassing = _currentScore >= successThreshold;
-    const double baseWidth = 393;
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final theme = Theme.of(context);
+    final visuals = _ThemeVisuals.fromTheme(theme);
+    final isDark = theme.brightness == Brightness.dark;
+
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
 
     return Scaffold(
-      extendBodyBehindAppBar: true, 
-      backgroundColor: const Color(0xFFFFF9E5),
+      extendBodyBehindAppBar: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.7),
+        backgroundColor: theme.cardColor.withOpacity(0.4),
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black),
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.black.withOpacity(0.05),
-                    width: 0.5,
-                  ),
-                ),
-              ),
-            ),
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(color: Colors.transparent),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Continuous Practice',
           style: TextStyle(
-            color: Colors.black, 
-            fontSize: 22, 
-            fontFamily: 'Inter', 
-            fontWeight: FontWeight.w800, 
-            letterSpacing: -0.96
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
           ),
         ),
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final double scale = constraints.maxWidth / baseWidth;
-
-          return Stack(
-            children: [
-              Positioned(
-                top: 180 * scale, left: -50 * scale,
-                child: Container(
-                  width: 200 * scale, 
-                  height: 200 * scale, 
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle, 
-                    color: const Color(0xFFFFB800).withOpacity(0.2),
-                  ),
-                ),
+      body: Stack(
+        children: [
+          // Theme-aligned ambient background element 1 (Top-right)
+          Positioned(
+            top: -20, right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(
+                angle: -0.2,
+                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
               ),
-              Positioned(
-                bottom: 100 * scale, right: -60 * scale,
-                child: Container(
-                  width: 250 * scale, 
-                  height: 250 * scale, 
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle, 
-                    color: const Color(0xFF7DC579).withOpacity(0.18),
-                  ),
-                ),
+            ),
+          ),
+
+          // Theme-aligned ambient background element 2 (Bottom-left)
+          Positioned(
+            bottom: 40, left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(
+                angle: 0.3,
+                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
               ),
+            ),
+          ),
 
-              // 3. UI Content Structure
-              SafeArea(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.symmetric(horizontal: 24.0 * scale, vertical: 20.0 * scale),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          currentNumber,
-                          style: TextStyle(
-                            color: Colors.black, 
-                            fontSize: 52 * scale, 
-                            fontWeight: FontWeight.w900,
-                            fontFamily: 'Inter',
-                            letterSpacing: -1.5,
-                          ),
-                        ),
-                        SizedBox(height: 16 * scale),
+          SafeArea(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      currentNumber,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 48,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
 
-                        // Flashcard Container
-                        Container(
-                          width: 240 * scale, 
-                          height: 240 * scale,
+                    SizedBox(
+                      width: screenWidth * 0.60,
+                      child: AspectRatio(
+                        aspectRatio: 1 / 1,
+                        child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(20 * scale),
-                            border: Border.all(color: Colors.white.withOpacity(0.6), width: 2 * scale),
-                            boxShadow: const [
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
                               BoxShadow(
-                                color: Color(0x0C132C4A),
+                                color: Colors.black.withOpacity(0.06),
                                 blurRadius: 12,
-                                offset: Offset(0, 4),
+                                offset: const Offset(0, 4),
                               )
                             ],
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18 * scale),
+                            borderRadius: BorderRadius.circular(16),
                             child: Image.asset(
-                              "assets/pictures/$currentNumber.png", 
+                              "assets/pictures/$currentNumber.png",
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.black.withOpacity(0.05),
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
                                 child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(height: 28 * scale),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
 
-                        // Live Camera Preview Container
-                        Container(
-                          width: 240 * scale, 
-                          height: 240 * scale,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(24 * scale),
-                            border: Border.all(
-                              width: 4.0 * scale,
-                              color: isPassing ? const Color(0xFF7DC579) : Colors.white.withOpacity(0.8),
-                            ),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x0C132C4A),
-                                blurRadius: 16,
-                                offset: Offset(0, 6),
-                              )
-                            ],
-                          ),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            fit: StackFit.expand,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(19 * scale),
+                    // Front Camera Preview Container
+                    SizedBox(
+                      width: screenWidth * 0.60,
+                      child: AspectRatio(
+                        aspectRatio: 1 / 1,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          fit: StackFit.expand,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  width: 4.0,
+                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
+                                ),
+                                boxShadow: [
+                                  if (isPassing)
+                                    BoxShadow(
+                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      blurRadius: 25,
+                                      spreadRadius: 2,
+                                    )
+                                  else
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    )
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
                                 child: _isInitialized && _controller != null
                                     ? FittedBox(
                                         fit: BoxFit.cover,
@@ -436,93 +498,121 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                                           child: CameraPreview(_controller!),
                                         ),
                                       )
-                                    : const Center(
-                                        child: CircularProgressIndicator(color: Color(0xFFFFB800)),
+                                    : Center(
+                                        child: CircularProgressIndicator(color: theme.primaryColor),
                                       ),
                               ),
+                            ),
 
-                              if (_isInitialized && !_isSuccessAchieved)
-                                Center(
-                                  child: Container(
-                                    width: 110 * scale, 
-                                    height: 110 * scale,
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: isPassing ? const Color(0xFF7DC579).withOpacity(0.8) : Colors.white54,
-                                        width: 2.5 * scale,
-                                      ),
-                                      shape: BoxShape.circle,
+                            if (_isInitialized && !_isSuccessAchieved)
+                              Center(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  width: 110,
+                                  height: 110,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: isPassing ? Colors.greenAccent.withOpacity(0.9) : Colors.white54,
+                                      width: isPassing ? 4.0 : 3.0,
                                     ),
-                                    child: Center(
-                                      child: Container(
-                                        padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 5 * scale),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(0.4),
-                                          borderRadius: BorderRadius.circular(8 * scale),
-                                        ),
-                                        child: Text(
-                                          "Position Hand",
-                                          style: TextStyle(
-                                            color: isPassing ? const Color(0xFF2ECC71) : Colors.white,
-                                            fontSize: 10 * scale,
-                                            fontWeight: FontWeight.bold,
-                                            fontFamily: 'Inter',
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          color: Colors.black45,
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              if (isPassing) ...[
+                                                Icon(visuals.mainBadgeIcon, color: Colors.greenAccent, size: 12),
+                                                const SizedBox(width: 4),
+                                              ],
+                                              Text(
+                                                isPassing ? "Hold!" : "Position Hand",
+                                                style: TextStyle(
+                                                  color: isPassing ? Colors.greenAccent : Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                            ],
-                          ),
+                              ),
+                          ],
                         ),
-                        SizedBox(height: 28 * scale),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
 
-                        // --- FEEDBACK SECTION ---
-                        if (_isSuccessAchieved) ...[
-                          Column(
+                    // Feedback Section
+                    if (_isSuccessAchieved) ...[
+                      Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+                              Icon(visuals.secondaryIcon, color: Colors.green, size: 22),
+                              const SizedBox(width: 8),
                               Text(
                                 "Success! +$xpReward XP",
-                                style: TextStyle(
-                                  color: const Color(0xFF27AE60),
+                                style: const TextStyle(
+                                  color: Colors.green,
                                   fontWeight: FontWeight.w900,
-                                  fontSize: 22 * scale,
-                                  fontFamily: 'Inter',
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              SizedBox(height: 6 * scale),
-                              Text(
-                                "Loading next number...",
-                                style: TextStyle(
-                                  color: Colors.black54,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14 * scale,
+                                  fontSize: 22,
                                   fontFamily: 'Inter',
                                 ),
                               ),
                             ],
-                          )
-                        ] else if (_holdProgress > 0.0) ...[
-                          Column(
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            "Loading next number...",
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurface.withOpacity(0.6),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                        ],
+                      )
+                    ] else if (_holdProgress > 0.0) ...[
+                      Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(
+                              Icon(visuals.secondaryIcon, color: Colors.green, size: 20),
+                              const SizedBox(width: 6),
+                              const Text(
                                 "Hold steady...",
-                                style: TextStyle(
-                                  color: const Color(0xFF27AE60),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 18 * scale,
-                                  fontFamily: 'Inter',
-                                ),
+                                style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
                               ),
-                              SizedBox(height: 10 * scale),
-                              Container(
-                                width: 260 * scale, 
-                                height: 14 * scale,
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(
+                                width: screenWidth * 0.70,
+                                height: 20,
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.06), 
-                                  borderRadius: BorderRadius.circular(25 * scale),
+                                  color: theme.colorScheme.surface.withOpacity(0.4),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -530,52 +620,55 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                                     widthFactor: _holdProgress,
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF7DC579),
-                                        borderRadius: BorderRadius.circular(25 * scale),
+                                        gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
+                                        borderRadius: BorderRadius.circular(12),
                                         boxShadow: [
-                                          BoxShadow(
-                                            color: const Color(0xFF7DC579).withOpacity(0.4),
-                                            blurRadius: 4,
-                                            offset: const Offset(0, 1),
-                                          )
+                                          BoxShadow(color: Colors.greenAccent.withOpacity(0.5), blurRadius: 10)
                                         ],
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ],
-                          )
-                        ] else ...[
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 12 * scale),
+                            ),
+                          ),
+                        ],
+                      )
+                    ] else ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isPassing ? const Color(0xFF7DC579).withOpacity(0.15) : Colors.black.withOpacity(0.04),
-                              borderRadius: BorderRadius.circular(30 * scale),
+                              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(30),
                               border: Border.all(
-                                color: isPassing ? const Color(0xFF7DC579).withOpacity(0.25) : Colors.transparent, 
-                                width: 1 * scale,
+                                color: isPassing ? Colors.greenAccent.withOpacity(0.6) : theme.colorScheme.surface.withOpacity(0.8),
+                                width: 1.5,
                               ),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
-                                color: isPassing ? const Color(0xFF27AE60) : Colors.black54,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16 * scale,
+                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withOpacity(0.7),
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
                                 fontFamily: 'Inter',
                               ),
                             ),
                           ),
-                        ],
-                      ],
-                    ),
-                  ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
   }

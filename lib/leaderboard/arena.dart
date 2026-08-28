@@ -34,20 +34,24 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     _mainHubTab = widget.initialTab;
     _checkAndResetDailyStats();
   }
-  
+
   /// Helper to safely build avatars, including Base64 database strings
   Widget _buildSafeAvatar({
+    required BuildContext context,
     required String? photoUrl,
     required String name,
     required double radius,
-    Color textColor = Colors.black54,
+    Color? textColor,
   }) {
+    final theme = Theme.of(context);
+    final fallbackTextColor = textColor ?? theme.colorScheme.onSurface;
+
     Widget fallback = CircleAvatar(
       radius: radius,
-      backgroundColor: const Color(0xFFE5E7EB),
+      backgroundColor: theme.disabledColor.withOpacity(0.2),
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : "?",
-        style: TextStyle(fontWeight: FontWeight.bold, color: textColor, fontSize: radius * 0.8),
+        style: TextStyle(fontWeight: FontWeight.bold, color: fallbackTextColor, fontSize: radius * 0.8),
       ),
     );
 
@@ -58,7 +62,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     Widget imageWidget;
 
     if (photoUrl.startsWith('data:image')) {
-      // Handle Base64 Database Image
       try {
         final String base64String = photoUrl.split(',').last;
         imageWidget = Image.memory(
@@ -72,7 +75,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         return fallback; 
       }
     } else if (photoUrl.startsWith('http')) {
-      // Handle Network URL
       imageWidget = Image.network(
         photoUrl,
         width: radius * 2,
@@ -81,7 +83,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         errorBuilder: (context, error, stackTrace) => fallback,
       );
     } else {
-      // Handle Local Asset
       imageWidget = Image.asset(
         photoUrl,
         width: radius * 2,
@@ -94,7 +95,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return ClipOval(child: imageWidget);
   }
 
-  /// Pool of available challenges for dynamic daily assignment
   List<Map<String, dynamic>> _generateRandomChallenges() {
     final List<Map<String, dynamic>> challengePool = [
       {'id': 'lessons', 'title': 'Complete 3 Lessons', 'target': 3, 'reward': 50},
@@ -109,7 +109,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return challengePool.take(2).toList();
   }
 
-  /// Checks if a new calendar day has started and updates daily stats & challenges
   Future<void> _checkAndResetDailyStats() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -149,13 +148,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
             await userRef.update(updates);
           } else if (data['dailyChallenges'] == null) {
-            // Assign initial challenges if field is missing for today
             await userRef.update({
               'dailyChallenges': _generateRandomChallenges(),
             });
           }
         } else {
-          // First-time initialization
           await userRef.update({
             'lastActiveDate': FieldValue.serverTimestamp(),
             'streak': 1,
@@ -174,6 +171,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
     final double screenWidth = MediaQuery.of(context).size.width;
     const double baseWidth = 393;
     final double scale = screenWidth / baseWidth > 1.2 ? 1.2 : screenWidth / baseWidth;
@@ -181,14 +180,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       extendBody: true,
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
         leading: IconButton(
-          icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.black87, size: 26),
+          icon: Icon(Icons.person_add_alt_1_rounded, color: textColor, size: 26),
           onPressed: () {
             Navigator.push(
               context,
@@ -196,27 +195,27 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             );
           },
         ),
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: IconThemeData(color: textColor),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.transparent,
+                color: theme.scaffoldBackgroundColor.withOpacity(0.5),
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.black.withOpacity(0.06),
-                    width: 0.5,
+                    color: textColor.withOpacity(0.08),
+                    width: 1.0,
                   ),
                 ),
               ),
             ),
           ),
         ),
-        title: const Text(
+        title: Text(
           "Student Arena",
           style: TextStyle(
-            color: Colors.black,
+            color: textColor,
             fontWeight: FontWeight.w800,
             fontFamily: 'Inter',
             fontSize: 22,
@@ -242,20 +241,27 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.75),
+                  color: theme.cardColor.withOpacity(0.65),
                   borderRadius: BorderRadius.circular(30 * scale),
-                  border: Border.all(color: Colors.white, width: 2 * scale),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x1A000000), blurRadius: 16, offset: Offset(0, 6)),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(theme.brightness == Brightness.dark ? 0.15 : 0.4),
+                    width: 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
                   ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildNavIconButton(Icons.home_rounded, false, () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SnedInterafce1(userName: "Student")), (route) => false)),
-                    _buildNavIconButton(Icons.auto_stories_rounded, false, () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SnedInterface2()))),
-                    _buildNavIconButton(Icons.sports_esports_rounded, true, () {}),
-                    _buildNavIconButton(Icons.person_rounded, false, () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ProfileScreen()))),
+                    _buildNavIconButton(theme, Icons.home_rounded, false, () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SnedInterafce1(userName: "Student")), (route) => false)),
+                    _buildNavIconButton(theme, Icons.auto_stories_rounded, false, () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SnedInterface2()))),
+                    _buildNavIconButton(theme, Icons.sports_esports_rounded, true, () {}),
+                    _buildNavIconButton(theme, Icons.person_rounded, false, () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ProfileScreen()))),
                   ],
                 ),
               ),
@@ -268,23 +274,34 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         builder: (context, constraints) {
           return Stack(
             children: [
+              // Dynamic Arena Glowing Orbs
               Positioned(
                 top: 100 * scale, right: -30 * scale,
                 child: Container(
                   width: 180 * scale, height: 180 * scale,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFFFFB800).withOpacity(0.20),
+                    gradient: RadialGradient(
+                      colors: [
+                        theme.primaryColor.withOpacity(0.35),
+                        theme.primaryColor.withOpacity(0.0),
+                      ]
+                    ),
                   ),
                 ),
               ),
               Positioned(
                 top: 380 * scale, left: -50 * scale,
                 child: Container(
-                  width: 220 * scale, height: 220 * scale,
+                  width: 250 * scale, height: 250 * scale,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFFF34B1B).withOpacity(0.12),
+                    gradient: RadialGradient(
+                      colors: [
+                        const Color(0xFFF34B1B).withOpacity(0.2),
+                        const Color(0xFFF34B1B).withOpacity(0.0),
+                      ]
+                    ),
                   ),
                 ),
               ),
@@ -300,18 +317,18 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   ),
                   child: Column(
                     children: [
-                      _buildMainHubSegmentControl(scale),
+                      _buildMainHubSegmentControl(theme, scale),
                       SizedBox(height: 16 * scale),
 
                       _mainHubTab == 'rankings'
-                          ? _buildLeaderboardTimeframeToggle(scale)
+                          ? _buildLeaderboardTimeframeToggle(theme, scale)
                           : const SizedBox.shrink(),
 
                       SizedBox(height: 18 * scale),
 
                       _mainHubTab == 'rankings'
-                          ? _buildRankingsView(scale)
-                          : _buildChallengesView(scale),
+                          ? _buildRankingsView(theme, scale)
+                          : _buildChallengesView(theme, scale),
                     ],
                   ),
                 ),
@@ -323,16 +340,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildNavIconButton(IconData icon, bool isSelected, VoidCallback onPressed) {
+  Widget _buildNavIconButton(ThemeData theme, IconData icon, bool isSelected, VoidCallback onPressed) {
     return Container(
       decoration: isSelected ? BoxDecoration(
-        color: const Color(0xFFFFB800).withOpacity(0.18),
+        color: theme.primaryColor.withOpacity(0.18),
         shape: BoxShape.circle,
       ) : null,
       child: IconButton(
         icon: Icon(
           icon,
-          color: isSelected ? const Color(0xFFFFB800) : Colors.black38,
+          color: isSelected ? theme.primaryColor : theme.unselectedWidgetColor,
           size: isSelected ? 32 : 28,
         ),
         onPressed: onPressed,
@@ -340,13 +357,15 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildMainHubSegmentControl(double scale) {
+  Widget _buildMainHubSegmentControl(ThemeData theme, double scale) {
+    final textColor = theme.colorScheme.onSurface;
     return Container(
       height: 52 * scale,
       padding: EdgeInsets.all(4 * scale),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.06),
+        color: textColor.withOpacity(0.05),
         borderRadius: BorderRadius.circular(22 * scale),
+        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
       ),
       child: Row(
         children: [
@@ -358,10 +377,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 curve: Curves.easeOutCubic,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: _mainHubTab == 'rankings' ? Colors.white : Colors.transparent,
+                  color: _mainHubTab == 'rankings' ? theme.cardColor.withOpacity(0.85) : Colors.transparent,
                   borderRadius: BorderRadius.circular(18 * scale),
+                  border: _mainHubTab == 'rankings'
+                      ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.0)
+                      : null,
                   boxShadow: _mainHubTab == 'rankings'
-                    ? [const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 3))]
+                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 3))]
                     : null,
                 ),
                 child: FittedBox(
@@ -372,7 +394,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       fontSize: 14.5 * scale,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'Inter',
-                      color: _mainHubTab == 'rankings' ? Colors.black : Colors.black45,
+                      color: _mainHubTab == 'rankings' ? textColor : textColor.withOpacity(0.5),
                     ),
                   ),
                 ),
@@ -387,10 +409,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 curve: Curves.easeOutCubic,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: _mainHubTab == 'challenges' ? Colors.white : Colors.transparent,
+                  color: _mainHubTab == 'challenges' ? theme.cardColor.withOpacity(0.85) : Colors.transparent,
                   borderRadius: BorderRadius.circular(18 * scale),
+                  border: _mainHubTab == 'challenges'
+                      ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.0)
+                      : null,
                   boxShadow: _mainHubTab == 'challenges'
-                    ? [const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 3))]
+                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 3))]
                     : null,
                 ),
                 child: FittedBox(
@@ -401,7 +426,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       fontSize: 14.5 * scale,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'Inter',
-                      color: _mainHubTab == 'challenges' ? Colors.black : Colors.black45,
+                      color: _mainHubTab == 'challenges' ? textColor : textColor.withOpacity(0.5),
                     ),
                   ),
                 ),
@@ -413,25 +438,25 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildLeaderboardTimeframeToggle(double scale) {
+  Widget _buildLeaderboardTimeframeToggle(ThemeData theme, double scale) {
     return Container(
       height: 44 * scale,
       padding: EdgeInsets.all(4 * scale),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.65),
+        color: theme.cardColor.withOpacity(0.5),
         borderRadius: BorderRadius.circular(16 * scale),
-        border: Border.all(color: Colors.white, width: 1.5),
+        border: Border.all(color: theme.colorScheme.onSurface.withOpacity(0.08), width: 1.0),
       ),
       child: Row(
         children: [
-          _buildSubTabOption('weekly', '📅 Weekly League', _rankTimeframe, (val) => setState(() => _rankTimeframe = val), scale),
-          _buildSubTabOption('alltime', '🌍 Global Rank', _rankTimeframe, (val) => setState(() => _rankTimeframe = val), scale),
+          _buildSubTabOption(theme, 'weekly', '⚡ Weekly League', _rankTimeframe, (val) => setState(() => _rankTimeframe = val), scale),
+          _buildSubTabOption(theme, 'alltime', '🌍 Global Rank', _rankTimeframe, (val) => setState(() => _rankTimeframe = val), scale),
         ],
       ),
     );
   }
 
-  Widget _buildSubTabOption(String id, String label, String currentValue, Function(String) onSelect, double scale) {
+  Widget _buildSubTabOption(ThemeData theme, String id, String label, String currentValue, Function(String) onSelect, double scale) {
     bool isSelected = id == currentValue;
     return Expanded(
       child: GestureDetector(
@@ -440,7 +465,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           duration: const Duration(milliseconds: 150),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFFFFB800) : Colors.transparent,
+            color: isSelected ? theme.primaryColor : Colors.transparent,
             borderRadius: BorderRadius.circular(12 * scale),
           ),
           child: FittedBox(
@@ -450,7 +475,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               style: TextStyle(
                 fontSize: 13 * scale,
                 fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                color: isSelected ? Colors.white : Colors.black45,
+                color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface.withOpacity(0.5),
                 fontFamily: 'Inter',
               ),
             ),
@@ -460,7 +485,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildRankingsView(double scale) {
+  Widget _buildRankingsView(ThemeData theme, double scale) {
+    final textColor = theme.colorScheme.onSurface;
+
     return Column(
       children: [
         StreamBuilder<DocumentSnapshot>(
@@ -478,12 +505,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             return Container(
               padding: EdgeInsets.all(16 * scale),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: theme.cardColor.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(24 * scale),
-                border: Border.all(color: const Color(0xFFFFB800).withOpacity(0.4), width: 2 * scale),
+                border: Border.all(color: theme.primaryColor.withOpacity(0.25), width: 1.0 * scale),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFFFB800).withOpacity(0.15),
+                    color: theme.primaryColor.withOpacity(0.1),
                     blurRadius: 16,
                     offset: const Offset(0, 8),
                   )
@@ -493,6 +520,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 children: [
                   Expanded(
                     child: _buildEnhancedStatBadge(
+                      theme,
                       Icons.local_fire_department_rounded,
                       "$currentUserStreak",
                       "Day Streak",
@@ -503,10 +531,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   SizedBox(width: 12 * scale),
                   Expanded(
                     child: _buildEnhancedStatBadge(
+                      theme,
                       Icons.star_rounded,
                       "$currentUserXp",
                       _rankTimeframe == 'weekly' ? "Weekly XP" : "Total XP",
-                      const Color(0xFFFFB800),
+                      theme.primaryColor,
                       scale,
                     ),
                   ),
@@ -523,9 +552,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           children: [
             Text(
               _rankTimeframe == 'weekly' ? "Top Students This Week" : "Global Top Students",
-              style: TextStyle(fontSize: 18 * scale, fontWeight: FontWeight.w900, fontFamily: 'Inter', color: Colors.black87),
+              style: TextStyle(fontSize: 18 * scale, fontWeight: FontWeight.w900, fontFamily: 'Inter', color: textColor),
             ),
-            Icon(Icons.military_tech_rounded, color: const Color(0xFFFFB800), size: 24 * scale),
+            Icon(Icons.military_tech_rounded, color: theme.primaryColor, size: 24 * scale),
           ],
         ),
         SizedBox(height: 16 * scale),
@@ -540,14 +569,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Padding(
                 padding: EdgeInsets.all(20 * scale),
-                child: const CircularProgressIndicator(color: Color(0xFFFFB800)),
+                child: CircularProgressIndicator(color: theme.primaryColor),
               );
             }
 
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return Padding(
                 padding: EdgeInsets.all(20 * scale),
-                child: const Text("No leaderboard data available."),
+                child: Text("No leaderboard data available.", style: TextStyle(color: textColor)),
               );
             }
 
@@ -557,7 +586,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
             return Column(
               children: [
-                if (top3.isNotEmpty) _buildPodium(top3, scale),
+                if (top3.isNotEmpty) _buildPodium(theme, top3, scale),
                 SizedBox(height: 20 * scale),
 
                 ListView.builder(
@@ -573,7 +602,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     
                     final String? photoUrl = data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'];
 
-                    return _buildLeaderboardTile(rank, playerName, playerGrade, playerXp, photoUrl, scale);
+                    return _buildLeaderboardTile(theme, rank, playerName, playerGrade, playerXp, photoUrl, scale);
                   },
                 ),
               ],
@@ -584,13 +613,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildChallengesView(double scale) {
+  Widget _buildChallengesView(ThemeData theme, double scale) {
+    final textColor = theme.colorScheme.onSurface;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4 * scale),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildChallengeCard(
+            theme: theme,
             title: "Group Challenges",
             subtitle: "Team up & compete with friends",
             icon: Icons.groups_rounded,
@@ -607,10 +639,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           SizedBox(height: 16 * scale),
 
           _buildChallengeCard(
+            theme: theme,
             title: "Solo Challenges",
             subtitle: "Test your skills independently",
             icon: Icons.person_rounded,
-            iconColor: const Color(0xFFFFB800),
+            iconColor: theme.primaryColor,
             xpText: "Earn XP",
             scale: scale,
             onTap: () {},
@@ -626,7 +659,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   fontSize: 18 * scale,
                   fontWeight: FontWeight.w900,
                   fontFamily: 'Inter',
-                  color: Colors.black87,
+                  color: textColor,
                 ),
               ),
               const Spacer(),
@@ -641,12 +674,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return Padding(
                   padding: EdgeInsets.all(20 * scale),
-                  child: const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800))),
+                  child: Center(child: CircularProgressIndicator(color: theme.primaryColor)),
                 );
               }
 
               if (!snapshot.hasData || snapshot.data == null || !snapshot.data!.exists) {
-                return const Text("No active challenges found.");
+                return Text("No active challenges found.", style: TextStyle(color: textColor));
               }
 
               final data = snapshot.data!.data() as Map<String, dynamic>;
@@ -661,9 +694,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               if (dailyChallenges.isEmpty) {
                 return Padding(
                   padding: EdgeInsets.all(12 * scale),
-                  child: const Text(
+                  child: Text(
                     "Check back tomorrow for new daily quests!",
-                    style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54),
+                    style: TextStyle(fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
                   ),
                 );
               }
@@ -681,7 +714,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   else if (id == 'xp') currentProgress = dailyXp;
                   else if (id == 'perfect') currentProgress = perfectScores;
 
-                  return _buildDailyChallengeCard(title, reward, currentProgress, target, scale);
+                  return _buildDailyChallengeCard(theme, title, reward, currentProgress, target, scale);
                 }).toList(),
               );
             },
@@ -692,6 +725,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   Widget _buildChallengeCard({
+    required ThemeData theme,
     required String title,
     required String subtitle,
     required IconData icon,
@@ -700,19 +734,20 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     required double scale,
     required VoidCallback onTap,
   }) {
+    final textColor = theme.colorScheme.onSurface;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: double.infinity,
         padding: EdgeInsets.all(18 * scale),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.cardColor.withOpacity(0.7),
           borderRadius: BorderRadius.circular(24 * scale),
-          border: Border.all(color: Colors.black.withOpacity(0.04), width: 1.5 * scale),
+          border: Border.all(color: textColor.withOpacity(0.08), width: 1.0 * scale),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 18,
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 16,
               offset: const Offset(0, 6),
             )
           ],
@@ -740,7 +775,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       fontSize: 17 * scale,
                       fontWeight: FontWeight.w800,
                       fontFamily: 'Inter',
-                      color: Colors.black87,
+                      color: textColor,
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -750,19 +785,19 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     style: TextStyle(
                       fontSize: 12 * scale,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black45,
+                      color: textColor.withOpacity(0.6),
                     ),
                   ),
                   SizedBox(height: 8 * scale),
                   Row(
                     children: [
-                      Icon(Icons.star_rounded, color: const Color(0xFFFFB800), size: 16 * scale),
+                      Icon(Icons.star_rounded, color: theme.primaryColor, size: 16 * scale),
                       SizedBox(width: 4 * scale),
                       Text(
                         xpText,
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFFFFB800),
+                          color: theme.primaryColor,
                           fontSize: 12.5 * scale,
                         ),
                       ),
@@ -774,14 +809,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
             Container(
               padding: EdgeInsets.all(8 * scale),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF0F4F8),
+              decoration: BoxDecoration(
+                color: textColor.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.arrow_forward_ios_rounded,
                 size: 14 * scale,
-                color: Colors.black45,
+                color: textColor.withOpacity(0.5),
               ),
             ),
           ],
@@ -790,7 +825,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildDailyChallengeCard(String title, int xpReward, int currentProgress, int targetProgress, double scale) {
+  Widget _buildDailyChallengeCard(ThemeData theme, String title, int xpReward, int currentProgress, int targetProgress, double scale) {
+    final textColor = theme.colorScheme.onSurface;
     double progressPercent = (currentProgress / targetProgress).clamp(0.0, 1.0);
     bool isComplete = currentProgress >= targetProgress;
 
@@ -798,9 +834,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       margin: EdgeInsets.only(bottom: 12 * scale),
       padding: EdgeInsets.all(16 * scale),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor.withOpacity(0.7),
         borderRadius: BorderRadius.circular(20 * scale),
-        border: Border.all(color: Colors.black.withOpacity(0.04), width: 1.5 * scale),
+        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0 * scale),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.03),
@@ -815,12 +851,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             width: 44 * scale,
             height: 44 * scale,
             decoration: BoxDecoration(
-              color: isComplete ? const Color(0xFF4CAF50).withOpacity(0.15) : const Color(0xFFF0F4F8),
+              color: isComplete ? const Color(0xFF4CAF50).withOpacity(0.15) : textColor.withOpacity(0.05),
               shape: BoxShape.circle,
             ),
             child: Icon(
               isComplete ? Icons.check_circle_rounded : Icons.star_border_rounded,
-              color: isComplete ? const Color(0xFF4CAF50) : Colors.black45,
+              color: isComplete ? const Color(0xFF4CAF50) : textColor.withOpacity(0.4),
               size: 22 * scale,
             ),
           ),
@@ -833,8 +869,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5 * scale, color: Colors.black87)),
-                    Text("+$xpReward XP", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5 * scale, color: const Color(0xFFFFB800))),
+                    Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5 * scale, color: textColor)),
+                    Text("+$xpReward XP", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5 * scale, color: theme.primaryColor)),
                   ],
                 ),
                 SizedBox(height: 8 * scale),
@@ -846,9 +882,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                         borderRadius: BorderRadius.circular(10 * scale),
                         child: LinearProgressIndicator(
                           value: progressPercent,
-                          backgroundColor: const Color(0xFFE5E7EB),
+                          backgroundColor: textColor.withOpacity(0.1),
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            isComplete ? const Color(0xFF4CAF50) : const Color(0xFFFFB800),
+                            isComplete ? const Color(0xFF4CAF50) : theme.primaryColor,
                           ),
                           minHeight: 8 * scale,
                         ),
@@ -857,7 +893,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     SizedBox(width: 12 * scale),
                     Text(
                       "$currentProgress / $targetProgress",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12 * scale, color: Colors.black54),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12 * scale, color: textColor.withOpacity(0.6)),
                     )
                   ],
                 )
@@ -869,13 +905,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildEnhancedStatBadge(IconData icon, String value, String label, Color color, double scale) {
+  Widget _buildEnhancedStatBadge(ThemeData theme, IconData icon, String value, String label, Color color, double scale) {
+    final textColor = theme.colorScheme.onSurface;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 10 * scale),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16 * scale),
-        border: Border.all(color: color.withOpacity(0.3), width: 1.5 * scale),
+        border: Border.all(color: color.withOpacity(0.2), width: 1.0 * scale),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -883,9 +920,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           Container(
             padding: EdgeInsets.all(6 * scale),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: theme.cardColor.withOpacity(0.8),
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: color.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))],
+              boxShadow: [BoxShadow(color: color.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))],
             ),
             child: Icon(icon, color: color, size: 20 * scale),
           ),
@@ -897,7 +934,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               children: [
                 Text(
                   value,
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18 * scale, color: Colors.black87, height: 1.1),
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18 * scale, color: textColor, height: 1.1),
                 ),
                 Text(
                   label,
@@ -911,7 +948,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildPodium(List<QueryDocumentSnapshot> top3Docs, double scale) {
+  Widget _buildPodium(ThemeData theme, List<QueryDocumentSnapshot> top3Docs, double scale) {
     Map<String, dynamic>? rank1 = top3Docs.isNotEmpty ? top3Docs[0].data() as Map<String, dynamic> : null;
     Map<String, dynamic>? rank2 = top3Docs.length > 1 ? top3Docs[1].data() as Map<String, dynamic> : null;
     Map<String, dynamic>? rank3 = top3Docs.length > 2 ? top3Docs[2].data() as Map<String, dynamic> : null;
@@ -922,19 +959,20 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (rank2 != null) _buildPodiumProfile(rank2, 2, 100, const Color(0xFFC0C0C0), scale),
+          if (rank2 != null) _buildPodiumProfile(theme, rank2, 2, 100, const Color(0xFFB0BEC5), scale),
           if (rank2 != null) SizedBox(width: 12 * scale),
 
-          if (rank1 != null) _buildPodiumProfile(rank1, 1, 140, const Color(0xFFFFD700), scale),
+          if (rank1 != null) _buildPodiumProfile(theme, rank1, 1, 140, const Color(0xFFFFD700), scale),
 
           if (rank3 != null) SizedBox(width: 12 * scale),
-          if (rank3 != null) _buildPodiumProfile(rank3, 3, 80, const Color(0xFFCD7F32), scale),
+          if (rank3 != null) _buildPodiumProfile(theme, rank3, 3, 80, const Color(0xFFD88C51), scale),
         ],
       ),
     );
   }
 
-  Widget _buildPodiumProfile(Map<String, dynamic> data, int rank, double height, Color color, double scale) {
+  Widget _buildPodiumProfile(ThemeData theme, Map<String, dynamic> data, int rank, double height, Color color, double scale) {
+    final textColor = theme.colorScheme.onSurface;
     String name = data['displayName'] ?? data['name'] ?? "User";
     int xp = data[_rankTimeframe == 'weekly' ? 'dailyXp' : 'xp'] ?? 0;
     
@@ -951,9 +989,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: color, width: 3 * scale),
+            border: Border.all(color: color.withOpacity(0.8), width: 2 * scale),
+            boxShadow: rank == 1 ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 15, spreadRadius: 1)] : [],
           ),
           child: _buildSafeAvatar(
+            context: context,
             photoUrl: photoUrl,
             name: name,
             radius: (rank == 1 ? 28 : 24) * scale,
@@ -962,7 +1002,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
         SizedBox(height: 8 * scale),
 
-        Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13 * scale, color: Colors.black87)),
+        Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13 * scale, color: textColor)),
         Text("$xp XP", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12 * scale, color: color)),
         SizedBox(height: 8 * scale),
 
@@ -970,13 +1010,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           width: 70 * scale,
           height: height * scale,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(12 * scale)),
-            border: Border(
-              top: BorderSide(color: color, width: 4 * scale),
-              left: BorderSide(color: color.withOpacity(0.5), width: 1),
-              right: BorderSide(color: color.withOpacity(0.5), width: 1),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                color.withOpacity(0.25),
+                color.withOpacity(0.05),
+              ],
             ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(12 * scale)),
+            border: Border.all(color: color.withOpacity(0.3), width: 1.0),
           ),
           alignment: Alignment.topCenter,
           padding: EdgeInsets.only(top: 8 * scale),
@@ -989,31 +1032,40 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildLeaderboardTile(int rank, String name, String grade, int xp, String? photoUrl, double scale) {
+  Widget _buildLeaderboardTile(ThemeData theme, int rank, String name, String grade, int xp, String? photoUrl, double scale) {
+    final textColor = theme.colorScheme.onSurface;
     return Container(
       margin: EdgeInsets.only(bottom: 12 * scale),
       padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 14 * scale),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: theme.cardColor.withOpacity(0.7),
         borderRadius: BorderRadius.circular(20 * scale),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
       ),
       child: Row(
         children: [
           Container(
             width: 32 * scale, height: 32 * scale,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: Color(0xFFF0F4F8),
+            decoration: BoxDecoration(
+              color: textColor.withOpacity(0.05),
               shape: BoxShape.circle,
             ),
             child: Text(
               "$rank",
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16 * scale, color: Colors.black54),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16 * scale, color: textColor.withOpacity(0.6)),
             ),
           ),
           SizedBox(width: 14 * scale),
           _buildSafeAvatar(
+            context: context,
             photoUrl: photoUrl,
             name: name,
             radius: 20 * scale,
@@ -1023,18 +1075,18 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15 * scale, color: Colors.black87)),
-                Text(grade, style: TextStyle(fontSize: 12 * scale, color: Colors.black45, fontWeight: FontWeight.w600)),
+                Text(name, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15 * scale, color: textColor)),
+                Text(grade, style: TextStyle(fontSize: 12 * scale, color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
               ],
             ),
           ),
           Row(
             children: [
-              Icon(Icons.star_rounded, color: const Color(0xFFFFB800), size: 18 * scale),
+              Icon(Icons.star_rounded, color: theme.primaryColor, size: 18 * scale),
               SizedBox(width: 4 * scale),
               Text(
                 "$xp",
-                style: TextStyle(fontWeight: FontWeight.w900, color: const Color(0xFFFFB800), fontSize: 16 * scale),
+                style: TextStyle(fontWeight: FontWeight.w900, color: theme.primaryColor, fontSize: 16 * scale),
               ),
             ],
           ),
@@ -1058,21 +1110,24 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
   final TextEditingController _codeController = TextEditingController();
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-  // Track friends selected for dynamic room invitation
   final List<String> _invitedFriendUids = [];
 
   Widget _buildSafeAvatar({
+    required BuildContext context,
     required String? photoUrl,
     required String name,
     required double radius,
-    Color textColor = Colors.black54,
+    Color? textColor,
   }) {
+    final theme = Theme.of(context);
+    final fallbackTextColor = textColor ?? theme.colorScheme.onSurface;
+
     Widget fallback = CircleAvatar(
       radius: radius,
-      backgroundColor: const Color(0xFFE5E7EB),
+      backgroundColor: theme.disabledColor.withOpacity(0.2),
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : "?",
-        style: TextStyle(fontWeight: FontWeight.bold, color: textColor, fontSize: radius * 0.8),
+        style: TextStyle(fontWeight: FontWeight.bold, color: fallbackTextColor, fontSize: radius * 0.8),
       ),
     );
 
@@ -1181,7 +1236,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         'title': title,
         'hostUid': _currentUserId,
         'playerUids': [_currentUserId],
-        'invitedUids': _invitedFriendUids, // Saved list of selected player invites
+        'invitedUids': _invitedFriendUids,
         'status': 'waiting',
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -1208,7 +1263,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
   }
 
   void _showInviteFriendsSheet() async {
-    // 1. Fetch the logged-in user's document to get their follower/following lists
     DocumentSnapshot currentUserDoc = await FirebaseFirestore.instance
         .collection('users')
         .doc(_currentUserId)
@@ -1219,15 +1273,16 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     Map<String, dynamic> currentUserData =
         currentUserDoc.data() as Map<String, dynamic>? ?? {};
 
-    // Get arrays of UIDs from current user
     List<dynamic> myFollowers = currentUserData['followers'] ?? [];
     List<dynamic> myFollowing = currentUserData['following'] ?? [];
 
     if (!mounted) return;
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1240,12 +1295,13 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     "Invite Friends",
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'Inter',
+                      color: textColor,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1256,63 +1312,41 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                           .snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.hasError) {
-                          return Center(
-                              child: Text('Error loading users: ${snapshot.error}'));
+                          return Center(child: Text('Error loading users: ${snapshot.error}'));
                         }
                         if (!snapshot.hasData) {
-                          return const Center(
-                              child: CircularProgressIndicator(
-                                  color: Color(0xFFFFB800)));
+                          return Center(child: CircularProgressIndicator(color: theme.primaryColor));
                         }
 
-                        // Filter docs for MUTUAL FOLLOWERS
                         final users = snapshot.data!.docs.where((doc) {
                           final String otherUserId = doc.id;
-
-                          // Skip current user
                           if (otherUserId == _currentUserId) return false;
 
-                          final userData =
-                              doc.data() as Map<String, dynamic>;
+                          final userData = doc.data() as Map<String, dynamic>;
+                          List<dynamic> targetFollowers = userData['followers'] ?? [];
+                          List<dynamic> targetFollowing = userData['following'] ?? [];
 
-                          List<dynamic> targetFollowers =
-                              userData['followers'] ?? [];
-                          List<dynamic> targetFollowing =
-                              userData['following'] ?? [];
-
-                          // MUTUAL CHECK: 
-                          // You follow them (their ID in your following OR your ID in their followers)
-                          // AND They follow you (your ID in their following OR their ID in your followers)
-                          bool iFollowThem = myFollowing.contains(otherUserId) ||
-                              targetFollowers.contains(_currentUserId);
-
-                          bool theyFollowMe = myFollowers.contains(otherUserId) ||
-                              targetFollowing.contains(_currentUserId);
+                          bool iFollowThem = myFollowing.contains(otherUserId) || targetFollowers.contains(_currentUserId);
+                          bool theyFollowMe = myFollowers.contains(otherUserId) || targetFollowing.contains(_currentUserId);
 
                           return iFollowThem && theyFollowMe;
                         }).toList();
 
                         if (users.isEmpty) {
-                          return const Center(
+                          return Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.group_off_rounded,
-                                    size: 48, color: Colors.black26),
-                                SizedBox(height: 12),
+                                Icon(Icons.group_off_rounded, size: 48, color: textColor.withOpacity(0.3)),
+                                const SizedBox(height: 12),
                                 Text(
                                   "No mutual friends found.",
-                                  style: TextStyle(
-                                      color: Colors.black87,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 16),
+                                  style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 16),
                                 ),
-                                SizedBox(height: 4),
+                                const SizedBox(height: 4),
                                 Text(
                                   "Follow each other to invite them to games!",
-                                  style: TextStyle(
-                                      color: Colors.black45,
-                                      fontSize: 12),
+                                  style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12),
                                 ),
                               ],
                             ),
@@ -1322,60 +1356,37 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         return ListView.builder(
                           itemCount: users.length,
                           itemBuilder: (context, index) {
-                            final userData =
-                                users[index].data() as Map<String, dynamic>;
+                            final userData = users[index].data() as Map<String, dynamic>;
                             final String uid = users[index].id;
+                            final String name = userData['firstName'] ?? userData['displayName'] ?? userData['name'] ?? 'Student';
+                            final String? photoUrl = userData['avatar'] ?? userData['photoUrl'] ?? userData['avatarUrl'];
+                            final bool isSelected = _invitedFriendUids.contains(uid);
 
-                            // Parse display names based on your database schema
-                            final String name = userData['firstName'] ??
-                                userData['displayName'] ??
-                                userData['name'] ??
-                                'Student';
-
-                            final String? photoUrl = userData['avatar'] ??
-                                userData['photoUrl'] ??
-                                userData['avatarUrl'];
-
-                            final bool isSelected =
-                                _invitedFriendUids.contains(uid);
-
-                            // Online status check
                             final bool isOnline = userData['isOnline'] == true ||
-                                userData['presence']
-                                        ?.toString()
-                                        .toLowerCase() ==
-                                    'online' ||
-                                userData['status']
-                                        ?.toString()
-                                        .toLowerCase() ==
-                                    'online';
+                                userData['presence']?.toString().toLowerCase() == 'online' ||
+                                userData['status']?.toString().toLowerCase() == 'online';
 
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading: _buildSafeAvatar(
+                                context: context,
                                 photoUrl: photoUrl,
                                 name: name,
                                 radius: 20,
                               ),
-                              title: Text(name,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700)),
+                              title: Text(name, style: TextStyle(fontWeight: FontWeight.w700, color: textColor)),
                               subtitle: Row(
                                 children: [
                                   CircleAvatar(
                                     radius: 4,
-                                    backgroundColor: isOnline
-                                        ? const Color(0xFF4CAF50)
-                                        : Colors.grey,
+                                    backgroundColor: isOnline ? const Color(0xFF4CAF50) : Colors.grey,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
                                     isOnline ? "Online" : "Offline",
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isOnline
-                                          ? const Color(0xFF4CAF50)
-                                          : Colors.grey,
+                                      color: isOnline ? const Color(0xFF4CAF50) : Colors.grey,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -1383,12 +1394,8 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                               ),
                               trailing: IconButton(
                                 icon: Icon(
-                                  isSelected
-                                      ? Icons.check_circle_rounded
-                                      : Icons.circle_outlined,
-                                  color: isSelected
-                                      ? const Color(0xFF4CAF50)
-                                      : Colors.black26,
+                                  isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                                  color: isSelected ? const Color(0xFF4CAF50) : textColor.withOpacity(0.3),
                                 ),
                                 onPressed: () {
                                   setModalState(() {
@@ -1413,15 +1420,11 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                     child: ElevatedButton(
                       onPressed: () => Navigator.pop(context),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFB800),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
+                        backgroundColor: theme.primaryColor,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         elevation: 0,
                       ),
-                      child: const Text("Done",
-                          style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.w900)),
+                      child: Text("Done", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900)),
                     ),
                   )
                 ],
@@ -1435,18 +1438,21 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           "Group Challenges",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontFamily: 'Inter', fontSize: 20),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter', fontSize: 20),
         ),
         centerTitle: true,
         flexibleSpace: ClipRRect(
@@ -1454,8 +1460,8 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.transparent,
-                border: Border(bottom: BorderSide(color: Colors.black.withOpacity(0.06), width: 0.5)),
+                color: theme.scaffoldBackgroundColor.withOpacity(0.4),
+                border: Border(bottom: BorderSide(color: textColor.withOpacity(0.08), width: 1.0)),
               ),
             ),
           ),
@@ -1480,10 +1486,11 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                 return Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: theme.cardColor.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 6))
+                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 6))
                     ],
                   ),
                   child: Row(
@@ -1492,15 +1499,15 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text("Classroom Challenge", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, fontFamily: 'Inter')),
+                            Text("Classroom Challenge", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, fontFamily: 'Inter', color: textColor)),
                             const SizedBox(height: 6),
-                            const Text("Join your teacher's room or host one for your group.", style: TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w500)),
+                            Text("Join your teacher's room or host one for your group.", style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.6), fontWeight: FontWeight.w500)),
                             const SizedBox(height: 16),
                             Row(
                               children: [
-                                _buildStatSquare("$userXp", "Your XP"),
+                                _buildStatSquare(theme, "$userXp", "Your XP"),
                                 const SizedBox(width: 10),
-                                _buildStatSquare("$streak 🔥", "Streak"),
+                                _buildStatSquare(theme, "$streak ⚡", "Streak"),
                               ],
                             )
                           ],
@@ -1511,10 +1518,10 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         width: 64,
                         height: 64,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFB800).withOpacity(0.12),
+                          color: theme.primaryColor.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Icon(Icons.groups_rounded, size: 36, color: Color(0xFFFFB800)),
+                        child: Icon(Icons.groups_rounded, size: 36, color: theme.primaryColor),
                       ),
                     ],
                   ),
@@ -1527,8 +1534,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               height: 48,
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.06),
+                color: textColor.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
               ),
               child: Row(
                 children: [
@@ -1539,16 +1547,17 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         duration: const Duration(milliseconds: 200),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: isJoinMode ? Colors.white : Colors.transparent,
+                          color: isJoinMode ? theme.cardColor.withOpacity(0.85) : Colors.transparent,
                           borderRadius: BorderRadius.circular(16),
-                          boxShadow: isJoinMode ? [const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))] : null,
+                          border: isJoinMode ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.0) : null,
+                          boxShadow: isJoinMode ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))] : null,
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.login_rounded, color: isJoinMode ? const Color(0xFFF34B1B) : Colors.black45, size: 18),
+                            Icon(Icons.login_rounded, color: isJoinMode ? const Color(0xFFF34B1B) : textColor.withOpacity(0.5), size: 18),
                             const SizedBox(width: 6),
-                            Text("Join Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isJoinMode ? Colors.black87 : Colors.black45)),
+                            Text("Join Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isJoinMode ? textColor : textColor.withOpacity(0.5))),
                           ],
                         ),
                       ),
@@ -1561,16 +1570,17 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         duration: const Duration(milliseconds: 200),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: !isJoinMode ? Colors.white : Colors.transparent,
+                          color: !isJoinMode ? theme.cardColor.withOpacity(0.85) : Colors.transparent,
                           borderRadius: BorderRadius.circular(16),
-                          boxShadow: !isJoinMode ? [const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))] : null,
+                          border: !isJoinMode ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.0) : null,
+                          boxShadow: !isJoinMode ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))] : null,
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.add_circle_outline_rounded, color: !isJoinMode ? const Color(0xFFF34B1B) : Colors.black45, size: 18),
+                            Icon(Icons.add_circle_outline_rounded, color: !isJoinMode ? const Color(0xFFF34B1B) : textColor.withOpacity(0.5), size: 18),
                             const SizedBox(width: 6),
-                            Text("Create Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: !isJoinMode ? Colors.black87 : Colors.black45)),
+                            Text("Create Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: !isJoinMode ? textColor : textColor.withOpacity(0.5))),
                           ],
                         ),
                       ),
@@ -1581,42 +1591,46 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             ),
             const SizedBox(height: 24),
 
-            isJoinMode ? _buildJoinView() : _buildCreateView(),
+            isJoinMode ? _buildJoinView(theme) : _buildCreateView(theme),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatSquare(String val, String label) {
+  Widget _buildStatSquare(ThemeData theme, String val, String label) {
+    final textColor = theme.colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFB800).withOpacity(0.15),
+        color: theme.primaryColor.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.primaryColor.withOpacity(0.2), width: 1.0),
       ),
       child: Column(
         children: [
-          Text(val, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Colors.black87)),
-          Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFFFB800))),
+          Text(val, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: textColor)),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.primaryColor)),
         ],
       ),
     );
   }
 
-  Widget _buildJoinView() {
+  Widget _buildJoinView(ThemeData theme) {
+    final textColor = theme.colorScheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Enter Room Code", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.black87)),
+        Text("Enter Room Code", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: textColor)),
         const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: theme.cardColor.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
                   boxShadow: [
                     BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
                   ],
@@ -1624,11 +1638,12 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                 child: TextField(
                   controller: _codeController,
                   textCapitalization: TextCapitalization.characters,
+                  style: TextStyle(color: textColor),
                   decoration: InputDecoration(
                     hintText: "e.g. FSL001",
-                    hintStyle: const TextStyle(color: Colors.black38, fontWeight: FontWeight.bold),
+                    hintStyle: TextStyle(color: textColor.withOpacity(0.4), fontWeight: FontWeight.bold),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: Colors.transparent,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
@@ -1654,14 +1669,16 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     );
   }
 
-  Widget _buildCreateView() {
+  Widget _buildCreateView(ThemeData theme) {
+    final textColor = theme.colorScheme.onSurface;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor.withOpacity(0.7),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5)),
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 5)),
         ],
       ),
       child: Column(
@@ -1675,28 +1692,28 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             child: const Icon(Icons.add_circle_rounded, size: 36, color: Color(0xFFF34B1B)),
           ),
           const SizedBox(height: 12),
-          const Text("Host a Challenge", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Inter')),
+          Text("Host a Challenge", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Inter', color: textColor)),
           const SizedBox(height: 6),
-          const Text("Create a custom room and invite friends to compete.", textAlign: TextAlign.center, style: TextStyle(color: Colors.black54, fontSize: 13)),
+          Text("Create a custom room and invite friends to compete.", textAlign: TextAlign.center, style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13)),
           
           const SizedBox(height: 20),
           
-          // Invite Friends Selection Field
           InkWell(
             onTap: _showInviteFriendsSheet,
             borderRadius: BorderRadius.circular(16),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.black.withOpacity(0.08)),
+                color: textColor.withOpacity(0.03),
+                border: Border.all(color: textColor.withOpacity(0.1), width: 1.0),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
                 children: [
                   const Icon(Icons.person_add_rounded, color: Color(0xFFF34B1B), size: 20),
                   const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text("Invite Players", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  Expanded(
+                    child: Text("Invite Players", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: textColor)),
                   ),
                   if (_invitedFriendUids.isNotEmpty)
                     Container(
@@ -1711,7 +1728,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                       ),
                     )
                   else
-                    const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.black38),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 14, color: textColor.withOpacity(0.4)),
                 ],
               ),
             ),
@@ -1725,13 +1742,13 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             child: ElevatedButton(
               onPressed: isLoading ? null : _handleCreateRoom,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFB800),
+                backgroundColor: theme.primaryColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 elevation: 0,
               ),
               child: isLoading
-                  ? const CircularProgressIndicator(color: Colors.black)
-                  : const Text("+ Create New Room", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 15)),
+                  ? CircularProgressIndicator(color: theme.colorScheme.onPrimary)
+                  : Text("+ Create New Room", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
             ),
           )
         ],
@@ -1754,16 +1771,18 @@ class RoomLobbyScreen extends StatelessWidget {
   });
 
   Widget _buildSafeAvatar({
+    required BuildContext context,
     required String? photoUrl,
     required String name,
     required double radius,
   }) {
+    final theme = Theme.of(context);
     Widget fallback = CircleAvatar(
       radius: radius,
-      backgroundColor: const Color(0xFFE5E7EB),
+      backgroundColor: theme.disabledColor.withOpacity(0.2),
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : "?",
-        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54, fontSize: radius * 0.8),
+        style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withOpacity(0.6), fontSize: radius * 0.8),
       ),
     );
 
@@ -1809,18 +1828,21 @@ class RoomLobbyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           "Room Lobby",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontFamily: 'Inter'),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter'),
         ),
         centerTitle: true,
       ),
@@ -1828,11 +1850,11 @@ class RoomLobbyScreen extends StatelessWidget {
         stream: FirebaseFirestore.instance.collection('rooms').doc(roomCode).snapshots(),
         builder: (context, roomSnapshot) {
           if (roomSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+            return Center(child: CircularProgressIndicator(color: theme.primaryColor));
           }
 
           if (!roomSnapshot.hasData || !roomSnapshot.data!.exists) {
-            return const Center(child: Text("Room no longer exists."));
+            return Center(child: Text("Room no longer exists.", style: TextStyle(color: textColor)));
           }
 
           final roomData = roomSnapshot.data!.data() as Map<String, dynamic>;
@@ -1849,24 +1871,25 @@ class RoomLobbyScreen extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: theme.cardColor.withOpacity(0.7),
                       borderRadius: BorderRadius.circular(24),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 15, offset: Offset(0, 5))],
+                      border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 5))],
                     ),
                     child: Column(
                       children: [
                         Text(
                           challengeTitle,
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black87),
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textColor),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _buildInfoPill("Room Code", roomCode),
+                            _buildInfoPill(theme, "Room Code", roomCode),
                             const SizedBox(width: 12),
-                            _buildInfoPill("Players", "${playerUids.length}/10"),
+                            _buildInfoPill(theme, "Players", "${playerUids.length}/10"),
                           ],
                         ),
                       ],
@@ -1878,14 +1901,14 @@ class RoomLobbyScreen extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       "Players Waiting (${playerUids.length})",
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.black87),
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: textColor),
                     ),
                   ),
                   const SizedBox(height: 14),
 
                   Expanded(
                     child: playerUids.isEmpty
-                        ? const Center(child: Text("Waiting for players to join..."))
+                        ? Center(child: Text("Waiting for players to join...", style: TextStyle(color: textColor.withOpacity(0.6))))
                         : StreamBuilder<QuerySnapshot>(
                             stream: FirebaseFirestore.instance
                                 .collection('users')
@@ -1893,7 +1916,7 @@ class RoomLobbyScreen extends StatelessWidget {
                                 .snapshots(),
                             builder: (context, playersSnapshot) {
                               if (playersSnapshot.connectionState == ConnectionState.waiting) {
-                                return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+                                return Center(child: CircularProgressIndicator(color: theme.primaryColor));
                               }
 
                               final playerDocs = playersSnapshot.data?.docs ?? [];
@@ -1909,7 +1932,7 @@ class RoomLobbyScreen extends StatelessWidget {
                                   final String? photoUrl = pData['avatar'] ?? pData['photoUrl'] ?? pData['avatarUrl'];
                                   final bool playerIsHost = uid == hostUid;
 
-                                  return _buildPlayerTile(name, playerIsHost, photoUrl);
+                                  return _buildPlayerTile(context, theme, name, playerIsHost, photoUrl);
                                 },
                               );
                             },
@@ -1929,7 +1952,7 @@ class RoomLobbyScreen extends StatelessWidget {
                             }
                           : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isHost ? const Color(0xFFF34B1B) : Colors.grey.shade400,
+                        backgroundColor: isHost ? const Color(0xFFF34B1B) : theme.disabledColor,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                         elevation: 0,
                       ),
@@ -1953,37 +1976,41 @@ class RoomLobbyScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoPill(String topText, String bottomText) {
+  Widget _buildInfoPill(ThemeData theme, String topText, String bottomText) {
+    final textColor = theme.colorScheme.onSurface;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF0F4F8),
+          color: textColor.withOpacity(0.05),
           borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: textColor.withOpacity(0.06), width: 1.0),
         ),
         child: Column(
           children: [
-            Text(topText, style: const TextStyle(fontSize: 11, color: Colors.black45, fontWeight: FontWeight.w600)),
+            Text(topText, style: TextStyle(fontSize: 11, color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
-            Text(bottomText, style: const TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+            Text(bottomText, style: TextStyle(fontSize: 16, color: textColor, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPlayerTile(String name, bool playerIsHost, String? photoUrl) {
+  Widget _buildPlayerTile(BuildContext context, ThemeData theme, String name, bool playerIsHost, String? photoUrl) {
+    final textColor = theme.colorScheme.onSurface;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor.withOpacity(0.7),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
+        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
       ),
       child: Row(
         children: [
           _buildSafeAvatar(
+            context: context,
             photoUrl: photoUrl,
             name: name,
             radius: 22,
@@ -1992,17 +2019,17 @@ class RoomLobbyScreen extends StatelessWidget {
           Expanded(
             child: Text(
               name,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.black87),
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: textColor),
             ),
           ),
           if (playerIsHost)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFB800).withOpacity(0.15),
+                color: theme.primaryColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Text("HOST", style: TextStyle(color: Color(0xFFFFB800), fontWeight: FontWeight.w900, fontSize: 11)),
+              child: Text("HOST", style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 11)),
             )
           else
             const Icon(Icons.check_circle_rounded, color: Color(0xFF4CAF50), size: 22)

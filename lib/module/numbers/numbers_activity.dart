@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +6,343 @@ import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 import 'easyNumAct_mc.dart';
 
+// ==========================================
+// 1. KIDDIE PROCEDURAL BACKGROUND WIDGET
+// ==========================================
+class ThemedBackground extends StatelessWidget {
+  final Color bgColor;
+
+  const ThemedBackground({super.key, required this.bgColor});
+
+  Widget _buildGlowingOrb(double size, Color color, double top, double left) {
+    return Positioned(
+      top: top,
+      left: left,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color.withOpacity(0.6), color.withOpacity(0.0)],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- OCEAN CREATURE HELPERS ---
+  Widget _buildJellyfish(double top, double left, Color color, double scale) {
+    return Positioned(
+      top: top,
+      left: left,
+      child: Transform.scale(
+        scale: scale,
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 26,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.75),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(color: color.withOpacity(0.4), blurRadius: 8, spreadRadius: 2)
+                ],
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(4, (index) => Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                width: 3,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              )),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCuteFish(double top, double left, Color color, double scale, bool flip) {
+    return Positioned(
+      top: top,
+      left: left,
+      child: Transform.scale(
+        scaleX: flip ? -scale : scale,
+        scaleY: scale,
+        child: Icon(
+          Icons.set_meal_rounded,
+          color: color.withOpacity(0.8),
+          size: 34,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStarfish(double top, double left, Color color, double scale, double angle) {
+    return Positioned(
+      top: top,
+      left: left,
+      child: Transform.rotate(
+        angle: angle,
+        child: Transform.scale(
+          scale: scale,
+          child: Icon(
+            Icons.star_rounded,
+            color: color.withOpacity(0.85),
+            size: 38,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- FOREST MUSHROOM HELPER ---
+  Widget _buildMushroom(double top, double left, double scale) {
+    return Positioned(
+      top: top,
+      left: left,
+      child: Transform.scale(
+        scale: scale,
+        child: Column(
+          children: [
+            Container(
+              width: 32,
+              height: 20,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFF5252),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  CircleAvatar(radius: 2, backgroundColor: Colors.white),
+                  CircleAvatar(radius: 3, backgroundColor: Colors.white),
+                  CircleAvatar(radius: 2, backgroundColor: Colors.white),
+                ],
+              ),
+            ),
+            Container(
+              width: 14,
+              height: 12,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E7),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- SKY CLOUD & SUN HELPERS ---
+  Widget _buildCloud(double top, double left, double scale) {
+    return Positioned(
+      top: top, 
+      left: left,
+      child: Transform.scale(
+        scale: scale,
+        child: SizedBox(
+          width: 140,
+          height: 80,
+          child: Stack(
+            children: [
+              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.5)))),
+              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.6)))),
+              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.5)))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 1. GALAXY THEME (Rockets, Stars, & Planets)
+    if (bgColor.value == 0xFF0F0C29) { 
+      return Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF0F0C29), Color(0xFF302B63), Color(0xFF24243E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Stack(
+          children: [
+            _buildGlowingOrb(300, const Color(0xFFFF2A85), -50, -100),
+            _buildGlowingOrb(400, const Color(0xFF4A00E0), 400, 200),
+            _buildGlowingOrb(200, const Color(0xFF00E5FF), 700, -50),
+            
+            // Kiddie Rocket & Space Visuals
+            Positioned(top: 120, right: 30, child: Transform.rotate(angle: -0.5, child: const Icon(Icons.rocket_launch_rounded, color: Color(0xFFFF2A85), size: 48))),
+            Positioned(top: 480, left: 25, child: Transform.rotate(angle: 0.3, child: const Icon(Icons.public_rounded, color: Color(0xFF00E5FF), size: 54))),
+            Positioned(top: 720, right: 40, child: const Icon(Icons.brightness_3_rounded, color: Color(0xFFFFD700), size: 40)),
+
+            ...List.generate(20, (index) {
+              final random = Random(index);
+              return Positioned(
+                top: random.nextDouble() * 900,
+                left: random.nextDouble() * 380,
+                child: Icon(
+                  Icons.auto_awesome, 
+                  color: Colors.white.withOpacity(random.nextDouble() * 0.5 + 0.2),
+                  size: random.nextDouble() * 18 + 10,
+                ),
+              );
+            }),
+          ],
+        ),
+      );
+    }
+    
+    // 2. ENCHANTED FOREST THEME (Mushrooms, Leaves, & Fireflies)
+    if (bgColor.value == 0xFF132A13) { 
+      return Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF132A13), Color(0xFF31572C), Color(0xFF4F772D)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: Stack(
+          children: [
+            _buildGlowingOrb(350, const Color(0xFFFFD700), -100, 150), 
+            _buildGlowingOrb(250, const Color(0xFF90BE6D), 300, -100),
+            
+            // Cute Mushrooms
+            _buildMushroom(220, 25, 1.2),
+            _buildMushroom(540, 320, 1.1),
+            _buildMushroom(780, 50, 1.3),
+
+            // Butterflies & Leaves
+            Positioned(top: 140, right: 40, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFFFFD700).withOpacity(0.6), size: 36)),
+            Positioned(top: 410, left: 30, child: Icon(Icons.eco_rounded, color: const Color(0xFF90BE6D).withOpacity(0.5), size: 32)),
+
+            // Fireflies
+            ...List.generate(15, (index) {
+              final random = Random(index + 50);
+              return _buildGlowingOrb(
+                random.nextDouble() * 20 + 10, 
+                const Color(0xFFFFFF99), 
+                random.nextDouble() * 900, 
+                random.nextDouble() * 380
+              );
+            }),
+          ],
+        ),
+      );
+    }
+    
+    // 3. DEEP OCEAN THEME (Sea Creatures, Starfish, & Bubbles)
+    if (bgColor.value == 0xFF001B3A) { 
+      return Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF005C97), Color(0xFF001B3A)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: Stack(
+          children: [
+            _buildGlowingOrb(400, const Color(0xFF00E5FF), -150, -50),
+            _buildGlowingOrb(300, const Color(0xFF363795), 500, 150),
+
+            // Kiddie Sea Creatures
+            _buildCuteFish(130, 40, const Color(0xFFFFD166), 1.2, false),
+            _buildCuteFish(320, 280, const Color(0xFFFF6B6B), 1.1, true),
+            _buildCuteFish(620, 50, const Color(0xFF00E5FF), 1.3, false),
+
+            _buildJellyfish(230, 290, const Color(0xFFFF70A6), 1.1),
+            _buildJellyfish(510, 30, const Color(0xFF70D6FF), 1.2),
+
+            _buildStarfish(180, 310, const Color(0xFFFF9F1C), 1.0, 0.4),
+            _buildStarfish(440, 20, const Color(0xFFFFD166), 1.1, -0.3),
+            _buildStarfish(760, 300, const Color(0xFFFF6B6B), 1.2, 0.2),
+
+            // Rising Bubbles
+            ...List.generate(18, (index) {
+              final random = Random(index + 100);
+              return Positioned(
+                top: random.nextDouble() * 900,
+                left: random.nextDouble() * 380,
+                child: Icon(
+                  Icons.bubble_chart_rounded,
+                  color: Colors.white.withOpacity(random.nextDouble() * 0.35 + 0.15),
+                  size: random.nextDouble() * 30 + 12,
+                ),
+              );
+            }),
+          ],
+        ),
+      );
+    }
+    
+    // 4. CLOUDY SKY THEME (Sun, Rainbow, & Layered Clouds)
+    if (bgColor.value == 0xFFE0EAFC) { 
+      return Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFFA8C0FF), Color(0xFFE0EAFC), Color(0xFFFFFFFF)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: Stack(
+          children: [
+            // Smiling Sun
+            Positioned(
+              top: 40, 
+              right: 30, 
+              child: Icon(Icons.wb_sunny_rounded, color: const Color(0xFFFFD700).withOpacity(0.85), size: 70)
+            ),
+
+            // Fluffy Clouds
+            _buildCloud(80, -30, 1.2),
+            _buildCloud(280, 200, 0.9),
+            _buildCloud(520, -40, 1.4),
+            _buildCloud(720, 160, 1.1),
+
+            // Flying Birds
+            Positioned(top: 190, left: 60, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFF5C7CFA).withOpacity(0.5), size: 30)),
+            Positioned(top: 430, right: 50, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFF5C7CFA).withOpacity(0.5), size: 26)),
+          ],
+        ),
+      );
+    }
+    
+    // 5. DEFAULT FALLBACK THEME
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFFFF9E5), Color(0xFFFFE0B2)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Stack(
+        children: [
+          _buildGlowingOrb(400, const Color(0xFFFFB800).withOpacity(0.4), -100, -100),
+          _buildGlowingOrb(300, const Color(0xFFFFCC80).withOpacity(0.5), 500, 200),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 2. NUMBERS ACTIVITY INTERFACE
+// ==========================================
 class NumbersActivityInterface extends StatefulWidget {
   const NumbersActivityInterface({super.key});
 
@@ -33,59 +371,124 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
     super.dispose();
   }
 
-  Widget _buildSectionDivider(String title) {
+  Map<String, dynamic> _getThemeStyles(BuildContext context) {
+    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
+
+    if (bgColor == 0xFF0F0C29) { // Galaxy
+      return {
+        'primary': const Color(0xFFFF2A85), 
+        'text': Colors.white,
+        'line': Colors.white54,
+        'dividerText': Colors.white70,
+        'appBarIcon': Colors.white,
+        'cardBg': Colors.black54,
+      };
+    }
+    if (bgColor == 0xFF132A13) { // Enchanted Forest
+      return {
+        'primary': const Color(0xFFFFD700), 
+        'text': Colors.white,
+        'line': Colors.white54,
+        'dividerText': Colors.white70,
+        'appBarIcon': Colors.white,
+        'cardBg': Colors.black54,
+      };
+    }
+    if (bgColor == 0xFF001B3A) { // Ocean
+      return {
+        'primary': const Color(0xFF00E5FF), 
+        'text': Colors.white,
+        'line': Colors.white54,
+        'dividerText': Colors.white70,
+        'appBarIcon': Colors.white,
+        'cardBg': Colors.black54,
+      };
+    }
+    if (bgColor == 0xFFE0EAFC) { // Cloudy Sky
+      return {
+        'primary': const Color(0xFF5C7CFA), 
+        'text': const Color(0xFF1E1E1E),
+        'line': Colors.black38,
+        'dividerText': Colors.black54,
+        'appBarIcon': const Color(0xFF322144),
+        'cardBg': Colors.white.withOpacity(0.9),
+      };
+    }
+    
+    // Default Fallback
+    return {
+      'primary': const Color(0xFFFFB800),
+      'text': const Color(0xFF322144),
+      'line': Colors.grey.shade500,
+      'dividerText': Colors.grey.shade700,
+      'appBarIcon': const Color(0xFF322144),
+      'cardBg': Colors.white.withOpacity(0.9),
+    };
+  }
+
+  Widget _buildSectionDivider(String title, Map<String, dynamic> themeStyles) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         children: [
-          Expanded(child: Divider(color: Colors.grey.shade400, thickness: 2)),
+          Expanded(child: Divider(color: themeStyles['line'].withOpacity(0.3), thickness: 2)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
               title,
               style: TextStyle(
-                color: Colors.grey.shade700,
+                color: themeStyles['dividerText'],
                 fontWeight: FontWeight.w900,
                 fontSize: 18,
                 letterSpacing: 1.2,
               ),
             ),
           ),
-          Expanded(child: Divider(color: Colors.grey.shade400, thickness: 2)),
+          Expanded(child: Divider(color: themeStyles['line'].withOpacity(0.3), thickness: 2)),
         ],
       ),
     );
   }
 
-  Widget _buildVerticalPathLine() {
-    return Center(
-      child: Container(
-        width: 8,
-        height: 40,
-        decoration: BoxDecoration(
-          color: Colors.grey.shade400,
-          borderRadius: BorderRadius.circular(4),
+  Widget _buildVerticalPathLine(Map<String, dynamic> themeStyles) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(4, (index) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5.0),
+        child: Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: themeStyles['line'],
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: themeStyles['primary'].withOpacity(0.3), blurRadius: 4, spreadRadius: 1)
+            ]
+          ),
         ),
-      ),
+      )),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeStyles = _getThemeStyles(context);
+    final scaffoldBgColor = Theme.of(context).scaffoldBackgroundColor;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: scaffoldBgColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF322144)),
+          icon: Icon(Icons.arrow_back_ios, color: themeStyles['appBarIcon']),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Numbers Activity',
           style: TextStyle(
-            color: Colors.black,
+            color: themeStyles['appBarIcon'],
             fontSize: 24,
             fontFamily: 'Inter',
             fontWeight: FontWeight.w800,
@@ -96,38 +499,7 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: Image.asset(
-              'assets/pictures/background1.jpg', 
-              fit: BoxFit.cover,
-              color: Colors.white.withOpacity(0.45),
-              colorBlendMode: BlendMode.lighten,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  color: const Color(0xFFFFF9E5), 
-                  padding: const EdgeInsets.all(32),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 48),
-                        const SizedBox(height: 16),
-                        const Text(
-                          "⚠️ NUMBERS BACKDROP ERROR",
-                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 18),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          "Flutter is searching for your background file at:\n'assets/pictures/background.jpg'\n\n"
-                          "Ensure the image asset matches this folder directory structure exactly and run a full Cold Restart.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade800, fontSize: 14, height: 1.4),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+            child: ThemedBackground(bgColor: scaffoldBgColor),
           ),
 
           SafeArea(
@@ -135,7 +507,7 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
               stream: ProgressService().getUserProgressStream(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+                  return Center(child: CircularProgressIndicator(color: themeStyles['primary']));
                 }
 
                 int categoryStars = 0; 
@@ -241,19 +613,19 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: themeStyles['cardBg'],
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFFFB800), width: 2),
-                            boxShadow: const [BoxShadow(color: Color(0x05132C4A), blurRadius: 10, offset: Offset(0, 4))],
+                            border: Border.all(color: themeStyles['primary'], width: 2),
+                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 24),
+                              Icon(Icons.star_rounded, color: themeStyles['primary'], size: 24),
                               const SizedBox(width: 6),
                               Text(
                                 "$categoryStars Stars",
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF222222)),
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: themeStyles['text']),
                               ),
                             ],
                           ),
@@ -261,7 +633,7 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                       ),
                       const SizedBox(height: 30),
 
-                      _buildSectionDivider("EASY"),
+                      _buildSectionDivider("EASY", themeStyles),
                       const SizedBox(height: 10),
 
                       ListView.separated(
@@ -272,21 +644,21 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                           if (index == 2) { 
                             return Column(
                               children: [
-                                _buildVerticalPathLine(),
-                                _buildSectionDivider("MEDIUM"),
-                                _buildVerticalPathLine(),
+                                _buildVerticalPathLine(themeStyles),
+                                _buildSectionDivider("MEDIUM", themeStyles),
+                                _buildVerticalPathLine(themeStyles),
                               ],
                             );
                           } else if (index == 5) { 
                             return Column(
                               children: [
-                                _buildVerticalPathLine(),
-                                _buildSectionDivider("HARD"),
-                                _buildVerticalPathLine(),
+                                _buildVerticalPathLine(themeStyles),
+                                _buildSectionDivider("HARD", themeStyles),
+                                _buildVerticalPathLine(themeStyles),
                               ],
                             );
                           }
-                          return _buildVerticalPathLine();
+                          return _buildVerticalPathLine(themeStyles);
                         },
                         itemBuilder: (context, index) {
                           final node = pathNodes[index];
@@ -305,7 +677,7 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                                     children: List.generate(3, (starIdx) {
                                       return Icon(
                                         starIdx < earnedStars ? Icons.star_rounded : Icons.star_border_rounded,
-                                        color: const Color(0xFFFFB800),
+                                        color: themeStyles['primary'],
                                         size: 20,
                                       );
                                     }),
@@ -313,7 +685,7 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                                 else
                                   Text(
                                     "🔒 Locked",
-                                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12, fontWeight: FontWeight.bold),
+                                    style: TextStyle(color: themeStyles['dividerText'], fontSize: 12, fontWeight: FontWeight.bold),
                                   ),
                                 const SizedBox(height: 8),
 
@@ -336,36 +708,67 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                                             ),
                                           );
                                         },
-                                  child: Container(
-                                    width: 90,
-                                    height: 90,
-                                    decoration: BoxDecoration(
-                                      color: isUnlocked ? const Color(0xFFFFB800) : Colors.grey.shade300,
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: (isUnlocked ? const Color(0xFFFFB800) : Colors.grey).withOpacity(0.4),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 6),
-                                        )
-                                      ],
-                                      border: Border.all(color: Colors.white, width: 5),
-                                    ),
-                                    child: Icon(
-                                      isUnlocked ? Icons.play_arrow_rounded : Icons.lock_rounded,
-                                      color: Colors.white,
-                                      size: 46,
-                                    ),
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Container(
+                                        width: 104,
+                                        height: 104,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isUnlocked ? themeStyles['primary'].withOpacity(0.25) : Colors.black12,
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 86,
+                                        height: 86,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          gradient: LinearGradient(
+                                            colors: isUnlocked 
+                                              ? [themeStyles['primary'].withOpacity(0.7), themeStyles['primary']]
+                                              : [Colors.grey.shade400, Colors.grey.shade700],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: (isUnlocked ? themeStyles['primary'] : Colors.black).withOpacity(0.5),
+                                              blurRadius: 10,
+                                              offset: const Offset(0, 6),
+                                            )
+                                          ],
+                                          border: Border.all(
+                                            color: isUnlocked ? Colors.white : Colors.grey.shade400,
+                                            width: 4,
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child: Icon(
+                                            isUnlocked ? Icons.play_arrow_rounded : Icons.lock_rounded,
+                                            color: Colors.white,
+                                            size: 46,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(height: 10),
 
-                                Text(
-                                  node['title'],
-                                  style: TextStyle(
-                                    color: isUnlocked ? const Color(0xFF322144) : Colors.grey.shade700,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: themeStyles['cardBg'],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    node['title'],
+                                    style: TextStyle(
+                                      color: isUnlocked ? themeStyles['text'] : themeStyles['dividerText'],
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 )
                               ],

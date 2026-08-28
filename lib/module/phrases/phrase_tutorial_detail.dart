@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'phrase_tutorial_practice.dart'; // Ensure this matches your file name
+import 'phrase_tutorial_practice.dart'; 
 
 class PhraseSign {
   final String label;
@@ -21,7 +21,6 @@ class PhraseTutorialDetail extends StatefulWidget {
 }
 
 class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
-  // Adapted to hold Phrases instead of Alphabet letters
   final List<PhraseSign> _phraseList = const [
     PhraseSign(label: 'Hello', imagePath: 'assets/pictures/hello.jpg'),
     PhraseSign(label: 'Thank You', imagePath: 'assets/pictures/thank_you.jpg'),
@@ -29,7 +28,6 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
     PhraseSign(label: 'Please', imagePath: 'assets/pictures/please.jpg'),
     PhraseSign(label: 'Yes', imagePath: 'assets/pictures/yes.jpg'),
     PhraseSign(label: 'No', imagePath: 'assets/pictures/no.jpg'),
-    // Add more phrases here!
   ];
 
   int _currentIndex = 0;
@@ -74,6 +72,10 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
+
     final currentSign = _phraseList[_currentIndex];
     
     const double baseWidth = 393;
@@ -83,31 +85,41 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
     double progressPercentage = (_currentIndex + 1) / _phraseList.length;
 
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
 
     return Scaffold(
       extendBodyBehindAppBar: true, 
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), 
+        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6), 
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: IconThemeData(color: textColor),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border(
+                  bottom: BorderSide(
+                    color: theme.dividerColor.withOpacity(0.1),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Tutorial',
           style: TextStyle(
-            color: Colors.black87, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
+            color: textColor, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
           ),
         ),
         actions: [
@@ -117,7 +129,6 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
               int totalXp = 0;
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
-                // Fetch phraseXp instead of alphabetXp
                 totalXp = data['phraseXp'] ?? 0; 
               }
               return Padding(
@@ -130,18 +141,18 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.6),
+                          color: theme.cardColor.withOpacity(0.75),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFFFB800).withOpacity(0.5), width: 1.5),
+                          border: Border.all(color: theme.primaryColor.withOpacity(0.5), width: 1.5),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.bolt, color: Color(0xFFBA8E23), size: 16),
+                            Icon(Icons.bolt, color: theme.primaryColor, size: 16),
                             const SizedBox(width: 4),
                             Text(
                               "$totalXp XP",
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFFBA8E23)),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: theme.primaryColor),
                             )
                           ],
                         ),
@@ -158,11 +169,23 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
         children: [
           Positioned(
             top: -50, left: -50,
-            child: Container(width: 250, height: 250, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFFB800).withOpacity(0.2))),
+            child: Container(
+              width: 250, height: 250, 
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, 
+                color: theme.primaryColor.withOpacity(0.2),
+              ),
+            ),
           ),
           Positioned(
             bottom: 150, right: -100,
-            child: Container(width: 300, height: 300, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7DC579).withOpacity(0.15))),
+            child: Container(
+              width: 300, height: 300, 
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, 
+                color: const Color(0xFF4CAF50).withOpacity(0.15),
+              ),
+            ),
           ),
           
           SafeArea(
@@ -187,9 +210,8 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                             child: Center(
                               child: Text(
                                 currentSign.label,
-                                // Slightly smaller font size to accommodate longer phrases
                                 style: TextStyle(
-                                  color: Colors.black87, fontSize: 42 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.0
+                                  color: textColor, fontSize: 42 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.0
                                 ),
                               ),
                             ),
@@ -205,7 +227,13 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                                   fit: BoxFit.cover
                                 ),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16 * scale)),
-                                shadows: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 15, offset: const Offset(0, 8))],
+                                shadows: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.06), 
+                                    blurRadius: 15, 
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -219,9 +247,9 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                                 child: Container(
                                   width: maxProgressWidth * scale, height: 14 * scale,
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.4), 
+                                    color: theme.cardColor.withOpacity(0.5), 
                                     borderRadius: BorderRadius.circular(25 * scale),
-                                    border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.0)
+                                    border: Border.all(color: theme.dividerColor.withOpacity(0.2), width: 1.0)
                                   ),
                                   child: Stack(
                                     children: [
@@ -229,9 +257,9 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                                         duration: const Duration(milliseconds: 250),
                                         width: calculatedProgressWidth * scale, height: 14 * scale,
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFF7DC579), 
+                                          color: const Color(0xFF4CAF50), 
                                           borderRadius: BorderRadius.circular(25 * scale),
-                                          boxShadow: [BoxShadow(color: const Color(0xFF7DC579).withOpacity(0.4), blurRadius: 4)]
+                                          boxShadow: [BoxShadow(color: const Color(0xFF4CAF50).withOpacity(0.4), blurRadius: 4)]
                                         ),
                                       ),
                                     ],
@@ -245,8 +273,8 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                             left: 36 * scale, top: 455 * scale,
                             child: TextButton.icon(
                               onPressed: _goToPrevious,
-                              icon: Icon(Icons.arrow_back, color: Colors.black87, size: 18 * scale),
-                              label: Text('Previous', style: TextStyle(color: Colors.black87, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                              icon: Icon(Icons.arrow_back, color: textColor, size: 18 * scale),
+                              label: Text('Previous', style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
                             ),
                           ),
                           Positioned(
@@ -255,9 +283,9 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                               onPressed: _goToNext,
                               child: Row(
                                 children: [
-                                  Text('Next', style: TextStyle(color: Colors.black87, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                                  Text('Next', style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
                                   SizedBox(width: 8 * scale),
-                                  Icon(Icons.arrow_forward, color: Colors.black87, size: 18 * scale),
+                                  Icon(Icons.arrow_forward, color: textColor, size: 18 * scale),
                                 ],
                               ),
                             ),
@@ -268,18 +296,17 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                             child: Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(25 * scale),
-                                boxShadow: [BoxShadow(color: const Color(0xFFFFB800).withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 5))],
+                                boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 5))],
                               ),
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFFFB800),
-                                  foregroundColor: Colors.white,
+                                  backgroundColor: theme.primaryColor,
+                                  foregroundColor: theme.colorScheme.onPrimary,
                                   minimumSize: Size(299 * scale, 50 * scale),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
                                   elevation: 0,
                                 ),
                                 onPressed: () {
-                                  // Pass the entire phrase string instead of just the first letter
                                   Navigator.push(
                                     context, 
                                     MaterialPageRoute(

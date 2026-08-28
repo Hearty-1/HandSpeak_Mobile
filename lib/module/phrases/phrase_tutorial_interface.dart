@@ -1,7 +1,7 @@
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'phrase_tutorial_detail.dart'; // Adjust import to your detail screen
+import 'phrase_tutorial_detail.dart';
 
 class PhraseTutorialInterface extends StatefulWidget {
   const PhraseTutorialInterface({super.key});
@@ -11,7 +11,6 @@ class PhraseTutorialInterface extends StatefulWidget {
 }
 
 class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
-  // Centralized tracking list for phrase progress status
   final List<Map<String, String>> lessons = [
     {'title': 'Hello', 'status': 'completed'},
     {'title': 'Thank You', 'status': 'completed'},
@@ -47,32 +46,46 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
+
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
 
     return Scaffold(
       extendBodyBehindAppBar: true, 
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), 
+        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6), 
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: IconThemeData(color: textColor),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border(
+                  bottom: BorderSide(
+                    color: theme.dividerColor.withOpacity(0.1),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Phrases Tutorial',
           style: TextStyle(
-            color: Colors.black87, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
+            color: textColor, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
           ),
         ),
       ),
@@ -83,14 +96,20 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
             top: -50, left: -50,
             child: Container(
               width: 250, height: 250,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFFB800).withOpacity(0.25)),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, 
+                color: theme.primaryColor.withOpacity(0.25),
+              ),
             ),
           ),
           Positioned(
             bottom: 100, right: -80,
             child: Container(
               width: 280, height: 280,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7DC579).withOpacity(0.15)),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, 
+                color: const Color(0xFF4CAF50).withOpacity(0.15),
+              ),
             ),
           ),
 
@@ -106,19 +125,26 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                       child: Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.6),
+                          color: theme.cardColor.withOpacity(0.75),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white.withOpacity(0.7), width: 1.5),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))],
+                          border: Border.all(color: theme.dividerColor.withOpacity(0.15), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(isDark ? 0.2 : 0.03), 
+                              blurRadius: 8, 
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
                         child: TextField(
                           onChanged: (value) => _runFilter(value), 
-                          decoration: const InputDecoration(
+                          style: TextStyle(color: textColor),
+                          decoration: InputDecoration(
                             hintText: 'Search phrase...',
-                            hintStyle: TextStyle(color: Colors.black45, fontWeight: FontWeight.w500),
-                            prefixIcon: Icon(Icons.search, color: Colors.black45),
+                            hintStyle: TextStyle(color: textColor.withOpacity(0.5), fontWeight: FontWeight.w500),
+                            prefixIcon: Icon(Icons.search, color: textColor.withOpacity(0.5)),
                             border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(vertical: 12),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
                           ),
                         ),
                       ),
@@ -128,7 +154,12 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                 
                 Expanded(
                   child: filteredLessons.isEmpty
-                      ? const Center(child: Text("No phrases found.", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black54)))
+                      ? Center(
+                          child: Text(
+                            "No phrases found.", 
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
+                          ),
+                        )
                       : ListView.builder(
                           physics: const BouncingScrollPhysics(),
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -144,7 +175,6 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                                 if (!isLocked) {
                                   final originalIndex = lessons.indexOf(lesson);
                                   
-                                  // Navigate to your Phrase slide deck / tutorial screen here
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -187,6 +217,10 @@ class PhraseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: ClipRRect(
@@ -200,13 +234,19 @@ class PhraseCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
                 decoration: BoxDecoration(
-                  color: isLocked ? Colors.white.withOpacity(0.4) : Colors.white.withOpacity(0.7),
+                  color: theme.cardColor.withOpacity(isLocked ? 0.4 : 0.75),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isLocked ? Colors.white.withOpacity(0.4) : const Color(0xFFFFB800).withOpacity(0.5), 
-                    width: 1.5
+                    color: isLocked ? theme.dividerColor.withOpacity(0.2) : theme.primaryColor.withOpacity(0.5), 
+                    width: 1.5,
                   ),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.25 : 0.04), 
+                      blurRadius: 10, 
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -214,27 +254,36 @@ class PhraseCard extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        fontSize: 22, // Slightly smaller font size since phrases are longer words
+                        fontSize: 22, 
                         fontWeight: FontWeight.w900,
                         fontFamily: 'Inter',
-                        color: isLocked ? Colors.black45 : Colors.black87,
+                        color: isLocked ? textColor.withOpacity(0.4) : textColor,
                         letterSpacing: -1.0,
                       ),
                     ),
                     isLocked
                         ? Container(
                             padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(color: Colors.black.withOpacity(0.05), shape: BoxShape.circle),
-                            child: const Icon(Icons.lock_outline, color: Colors.black45, size: 22),
+                            decoration: BoxDecoration(
+                              color: textColor.withOpacity(0.08), 
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.lock_outline, color: textColor.withOpacity(0.4), size: 22),
                           )
                         : Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: theme.cardColor,
                               shape: BoxShape.circle,
-                              boxShadow: [BoxShadow(color: const Color(0xFFFFB800).withOpacity(0.3), blurRadius: 8, spreadRadius: 1)],
+                              boxShadow: [
+                                BoxShadow(
+                                  color: theme.primaryColor.withOpacity(0.3), 
+                                  blurRadius: 8, 
+                                  spreadRadius: 1,
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.play_arrow_rounded, color: Color(0xFFFFB800), size: 22),
+                            child: Icon(Icons.play_arrow_rounded, color: theme.primaryColor, size: 22),
                           ),
                   ],
                 ),

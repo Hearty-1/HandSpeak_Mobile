@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '/providers/theme_provider.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -124,6 +126,7 @@ class AuthService {
           'gradeLevel': gradeLevel,
           'role': 'student',
           'status': 'pending', 
+          'themePreference': 'defaultWarm', // Default theme preference on signup
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -141,7 +144,7 @@ class AuthService {
     }
   }
 
-  // Sign In with Status Check
+  // Sign In with Status Check (Syncs Theme from Firestore)
   Future<Map<String, dynamic>?> signInWithStatusCheck(String email, String password) async {
     try {
       UserCredential credential = await _auth.signInWithEmailAndPassword(
@@ -153,6 +156,14 @@ class AuthService {
       if (user != null) {
         DocumentSnapshot doc = await _db.collection('users').doc(user.uid).get();
         if (doc.exists) {
+          Map<String, dynamic> userData = doc.data() as Map<String, dynamic>;
+          
+          // Pull account theme from Firestore and apply to local device
+          if (userData.containsKey('themePreference')) {
+            SharedPreferences prefs = await SharedPreferences.getInstance();
+            await prefs.setString(ThemeProvider.themePrefKey, userData['themePreference']);
+          }
+
           await _logAccountActivity(
             uid: user.uid,
             action: "User Logged In",
@@ -160,13 +171,38 @@ class AuthService {
           );
           await registerDeviceSession(user.uid);
 
-          return doc.data() as Map<String, dynamic>;
+          return userData;
         }
       }
       return null;
     } catch (e) {
       debugPrint("Sign In Error: $e");
       return null;
+    }
+  }
+
+  // Sign Out and clear device-specific theme
+  Future<void> signOut() async {
+    try {
+      User? user = _auth.currentUser;
+      if (user != null) {
+        await _logAccountActivity(
+          uid: user.uid,
+          action: "User Logged Out",
+          description: "User manually signed out of the app.",
+        );
+      }
+
+      // Perform Firebase Sign Out
+      await _auth.signOut();
+
+      // Clear the local theme preference so the device returns to system default
+      // This ensures the next person using this device doesn't inherit the previous user's account theme
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove(ThemeProvider.themePrefKey);
+
+    } catch (e) {
+      debugPrint("Sign Out Error: $e");
     }
   }
 }

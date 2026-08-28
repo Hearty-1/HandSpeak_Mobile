@@ -1,11 +1,9 @@
 import 'dart:ui';
-
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import '/providers/sound_provider.dart'; // Adjust path if needed
+import '/providers/sound_provider.dart';
 
 // ==========================================
 // 1. DATA MODEL
@@ -65,7 +63,7 @@ class NumbersQuizApiService {
     }
 
     if (levelQuestions.isEmpty) {
-      throw Exception("LEVEL NOT FOUND!\n\nThe database has questions, but ZERO questions match the levelId: '$levelId'.\n\nPlease check the Navigator.push code where you open this screen and make sure you are passing exactly 'numbers_easy_3'.");
+      throw Exception("LEVEL NOT FOUND!\n\nThe database has questions, but ZERO questions match the levelId: '$levelId'.\n\nPlease check the Navigator.push code where you open this screen and make sure you are passing the correct level ID.");
     }
 
     List<QuizQuestion> finalQuestions = [];
@@ -84,7 +82,7 @@ class NumbersQuizApiService {
     }
 
     if (finalQuestions.isEmpty) {
-      throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but your screen is asking for questionType: '$typeFilter'.\n\nAll your level 3 counting questions are saved as 'text_to_sign'. Change the questionType in your Navigator.push!");
+      throw Exception("TYPE MISMATCH!\n\nQuestions were found for '$levelId', but your screen is asking for questionType: '$typeFilter'.");
     }
 
     return finalQuestions;
@@ -92,7 +90,178 @@ class NumbersQuizApiService {
 }
 
 // ==========================================
-// 3. MAIN UI SCREEN
+// 3. ANIMATED THEMED LEVEL COMPLETE DIALOG
+// ==========================================
+class ThemedLevelCompleteDialog extends StatefulWidget {
+  final int starsEarned;
+  final String levelId;
+
+  const ThemedLevelCompleteDialog({
+    super.key,
+    required this.starsEarned,
+    required this.levelId,
+  });
+
+  @override
+  State<ThemedLevelCompleteDialog> createState() => _ThemedLevelCompleteDialogState();
+}
+
+class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
+    with TickerProviderStateMixin {
+  late List<AnimationController> _starControllers;
+  late List<Animation<double>> _starScaleAnimations;
+
+  @override
+  void initState() {
+    super.initState();
+    _starControllers = List.generate(
+      3,
+      (index) => AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 600),
+      ),
+    );
+
+    _starScaleAnimations = _starControllers.map((controller) {
+      return CurvedAnimation(
+        parent: controller,
+        curve: Curves.elasticOut,
+      );
+    }).toList();
+
+    _animateStars();
+  }
+
+  void _animateStars() async {
+    for (int i = 0; i < widget.starsEarned; i++) {
+      await Future.delayed(Duration(milliseconds: 280 * (i + 1)));
+      if (mounted) {
+        _starControllers[i].forward();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _starControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  String get _formattedLevelName {
+    final match = RegExp(r'\d+').firstMatch(widget.levelId);
+    if (match != null) {
+      return "Level ${match.group(0)}";
+    }
+    return widget.levelId.replaceAll('_', ' ');
+  }
+
+  LinearGradient _getDialogGradient(Color bgColor) {
+    if (bgColor.value == 0xFF0F0C29) { // Galaxy
+      return const LinearGradient(colors: [Color(0xFF240B36), Color(0xFFC31432)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+    } else if (bgColor.value == 0xFF132A13) { // Enchanted Forest
+      return const LinearGradient(colors: [Color(0xFF134E5E), Color(0xFF71B280)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+    } else if (bgColor.value == 0xFF001B3A) { // Ocean
+      return const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+    } else if (bgColor.value == 0xFFE0EAFC) { // Cloudy Sky
+      return const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+    }
+    return const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dialogGradient = _getDialogGradient(theme.scaffoldBackgroundColor);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 12,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: dialogGradient,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            )
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Activity Complete! 🎉",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "You finished $_formattedLevelName!",
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 24),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(3, (index) {
+                final isEarned = index < widget.starsEarned;
+                return ScaleTransition(
+                  scale: isEarned
+                      ? _starScaleAnimations[index]
+                      : const AlwaysStoppedAnimation(1.0),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                    child: Icon(
+                      isEarned ? Icons.star_rounded : Icons.star_border_rounded,
+                      color: isEarned ? const Color(0xFFFFD700) : Colors.white38,
+                      size: 54,
+                    ),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 16),
+
+            Text(
+              "Earned ${widget.starsEarned} / 3 Stars",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+            ),
+            const SizedBox(height: 24),
+
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black87,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 4,
+                ),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pop();
+                },
+                child: const Text(
+                  "AWESOME!",
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                ),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 4. MAIN UI SCREEN
 // ==========================================
 class EasyNumActMc extends StatefulWidget {
   final String levelId;
@@ -108,7 +277,7 @@ class EasyNumActMc extends StatefulWidget {
   State<EasyNumActMc> createState() => _EasyNumActMcState();
 }
 
-class _EasyNumActMcState extends State<EasyNumActMc> {
+class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderStateMixin {
   final NumbersQuizApiService _apiService = NumbersQuizApiService();
   
   List<QuizQuestion> _questions = [];
@@ -123,10 +292,38 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
   int _hearts = 5;
   bool _isCorrect = false;
 
+  late AnimationController _feedbackAnimController;
+  late Animation<double> _scaleAnimation;
+  late Animation<Offset> _slideAnimation;
+
   @override
   void initState() {
     super.initState();
     _loadQuestions();
+
+    _feedbackAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    _scaleAnimation = CurvedAnimation(
+      parent: _feedbackAnimController,
+      curve: Curves.elasticOut,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.4),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _feedbackAnimController,
+      curve: Curves.easeOutBack,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _feedbackAnimController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadQuestions() async {
@@ -152,7 +349,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
       _isAnswered = true;
       _isCorrect = option == _questions[_currentIndex].correctAnswer;
       
-      // Trigger sound effects for correct/incorrect answers
       final soundProvider = Provider.of<SoundProvider>(context, listen: false);
       _isCorrect ? soundProvider.playCorrect() : soundProvider.playIncorrect();
 
@@ -163,19 +359,24 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
         }
       }
     });
+
+    _feedbackAnimController.forward(from: 0.0);
   }
 
   void _showGameOverDialog() {
-    // Play Game Over Sound
     Provider.of<SoundProvider>(context, listen: false).playGameOver();
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text("Out of Hearts! 💔", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-        content: const Text("You made a few mistakes. Take a break and review the tutorials, then try again!"),
+        content: Text(
+          "You made a few mistakes. Take a break and review the tutorials, then try again!",
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        ),
         actions: [
           TextButton(
             onPressed: () {
@@ -190,6 +391,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
   }
 
   Future<void> _handleNext() async {
+    _feedbackAnimController.reset();
+
     if (_currentIndex < _questions.length - 1) {
       setState(() {
         _currentIndex++;
@@ -245,123 +448,162 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
 
       if (!mounted) return;
 
-      // Play Level Complete Sound
       Provider.of<SoundProvider>(context, listen: false).playLevelComplete();
 
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text("Activity Complete! 🎉", style: TextStyle(color: Color(0xFF322144), fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "You finished ${widget.levelId.replaceAll('_', ' ').toUpperCase()}!",
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) {
-                  return Icon(
-                    index < starsEarned ? Icons.star_rounded : Icons.star_border_rounded,
-                    color: const Color(0xFFFFB800),
-                    size: 42,
-                  );
-                }),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Earned $starsEarned / 3 Stars", 
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF222222))
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); 
-                Navigator.of(context).pop(); 
-              },
-              child: const Text("Awesome!", style: TextStyle(color: Color(0xFFFFB800), fontWeight: FontWeight.bold, fontSize: 16)),
-            )
-          ],
+        builder: (context) => ThemedLevelCompleteDialog(
+          starsEarned: starsEarned,
+          levelId: widget.levelId,
         ),
       );
     }
   }
 
-  Color _getButtonColor(String option, String correctAnswer) {
-    if (!_isAnswered) return Colors.white;
-    if (option == correctAnswer) return Colors.green; 
-    if (option == _selectedAnswer && option != correctAnswer) return Colors.red; 
-    return Colors.white; 
+  Map<String, dynamic> _getThemeFeedbackVisuals(BuildContext context, bool isCorrect) {
+    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
+    final IconData feedbackIcon = isCorrect ? Icons.check_rounded : Icons.close_rounded;
+
+    if (bgColor == 0xFF0F0C29) { // Galaxy
+      return {
+        'icon': feedbackIcon,
+        'title': isCorrect ? "Cosmic Victory! 🚀" : "Asteroid Bump! ☄️",
+        'subtitle': isCorrect ? "Out of this world accuracy!" : "Recalibrate trajectory and try again.",
+        'gradient': isCorrect 
+            ? const LinearGradient(colors: [Color(0xFF240B36), Color(0xFFC31432)])
+            : const LinearGradient(colors: [Color(0xFF4A00E0), Color(0xFF8E2DE2)]),
+        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
+        'accentColor': const Color(0xFFFF2A85),
+      };
+    }
+    
+    if (bgColor == 0xFF132A13) { // Enchanted Forest
+      return {
+        'icon': feedbackIcon,
+        'title': isCorrect ? "Magical Spell! 🌿" : "Lost in the Woods! 🍃",
+        'subtitle': isCorrect ? "Ancient wisdom guided you!" : "Listen to the forest breeze and retry.",
+        'gradient': isCorrect 
+            ? const LinearGradient(colors: [Color(0xFF134E5E), Color(0xFF71B280)])
+            : const LinearGradient(colors: [Color(0xFF2C3E50), Color(0xFF000000)]),
+        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
+        'accentColor': const Color(0xFFFFD700),
+      };
+    }
+
+    if (bgColor == 0xFF001B3A) { // Ocean
+      return {
+        'icon': feedbackIcon,
+        'title': isCorrect ? "Splashtastic! 🌊" : "Washed Away! 🐙",
+        'subtitle': isCorrect ? "Riding the big wave like a pro!" : "Take a breath and dive back in.",
+        'gradient': isCorrect 
+            ? const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)])
+            : const LinearGradient(colors: [Color(0xFF1F4037), Color(0xFF99F2C8)]),
+        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
+        'accentColor': const Color(0xFF00E5FF),
+      };
+    }
+
+    if (bgColor == 0xFFE0EAFC) { // Cloudy Sky
+      return {
+        'icon': feedbackIcon,
+        'title': isCorrect ? "On Cloud Nine! ☁️" : "A Little Stormy! 🌧️",
+        'subtitle': isCorrect ? "Bright sky ahead, great job!" : "The sun will shine on your next guess.",
+        'gradient': isCorrect 
+            ? const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)])
+            : const LinearGradient(colors: [Color(0xFF8E9EAB), Color(0xFFEEF2F3)]),
+        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
+        'accentColor': const Color(0xFF5C7CFA),
+      };
+    }
+
+    return {
+      'icon': feedbackIcon,
+      'title': isCorrect ? "Awesome Job! 🎉" : "Not Quite! 💡",
+      'subtitle': isCorrect ? "You nailed the correct answer!" : "Review the sign and try again.",
+      'gradient': isCorrect 
+          ? const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)])
+          : const LinearGradient(colors: [Color(0xFFCB2D3E), Color(0xFFEF473A)]),
+      'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
+      'accentColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
+    };
   }
 
-  Color _getButtonTextColor(String option, String correctAnswer) {
-    if (!_isAnswered) return Colors.black;
+  Color _getButtonColor(String option, String correctAnswer, ThemeData theme) {
+    if (!_isAnswered) return theme.cardColor;
+    if (option == correctAnswer) return const Color(0xFF58CC02);
+    if (option == _selectedAnswer && option != correctAnswer) return const Color(0xFFEA2B2B);
+    return theme.cardColor;
+  }
+
+  Color _getButtonTextColor(String option, String correctAnswer, ThemeData theme) {
+    if (!_isAnswered) return theme.colorScheme.onSurface;
     if (option == correctAnswer || option == _selectedAnswer) return Colors.white;
-    return Colors.black;
+    return theme.colorScheme.onSurface;
   }
 
-  Color _getButtonBorderColor(String option, String correctAnswer) {
-    if (!_isAnswered) return const Color(0xFFE0E0E0);
-    if (option == correctAnswer) return Colors.green;
-    if (option == _selectedAnswer && option != correctAnswer) return Colors.red;
-    return const Color(0xFFE0E0E0);
+  Color _getButtonBorderColor(String option, String correctAnswer, ThemeData theme) {
+    if (!_isAnswered) return theme.dividerColor;
+    if (option == correctAnswer) return const Color(0xFF58CC02);
+    if (option == _selectedAnswer && option != correctAnswer) return const Color(0xFFEA2B2B);
+    return theme.dividerColor;
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onBackground;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF9E5),
+      extendBodyBehindAppBar: true, 
+      backgroundColor: theme.scaffoldBackgroundColor,
+      
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), 
+        backgroundColor: theme.cardColor.withOpacity(0.5),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(CupertinoIcons.xmark, color: Colors.black87, size: 22),
+          icon: Icon(Icons.close, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), 
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), 
             child: Container(color: Colors.transparent),
           ),
         ),
-        title: const Text(
+        title: Text(
           "Numbers Activities",
           style: TextStyle(
-            color: Colors.black87, 
-            fontWeight: FontWeight.w700,
+            color: textColor, 
+            fontWeight: FontWeight.w800,
+            fontFamily: 'Inter',
             letterSpacing: -0.5
           ),
         ),
         centerTitle: true,
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 20.0),
+            padding: const EdgeInsets.only(right: 16.0),
             child: Row(
               children: [
-                const Icon(CupertinoIcons.heart_fill, color: CupertinoColors.systemRed, size: 22),
-                const SizedBox(width: 5),
+                const Icon(Icons.favorite, color: Colors.red, size: 24),
+                const SizedBox(width: 4),
                 Text(
                   "$_hearts",
-                  style: const TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
           )
         ],
       ),
-      body: _buildBody(),
+      body: _buildBody(theme, textColor),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(ThemeData theme, Color textColor) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+      return Center(child: CircularProgressIndicator(color: theme.primaryColor));
     }
 
     if (_errorMessage != null) {
@@ -385,21 +627,24 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
     }
 
     if (_questions.isEmpty) {
-      return const Center(child: Text("No questions available."));
+      return Center(child: Text("No questions available.", style: TextStyle(color: textColor)));
     }
 
     final currentQuestion = _questions[_currentIndex];
     final progress = (_currentIndex + 1) / _questions.length;
+    
     final isImageOption = currentQuestion.options.isNotEmpty && 
                           (currentQuestion.options[0].contains('.png') || 
                            currentQuestion.options[0].contains('.jpg'));
+
+    final feedbackData = _getThemeFeedbackVisuals(context, _isCorrect);
 
     return SafeArea(
       child: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -407,8 +652,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                     borderRadius: BorderRadius.circular(10),
                     child: LinearProgressIndicator(
                       value: progress,
-                      backgroundColor: const Color(0xFFE0E0E0),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+                      backgroundColor: theme.dividerColor,
+                      valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
                       minHeight: 12,
                     ),
                   ),
@@ -420,11 +665,11 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                       height: 240,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: theme.cardColor,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withOpacity(0.06),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           )
@@ -446,10 +691,10 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
 
                   Text(
                     currentQuestion.questionText,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
-                      color: Colors.black,
+                      color: textColor,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -468,10 +713,10 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           decoration: BoxDecoration(
-                            color: _getButtonColor(option, currentQuestion.correctAnswer),
+                            color: _getButtonColor(option, currentQuestion.correctAnswer, theme),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: _getButtonBorderColor(option, currentQuestion.correctAnswer), 
+                              color: _getButtonBorderColor(option, currentQuestion.correctAnswer, theme), 
                               width: 2
                             ),
                           ),
@@ -486,7 +731,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                                       option,
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: _getButtonTextColor(option, currentQuestion.correctAnswer),
+                                        color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme),
                                       ),
                                     ),
                                   ),
@@ -496,7 +741,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                                   style: TextStyle(
                                     fontSize: 24,
                                     fontWeight: FontWeight.w800,
-                                    color: _getButtonTextColor(option, currentQuestion.correctAnswer),
+                                    color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme),
                                   ),
                                 ),
                         ),
@@ -512,42 +757,87 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
             alignment: Alignment.bottomCenter,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               decoration: BoxDecoration(
-                color: !_isAnswered 
-                    ? Colors.white 
-                    : (_isCorrect ? const Color(0xFFD7FFB7) : const Color(0xFFFFDFE0)),
-                border: Border(top: BorderSide(color: Colors.grey.shade200, width: 2)),
+                color: !_isAnswered ? theme.cardColor : null,
+                gradient: _isAnswered ? (feedbackData['gradient'] as LinearGradient) : null,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                border: Border(top: BorderSide(color: theme.dividerColor, width: 2)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 16,
+                    offset: const Offset(0, -4),
+                  )
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (_isAnswered) ...[
-                    Row(
-                      children: [
-                        Icon(
-                          _isCorrect ? Icons.check_circle : Icons.cancel, 
-                          color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B), 
-                          size: 28
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _isCorrect 
-                              ? "Awesome!" 
-                              : (isImageOption 
-                                  ? "Try again!" 
-                                  : "Correct answer: ${_questions[_currentIndex].correctAnswer}"),
-                          style: TextStyle(
-                            color: _isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                    SlideTransition(
+                      position: _slideAnimation,
+                      child: Row(
+                        children: [
+                          ScaleTransition(
+                            scale: _scaleAnimation,
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: (feedbackData['badgeColor'] as Color),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  )
+                                ],
+                              ),
+                              child: Icon(
+                                feedbackData['icon'] as IconData,
+                                color: Colors.white,
+                                size: 32,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  feedbackData['title'] as String,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  isImageOption 
+                                      ? (feedbackData['subtitle'] as String) 
+                                      : (_isCorrect 
+                                          ? (feedbackData['subtitle'] as String)
+                                          : "Correct Answer: ${currentQuestion.correctAnswer}"),
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                   ],
+
                   SizedBox(
                     width: double.infinity,
                     height: 54,
@@ -555,19 +845,26 @@ class _EasyNumActMcState extends State<EasyNumActMc> {
                       onPressed: (_isAnswered && !_isSaving) ? _handleNext : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: !_isAnswered 
-                            ? const Color(0xFFFFB800) 
-                            : (_isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B)),
-                        disabledBackgroundColor: Colors.grey.shade300,
+                            ? theme.primaryColor  
+                            : Colors.white,
+                        disabledBackgroundColor: theme.dividerColor,
+                        elevation: _isAnswered ? 4 : 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                       child: _isSaving
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          ? SizedBox(
+                              width: 20, 
+                              height: 20, 
+                              child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2)
+                            )
                           : Text(
                               _isAnswered ? "CONTINUE" : "CHECK",
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
-                                color: _isAnswered ? Colors.white : Colors.black,
+                                color: !_isAnswered 
+                                    ? theme.colorScheme.onPrimary 
+                                    : (feedbackData['accentColor'] as Color),
                               ),
                             ),
                     ),

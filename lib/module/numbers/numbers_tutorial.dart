@@ -1,5 +1,6 @@
-import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'numbers_tutorial_detail.dart'; 
 
 class NumbersTutorialInterface extends StatefulWidget {
@@ -49,48 +50,73 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // Dynamically adjust status bar icon brightness according to active theme mode
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
+
     return Scaffold(
-      extendBodyBehindAppBar: true, // Blends background image behind the frosted AppBar
-      backgroundColor: const Color(0xFFFFF9E5),
+      extendBodyBehindAppBar: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       // --- FROSTED PREMIUM APP BAR ---
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.35),
+        backgroundColor: theme.cardColor.withOpacity(0.4),
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Color(0xFF322144)),
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Number List',
           style: TextStyle(
-            color: Color(0xFF322144), 
+            color: theme.colorScheme.onSurface, 
             fontSize: 22, 
             fontFamily: 'Inter', 
             fontWeight: FontWeight.w800, 
-            letterSpacing: -0.96
+            letterSpacing: -0.96,
           ),
         ),
       ),
       
       body: Stack(
         children: [
-
-          // 2. Translucent Ambient Visual Orbs
+          // Ambient background decorative glow circles matching AlphabetInterface
           Positioned(
-            top: 140, right: -40,
-            child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFFB800).withOpacity(0.2))),
+            top: 140,
+            right: -40,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.primaryColor.withOpacity(0.3),
+              ),
+            ),
           ),
           Positioned(
-            bottom: 120, left: -60,
-            child: Container(width: 220, height: 220, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7DC579).withOpacity(0.18))),
+            bottom: 120,
+            left: -60,
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.secondary.withOpacity(0.2),
+              ),
+            ),
           ),
 
-          // 3. User Interface Control Layout Pipeline
           SafeArea(
             child: Column(
               children: [
@@ -104,9 +130,12 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                       child: Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.55),
+                          color: theme.cardColor.withOpacity(0.65),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+                          border: Border.all(
+                            color: theme.colorScheme.surface.withOpacity(0.8),
+                            width: 1.5,
+                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.02),
@@ -117,13 +146,21 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                         ),
                         child: TextField(
                           onChanged: (value) => _runFilter(value),
-                          style: const TextStyle(color: Color(0xFF322144), fontWeight: FontWeight.w600),
-                          decoration: const InputDecoration(
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: InputDecoration(
                             hintText: 'Search number...', 
-                            hintStyle: TextStyle(color: Colors.black38),
-                            prefixIcon: Icon(Icons.search, color: Color(0xFF322144)),
+                            hintStyle: TextStyle(
+                              color: theme.colorScheme.onSurface.withOpacity(0.4),
+                            ),
+                            prefixIcon: Icon(
+                              Icons.search,
+                              color: theme.colorScheme.onSurface,
+                            ),
                             border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(vertical: 12),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
                           ),
                         ),
                       ),
@@ -133,10 +170,14 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                 
                 Expanded(
                   child: filteredLessons.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Text(
                             "No numbers found.", 
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF322144))
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
                           ),
                         )
                       : ListView.builder(
@@ -164,7 +205,7 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text("Complete previous numbers to unlock ${lesson['title']}!"),
-                                      backgroundColor: Colors.redAccent,
+                                      backgroundColor: theme.colorScheme.error,
                                     ),
                                   );
                                 }
@@ -192,11 +233,13 @@ class LessonCard extends StatelessWidget {
     super.key, 
     required this.title, 
     required this.isLocked, 
-    required this.onTap
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 15.0),
       child: GestureDetector(
@@ -208,19 +251,23 @@ class LessonCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
               decoration: BoxDecoration(
-                color: isLocked ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.6),
+                color: isLocked 
+                    ? theme.cardColor.withOpacity(0.35) 
+                    : theme.cardColor.withOpacity(0.65),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isLocked ? Colors.white.withOpacity(0.4) : Colors.amber.withOpacity(0.7), 
-                  width: 2
+                  color: isLocked 
+                      ? theme.colorScheme.surface.withOpacity(0.4) 
+                      : theme.primaryColor.withOpacity(0.5), 
+                  width: 2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.01),
+                    color: Colors.black.withOpacity(0.02),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   )
-                ]
+                ],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -231,13 +278,17 @@ class LessonCard extends StatelessWidget {
                       fontSize: 32, 
                       fontWeight: FontWeight.w900, 
                       fontFamily: 'Inter',
-                      color: isLocked ? Colors.black38 : const Color(0xFF322144)
+                      color: isLocked 
+                          ? theme.colorScheme.onSurface.withOpacity(0.38) 
+                          : theme.colorScheme.onSurface,
                     ),
                   ),
                   Icon(
                     isLocked ? Icons.lock_outline : Icons.play_circle_fill, 
-                    color: isLocked ? Colors.black38 : const Color(0xFFFFB800), 
-                    size: 32
+                    color: isLocked 
+                        ? theme.colorScheme.onSurface.withOpacity(0.38) 
+                        : theme.primaryColor, 
+                    size: 32,
                   ),
                 ],
               ),

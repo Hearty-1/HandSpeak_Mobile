@@ -9,13 +9,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'phrase_recognizer.dart';
 
-// This screen requires hand_landmarker ^3.0.0+, which replaced the
-// synchronous, UI-blocking `detect()` call with a non-blocking
-// `processFrame()` + `landmarkStream` pair backed by a native background
-// thread (LIVE_STREAM mode). That's what fixes the camera-freeze issue --
-// there is no manual isolate/compute() wrapping needed here, the plugin
-// itself no longer blocks the UI isolate.
-
 class PhraseTutorialPractice extends StatefulWidget {
   final String targetPhrase;
 
@@ -33,13 +26,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
-  // Counts consecutive no-hand frames so a single flicker of a missed
-  // detection doesn't reset an in-progress hold, but the buffer does relax
-  // back to idle if the hand is genuinely gone for a while.
   int _consecutiveEmptyFrames = 0;
   static const int _emptyFrameResetThreshold = 15;
 
-  // Real-time status logger
   String _debugStatus = "1/4 Initializing...";
 
   double _currentScore = 0.0;
@@ -58,14 +47,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
 
   Future<void> _initializePipeline() async {
     try {
-      // Step 1: Initialize TFLite Engine
       setState(() => _debugStatus = "1/4 Loading TFLite Model & Labels...");
       await _phraseRecognizer.initialize();
 
-      // Step 2: Initialize MediaPipe Hand Detector.
-      // numHands: 2 -- the model was trained on 126 features covering both
-      // hands (2 x 21 x xyz), so single-hand detection here would silently
-      // zero out half the model's input on two-handed phrases.
       setState(() => _debugStatus = "2/4 Initializing MediaPipe Landmarker...");
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
@@ -73,10 +57,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         delegate: HandLandmarkerDelegate.gpu,
       );
 
-      // Listen for results asynchronously. This is the non-blocking path:
-      // detection runs on a native background thread and results arrive
-      // here as they're ready, instead of a synchronous detect() call
-      // stalling the UI isolate on every camera frame.
       _landmarkSubscription = _landmarkerPlugin!.landmarkStream.listen(
         _onHandsDetected,
         onError: (e) {
@@ -86,7 +66,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         },
       );
 
-      // Step 3: Setup Front Camera Stream
       setState(() => _debugStatus = "3/4 Opening Camera Stream...");
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
@@ -107,9 +86,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
 
       await _controller!.initialize();
 
-      // Fire-and-forget per frame -- processFrame() returns immediately and
-      // queues the frame on the native side, so this callback never blocks
-      // the camera's image-stream isolate waiting on inference.
       await _controller!.startImageStream((CameraImage image) {
         if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) {
           return;
@@ -139,8 +115,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     }
   }
 
-  /// Called for every result on landmarkStream. Runs the sliding-window
-  /// LSTM inference and drives the hold-to-succeed game logic.
   void _onHandsDetected(List<Hand> detectedHands) {
     if (_isSuccessAchieved || !mounted) return;
 
@@ -150,10 +124,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       _consecutiveEmptyFrames = 0;
     }
 
-    // Feed every frame into the recognizer -- including empty ones, which
-    // become zero-padded frames in the buffer. This keeps the sliding
-    // window continuous instead of freezing it whenever the hand
-    // momentarily leaves the frame mid-sign.
     final RecognitionResult? result = _phraseRecognizer.processFrame(detectedHands);
     if (result == null) return;
 
@@ -162,8 +132,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       return;
     }
 
-    // If there's been no hand for a while, treat it as idle rather than
-    // scoring whatever the model guesses from a run of zero vectors.
     if (_consecutiveEmptyFrames >= _emptyFrameResetThreshold) {
       _phraseRecognizer.resetBuffer();
       setState(() {
@@ -243,26 +211,29 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     
     if (!mounted) return;
 
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: AlertDialog(
-          backgroundColor: Colors.white.withOpacity(0.85),
+          backgroundColor: theme.cardColor.withOpacity(0.85),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: Colors.white.withOpacity(0.6), width: 1.5), 
+            side: BorderSide(color: theme.dividerColor.withOpacity(0.15), width: 1.5), 
           ),
           title: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                child: const Icon(Icons.waving_hand_rounded, color: Colors.amber, size: 24),
+                decoration: BoxDecoration(color: theme.cardColor, shape: BoxShape.circle),
+                child: Icon(Icons.waving_hand_rounded, color: theme.primaryColor, size: 24),
               ),
               const SizedBox(width: 10),
-              const Text("Success!", style: TextStyle(fontWeight: FontWeight.w900, color: Colors.black87)),
+              Text("Success!", style: TextStyle(fontWeight: FontWeight.w900, color: textColor)),
             ],
           ),
           content: Column(
@@ -270,7 +241,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
             children: [
               Text(
                 "Outstanding job! You have successfully mastered the phrase \"${widget.targetPhrase}\"!",
-                style: const TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w500),
+                style: TextStyle(fontSize: 16, color: textColor, fontWeight: FontWeight.w500),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
@@ -302,8 +273,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
             Center(
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFB800),
-                  foregroundColor: Colors.black87,
+                  backgroundColor: theme.primaryColor,
+                  foregroundColor: theme.colorScheme.onPrimary,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
@@ -335,31 +306,52 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
+
     String phraseDisplay = widget.targetPhrase;
     String formattedPhrase = widget.targetPhrase.replaceAll(" ", "_").toLowerCase();
     
     bool isPassing = _currentScore >= successThreshold;
     final double screenWidth = MediaQuery.of(context).size.width;
 
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
+
     return Scaffold(
       extendBodyBehindAppBar: true, 
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), 
+        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6), 
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: IconThemeData(color: textColor),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                border: Border(
+                  bottom: BorderSide(
+                    color: theme.dividerColor.withOpacity(0.1),
+                    width: 0.5,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Practice Mode',
           style: TextStyle(
-            color: Colors.black87, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
+            color: textColor, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
           ),
         ),
       ),
@@ -367,11 +359,23 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         children: [
           Positioned(
             top: -30, right: -30,
-            child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFFB800).withOpacity(0.2))),
+            child: Container(
+              width: 200, height: 200, 
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, 
+                color: theme.primaryColor.withOpacity(0.2),
+              ),
+            ),
           ),
           Positioned(
             bottom: 50, left: -50,
-            child: Container(width: 260, height: 260, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7DC579).withOpacity(0.15))),
+            child: Container(
+              width: 260, height: 260, 
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, 
+                color: const Color(0xFF4CAF50).withOpacity(0.15),
+              ),
+            ),
           ),
           
           SafeArea(
@@ -385,14 +389,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                   children: [
                     Text(
                       phraseDisplay, 
-                      style: const TextStyle(
-                        color: Colors.black87, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'Inter',
+                      style: TextStyle(
+                        color: textColor, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'Inter',
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
 
-                    // Real-time Logger
+                    // Real-time Logger Box
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(8.0),
@@ -420,7 +424,13 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(isDark ? 0.3 : 0.06), 
+                                blurRadius: 12, 
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16),
@@ -428,8 +438,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                               "assets/pictures/$formattedPhrase.jpg", 
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.grey.shade300,
-                                child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
+                                color: theme.dividerColor.withOpacity(0.1),
+                                child: Icon(Icons.broken_image, color: textColor.withOpacity(0.4), size: 50),
                               ),
                             ),
                           ),
@@ -448,13 +458,19 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                           children: [
                             Container(
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: theme.cardColor,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   width: 4.0,
-                                  color: isPassing ? Colors.green : const Color(0xFFCBD0DC).withOpacity(0.6),
+                                  color: isPassing ? Colors.green : theme.dividerColor.withOpacity(0.3),
                                 ),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.06), 
+                                    blurRadius: 12, 
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
@@ -467,8 +483,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                                           child: CameraPreview(_controller!),
                                         ),
                                       )
-                                    : const Center(
-                                        child: CircularProgressIndicator(color: Colors.amber),
+                                    : Center(
+                                        child: CircularProgressIndicator(color: theme.primaryColor),
                                       ),
                               ),
                             ),
@@ -517,9 +533,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                               child: Container(
                                 width: screenWidth * 0.70, height: 16,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.4), 
+                                  color: theme.cardColor.withOpacity(0.5), 
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 1)
+                                  border: Border.all(color: theme.dividerColor.withOpacity(0.2), width: 1)
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -546,14 +562,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isPassing ? Colors.green.withOpacity(0.2) : Colors.white.withOpacity(0.6),
+                              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.75),
                               borderRadius: BorderRadius.circular(30),
-                              border: Border.all(color: isPassing ? Colors.green.withOpacity(0.4) : Colors.white.withOpacity(0.8), width: 1.5),
+                              border: Border.all(color: isPassing ? Colors.green.withOpacity(0.4) : theme.dividerColor.withOpacity(0.2), width: 1.5),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
-                                color: isPassing ? Colors.green.shade700 : Colors.black54,
+                                color: isPassing ? Colors.green.shade700 : textColor.withOpacity(0.7),
                                 fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Inter',
                               ),
                             ),

@@ -1,98 +1,101 @@
-import 'package:flutter/material.dart'; //[cite: 9]
-import 'package:flutter/cupertino.dart'; //[cite: 9]
-import 'package:firebase_auth/firebase_auth.dart'; //[cite: 9]
-import 'package:cloud_firestore/cloud_firestore.dart'; //[cite: 9]
-import 'package:intl/intl.dart'; //[cite: 9]
-import 'package:provider/provider.dart'; //[cite: 9]
-import '../services/auth_service.dart'; //[cite: 9]
-import '../providers/theme_provider.dart'; //[cite: 9]
-import '../providers/sound_provider.dart'; //[cite: 9]
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
+import '../providers/theme_provider.dart';
+import '../providers/sound_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key}); //[cite: 9]
+  const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState(); //[cite: 9]
+  State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
   // Notification State
-  bool _streakNotif = true; //[cite: 9]
-  bool _dailyChallengesNotif = true; //[cite: 9]
-  bool _friendNotif = true; //[cite: 9]
+  bool _streakNotif = true;
+  bool _dailyChallengesNotif = true;
+  bool _friendNotif = true;
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context); //[cite: 9]
-    final soundProvider = Provider.of<SoundProvider>(context); //[cite: 9]
-    final theme = Theme.of(context); //[cite: 9]
-    final textColor = theme.colorScheme.onBackground; //[cite: 9]
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final soundProvider = Provider.of<SoundProvider>(context);
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onBackground;
 
-    return Scaffold( //[cite: 9]
-      backgroundColor: theme.scaffoldBackgroundColor, //[cite: 9]
-      appBar: AppBar( //[cite: 9]
-        backgroundColor: Colors.transparent, //[cite: 9]
-        elevation: 0, //[cite: 9]
-        iconTheme: theme.appBarTheme.iconTheme, //[cite: 9]
-        centerTitle: true, //[cite: 9]
-        title: Text( //[cite: 9]
-          "Settings", //[cite: 9]
-          style: theme.appBarTheme.titleTextStyle, //[cite: 9]
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: theme.appBarTheme.iconTheme,
+        centerTitle: true,
+        title: Text(
+          "Settings",
+          style: theme.appBarTheme.titleTextStyle,
         ),
       ),
-      body: ListView( //[cite: 9]
-        physics: const BouncingScrollPhysics(), //[cite: 9]
-        padding: const EdgeInsets.all(24.0), //[cite: 9]
-        children: [ //[cite: 9]
-          _buildSectionHeader("Account & Profile", textColor), //[cite: 9]
-          _buildSettingsCard( //[cite: 9]
-            context: context, //[cite: 9]
-            children: [ //[cite: 9]
-              ListTile( //[cite: 9]
-                leading: const Icon(CupertinoIcons.person_alt_circle, color: Color(0xFFFFB800)), //[cite: 9]
-                title: Text("Edit Personal Details", style: TextStyle(color: textColor)), //[cite: 9]
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)), //[cite: 9]
-                onTap: () { //[cite: 9]
-                  _showEditProfileDialog(context); //[cite: 9]
+      body: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.all(24.0),
+        children: [
+          _buildSectionHeader("Account & Profile", textColor),
+          _buildSettingsCard(
+            context: context,
+            children: [
+              ListTile(
+                leading: const Icon(CupertinoIcons.person_alt_circle, color: Color(0xFFFFB800)),
+                title: Text("Edit Personal Details", style: TextStyle(color: textColor)),
+                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
+                onTap: () {
+                  _showEditProfileDialog(context);
                 },
               ),
             ],
           ),
 
-          _buildSectionHeader("Game Settings", textColor), //[cite: 9]
-          _buildSettingsCard( //[cite: 9]
-            context: context, //[cite: 9]
-            children: [ //[cite: 9]
-              SwitchListTile( //[cite: 9]
-                activeColor: const Color(0xFFFFB800), //[cite: 9]
-                secondary: const Icon(CupertinoIcons.speaker_2_fill, color: Color(0xFFFFB800)), //[cite: 9]
-                title: Text("Sound Effects", style: TextStyle(color: textColor)), //[cite: 9]
-                value: soundProvider.isSoundEnabled, //[cite: 9]
-                onChanged: (val) { //[cite: 9]
-                  // Only toggle if the switch value is different from the current state
+          _buildSectionHeader("Game Settings", textColor),
+          _buildSettingsCard(
+            context: context,
+            children: [
+              SwitchListTile(
+                activeColor: const Color(0xFFFFB800),
+                secondary: const Icon(CupertinoIcons.speaker_2_fill, color: Color(0xFFFFB800)),
+                title: Text("Sound Effects", style: TextStyle(color: textColor)),
+                value: soundProvider.isSoundEnabled,
+                onChanged: (val) {
                   if (soundProvider.isSoundEnabled != val) {
                     soundProvider.toggleSound();
                   }
                 },
               ),
-              Divider(height: 1, color: theme.dividerColor), //[cite: 9]
-              ListTile( //[cite: 9]
-                leading: const Icon(CupertinoIcons.paintbrush_fill, color: Color(0xFFFFB800)), //[cite: 9]
-                title: Text("Theme", style: TextStyle(color: textColor)), //[cite: 9]
-                trailing: DropdownButton<String>( //[cite: 9]
-                  value: themeProvider.themeString, //[cite: 9]
-                  dropdownColor: theme.cardColor, //[cite: 9]
-                  underline: const SizedBox(), //[cite: 9]
-                  icon: Icon(CupertinoIcons.chevron_down, size: 16, color: textColor), //[cite: 9]
-                  items: ["Default Theme", "Light Theme", "Dark Theme", "System Default"] //[cite: 9]
-                      .map((t) => DropdownMenuItem( //[cite: 9]
-                            value: t, //[cite: 9]
-                            child: Text(t, style: TextStyle(color: textColor)), //[cite: 9]
-                          ))
-                      .toList(), //[cite: 9]
-                  onChanged: (val) { //[cite: 9]
-                    if (val != null) { //[cite: 9]
-                      themeProvider.setThemeFromString(val); //[cite: 9]
+              Divider(height: 1, color: theme.dividerColor),
+              ListTile(
+                leading: const Icon(CupertinoIcons.paintbrush_fill, color: Color(0xFFFFB800)),
+                title: Text("Theme", style: TextStyle(color: textColor)),
+                trailing: DropdownButton<String>(
+                  value: themeProvider.themeString,
+                  dropdownColor: theme.cardColor,
+                  underline: const SizedBox(),
+                  icon: Icon(CupertinoIcons.chevron_down, size: 16, color: textColor),
+                  items: [
+                    "Default Theme", 
+                    "Galaxy Explorer",
+                    "Enchanted Forest",
+                    "Deep Ocean",
+                    "Cloudy Sky",
+                  ].map((t) => DropdownMenuItem(
+                    value: t,
+                    child: Text(t, style: TextStyle(color: textColor)),
+                  )).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      themeProvider.setThemeFromString(val);
                     }
                   },
                 ),
@@ -100,67 +103,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
 
-          _buildSectionHeader("Notifications", textColor), //[cite: 9]
-          _buildSettingsCard( //[cite: 9]
-            context: context, //[cite: 9]
-            children: [ //[cite: 9]
-              SwitchListTile( //[cite: 9]
-                activeColor: const Color(0xFFFFB800), //[cite: 9]
-                secondary: const Icon(CupertinoIcons.flame_fill, color: Colors.deepOrange), //[cite: 9]
-                title: Text("Streak Reminders", style: TextStyle(color: textColor)), //[cite: 9]
-                value: _streakNotif, //[cite: 9]
-                onChanged: (val) { //[cite: 9]
-                  setState(() => _streakNotif = val); //[cite: 9]
+          _buildSectionHeader("Notifications", textColor),
+          _buildSettingsCard(
+            context: context,
+            children: [
+              SwitchListTile(
+                activeColor: const Color(0xFFFFB800),
+                secondary: const Icon(CupertinoIcons.flame_fill, color: Colors.deepOrange),
+                title: Text("Streak Reminders", style: TextStyle(color: textColor)),
+                value: _streakNotif,
+                onChanged: (val) {
+                  setState(() => _streakNotif = val);
                 },
               ),
-              Divider(height: 1, color: theme.dividerColor), //[cite: 9]
-              SwitchListTile( //[cite: 9]
-                activeColor: const Color(0xFFFFB800), //[cite: 9]
-                secondary: const Icon(CupertinoIcons.star_fill, color: Color(0xFFFFB800)), //[cite: 9]
-                title: Text("Daily Challenges", style: TextStyle(color: textColor)), //[cite: 9]
-                value: _dailyChallengesNotif, //[cite: 9]
-                onChanged: (val) { //[cite: 9]
-                  setState(() => _dailyChallengesNotif = val); //[cite: 9]
+              Divider(height: 1, color: theme.dividerColor),
+              SwitchListTile(
+                activeColor: const Color(0xFFFFB800),
+                secondary: const Icon(CupertinoIcons.star_fill, color: Color(0xFFFFB800)),
+                title: Text("Daily Challenges", style: TextStyle(color: textColor)),
+                value: _dailyChallengesNotif,
+                onChanged: (val) {
+                  setState(() => _dailyChallengesNotif = val);
                 },
               ),
-              Divider(height: 1, color: theme.dividerColor), //[cite: 9]
-              SwitchListTile( //[cite: 9]
-                activeColor: const Color(0xFFFFB800), //[cite: 9]
-                secondary: const Icon(CupertinoIcons.person_2_fill, color: Colors.blue), //[cite: 9]
-                title: Text("Friend Requests & Activity", style: TextStyle(color: textColor)), //[cite: 9]
-                value: _friendNotif, //[cite: 9]
-                onChanged: (val) { //[cite: 9]
-                  setState(() => _friendNotif = val); //[cite: 9]
+              Divider(height: 1, color: theme.dividerColor),
+              SwitchListTile(
+                activeColor: const Color(0xFFFFB800),
+                secondary: const Icon(CupertinoIcons.person_2_fill, color: Colors.blue),
+                title: Text("Friend Requests & Activity", style: TextStyle(color: textColor)),
+                value: _friendNotif,
+                onChanged: (val) {
+                  setState(() => _friendNotif = val);
                 },
               ),
             ],
           ),
 
-          _buildSectionHeader("Security & Privacy", textColor), //[cite: 9]
-          _buildSettingsCard( //[cite: 9]
-            context: context, //[cite: 9]
-            children: [ //[cite: 9]
-              ListTile( //[cite: 9]
-                leading: Icon(CupertinoIcons.lock_fill, color: textColor.withOpacity(0.6)), //[cite: 9]
-                title: Text("Change Password", style: TextStyle(color: textColor)), //[cite: 9]
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)), //[cite: 9]
-                onTap: () { //[cite: 9]
-                  _showChangePasswordDialog(context); //[cite: 9]
+          _buildSectionHeader("Security & Privacy", textColor),
+          _buildSettingsCard(
+            context: context,
+            children: [
+              ListTile(
+                leading: Icon(CupertinoIcons.lock_fill, color: textColor.withOpacity(0.6)),
+                title: Text("Change Password", style: TextStyle(color: textColor)),
+                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
+                onTap: () {
+                  _showChangePasswordDialog(context);
                 },
               ),
-              Divider(height: 1, color: theme.dividerColor), //[cite: 9]
-              ListTile( //[cite: 9]
-                leading: Icon(CupertinoIcons.device_phone_portrait, color: textColor.withOpacity(0.6)), //[cite: 9]
-                title: Text("Session & Activity Logs", style: TextStyle(color: textColor)), //[cite: 9]
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)), //[cite: 9]
-                onTap: () { //[cite: 9]
-                  _showSessionHistory(context); //[cite: 9]
+              Divider(height: 1, color: theme.dividerColor),
+              ListTile(
+                leading: Icon(CupertinoIcons.device_phone_portrait, color: textColor.withOpacity(0.6)),
+                title: Text("Session & Activity Logs", style: TextStyle(color: textColor)),
+                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
+                onTap: () {
+                  _showSessionHistory(context);
                 },
               ),
             ],
           ),
           
-          const SizedBox(height: 40), //[cite: 9]
+          const SizedBox(height: 40),
         ],
       ),
     );
@@ -169,75 +172,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // --- HELPER WIDGETS ---
 
   Widget _buildSectionHeader(String title, Color textColor) {
-    return Padding( //[cite: 9]
-      padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0), //[cite: 9]
-      child: Text( //[cite: 9]
-        title.toUpperCase(), //[cite: 9]
-        style: TextStyle( //[cite: 9]
-          color: textColor.withOpacity(0.6), //[cite: 9]
-          fontWeight: FontWeight.bold, //[cite: 9]
-          fontSize: 13, //[cite: 9]
-          letterSpacing: 1.2, //[cite: 9]
+    return Padding(
+      padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          color: textColor.withOpacity(0.6),
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+          letterSpacing: 1.2,
         ),
       ),
     );
   }
 
   Widget _buildSettingsCard({required BuildContext context, required List<Widget> children}) {
-    final theme = Theme.of(context); //[cite: 9]
-    return Container( //[cite: 9]
-      decoration: BoxDecoration( //[cite: 9]
-        color: theme.cardColor, //[cite: 9]
-        borderRadius: BorderRadius.circular(20), //[cite: 9]
-        boxShadow: [ //[cite: 9]
-          BoxShadow( //[cite: 9]
-            color: Colors.black.withOpacity(0.04), //[cite: 9]
-            blurRadius: 10, //[cite: 9]
-            offset: const Offset(0, 4), //[cite: 9]
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(children: children), //[cite: 9]
+      child: Column(children: children),
     );
   }
 
   Widget _buildEnhancedTextField({
-    required BuildContext context, //[cite: 9]
-    required TextEditingController controller,  //[cite: 9]
-    required String label,  //[cite: 9]
-    required IconData icon,  //[cite: 9]
-    bool readOnly = false, //[cite: 9]
-    bool obscureText = false,  //[cite: 9]
+    required BuildContext context,
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool readOnly = false,
+    bool obscureText = false,
   }) {
-    final theme = Theme.of(context); //[cite: 9]
-    final textColor = theme.colorScheme.onBackground; //[cite: 9]
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onBackground;
 
-    return TextFormField( //[cite: 9]
-      controller: controller, //[cite: 9]
-      readOnly: readOnly, //[cite: 9]
-      obscureText: obscureText,  //[cite: 9]
-      style: TextStyle( //[cite: 9]
-        color: readOnly ? textColor.withOpacity(0.5) : textColor, //[cite: 9]
-        fontWeight: FontWeight.w500, //[cite: 9]
+    return TextFormField(
+      controller: controller,
+      readOnly: readOnly,
+      obscureText: obscureText,
+      style: TextStyle(
+        color: readOnly ? textColor.withOpacity(0.5) : textColor,
+        fontWeight: FontWeight.w500,
       ),
-      decoration: InputDecoration( //[cite: 9]
-        labelText: label, //[cite: 9]
-        labelStyle: TextStyle(color: textColor.withOpacity(0.6), fontSize: 14), //[cite: 9]
-        prefixIcon: Icon(icon, color: readOnly ? textColor.withOpacity(0.3) : const Color(0xFFFFB800), size: 20), //[cite: 9]
-        filled: true, //[cite: 9]
-        fillColor: readOnly ? theme.disabledColor.withOpacity(0.05) : theme.cardColor, //[cite: 9]
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), //[cite: 9]
-        border: OutlineInputBorder( //[cite: 9]
-          borderRadius: BorderRadius.circular(16), //[cite: 9]
-          borderSide: BorderSide.none, //[cite: 9]
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: textColor.withOpacity(0.6), fontSize: 14),
+        prefixIcon: Icon(icon, color: readOnly ? textColor.withOpacity(0.3) : const Color(0xFFFFB800), size: 20),
+        filled: true,
+        fillColor: readOnly ? theme.disabledColor.withOpacity(0.05) : theme.cardColor,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
         ),
-        enabledBorder: OutlineInputBorder( //[cite: 9]
-          borderRadius: BorderRadius.circular(16), //[cite: 9]
-          borderSide: BorderSide(color: theme.dividerColor, width: 1), //[cite: 9]
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: theme.dividerColor, width: 1),
         ),
-        focusedBorder: OutlineInputBorder( //[cite: 9]
-          borderRadius: BorderRadius.circular(16), //[cite: 9]
-          borderSide: const BorderSide(color: Color(0xFFFFB800), width: 1.5), //[cite: 9]
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFFFB800), width: 1.5),
         ),
       ),
     );
@@ -246,26 +249,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // --- ACTIVITY LOG HELPER ---
   
   Future<void> _logAccountActivity({
-    required String uid, //[cite: 9]
-    required String action, //[cite: 9]
-    required String description, //[cite: 9]
+    required String uid,
+    required String action,
+    required String description,
   }) async {
     try {
-      String formattedTime = DateFormat("MMMM d, yyyy 'at' h:mm:ss a").format(DateTime.now()); //[cite: 9]
+      String formattedTime = DateFormat("MMMM d, yyyy 'at' h:mm:ss a").format(DateTime.now());
 
-      await FirebaseFirestore.instance //[cite: 9]
-          .collection('users') //[cite: 9]
-          .doc(uid) //[cite: 9]
-          .collection('login_activity') //[cite: 9]
-          .add({ //[cite: 9]
-        'action': action, //[cite: 9]
-        'description': description, //[cite: 9]
-        'status': 'active', //[cite: 9]
-        'timestamp': formattedTime, //[cite: 9]
-        'uid': uid, //[cite: 9]
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('login_activity')
+          .add({
+        'action': action,
+        'description': description,
+        'status': 'active',
+        'timestamp': formattedTime,
+        'uid': uid,
       });
     } catch (e) {
-      debugPrint("Failed to log activity: $e"); //[cite: 9]
+      debugPrint("Failed to log activity: $e");
     }
   }
 

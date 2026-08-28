@@ -18,23 +18,25 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold( 
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 22),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor, size: 22),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           "Find Players",
           style: TextStyle(
-            color: Colors.black87, 
+            color: textColor, 
             fontWeight: FontWeight.w800, 
             fontFamily: 'Inter', 
             fontSize: 22, 
@@ -58,7 +60,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                     alignment: Alignment.center,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.notifications_rounded, color: Colors.black87, size: 28),
+                        icon: Icon(Icons.notifications_rounded, color: textColor, size: 28),
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -96,7 +98,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: theme.cardColor,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))
@@ -107,11 +109,11 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
                 decoration: InputDecoration(
                   hintText: "Search by username...",
-                  hintStyle: const TextStyle(color: Colors.black38, fontWeight: FontWeight.w500, fontFamily: 'Inter'),
-                  prefixIcon: const Icon(CupertinoIcons.search, color: Color(0xFFFFB800)),
+                  hintStyle: TextStyle(color: textColor.withOpacity(0.4), fontWeight: FontWeight.w500, fontFamily: 'Inter'),
+                  prefixIcon: Icon(CupertinoIcons.search, color: theme.primaryColor),
                   suffixIcon: _searchQuery.isNotEmpty 
                       ? IconButton(
-                          icon: const Icon(Icons.close_rounded, color: Colors.black38),
+                          icon: Icon(Icons.close_rounded, color: textColor.withOpacity(0.4)),
                           onPressed: () {
                             _searchController.clear();
                             setState(() => _searchQuery = "");
@@ -121,7 +123,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 16.0),
                 ),
-                style: const TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Inter'),
+                style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontFamily: 'Inter'),
               ),
             ),
           ),
@@ -130,8 +132,8 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             padding: const EdgeInsets.only(left: 24.0, top: 16.0, bottom: 8.0),
             child: Text(
               _searchQuery.isEmpty ? "Suggested Players" : "Search Results",
-              style: const TextStyle(
-                color: Colors.black54, 
+              style: TextStyle(
+                color: textColor.withOpacity(0.6), 
                 fontWeight: FontWeight.w800, 
                 fontFamily: 'Inter', 
                 fontSize: 14, 
@@ -145,11 +147,11 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
               stream: FirebaseFirestore.instance.collection('users').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+                  return Center(child: CircularProgressIndicator(color: theme.primaryColor));
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("No users found.", style: TextStyle(color: Colors.black45)));
+                  return Center(child: Text("No users found.", style: TextStyle(color: textColor.withOpacity(0.5))));
                 }
 
                 DocumentSnapshot? currentUserDoc;
@@ -193,9 +195,9 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off_rounded, size: 64, color: Colors.black.withOpacity(0.1)),
+                        Icon(Icons.search_off_rounded, size: 64, color: textColor.withOpacity(0.2)),
                         const SizedBox(height: 12),
-                        const Text("No players match your search.", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w600)),
+                        Text("No players match your search.", style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
                       ],
                     ),
                   );
@@ -270,58 +272,63 @@ class _UserCardState extends State<_UserCard> {
     }
   }
 
-  Widget _buildUserAvatar(String? avatarData, {double size = 48}) {
+  Widget _buildUserAvatar(BuildContext context, String? avatarData, {double size = 48}) {
+    final theme = Theme.of(context);
     if (avatarData == null || avatarData.isEmpty) {
       return CircleAvatar(
         radius: size / 2,
-        backgroundColor: const Color(0xFFFFEFA7),
-        child: Icon(Icons.person_rounded, size: size * 0.6, color: const Color(0xFFFFB800)),
+        backgroundColor: theme.primaryColor.withOpacity(0.2),
+        child: Icon(Icons.person_rounded, size: size * 0.6, color: theme.primaryColor),
       );
     }
     if (avatarData.startsWith('data:image')) {
       try {
         final bytes = base64Decode(avatarData.split(',').last);
-        return CircleAvatar(radius: size / 2, backgroundImage: MemoryImage(bytes), backgroundColor: const Color(0xFFFFEFA7));
+        return CircleAvatar(radius: size / 2, backgroundImage: MemoryImage(bytes), backgroundColor: theme.primaryColor.withOpacity(0.2));
       } catch (e) {
-        return CircleAvatar(radius: size / 2, backgroundColor: Colors.grey.shade200, child: Icon(Icons.broken_image_rounded, size: size * 0.5, color: Colors.grey));
+        return CircleAvatar(radius: size / 2, backgroundColor: theme.disabledColor.withOpacity(0.2), child: Icon(Icons.broken_image_rounded, size: size * 0.5, color: theme.disabledColor));
       }
     } else {
-      return CircleAvatar(radius: size / 2, backgroundImage: NetworkImage(avatarData), backgroundColor: const Color(0xFFFFEFA7));
+      return CircleAvatar(radius: size / 2, backgroundImage: NetworkImage(avatarData), backgroundColor: theme.primaryColor.withOpacity(0.2));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     String name = widget.userData['name'] ?? 'Student';
     String avatarUrl = widget.userData['avatar'] ?? '';
     int xp = widget.userData['xp'] ?? 0;
     
-    // MLBB Logic: Mutuals = Friends
     bool isFriends = isFollowing && widget.isTargetFollowingMe;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black.withOpacity(0.04), width: 1.5),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
-          _buildUserAvatar(avatarUrl, size: 52),
+          _buildUserAvatar(context, avatarUrl, size: 52),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Inter', color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Inter', color: textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(Icons.bolt_rounded, size: 14, color: Colors.blue.shade400),
+                    const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFF2196F3)),
                     const SizedBox(width: 2),
-                    Text("$xp XP", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.blue.shade600)),
+                    Text(
+                      "$xp XP", 
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF2196F3)),
+                    ),
                   ],
                 )
               ],
@@ -329,7 +336,6 @@ class _UserCardState extends State<_UserCard> {
           ),
           const SizedBox(width: 12),
           
-          // --- DYNAMIC GAMIFIED BUTTON ---
           GestureDetector(
             onTap: () async {
               if (widget.currentUserId == null) return;
@@ -359,7 +365,6 @@ class _UserCardState extends State<_UserCard> {
                     'following': FieldValue.arrayUnion([widget.targetUserId])
                   });
                 } else {
-                  // Unfollow logic
                   await targetUserRef.update({
                     'followers': FieldValue.arrayRemove([widget.currentUserId])
                   });
@@ -368,16 +373,16 @@ class _UserCardState extends State<_UserCard> {
                   });
                 }
               } catch (e) {
-                setState(() => isFollowing = !isFollowing); // Revert on fail
+                setState(() => isFollowing = !isFollowing);
               }
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 250),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: isFriends ? Colors.green.shade500 
-                     : isFollowing ? Colors.grey.shade300 
-                     : const Color(0xFFFFB800),
+                color: isFriends ? Colors.green.shade600 
+                     : isFollowing ? theme.disabledColor.withOpacity(0.2) 
+                     : theme.primaryColor,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -391,7 +396,7 @@ class _UserCardState extends State<_UserCard> {
                       : isFollowing ? "Following" 
                       : (widget.isTargetFollowingMe ? "Follow Back" : "Follow"),
                     style: TextStyle(
-                      color: isFriends ? Colors.white : (isFollowing ? Colors.black54 : Colors.white),
+                      color: isFriends ? Colors.white : (isFollowing ? textColor.withOpacity(0.6) : theme.colorScheme.onPrimary),
                       fontWeight: FontWeight.w800,
                       fontFamily: 'Inter',
                       fontSize: 13,

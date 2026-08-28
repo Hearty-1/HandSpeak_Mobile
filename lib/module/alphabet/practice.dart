@@ -9,6 +9,63 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+/// Dynamic theme visual mapping for thematic icons & graphics
+class _ThemeVisuals {
+  final IconData mainBadgeIcon;
+  final IconData secondaryIcon;
+  final IconData ambientIcon1;
+  final IconData ambientIcon2;
+
+  const _ThemeVisuals({
+    required this.mainBadgeIcon,
+    required this.secondaryIcon,
+    required this.ambientIcon1,
+    required this.ambientIcon2,
+  });
+
+  factory _ThemeVisuals.fromTheme(ThemeData theme) {
+    final primary = theme.primaryColor;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 1. DEEP OCEAN THEME (Blue Primary)
+    if (primary.blue > 160 && primary.red < 120) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.water_drop_rounded,
+        secondaryIcon: Icons.waves_rounded,
+        ambientIcon1: Icons.bubble_chart_rounded,
+        ambientIcon2: Icons.sailing_rounded,
+      );
+    } 
+    // 2. FOREST NATURE THEME (Green Primary)
+    else if (primary.green > 160 && primary.red < 120) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.eco_rounded,
+        secondaryIcon: Icons.forest_rounded,
+        ambientIcon1: Icons.park_rounded,
+        ambientIcon2: Icons.energy_savings_leaf_rounded,
+      );
+    } 
+    // 3. COSMIC SPACE THEME (Dark Theme with High Contrast)
+    else if (isDark) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.auto_awesome_rounded,
+        secondaryIcon: Icons.nights_stay_rounded,
+        ambientIcon1: Icons.star_border_rounded,
+        ambientIcon2: Icons.wb_twilight_rounded,
+      );
+    } 
+    // 4. GOLDEN PLAYFUL THEME (Default / Warm Colors)
+    else {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.stars_rounded,
+        secondaryIcon: Icons.workspace_premium_rounded,
+        ambientIcon1: Icons.wb_sunny_rounded,
+        ambientIcon2: Icons.auto_awesome_rounded,
+      );
+    }
+  }
+}
+
 class PracticeInterface extends StatefulWidget {
   const PracticeInterface({super.key});
 
@@ -56,7 +113,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
         delegate: HandLandmarkerDelegate.gpu, 
       );
 
-      // NEW: subscribe to the async result stream (replaces the old synchronous detect())
       _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
 
       final cameras = await availableCameras();
@@ -98,8 +154,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   }
 
   void _processCameraFrame(CameraImage image) {
-    // Fire-and-forget: feeds the frame to the native pipeline.
-    // Results arrive later via the landmarkStream listener (_onHandsDetected).
     if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved || _template == null) return;
 
     try {
@@ -110,7 +164,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     }
   }
 
-  // NEW: called whenever the plugin's background pipeline finishes a frame.
   void _onHandsDetected(List<Hand> detectedHands) {
     if (_isSuccessAchieved || _template == null) return;
 
@@ -144,15 +197,11 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
     final String letter = targetLetter.toUpperCase();
 
-    // =========================================================================
-    // 1. SPECIALIZED LOGIC FOR TRICKY LETTERS: G, H, K, P, Q
-    // =========================================================================
     if (['G', 'H', 'K', 'P', 'Q'].contains(letter)) {
       final Landmark wrist = liveLms[0];
       final Landmark mBase = liveLms[9]; 
       final Landmark indexTip = liveLms[8];
 
-      // Stable scale factor to prevent small-fist error inflation
       double dist = math.sqrt(
         math.pow(wrist.x - mBase.x, 2) + 
         math.pow(wrist.y - mBase.y, 2)
@@ -164,27 +213,23 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
       );
       dist = math.max(dist, distIndex * 0.55);
       
-      if (dist < 0.05) dist = 0.05; // Safety floor
+      if (dist < 0.05) dist = 0.05; 
       
       double bestScore = 0.0;
-
-      // High priority weighting on action fingertips
-      final List<int> highPriorityLandmarks = [4, 8, 12]; // Thumb tip, Index tip, Middle tip
+      final List<int> highPriorityLandmarks = [4, 8, 12]; 
 
       final orientationMatrices = [
-        [1.0, 0.0, 0.0, 1.0, 1.0],     // 0: Upright Normal
-        [0.0, -1.0, 1.0, 0.0, 1.0],    // 1: 90 deg
-        [-1.0, 0.0, 0.0, -1.0, 1.0],   // 2: 180 deg
-        [0.0, 1.0, -1.0, 0.0, 1.0],    // 3: 270 deg
-        [1.0, 0.0, 0.0, 1.0, -1.0],    // 4: Upright Mirrored
-        [0.0, -1.0, 1.0, 0.0, -1.0],   // 5: 90 deg Mirrored
-        [-1.0, 0.0, 0.0, -1.0, -1.0],  // 6: 180 deg Mirrored
-        [0.0, 1.0, -1.0, 0.0, -1.0],   // 7: 270 deg Mirrored
+        [1.0, 0.0, 0.0, 1.0, 1.0],     
+        [0.0, -1.0, 1.0, 0.0, 1.0],    
+        [-1.0, 0.0, 0.0, -1.0, 1.0],   
+        [0.0, 1.0, -1.0, 0.0, 1.0],    
+        [1.0, 0.0, 0.0, 1.0, -1.0],    
+        [0.0, -1.0, 1.0, 0.0, -1.0],   
+        [-1.0, 0.0, 0.0, -1.0, -1.0],  
+        [0.0, 1.0, -1.0, 0.0, -1.0],   
       ];
 
       for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
-        
-        // Directional Lock: Force horizontal letters to use landscape matrices ('K' excluded)
         if (['G', 'H', 'P', 'Q'].contains(letter) &&
             (mIdx == 0 || mIdx == 2 || mIdx == 4 || mIdx == 6)) {
           continue; 
@@ -212,7 +257,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
           double tx = (template[i]['x'] as num).toDouble();
           double ty = (template[i]['y'] as num).toDouble();
 
-          // Purely 2D comparison to eliminate Z-depth noise
           double pointDiff = math.sqrt(
             math.pow(rx - tx, 2) + 
             math.pow(ry - ty, 2)
@@ -225,8 +269,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
         }
 
         double meanDiff = totalWeightedDifference / totalWeight;
-        
-        // Relaxed scoring curve for G, H, K, P, Q
         double score = (100.0 - (meanDiff * 45.0)).clamp(0.0, 100.0);
 
         if (score > bestScore) {
@@ -237,9 +279,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
       return bestScore;
 
     } else {
-      // =========================================================================
-      // 2. ORIGINAL LOGIC FOR ALL OTHER LETTERS
-      // =========================================================================
       final Landmark wrist = liveLms[0];
       final Landmark mBase = liveLms[9]; 
       
@@ -376,7 +415,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
   @override
   void dispose() {
-    _handSub?.cancel(); // NEW: cancel stream subscription before disposing the plugin
+    _handSub?.cancel(); 
     _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();
@@ -389,26 +428,38 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     bool isPassing = _currentScore >= successThreshold;
     final double screenWidth = MediaQuery.of(context).size.width;
 
+    // Grab the current theme and visual configurations
+    final theme = Theme.of(context);
+    final visuals = _ThemeVisuals.fromTheme(theme);
+    final isDark = theme.brightness == Brightness.dark;
+
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
+
     return Scaffold(
       extendBodyBehindAppBar: true, 
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       // --- GLASSMORPHISM APP BAR ---
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), 
+        backgroundColor: theme.cardColor.withOpacity(0.4), 
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Continuous Practice',
           style: TextStyle(
-            color: Colors.black87, 
+            color: theme.colorScheme.onSurface, 
             fontSize: 22, 
             fontFamily: 'Inter', 
             fontWeight: FontWeight.w800, 
@@ -418,14 +469,28 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
       ),
       body: Stack(
         children: [
-          // Ambient blurred background drops
+          // Theme-aligned ambient background element 1 (Top-right)
           Positioned(
-            top: -30, right: -30,
-            child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFFB800).withOpacity(0.2))),
+            top: -20, right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(
+                angle: -0.2,
+                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
+              ),
+            ),
           ),
+          
+          // Theme-aligned ambient background element 2 (Bottom-left)
           Positioned(
-            bottom: 50, left: -50,
-            child: Container(width: 260, height: 260, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7DC579).withOpacity(0.15))),
+            bottom: 40, left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(
+                angle: 0.3,
+                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
+              ),
+            ),
           ),
           
           SafeArea(
@@ -439,8 +504,8 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                   children: [
                     Text(
                       '$currentLetter${currentLetter.toLowerCase()}',
-                      style: const TextStyle(
-                        color: Colors.black87, 
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface, 
                         fontSize: 42, 
                         fontWeight: FontWeight.w900,
                         fontFamily: 'Inter',
@@ -469,7 +534,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                               "assets/pictures/$currentLetter.jpg", 
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.grey.shade300,
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
                                 child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
                               ),
                             ),
@@ -488,20 +553,28 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                           alignment: Alignment.center,
                           fit: StackFit.expand,
                           children: [
-                            Container(
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: theme.colorScheme.surface,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   width: 4.0,
-                                  color: isPassing ? Colors.green : const Color(0xFFCBD0DC).withOpacity(0.6),
+                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
                                 ),
                                 boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.06),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  )
+                                  if (isPassing)
+                                    BoxShadow(
+                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      blurRadius: 25,
+                                      spreadRadius: 2,
+                                    )
+                                  else
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    )
                                 ],
                               ),
                               child: ClipRRect(
@@ -515,8 +588,8 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                           child: CameraPreview(_controller!),
                                         ),
                                       )
-                                    : const Center(
-                                        child: CircularProgressIndicator(color: Colors.amber),
+                                    : Center(
+                                        child: CircularProgressIndicator(color: theme.primaryColor),
                                       ),
                               ),
                             ),
@@ -528,7 +601,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                   height: 110,
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: isPassing ? Colors.green.withOpacity(0.8) : Colors.white54,
+                                      color: isPassing ? Colors.greenAccent.withOpacity(0.8) : Colors.white54,
                                       width: 3.0,
                                     ),
                                     shape: BoxShape.circle,
@@ -541,13 +614,23 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           color: Colors.black45,
-                                          child: Text(
-                                            "Position Hand",
-                                            style: TextStyle(
-                                              color: isPassing ? Colors.greenAccent : Colors.white,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              if (isPassing) ...[
+                                                Icon(visuals.mainBadgeIcon, color: Colors.greenAccent, size: 12),
+                                                const SizedBox(width: 4),
+                                               ],
+                                              Text(
+                                                isPassing ? "Hold!" : "Position Hand",
+                                                style: TextStyle(
+                                                  color: isPassing ? Colors.greenAccent : Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ),
@@ -567,34 +650,52 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                         borderRadius: BorderRadius.circular(20),
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  "Success! +$xpReward XP",
-                                  style: const TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 20,
-                                    fontFamily: 'Inter',
+                          child: TweenAnimationBuilder(
+                            tween: Tween<double>(begin: 0.8, end: 1.0),
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.elasticOut,
+                            builder: (context, scale, child) {
+                              return Transform.scale(
+                                scale: scale,
+                                child: child,
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "Success! +$xpReward XP",
+                                        style: const TextStyle(
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 20,
+                                          fontFamily: 'Inter',
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  "Loading next letter...",
-                                  style: TextStyle(
-                                    color: Colors.black54,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    "Loading next letter...",
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -602,9 +703,16 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                     ] else if (_holdProgress > 0.0) ...[
                       Column(
                         children: [
-                          const Text(
-                            "Hold steady...",
-                            style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(visuals.secondaryIcon, color: Colors.green, size: 20),
+                              const SizedBox(width: 6),
+                              const Text(
+                                "Hold steady...",
+                                style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           ClipRRect(
@@ -615,9 +723,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                 width: screenWidth * 0.70, 
                                 height: 16,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.4), 
+                                  color: theme.colorScheme.surface.withOpacity(0.4), 
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 1)
+                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1)
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -641,20 +749,21 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                         borderRadius: BorderRadius.circular(30),
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                          child: Container(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isPassing ? Colors.green.withOpacity(0.2) : Colors.white.withOpacity(0.6),
+                              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.6),
                               borderRadius: BorderRadius.circular(30),
                               border: Border.all(
-                                color: isPassing ? Colors.green.withOpacity(0.4) : Colors.white.withOpacity(0.8),
+                                color: isPassing ? Colors.greenAccent.withOpacity(0.4) : theme.colorScheme.surface.withOpacity(0.8),
                                 width: 1.5
                               ),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
-                                color: isPassing ? Colors.green.shade700 : Colors.black54,
+                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withOpacity(0.7),
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16,
                                 fontFamily: 'Inter',

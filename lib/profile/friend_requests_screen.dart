@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -43,7 +44,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     // 2. Requester: Add you to their followers. You are now mutuals (Friends).
     batch.update(requesterRef, {
       'followers': FieldValue.arrayUnion([currentUserId]),
-      'incomingRequests': FieldValue.arrayUnion([currentUserId]), // Send them a notification back
+      'incomingRequests': FieldValue.arrayUnion([currentUserId]), 
       'notifications': FieldValue.arrayUnion([notificationPayload]),
     });
 
@@ -55,8 +56,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
     final currentRef = FirebaseFirestore.instance.collection('users').doc(currentUserId);
 
-    // ONLY remove from incomingRequests to clear the notification UI. 
-    // They safely remain in your followers list, just like ignoring in MLBB!
+    // Remove from incomingRequests to clear the notification UI.
     await currentRef.update({
       'incomingRequests': FieldValue.arrayRemove([requesterUid]),
     });
@@ -64,41 +64,51 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           "Followers",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        surfaceTintColor: Colors.transparent,
+        iconTheme: IconThemeData(color: textColor),
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(currentUserId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+            return Center(child: CircularProgressIndicator(color: theme.primaryColor));
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text("User not found."));
+            return Center(
+              child: Text(
+                "User not found.", 
+                style: TextStyle(color: textColor.withOpacity(0.5))
+              ),
+            );
           }
 
           final userData = snapshot.data!.data() as Map<String, dynamic>?;
           final List<dynamic> incomingRequests = userData?['incomingRequests'] ?? [];
 
           if (incomingRequests.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
                 "No new followers.",
-                style: TextStyle(color: Colors.black54, fontSize: 16, fontWeight: FontWeight.w600),
+                style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 16, fontWeight: FontWeight.w600),
               ),
             );
           }
 
           return ListView.builder(
+            physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.all(16),
             itemCount: incomingRequests.length,
             itemBuilder: (context, index) {
@@ -128,8 +138,44 @@ class _RequestTile extends StatelessWidget {
     required this.onDecline,
   }) : super(key: key);
 
+  Widget _buildAvatarImage(BuildContext context, String? avatarData, {double size = 48}) {
+    final theme = Theme.of(context);
+    if (avatarData == null || avatarData.isEmpty) {
+      return CircleAvatar(
+        radius: size / 2,
+        backgroundColor: theme.primaryColor.withOpacity(0.2),
+        child: Icon(Icons.person_rounded, color: theme.primaryColor, size: size * 0.5),
+      );
+    }
+    if (avatarData.startsWith('data:image')) {
+      try {
+        final bytes = base64Decode(avatarData.split(',').last);
+        return CircleAvatar(
+          radius: size / 2,
+          backgroundImage: MemoryImage(bytes),
+          backgroundColor: theme.primaryColor.withOpacity(0.2),
+        );
+      } catch (e) {
+        return CircleAvatar(
+          radius: size / 2,
+          backgroundColor: theme.disabledColor.withOpacity(0.2),
+          child: Icon(Icons.broken_image_rounded, color: theme.disabledColor, size: size * 0.5),
+        );
+      }
+    } else {
+      return CircleAvatar(
+        radius: size / 2,
+        backgroundImage: NetworkImage(avatarData),
+        backgroundColor: theme.primaryColor.withOpacity(0.2),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('users').doc(requesterUid).get(),
       builder: (context, snapshot) {
@@ -145,7 +191,7 @@ class _RequestTile extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: theme.cardColor,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
@@ -157,24 +203,15 @@ class _RequestTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: const Color(0xFFFFB800).withOpacity(0.2),
-                backgroundImage: (avatar != null && avatar.isNotEmpty && !avatar.startsWith('data:image'))
-                    ? NetworkImage(avatar)
-                    : null,
-                child: (avatar == null || avatar.isEmpty || avatar.startsWith('data:image'))
-                    ? const Icon(Icons.person, color: Color(0xFFFFB800))
-                    : null,
-              ),
+              _buildAvatarImage(context, avatar, size: 48),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
-                    color: Colors.black87,
+                    color: textColor,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -186,13 +223,13 @@ class _RequestTile extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFB800),
+                    color: theme.primaryColor,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
+                  child: Text(
                     "Follow Back",
                     style: TextStyle(
-                      color: Colors.white,
+                      color: theme.colorScheme.onPrimary,
                       fontWeight: FontWeight.w800,
                       fontSize: 13,
                     ),
@@ -207,13 +244,13 @@ class _RequestTile extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
+                    color: textColor.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
+                  child: Text(
                     "Ignore",
                     style: TextStyle(
-                      color: Colors.black54,
+                      color: textColor.withOpacity(0.6),
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),

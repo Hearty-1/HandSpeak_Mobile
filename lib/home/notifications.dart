@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../profile/friend_requests_screen.dart'; // Ensure this path is correct
+import '../profile/friend_requests_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
@@ -30,7 +30,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       });
     }
 
-    // 2. Navigate based on the new MLBB-style notification types
+    // 2. Navigate based on notification types
     if ((notification['type'] == 'new_follower' || notification['type'] == 'follow_back') && mounted) {
       Navigator.push(
         context,
@@ -41,42 +41,50 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           "Notifications",
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: theme.iconTheme.copyWith(color: textColor),
         centerTitle: true,
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(currentUserId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
+            return Center(child: CircularProgressIndicator(color: theme.primaryColor));
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text("User not found."));
+            return Center(
+              child: Text(
+                "User not found.",
+                style: TextStyle(color: textColor.withOpacity(0.6)),
+              ),
+            );
           }
 
           final userData = snapshot.data!.data() as Map<String, dynamic>?;
           final List<dynamic> rawNotifications = userData?['notifications'] ?? [];
 
           if (rawNotifications.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.notifications_off_outlined, size: 64, color: Colors.black26),
-                  SizedBox(height: 16),
+                  Icon(Icons.notifications_off_outlined, size: 64, color: textColor.withOpacity(0.3)),
+                  const SizedBox(height: 16),
                   Text(
                     "You're all caught up!",
-                    style: TextStyle(color: Colors.black54, fontSize: 16, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -98,9 +106,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               final String body = notification['body'] ?? '';
               final String type = notification['type'] ?? 'general';
 
-              // Update icons based on the new notification types
+              // Icons and dynamic colors based on notification type
               IconData iconData = Icons.notifications_rounded;
-              Color iconColor = const Color(0xFFFFB800);
+              Color iconColor = theme.primaryColor;
               if (type == 'new_follower') {
                 iconData = Icons.person_add_alt_1_rounded;
                 iconColor = const Color(0xFF2196F3);
@@ -115,11 +123,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isRead ? Colors.white : const Color(0xFFFFF4D1), 
+                    color: isRead ? theme.cardColor : theme.primaryColor.withOpacity(0.12), 
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isRead ? Colors.black.withOpacity(0.04) : const Color(0xFFFFB800).withOpacity(0.5), 
-                      width: 1.5
+                      color: isRead ? theme.dividerColor.withOpacity(0.2) : theme.primaryColor.withOpacity(0.5), 
+                      width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -150,7 +158,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               style: TextStyle(
                                 fontWeight: isRead ? FontWeight.w700 : FontWeight.w900,
                                 fontSize: 16,
-                                color: Colors.black87,
+                                color: textColor,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -158,7 +166,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               body,
                               style: TextStyle(
                                 fontSize: 14,
-                                color: isRead ? Colors.black54 : Colors.black87,
+                                color: isRead ? textColor.withOpacity(0.6) : textColor,
                                 height: 1.4,
                               ),
                             ),

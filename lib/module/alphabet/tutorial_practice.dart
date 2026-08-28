@@ -1,13 +1,70 @@
 import 'dart:convert';
-import 'dart:async'; // Required for StreamSubscription
+import 'dart:async'; 
 import 'dart:math' as math;
-import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
+import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+/// Dynamic theme visual mapping for thematic icons & graphics
+class _ThemeVisuals {
+  final IconData mainBadgeIcon;
+  final IconData secondaryIcon;
+  final IconData ambientIcon1;
+  final IconData ambientIcon2;
+
+  const _ThemeVisuals({
+    required this.mainBadgeIcon,
+    required this.secondaryIcon,
+    required this.ambientIcon1,
+    required this.ambientIcon2,
+  });
+
+  factory _ThemeVisuals.fromTheme(ThemeData theme) {
+    final primary = theme.primaryColor;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 1. DEEP OCEAN THEME (Blue Primary)
+    if (primary.blue > 160 && primary.red < 120) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.water_drop_rounded,
+        secondaryIcon: Icons.waves_rounded,
+        ambientIcon1: Icons.bubble_chart_rounded,
+        ambientIcon2: Icons.sailing_rounded,
+      );
+    } 
+    // 2. FOREST NATURE THEME (Green Primary)
+    else if (primary.green > 160 && primary.red < 120) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.eco_rounded,
+        secondaryIcon: Icons.forest_rounded,
+        ambientIcon1: Icons.park_rounded,
+        ambientIcon2: Icons.energy_savings_leaf_rounded,
+      );
+    } 
+    // 3. COSMIC SPACE THEME (Dark Theme with High Contrast)
+    else if (isDark) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.auto_awesome_rounded,
+        secondaryIcon: Icons.nights_stay_rounded,
+        ambientIcon1: Icons.star_border_rounded,
+        ambientIcon2: Icons.wb_twilight_rounded,
+      );
+    } 
+    // 4. GOLDEN PLAYFUL THEME (Default / Warm Colors)
+    else {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.stars_rounded,
+        secondaryIcon: Icons.workspace_premium_rounded,
+        ambientIcon1: Icons.wb_sunny_rounded,
+        ambientIcon2: Icons.auto_awesome_rounded,
+      );
+    }
+  }
+}
 
 class TutorialPractice extends StatefulWidget {
   final String targetLetter;
@@ -51,7 +108,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
         delegate: HandLandmarkerDelegate.gpu, 
       );
 
-      // NEW: subscribe to the async result stream (replaces the old synchronous detect())
       _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
 
       final cameras = await availableCameras();
@@ -91,8 +147,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   }
 
   void _processCameraFrame(CameraImage image) {
-    // Fire-and-forget: feeds the frame to the native pipeline.
-    // Results arrive later via the landmarkStream listener (_onHandsDetected).
     if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved || _template == null) return;
 
     try {
@@ -103,7 +157,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     }
   }
 
-  // NEW: called whenever the plugin's background pipeline finishes a frame.
   void _onHandsDetected(List<Hand> detectedHands) {
     if (_isSuccessAchieved || _template == null) return;
 
@@ -132,20 +185,16 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     }
   }
 
-double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
+  double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
 
     final String letter = widget.targetLetter.toUpperCase();
 
-    // =========================================================================
-    // 1. SPECIALIZED LOGIC FOR TRICKY LETTERS: G, H, K, P, Q
-    // =========================================================================
     if (['G', 'H', 'K', 'P', 'Q'].contains(letter)) {
       final Landmark wrist = liveLms[0];
       final Landmark mBase = liveLms[9]; 
       final Landmark indexTip = liveLms[8];
 
-      // Stable scale factor to prevent small-fist error inflation
       double dist = math.sqrt(
         math.pow(wrist.x - mBase.x, 2) + 
         math.pow(wrist.y - mBase.y, 2)
@@ -157,27 +206,23 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
       );
       dist = math.max(dist, distIndex * 0.55);
       
-      if (dist < 0.05) dist = 0.05; // Safety floor
+      if (dist < 0.05) dist = 0.05; 
       
       double bestScore = 0.0;
-
-      // High priority weighting on action fingertips
-      final List<int> highPriorityLandmarks = [4, 8, 12]; // Thumb tip, Index tip, Middle tip
+      final List<int> highPriorityLandmarks = [4, 8, 12]; 
 
       final orientationMatrices = [
-        [1.0, 0.0, 0.0, 1.0, 1.0],     // 0: Upright Normal
-        [0.0, -1.0, 1.0, 0.0, 1.0],    // 1: 90 deg
-        [-1.0, 0.0, 0.0, -1.0, 1.0],   // 2: 180 deg
-        [0.0, 1.0, -1.0, 0.0, 1.0],    // 3: 270 deg
-        [1.0, 0.0, 0.0, 1.0, -1.0],    // 4: Upright Mirrored
-        [0.0, -1.0, 1.0, 0.0, -1.0],   // 5: 90 deg Mirrored
-        [-1.0, 0.0, 0.0, -1.0, -1.0],  // 6: 180 deg Mirrored
-        [0.0, 1.0, -1.0, 0.0, -1.0],   // 7: 270 deg Mirrored
+        [1.0, 0.0, 0.0, 1.0, 1.0],     
+        [0.0, -1.0, 1.0, 0.0, 1.0],    
+        [-1.0, 0.0, 0.0, -1.0, 1.0],   
+        [0.0, 1.0, -1.0, 0.0, 1.0],    
+        [1.0, 0.0, 0.0, 1.0, -1.0],    
+        [0.0, -1.0, 1.0, 0.0, -1.0],   
+        [-1.0, 0.0, 0.0, -1.0, -1.0],  
+        [0.0, 1.0, -1.0, 0.0, -1.0],   
       ];
 
       for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
-        
-        // Directional Lock: Force horizontal letters to use landscape matrices ('K' excluded)
         if (['G', 'H', 'P', 'Q'].contains(letter) &&
             (mIdx == 0 || mIdx == 2 || mIdx == 4 || mIdx == 6)) {
           continue; 
@@ -205,7 +250,6 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
           double tx = (template[i]['x'] as num).toDouble();
           double ty = (template[i]['y'] as num).toDouble();
 
-          // Purely 2D comparison to eliminate Z-depth noise
           double pointDiff = math.sqrt(
             math.pow(rx - tx, 2) + 
             math.pow(ry - ty, 2)
@@ -218,21 +262,15 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
         }
 
         double meanDiff = totalWeightedDifference / totalWeight;
-        
-        // Relaxed scoring curve for G, H, K, P, Q
         double score = (100.0 - (meanDiff * 45.0)).clamp(0.0, 100.0);
 
         if (score > bestScore) {
           bestScore = score;
         }
       }
-
       return bestScore;
 
     } else {
-      // =========================================================================
-      // 2. ORIGINAL LOGIC FOR ALL OTHER LETTERS
-      // =========================================================================
       final Landmark wrist = liveLms[0];
       final Landmark mBase = liveLms[9]; 
       
@@ -295,7 +333,6 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
           bestScore = score;
         }
       }
-
       return bestScore;
     }
   }
@@ -354,81 +391,135 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     
     if (!mounted) return;
 
+    final theme = Theme.of(context);
+    final visuals = _ThemeVisuals.fromTheme(theme);
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: AlertDialog(
-          backgroundColor: Colors.white.withOpacity(0.85),
-          shape: RoundedRectangleBorder(
-  borderRadius: BorderRadius.circular(24),
-  side: BorderSide(color: Colors.white.withOpacity(0.6), width: 1.5), // Changed Border.all to BorderSide
-),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                child: const Icon(Icons.waving_hand_rounded, color: Colors.amber, size: 24),
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: TweenAnimationBuilder(
+            tween: Tween<double>(begin: 0.5, end: 1.0),
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.elasticOut,
+            builder: (context, scale, child) {
+              return Transform.scale(
+                scale: scale,
+                child: child,
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: theme.primaryColor.withOpacity(0.6), width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.primaryColor.withOpacity(0.35),
+                    blurRadius: 40,
+                    spreadRadius: 8,
+                  )
+                ],
               ),
-              const SizedBox(width: 10),
-              const Text("Success!", style: TextStyle(fontWeight: FontWeight.w900, color: Colors.black87)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Outstanding job! You have successfully mastered the letter ${widget.targetLetter.toUpperCase()}!",
-                style: const TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w500),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Thematic reward badge icon
+                  Stack(
+                    alignment: Alignment.center,
                     children: [
-                      const Icon(Icons.bolt, color: Colors.green, size: 20),
-                      const SizedBox(width: 4),
-                      Text(
-                        "+$xpReward XP Earned!",
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.green),
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(visuals.mainBadgeIcon, color: theme.primaryColor, size: 64),
+                      ),
+                      Positioned(
+                        right: 0, top: 0,
+                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withOpacity(0.7), size: 22),
                       ),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "Mastered!",
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Outstanding job! You have successfully mastered the letter ${widget.targetLetter.toUpperCase()}!",
+                    style: TextStyle(
+                      fontSize: 16, 
+                      color: theme.colorScheme.onSurface.withOpacity(0.8), 
+                      fontWeight: FontWeight.w500
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  TweenAnimationBuilder(
+                    tween: Tween<double>(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeOutBack,
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: value,
+                        child: child,
+                      );
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.green.withOpacity(0.4), width: 2),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(visuals.secondaryIcon, color: Colors.green, size: 22),
+                            const SizedBox(width: 8),
+                            Text(
+                              "+$xpReward XP Earned!",
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.green),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.primaryColor,
+                      foregroundColor: theme.colorScheme.onPrimary,
+                      elevation: 4,
+                      shadowColor: theme.primaryColor.withOpacity(0.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      minimumSize: const Size(double.infinity, 54),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context); 
+                      Navigator.pop(context); 
+                    },
+                    child: const Text("Continue", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-          actions: [
-            Center(
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFB800),
-                  foregroundColor: Colors.black87,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                onPressed: () {
-                  Navigator.pop(context); 
-                  Navigator.pop(context); 
-                },
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                  child: Text("Back to Tutorial", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-              ),
-            )
-          ],
         ),
       ),
     );
@@ -436,7 +527,7 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
 
   @override
   void dispose() {
-    _handSub?.cancel(); // NEW: cancel stream subscription before disposing the plugin
+    _handSub?.cancel(); 
     _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();
@@ -448,27 +539,36 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     String currentLetter = widget.targetLetter.toUpperCase();
     bool isPassing = _currentScore >= successThreshold;
     final double screenWidth = MediaQuery.of(context).size.width;
+    final theme = Theme.of(context);
+    final visuals = _ThemeVisuals.fromTheme(theme);
+    final isDark = theme.brightness == Brightness.dark;
+
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
 
     return Scaffold(
       extendBodyBehindAppBar: true, 
-      backgroundColor: const Color(0xFFFFF9E5),
+      backgroundColor: theme.scaffoldBackgroundColor,
       
-      // --- GLASSMORPHISM APP BAR ---
       appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.4), 
+        backgroundColor: theme.cardColor.withOpacity(0.4), 
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Practice Mode',
           style: TextStyle(
-            color: Colors.black87, 
+            color: theme.colorScheme.onSurface, 
             fontSize: 22, 
             fontFamily: 'Inter', 
             fontWeight: FontWeight.w800, 
@@ -478,14 +578,28 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
       ),
       body: Stack(
         children: [
-          // Ambient backgrounds
+          // Theme-aligned ambient background element 1 (Top-right)
           Positioned(
-            top: -30, right: -30,
-            child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFFB800).withOpacity(0.2))),
+            top: -20, right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(
+                angle: -0.2,
+                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
+              ),
+            ),
           ),
+          
+          // Theme-aligned ambient background element 2 (Bottom-left)
           Positioned(
-            bottom: 50, left: -50,
-            child: Container(width: 260, height: 260, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF7DC579).withOpacity(0.15))),
+            bottom: 40, left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(
+                angle: 0.3,
+                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
+              ),
+            ),
           ),
           
           SafeArea(
@@ -499,8 +613,8 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                   children: [
                     Text(
                       '$currentLetter${currentLetter.toLowerCase()}',
-                      style: const TextStyle(
-                        color: Colors.black87, 
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface, 
                         fontSize: 42, 
                         fontWeight: FontWeight.w900,
                         fontFamily: 'Inter',
@@ -529,7 +643,7 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                               "assets/pictures/$currentLetter.jpg", 
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.grey.shade300,
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
                                 child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
                               ),
                             ),
@@ -539,7 +653,7 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                     ),
                     const SizedBox(height: 24),
 
-                    // Front Camera Preview Container Envelope
+                    // Front Camera Preview Container
                     SizedBox(
                       width: screenWidth * 0.60, 
                       child: AspectRatio(
@@ -548,20 +662,28 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                           alignment: Alignment.center,
                           fit: StackFit.expand,
                           children: [
-                            Container(
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: theme.colorScheme.surface,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   width: 4.0,
-                                  color: isPassing ? Colors.green : const Color(0xFFCBD0DC).withOpacity(0.6),
+                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
                                 ),
                                 boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.06),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  )
+                                  if (isPassing)
+                                    BoxShadow(
+                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      blurRadius: 25,
+                                      spreadRadius: 2,
+                                    )
+                                  else
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    )
                                 ],
                               ),
                               child: ClipRRect(
@@ -575,21 +697,22 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                                           child: CameraPreview(_controller!),
                                         ),
                                       )
-                                    : const Center(
-                                        child: CircularProgressIndicator(color: Colors.amber),
+                                    : Center(
+                                        child: CircularProgressIndicator(color: theme.primaryColor),
                                       ),
                               ),
                             ),
 
                             if (_isInitialized && !_isSuccessAchieved)
                               Center(
-                                child: Container(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
                                   width: 110, 
                                   height: 110,
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: isPassing ? Colors.green.withOpacity(0.8) : Colors.white54,
-                                      width: 3.0,
+                                      color: isPassing ? Colors.greenAccent.withOpacity(0.9) : Colors.white54,
+                                      width: isPassing ? 4.0 : 3.0,
                                     ),
                                     shape: BoxShape.circle,
                                   ),
@@ -601,13 +724,23 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           color: Colors.black45,
-                                          child: Text(
-                                            "Position Hand",
-                                            style: TextStyle(
-                                              color: isPassing ? Colors.greenAccent : Colors.white,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              if (isPassing) ...[
+                                                Icon(visuals.mainBadgeIcon, color: Colors.greenAccent, size: 12),
+                                                const SizedBox(width: 4),
+                                              ],
+                                              Text(
+                                                isPassing ? "Hold!" : "Position Hand",
+                                                style: TextStyle(
+                                                  color: isPassing ? Colors.greenAccent : Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ),
@@ -624,22 +757,29 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                     if (_holdProgress > 0.0) ...[
                       Column(
                         children: [
-                          const Text(
-                            "Hold steady...",
-                            style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(visuals.secondaryIcon, color: Colors.green, size: 20),
+                              const SizedBox(width: 6),
+                              const Text(
+                                "Hold steady...",
+                                style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                             child: BackdropFilter(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: screenWidth * 0.70, 
-                                height: 16,
+                                height: 20,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.4), 
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 1)
+                                  color: theme.colorScheme.surface.withOpacity(0.4), 
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1)
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -648,7 +788,10 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                                     child: Container(
                                       decoration: BoxDecoration(
                                         gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(color: Colors.greenAccent.withOpacity(0.5), blurRadius: 10)
+                                        ]
                                       ),
                                     ),
                                   ),
@@ -663,20 +806,21 @@ double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
                         borderRadius: BorderRadius.circular(30),
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                          child: Container(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isPassing ? Colors.green.withOpacity(0.2) : Colors.white.withOpacity(0.6),
+                              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.6),
                               borderRadius: BorderRadius.circular(30),
                               border: Border.all(
-                                color: isPassing ? Colors.green.withOpacity(0.4) : Colors.white.withOpacity(0.8),
+                                color: isPassing ? Colors.greenAccent.withOpacity(0.6) : theme.colorScheme.surface.withOpacity(0.8),
                                 width: 1.5
                               ),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
-                                color: isPassing ? Colors.green.shade700 : Colors.black54,
+                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withOpacity(0.7),
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16,
                                 fontFamily: 'Inter',

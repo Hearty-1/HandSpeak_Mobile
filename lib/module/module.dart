@@ -1,4 +1,4 @@
-import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
+import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
@@ -15,22 +15,24 @@ class SnedInterface2 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
+
     const double baseWidth = 393; 
     const double baseHeight = 693;  
     const int targetXp = 1000; 
 
-    // Set iOS-style transparent status bar
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
 
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(), 
       builder: (context, snapshot) { 
-        // --- 1. FETCH CATEGORY-SPECIFIC XP ---
         int alphabetXp = 0; 
         int numbersXp = 0; 
         int wordsXp = 0; 
@@ -46,12 +48,9 @@ class SnedInterface2 extends StatelessWidget {
           }
         }
 
-        // --- 2. DYNAMIC PROGRESSION LOCKS ---
-        // Unlocks Words/Phrases as soon as Alphabet reaches 1000 XP
         final bool isWordsLocked = alphabetXp < targetXp; 
         final bool isCivicsLocked = isWordsLocked || (wordsXp < targetXp); 
 
-        // --- 3. DISPLAY XP (Capped at Target for the visual bars) ---
         int displayAlpXp = alphabetXp > targetXp ? targetXp : alphabetXp; 
         int displayNumXp = numbersXp > targetXp ? targetXp : numbersXp; 
         int displayWordsXp = wordsXp > targetXp ? targetXp : wordsXp; 
@@ -64,23 +63,23 @@ class SnedInterface2 extends StatelessWidget {
             return Scaffold(
               extendBodyBehindAppBar: true, 
               extendBody: true, 
-              backgroundColor: const Color(0xFFFFF9E5), 
+              backgroundColor: theme.scaffoldBackgroundColor, 
               
-              // --- GLASSMORPHISM APP BAR ---
               appBar: AppBar(
-                backgroundColor: Colors.white.withOpacity(0.4), 
+                backgroundColor: theme.cardColor.withOpacity(0.4), 
                 elevation: 0, 
                 centerTitle: true,  
-                iconTheme: const IconThemeData(color: Colors.black87),
+                iconTheme: theme.iconTheme.copyWith(color: textColor),
                 flexibleSpace: ClipRRect(
+                  clipBehavior: Clip.antiAlias,
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Container(color: Colors.transparent),
                   ),
                 ),
-                title: const Text(
+                title: Text(
                   "Modules", 
-                  style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w800, letterSpacing: -0.5), 
+                  style: TextStyle(color: textColor, fontWeight: FontWeight.w800, letterSpacing: -0.5), 
                 ),
                 actions: [
                   Padding(
@@ -90,38 +89,38 @@ class SnedInterface2 extends StatelessWidget {
                 ],
               ),
               
-              // --- GLASSMORPHISM BOTTOM NAVIGATION BAR ---
               bottomNavigationBar: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(32),
+                    clipBehavior: Clip.antiAlias,
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                       child: Container(
                         height: 72,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.5), 
+                          color: theme.cardColor.withOpacity(0.6), 
                           borderRadius: BorderRadius.circular(32), 
-                          border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5), 
+                          border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0), 
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.home, color: Colors.black54, size: 28), 
+                              icon: Icon(Icons.home, color: textColor.withOpacity(0.6), size: 28), 
                               onPressed: () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SnedInterafce1(userName: "Student")), (route) => false), 
                             ),
                             IconButton(
-                              icon: const Icon(Icons.auto_stories, color: Color(0xFFFFB800), size: 30), 
+                              icon: Icon(Icons.auto_stories, color: theme.primaryColor, size: 30), 
                               onPressed: () {},  
                             ),
                             IconButton(
-                              icon: const Icon(Icons.sports_esports, color: Colors.black54, size: 28), 
+                              icon: Icon(Icons.sports_esports, color: textColor.withOpacity(0.6), size: 28), 
                               onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LeaderboardScreen())), 
                             ),
                             IconButton(
-                              icon: const Icon(Icons.person, color: Colors.black54, size: 28), 
+                              icon: Icon(Icons.person, color: textColor.withOpacity(0.6), size: 28), 
                               onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ProfileScreen())), 
                             ),
                           ],
@@ -134,7 +133,6 @@ class SnedInterface2 extends StatelessWidget {
 
               body: Stack(
                 children: [
-                  // 1. Ambient Background Shapes
                   Positioned(
                     top: -50,
                     left: -50,
@@ -143,7 +141,7 @@ class SnedInterface2 extends StatelessWidget {
                       height: 250,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFFFFB800).withOpacity(0.3),
+                        color: theme.primaryColor.withOpacity(0.25),
                       ),
                     ),
                   ),
@@ -155,12 +153,11 @@ class SnedInterface2 extends StatelessWidget {
                       height: 300,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFF7DC579).withOpacity(0.2), 
+                        color: theme.colorScheme.secondary.withOpacity(0.2), 
                       ),
                     ),
                   ),
 
-                  // 2. Main Content
                   SingleChildScrollView(
                     physics: const BouncingScrollPhysics(), 
                     child: Padding(
@@ -171,7 +168,6 @@ class SnedInterface2 extends StatelessWidget {
                         child: Stack(
                           clipBehavior: Clip.none, 
                           children: [
-                            // --- MODULE: ALPHABETS ---
                             Positioned(
                               left: 7 * scale, top: 51 * scale, 
                               child: GestureDetector(
@@ -191,12 +187,13 @@ class SnedInterface2 extends StatelessWidget {
                               left: 27 * scale, top: 39 * scale, 
                               child: GestureDetector(
                                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AlphabetInterface(currentXp: displayAlpXp, targetXp: targetXp))), 
-                                child: Text('Alphabets', style: TextStyle(color: Colors.black, fontSize: 32 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.92)), 
+                                child: Text('Alphabets', style: TextStyle(color: textColor, fontSize: 32 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.92)), 
                               ),
                             ),
                             Positioned(
                               left: 12 * scale, top: 215 * scale,  
                               child: _buildProgressPanel(
+                                context: context,
                                 scale: scale,  
                                 title: "Progress",  
                                 xp: "$displayAlpXp XP",  
@@ -206,10 +203,9 @@ class SnedInterface2 extends StatelessWidget {
                             ),
                             Positioned(
                               left: 20 * scale, top: 250 * scale, 
-                              child: _buildGlassIcon(scale)
+                              child: _buildGlassIcon(context, scale)
                             ), 
                             
-                            // --- MODULE: NUMBERS ---
                             Positioned(
                               left: 214 * scale, top: 77 * scale, 
                               child: GestureDetector(
@@ -229,12 +225,13 @@ class SnedInterface2 extends StatelessWidget {
                               left: 228 * scale, top: 37 * scale, 
                               child: GestureDetector(
                                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => NumbersInterface(currentXp: displayNumXp, targetXp: targetXp))), 
-                                child: Text('Numbers', style: TextStyle(color: Colors.black, fontSize: 32 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.92)), 
+                                child: Text('Numbers', style: TextStyle(color: textColor, fontSize: 32 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.92)), 
                               ),
                             ),
                             Positioned(
                               left: 205 * scale, top: 215 * scale,  
                               child: _buildProgressPanel(
+                                context: context,
                                 scale: scale,  
                                 title: "Progress",  
                                 xp: "$displayNumXp XP",  
@@ -244,10 +241,9 @@ class SnedInterface2 extends StatelessWidget {
                             ),
                             Positioned(
                               left: 214 * scale, top: 250 * scale, 
-                              child: _buildGlassIcon(scale)
+                              child: _buildGlassIcon(context, scale)
                             ),
                             
-                            // --- MODULE: WORDS / PHRASES (UNLOCKED AT 1000 ALPHABET XP) ---
                             Positioned(
                               left: 30 * scale, top: 386 * scale,  
                               child: GestureDetector(
@@ -297,7 +293,7 @@ class SnedInterface2 extends StatelessWidget {
                                     'Words/ Phrases', 
                                     textAlign: TextAlign.center, 
                                     style: TextStyle(
-                                      color: const Color(0xFF312244), 
+                                      color: textColor, 
                                       fontSize: 24 * scale, 
                                       fontFamily: 'Inter', 
                                       fontWeight: FontWeight.w800, 
@@ -326,6 +322,7 @@ class SnedInterface2 extends StatelessWidget {
                               child: Opacity(
                                 opacity: isWordsLocked ? 0.40 : 1.0,  
                                 child: _buildProgressPanel(
+                                  context: context,
                                   scale: scale,  
                                   title: "Progress",  
                                   xp: "$displayWordsXp XP",  
@@ -338,11 +335,10 @@ class SnedInterface2 extends StatelessWidget {
                               left: 22 * scale, top: 561 * scale, 
                               child: Opacity(
                                 opacity: isWordsLocked ? 0.40 : 1.0, 
-                                child: _buildGlassIcon(scale),
+                                child: _buildGlassIcon(context, scale),
                               ),
                             ),
                             
-                            // --- MODULE: CIVIC OBSERVANCES (LOCKED/UNLOCKED) ---
                             Positioned(
                               left: 217 * scale, top: 381 * scale,  
                               child: Opacity(
@@ -354,7 +350,7 @@ class SnedInterface2 extends StatelessWidget {
                               left: 218 * scale, top: 353 * scale,  
                               child: Opacity(
                                 opacity: isCivicsLocked ? 0.60 : 1.0, 
-                                child: Text('Civic Observances', textAlign: TextAlign.center, style: TextStyle(color: const Color(0xFF312244), fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44)), 
+                                child: Text('Civic Observances', textAlign: TextAlign.center, style: TextStyle(color: textColor, fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44)), 
                               ),
                             ),
                             if (isCivicsLocked) 
@@ -364,7 +360,6 @@ class SnedInterface2 extends StatelessWidget {
                                 left: 253.50 * scale, top: 386 * scale, 
                                 child: GestureDetector(
                                   onTap: () { 
-                                    // Router pathway to civics interface screen
                                   },
                                   child: SizedBox(width: 90 * scale, height: 119 * scale), 
                                 ),
@@ -374,6 +369,7 @@ class SnedInterface2 extends StatelessWidget {
                               child: Opacity(
                                 opacity: isCivicsLocked ? 0.40 : 1.0,  
                                 child: _buildProgressPanel(
+                                  context: context,
                                   scale: scale,  
                                   title: "Progress",  
                                   xp: "$displayCivicsXp XP",  
@@ -386,7 +382,7 @@ class SnedInterface2 extends StatelessWidget {
                               left: 214 * scale, top: 561 * scale, 
                               child: Opacity(
                                 opacity: isCivicsLocked ? 0.40 : 1.0, 
-                                child: _buildGlassIcon(scale), 
+                                child: _buildGlassIcon(context, scale), 
                               ),
                             ),
                           ],
@@ -403,57 +399,59 @@ class SnedInterface2 extends StatelessWidget {
     );
   }
 
-  // Refactored Helper widget to render Glassmorphism progress status card
   Widget _buildProgressPanel({
+    required BuildContext context,
     required double scale, 
     required String title, 
     required String xp, 
     required String xpNext,
     required double progressRatio,
   }) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(16 * scale), 
+      clipBehavior: Clip.antiAlias,
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           width: 178 * scale, height: 76 * scale, 
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.65), 
+            color: theme.cardColor.withOpacity(0.7), 
             borderRadius: BorderRadius.circular(16 * scale), 
-            border: Border.all(color: Colors.white.withOpacity(0.8), width: 1.5), 
+            border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0), 
             boxShadow: [
               BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
             ],
           ),
           child: Stack(
             children: [
-              Positioned(left: 12 * scale, top: 5 * scale, child: Text(title, style: TextStyle(color: const Color(0xFF322144), fontSize: 16 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.bold))), 
-              Positioned(left: 36 * scale, top: 28 * scale, child: Text(xp, style: TextStyle(color: const Color(0xFFBA8E23), fontSize: 18 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20))), 
+              Positioned(left: 12 * scale, top: 5 * scale, child: Text(title, style: TextStyle(color: textColor, fontSize: 16 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.bold))), 
+              Positioned(left: 36 * scale, top: 28 * scale, child: Text(xp, style: TextStyle(color: theme.primaryColor, fontSize: 18 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20))), 
               
-              // Background Bar Track
               Positioned(
                 left: 11 * scale, top: 58 * scale,  
                 child: Container(
                   width: 154 * scale, height: 5 * scale,  
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.05), 
+                    color: theme.dividerColor.withOpacity(0.2), 
                     borderRadius: BorderRadius.circular(25 * scale), 
                   ),
                 ),
               ),
-              // Fill Layer
               Positioned(
                 left: 11 * scale, top: 58 * scale,  
                 child: Container(
                   width: (154 * progressRatio.clamp(0.0, 1.0)) * scale, height: 5 * scale,  
                   decoration: BoxDecoration(
-                    color: const Color(0xFF7DC579), 
+                    color: theme.primaryColor, 
                     borderRadius: BorderRadius.circular(25 * scale), 
-                    boxShadow: [BoxShadow(color: const Color(0xFF7DC579).withOpacity(0.5), blurRadius: 4)], 
+                    boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.5), blurRadius: 4)], 
                   ),
                 ),
               ),
-              Positioned(left: 105 * scale, top: 8 * scale, child: Text(xpNext, style: TextStyle(color: const Color(0xFF888888), fontSize: 9 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w500))), 
+              Positioned(left: 105 * scale, top: 8 * scale, child: Text(xpNext, style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 9 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w500))), 
             ],
           ),
         ),
@@ -461,16 +459,17 @@ class SnedInterface2 extends StatelessWidget {
     );
   }
 
-  // Helper widget to render glass icon
-  Widget _buildGlassIcon(double scale) {
+  Widget _buildGlassIcon(BuildContext context, double scale) {
+    final theme = Theme.of(context);
+
     return Container(
       padding: EdgeInsets.all(4 * scale),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: theme.cardColor.withOpacity(0.85),
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFB800).withOpacity(0.3), 
+            color: theme.primaryColor.withOpacity(0.3), 
             blurRadius: 8, 
             spreadRadius: 1
           )
@@ -478,7 +477,7 @@ class SnedInterface2 extends StatelessWidget {
       ),
       child: Icon(
         Icons.bolt_rounded, 
-        color: const Color(0xFFFFB800),
+        color: theme.primaryColor,
         size: 16 * scale, 
       ),
     );
