@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async'; // Required for StreamSubscription
 import 'dart:math' as math;
 import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
 import 'package:flutter/material.dart';
@@ -18,9 +19,9 @@ class PracticeInterface extends StatefulWidget {
 class _PracticeInterfaceState extends State<PracticeInterface> {
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
-  
+  StreamSubscription<List<Hand>>? _handSub;
+
   bool _isInitialized = false;
-  bool _isDetecting = false;
   bool _isSuccessAchieved = false;
 
   // --- CONTINUOUS GAME SYSTEM ---
@@ -54,6 +55,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
         minHandDetectionConfidence: 0.5,
         delegate: HandLandmarkerDelegate.gpu, 
       );
+
+      // NEW: subscribe to the async result stream (replaces the old synchronous detect())
+      _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
 
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
@@ -94,40 +98,44 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   }
 
   void _processCameraFrame(CameraImage image) {
-    if (_isDetecting || !_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved || _template == null) return;
-    _isDetecting = true;
+    // Fire-and-forget: feeds the frame to the native pipeline.
+    // Results arrive later via the landmarkStream listener (_onHandsDetected).
+    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved || _template == null) return;
 
     try {
-      int sensorOrientation = _controller!.description.sensorOrientation;
-      final List<Hand> detectedHands = _landmarkerPlugin!.detect(image, sensorOrientation);
-
-      if (detectedHands.isNotEmpty) {
-        double highestScoreAcrossAllHands = 0.0;
-
-        for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
-          final double score = _calculateScore(
-            detectedHands[handIdx].landmarks, 
-            _template!,
-          );
-          if (score > highestScoreAcrossAllHands) {
-            highestScoreAcrossAllHands = score;
-          }
-        }
-        
-        _updateGameLogic(highestScoreAcrossAllHands);
-      } else {
-        if (mounted) {
-          setState(() {
-            _currentScore = 0.0;
-            _holdProgress = 0.0;
-            _startHoldTime = null;
-          });
-        }
-      }
+      final int sensorOrientation = _controller!.description.sensorOrientation;
+      _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Inference Error: $e");
-    } finally {
-      _isDetecting = false;
+    }
+  }
+
+  // NEW: called whenever the plugin's background pipeline finishes a frame.
+  void _onHandsDetected(List<Hand> detectedHands) {
+    if (_isSuccessAchieved || _template == null) return;
+
+    if (detectedHands.isNotEmpty) {
+      double highestScoreAcrossAllHands = 0.0;
+
+      for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
+        final double score = _calculateScore(
+          detectedHands[handIdx].landmarks, 
+          _template!,
+        );
+        if (score > highestScoreAcrossAllHands) {
+          highestScoreAcrossAllHands = score;
+        }
+      }
+
+      _updateGameLogic(highestScoreAcrossAllHands);
+    } else {
+      if (mounted) {
+        setState(() {
+          _currentScore = 0.0;
+          _holdProgress = 0.0;
+          _startHoldTime = null;
+        });
+      }
     }
   }
 
@@ -368,6 +376,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
   @override
   void dispose() {
+    _handSub?.cancel(); // NEW: cancel stream subscription before disposing the plugin
     _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();

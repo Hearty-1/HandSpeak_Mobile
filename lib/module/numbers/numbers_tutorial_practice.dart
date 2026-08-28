@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui'; // Required for ImageFilter (Glassmorphism & Blurs)
@@ -20,9 +21,9 @@ class NumbersTutorialPractice extends StatefulWidget {
 class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
+  StreamSubscription<List<Hand>>? _landmarkSubscription;
   
   bool _isInitialized = false;
-  bool _isDetecting = false;
   bool _isSuccessAchieved = false;
 
   List<dynamic>? _template;
@@ -50,6 +51,34 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
         minHandDetectionConfidence: 0.5,
         delegate: HandLandmarkerDelegate.gpu, 
       );
+
+      _landmarkSubscription = _landmarkerPlugin!.landmarkStream.listen((List<Hand> detectedHands) {
+        if (!mounted || _isSuccessAchieved || _template == null) return;
+        
+        if (detectedHands.isNotEmpty) {
+          double highestScoreAcrossAllHands = 0.0;
+
+          for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
+            final double score = _calculateScore(
+              detectedHands[handIdx].landmarks, 
+              _template!,
+            );
+            if (score > highestScoreAcrossAllHands) {
+              highestScoreAcrossAllHands = score;
+            }
+          }
+          
+          _updateGameLogic(highestScoreAcrossAllHands);
+        } else {
+          if (mounted) {
+            setState(() {
+              _currentScore = 0.0;
+              _holdProgress = 0.0;
+              _startHoldTime = null;
+            });
+          }
+        }
+      });
 
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
@@ -90,40 +119,13 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
   }
 
   void _processCameraFrame(CameraImage image) {
-    if (_isDetecting || !_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved || _template == null) return;
-    _isDetecting = true;
+    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
 
     try {
       int sensorOrientation = _controller!.description.sensorOrientation;
-      final List<Hand> detectedHands = _landmarkerPlugin!.detect(image, sensorOrientation);
-
-      if (detectedHands.isNotEmpty) {
-        double highestScoreAcrossAllHands = 0.0;
-
-        for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
-          final double score = _calculateScore(
-            detectedHands[handIdx].landmarks, 
-            _template!,
-          );
-          if (score > highestScoreAcrossAllHands) {
-            highestScoreAcrossAllHands = score;
-          }
-        }
-        
-        _updateGameLogic(highestScoreAcrossAllHands);
-      } else {
-        if (mounted) {
-          setState(() {
-            _currentScore = 0.0;
-            _holdProgress = 0.0;
-            _startHoldTime = null;
-          });
-        }
-      }
+      _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
-      debugPrint("Inference Error: $e");
-    } finally {
-      _isDetecting = false;
+      debugPrint("Frame processing error: $e");
     }
   }
 
@@ -339,6 +341,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
 
   @override
   void dispose() {
+    _landmarkSubscription?.cancel();
     _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();

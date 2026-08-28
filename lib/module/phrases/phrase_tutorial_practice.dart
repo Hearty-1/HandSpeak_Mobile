@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
@@ -7,6 +8,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'phrase_recognizer.dart';
+
+// This screen requires hand_landmarker ^3.0.0+, which replaced the
+// synchronous, UI-blocking `detect()` call with a non-blocking
+// `processFrame()` + `landmarkStream` pair backed by a native background
+// thread (LIVE_STREAM mode). That's what fixes the camera-freeze issue --
+// there is no manual isolate/compute() wrapping needed here, the plugin
+// itself no longer blocks the UI isolate.
 
 class PhraseTutorialPractice extends StatefulWidget {
   final String targetPhrase;
@@ -20,11 +28,16 @@ class PhraseTutorialPractice extends StatefulWidget {
 class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
+  StreamSubscription<List<Hand>>? _landmarkSubscription;
   final PhraseRecognizer _phraseRecognizer = PhraseRecognizer();
   
   bool _isInitialized = false;
-  bool _isDetecting = false;
   bool _isSuccessAchieved = false;
+  // Counts consecutive no-hand frames so a single flicker of a missed
+  // detection doesn't reset an in-progress hold, but the buffer does relax
+  // back to idle if the hand is genuinely gone for a while.
+  int _consecutiveEmptyFrames = 0;
+  static const int _emptyFrameResetThreshold = 15;
 
   // Real-time status logger
   String _debugStatus = "1/4 Initializing...";
@@ -45,19 +58,35 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
 
   Future<void> _initializePipeline() async {
     try {
-      // Step 1: Initialize TFLite Engine[cite: 13]
+      // Step 1: Initialize TFLite Engine
       setState(() => _debugStatus = "1/4 Loading TFLite Model & Labels...");
       await _phraseRecognizer.initialize();
 
-      // Step 2: Initialize MediaPipe Hand Detector[cite: 13]
+      // Step 2: Initialize MediaPipe Hand Detector.
+      // numHands: 2 -- the model was trained on 126 features covering both
+      // hands (2 x 21 x xyz), so single-hand detection here would silently
+      // zero out half the model's input on two-handed phrases.
       setState(() => _debugStatus = "2/4 Initializing MediaPipe Landmarker...");
       _landmarkerPlugin = HandLandmarkerPlugin.create(
-        numHands: 1, 
+        numHands: 2,
         minHandDetectionConfidence: 0.5,
-        delegate: HandLandmarkerDelegate.gpu, 
+        delegate: HandLandmarkerDelegate.gpu,
       );
 
-      // Step 3: Setup Front Camera Stream[cite: 13]
+      // Listen for results asynchronously. This is the non-blocking path:
+      // detection runs on a native background thread and results arrive
+      // here as they're ready, instead of a synchronous detect() call
+      // stalling the UI isolate on every camera frame.
+      _landmarkSubscription = _landmarkerPlugin!.landmarkStream.listen(
+        _onHandsDetected,
+        onError: (e) {
+          if (mounted) {
+            setState(() => _debugStatus = "❌ LANDMARK STREAM ERROR: $e");
+          }
+        },
+      );
+
+      // Step 3: Setup Front Camera Stream
       setState(() => _debugStatus = "3/4 Opening Camera Stream...");
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
@@ -77,7 +106,25 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       );
 
       await _controller!.initialize();
-      await _controller!.startImageStream(_processCameraFrame);
+
+      // Fire-and-forget per frame -- processFrame() returns immediately and
+      // queues the frame on the native side, so this callback never blocks
+      // the camera's image-stream isolate waiting on inference.
+      await _controller!.startImageStream((CameraImage image) {
+        if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) {
+          return;
+        }
+        try {
+          _landmarkerPlugin!.processFrame(
+            image,
+            _controller!.description.sensorOrientation,
+          );
+        } catch (e) {
+          if (mounted) {
+            setState(() => _debugStatus = "❌ FRAME STREAM ERROR: $e");
+          }
+        }
+      });
 
       if (mounted) {
         setState(() {
@@ -92,66 +139,53 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     }
   }
 
-  void _processCameraFrame(CameraImage image) {
-    if (_isDetecting || !_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
-    _isDetecting = true;
+  /// Called for every result on landmarkStream. Runs the sliding-window
+  /// LSTM inference and drives the hold-to-succeed game logic.
+  void _onHandsDetected(List<Hand> detectedHands) {
+    if (_isSuccessAchieved || !mounted) return;
 
-    try {
-      int sensorOrientation = _controller!.description.sensorOrientation;
-      final List<Hand> detectedHands = _landmarkerPlugin!.detect(image, sensorOrientation);
+    if (detectedHands.isEmpty) {
+      _consecutiveEmptyFrames++;
+    } else {
+      _consecutiveEmptyFrames = 0;
+    }
 
-      if (detectedHands.isNotEmpty) {
-        final hand = detectedHands[0];
+    // Feed every frame into the recognizer -- including empty ones, which
+    // become zero-padded frames in the buffer. This keeps the sliding
+    // window continuous instead of freezing it whenever the hand
+    // momentarily leaves the frame mid-sign.
+    final RecognitionResult? result = _phraseRecognizer.processFrame(detectedHands);
+    if (result == null) return;
 
-        // Extract 42 Features (21 hand landmarks * 2 coordinates [X, Y])[cite: 12, 13]
-        List<double> normalizedLandmarks = [];
-        for (var lm in hand.landmarks) {
-          normalizedLandmarks.addAll([lm.x, lm.y]);
-        }
+    if (result.label.startsWith("ERR:")) {
+      setState(() => _debugStatus = "❌ PREDICTION ERROR:\n${result.label}");
+      return;
+    }
 
-        // Pass to TFLite Recognizer Engine[cite: 13]
-        RecognitionResult? result = _phraseRecognizer.processFrame(normalizedLandmarks);
+    // If there's been no hand for a while, treat it as idle rather than
+    // scoring whatever the model guesses from a run of zero vectors.
+    if (_consecutiveEmptyFrames >= _emptyFrameResetThreshold) {
+      _phraseRecognizer.resetBuffer();
+      setState(() {
+        _currentScore = 0.0;
+        _holdProgress = 0.0;
+        _startHoldTime = null;
+        _debugStatus = "✋ Place your hand inside camera view...";
+      });
+      return;
+    }
 
-        if (result != null) {
-          if (result.label.startsWith("ERR:")) {
-            if (mounted) {
-              setState(() => _debugStatus = "❌ PREDICTION ERROR:\n${result.label}");
-            }
-            return;
-          }
+    String targetClean = widget.targetPhrase.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
+    String predictedClean = result.label.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
 
-          String targetClean = widget.targetPhrase.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
-          String predictedClean = result.label.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
+    setState(() {
+      _debugStatus = "🤖 Detected: '$predictedClean'\n🎯 Target: '$targetClean' (${result.confidence.toStringAsFixed(1)}%)";
+    });
 
-          if (mounted) {
-            setState(() {
-              _debugStatus = "🤖 Detected: '$predictedClean'\n🎯 Target: '$targetClean' (${result.confidence.toStringAsFixed(1)}%)";
-            });
-          }
-
-          if (predictedClean == targetClean) {
-            _updateGameLogic(result.confidence);
-          } else {
-            _updateGameLogic(0.0);
-          }
-        }
-      } else {
-        _phraseRecognizer.resetBuffer();
-        if (mounted) {
-          setState(() {
-            _currentScore = 0.0;
-            _holdProgress = 0.0;
-            _startHoldTime = null;
-            _debugStatus = "✋ Place your hand inside camera view...";
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _debugStatus = "❌ FRAME STREAM ERROR: $e");
-      }
-    } finally {
-      _isDetecting = false;
+    if (predictedClean == targetClean) {
+      _updateGameLogic(result.confidence);
+    } else {
+      _updateGameLogic(0.0);
     }
   }
 
@@ -293,7 +327,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   void dispose() {
     _controller?.stopImageStream();
     _controller?.dispose();
+    _landmarkSubscription?.cancel();
     _landmarkerPlugin?.dispose();
+    _phraseRecognizer.dispose();
     super.dispose();
   }
 
