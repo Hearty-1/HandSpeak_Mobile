@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/services.dart'; // Required for SystemChrome
+import 'package:flutter/services.dart'; 
+import 'package:provider/provider.dart';
+import '/providers/theme_provider.dart'; 
 import 'create_account.dart';
 import '../home/home.dart';
 import '../services/auth_service.dart';
@@ -39,19 +41,24 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
 
     var userProfile = await _authService.signInWithStatusCheck(email, password);
 
-    setState(() => _isLoading = false);
-
     if (userProfile != null) {
       String status = userProfile['status'] ?? 'pending';
       String displayName = userProfile['name'] ?? email.split('@')[0];
 
       if (status == 'approved') {
         if (!mounted) return;
+        
+        // ADDED: Refresh the theme for the newly logged-in user!
+        await Provider.of<ThemeProvider>(context, listen: false).loadThemeFromPrefs();
+
+        // Now that the theme is loaded, navigate to the Home screen
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => SnedInterafce1(userName: displayName)),
         );
       } else {
+        setState(() => _isLoading = false); // Stop loading if pending
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -61,6 +68,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
         );
       }
     } else {
+      setState(() => _isLoading = false); // Stop loading if failed
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

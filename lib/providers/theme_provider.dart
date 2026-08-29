@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum AppThemeMode { 
   defaultWarm, galaxy, enchantedForest, ocean, cloudy 
@@ -102,19 +104,39 @@ class ThemeProvider extends ChangeNotifier {
       case AppThemeMode.ocean: return "Deep Ocean";
       case AppThemeMode.cloudy: return "Cloudy Sky";
       case AppThemeMode.defaultWarm:
-      default: return "Default Theme";
+      return "Default Theme";
     }
   }
 
   ThemeProvider() {
-    _loadThemeFromPrefs();
+    loadThemeFromPrefs();
   }
 
   void setTheme(AppThemeMode mode) async {
+    // 1. Update locally for immediate UI change
     _themeMode = mode;
     notifyListeners();
+    
+    // 2. Save locally to the device
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString(themePrefKey, mode.name);
+
+    // 3. Save to Firestore (Makes it per-account)
+    User? currentUser = FirebaseAuth.instance.currentUser;
+    
+    if (currentUser != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .update({
+          'themePreference': mode.name, 
+        });
+        debugPrint("Theme successfully saved to user account in Firestore.");
+      } catch (e) {
+        debugPrint("Failed to save theme to account: $e");
+      }
+    }
   }
 
   void setThemeFromString(String name) {
@@ -138,7 +160,8 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  void _loadThemeFromPrefs() async {
+  // Changed to public and Future so the Login screen can trigger an instant refresh
+  Future<void> loadThemeFromPrefs() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? savedThemeName = prefs.getString(themePrefKey);
     if (savedThemeName != null) {
@@ -262,7 +285,7 @@ class ThemeProvider extends ChangeNotifier {
       case AppThemeMode.ocean: return oceanTheme;
       case AppThemeMode.cloudy: return cloudyTheme;
       case AppThemeMode.defaultWarm:
-      default: return defaultWarmTheme;
+      return defaultWarmTheme;
     }
   }
 

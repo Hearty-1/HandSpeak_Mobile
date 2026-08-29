@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '/providers/theme_provider.dart';
+import '/providers/theme_provider.dart'; 
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -181,7 +181,7 @@ class AuthService {
     }
   }
 
-  // Sign Out and clear device-specific theme
+  // Sign Out while preserving the theme on the login screen
   Future<void> signOut() async {
     try {
       User? user = _auth.currentUser;
@@ -196,10 +196,8 @@ class AuthService {
       // Perform Firebase Sign Out
       await _auth.signOut();
 
-      // Clear the local theme preference so the device returns to system default
-      // This ensures the next person using this device doesn't inherit the previous user's account theme
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.remove(ThemeProvider.themePrefKey);
+      // Note: We intentionally do NOT clear SharedPreferences here 
+      // so the theme persists on the device after signing out.
 
     } catch (e) {
       debugPrint("Sign Out Error: $e");
