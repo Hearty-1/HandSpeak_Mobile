@@ -1,7 +1,35 @@
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'phrase_tutorial_detail.dart';
+
+// --- DATA MODEL ---
+class PhraseLesson {
+  final String id;
+  final String title;
+  final String imageUrl;
+  final int order;
+  final bool isLocked;
+
+  PhraseLesson({
+    required this.id,
+    required this.title,
+    required this.imageUrl,
+    required this.order,
+    this.isLocked = false,
+  });
+
+  factory PhraseLesson.fromJson(Map<String, dynamic> json, String docId) {
+    return PhraseLesson(
+      id: docId,
+      title: json['title'] ?? json['label'] ?? 'Unknown Phrase',
+      imageUrl: json['image_url'] ?? json['imagePath'] ?? '',
+      order: json['order'] ?? 0,
+      isLocked: json['status'] == 'locked',
+    );
+  }
+}
 
 class PhraseTutorialInterface extends StatefulWidget {
   const PhraseTutorialInterface({super.key});
@@ -11,40 +39,87 @@ class PhraseTutorialInterface extends StatefulWidget {
 }
 
 class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
-  final List<Map<String, String>> lessons = [
-    {'title': 'GoodAfternoon', 'status': 'completed'},
-    {'title': 'GoodEvening', 'status': 'completed'},
-    {'title': 'GoodMorning', 'status': 'completed'},
-    {'title': 'Hello', 'status': 'completed'},
-    {'title': 'HowAreYou', 'status': 'completed'},
-    {'title': 'ImFine', 'status': 'completed'},
-    {'title': 'NiceToMeetYou', 'status': 'completed'},
-    {'title': 'SeeYouTom', 'status': 'completed'},
-    {'title': 'ThankYou', 'status': 'completed'},
-    {'title': 'You\'reWelcome', 'status': 'completed'}
-  ];
+  List<PhraseLesson> _allLessons = [];
+  List<PhraseLesson> _filteredLessons = [];
+  bool _isLoading = true;
 
-  List<Map<String, String>> filteredLessons = [];
+  // --- HYBRID FALLBACK DATA ---
+  // If Firestore fails or is empty, the app will load these original local assets.
+  final List<PhraseLesson> _localLessons = [
+    PhraseLesson(id: 'local_1', title: 'GoodAfternoon', imageUrl: 'assets/pictures/good_afternoon.jpg', order: 1),
+    PhraseLesson(id: 'local_2', title: 'GoodEvening', imageUrl: 'assets/pictures/good_evening.jpg', order: 2),
+    PhraseLesson(id: 'local_3', title: 'GoodMorning', imageUrl: 'assets/pictures/good_morning.jpg', order: 3),
+    PhraseLesson(id: 'local_4', title: 'Hello', imageUrl: 'assets/pictures/hello.jpg', order: 4),
+    PhraseLesson(id: 'local_5', title: 'HowAreYou', imageUrl: 'assets/pictures/how_are_you.jpg', order: 5),
+    PhraseLesson(id: 'local_6', title: 'ImFine', imageUrl: 'assets/pictures/im_fine.jpg', order: 6),
+    PhraseLesson(id: 'local_7', title: 'NiceToMeetYou', imageUrl: 'assets/pictures/nice_to_meet_you.jpg', order: 7),
+    PhraseLesson(id: 'local_8', title: 'SeeYouTom', imageUrl: 'assets/pictures/see_you_tom.jpg', order: 8),
+    PhraseLesson(id: 'local_9', title: 'ThankYou', imageUrl: 'assets/pictures/thank_you.jpg', order: 9),
+    PhraseLesson(id: 'local_10', title: 'You\'reWelcome', imageUrl: 'assets/pictures/youre_welcome.jpg', order: 10),
+  ];
 
   @override
   void initState() {
     super.initState();
-    filteredLessons = lessons;
+    _fetchLessons();
+  }
+
+  Future<void> _fetchLessons() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('tutorials')
+          .where('category', isEqualTo: 'phrase')
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        List<PhraseLesson> lessons = snapshot.docs
+            .map((doc) => PhraseLesson.fromJson(doc.data(), doc.id))
+            .toList();
+
+        // Sort by order so they appear sequentially
+        lessons.sort((a, b) => a.order.compareTo(b.order));
+
+        if (mounted) {
+          setState(() {
+            _allLessons = lessons;
+            _filteredLessons = lessons;
+            _isLoading = false;
+          });
+        }
+      } else {
+        // If the collection exists but is empty, fallback to local
+        _loadLocalFallback();
+      }
+    } catch (e) {
+      // If there's no internet or a Firestore error, fallback to local
+      debugPrint("Firestore fetch failed: $e. Loading local fallback.");
+      _loadLocalFallback();
+    }
+  }
+
+  void _loadLocalFallback() {
+    if (mounted) {
+      setState(() {
+        _allLessons = _localLessons;
+        _filteredLessons = _localLessons;
+        _isLoading = false;
+      });
+    }
   }
 
   void _runFilter(String enteredKeyword) {
-    List<Map<String, String>> results = [];
+    List<PhraseLesson> results = [];
     if (enteredKeyword.isEmpty) {
-      results = lessons;
+      results = _allLessons;
     } else {
-      results = lessons
+      results = _allLessons
           .where((lesson) =>
-              lesson['title']!.toLowerCase().contains(enteredKeyword.toLowerCase()))
+              lesson.title.toLowerCase().contains(enteredKeyword.toLowerCase()))
           .toList();
     }
 
     setState(() {
-      filteredLessons = results;
+      _filteredLessons = results;
     });
   }
 
@@ -96,6 +171,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
       
       body: Stack(
         children: [
+          // Background Decorations
           Positioned(
             top: -50, left: -50,
             child: Container(
@@ -132,13 +208,6 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                           color: theme.cardColor.withOpacity(0.75),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: theme.dividerColor.withOpacity(0.15), width: 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(isDark ? 0.2 : 0.03), 
-                              blurRadius: 8, 
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
                         ),
                         child: TextField(
                           onChanged: (value) => _runFilter(value), 
@@ -157,52 +226,64 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                 ),
                 
                 Expanded(
-                  child: filteredLessons.isEmpty
-                      ? Center(
-                          child: Text(
-                            "No phrases found.", 
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
-                          ),
-                        )
-                      : ListView.builder(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          itemCount: filteredLessons.length, 
-                          itemBuilder: (context, index) {
-                            final lesson = filteredLessons[index];
-                            final bool isLocked = lesson['status'] == 'locked';
-                            
-                            return PhraseCard(
-                              title: lesson['title']!,
-                              isLocked: isLocked,
-                              onTap: () {
-                                if (!isLocked) {
-                                  final originalIndex = lessons.indexOf(lesson);
-                                  
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => PhraseTutorialDetail(initialIndex: originalIndex),
-                                    ),
-                                  );
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text("Complete previous phrases to unlock ${lesson['title']}!"),
-                                      backgroundColor: Colors.redAccent,
-                                    ),
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
+                  child: _buildBodyContent(textColor),
                 ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBodyContent(Color textColor) {
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator(color: Theme.of(context).primaryColor));
+    }
+
+    if (_filteredLessons.isEmpty) {
+      return Center(
+        child: Text(
+          "No phrases found.", 
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      itemCount: _filteredLessons.length, 
+      itemBuilder: (context, index) {
+        final lesson = _filteredLessons[index];
+        
+        return PhraseCard(
+          title: lesson.title,
+          isLocked: lesson.isLocked,
+          onTap: () {
+            if (!lesson.isLocked) {
+              final originalIndex = _allLessons.indexWhere((l) => l.id == lesson.id);
+              
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PhraseTutorialDetail(
+                    phraseList: _allLessons, 
+                    initialIndex: originalIndex == -1 ? 0 : originalIndex,
+                  ),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Complete previous phrases to unlock ${lesson.title}!"),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+          },
+        );
+      },
     );
   }
 }
@@ -244,13 +325,6 @@ class PhraseCard extends StatelessWidget {
                     color: isLocked ? theme.dividerColor.withOpacity(0.2) : theme.primaryColor.withOpacity(0.5), 
                     width: 1.5,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.25 : 0.04), 
-                      blurRadius: 10, 
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

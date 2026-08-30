@@ -12,7 +12,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
 import '/providers/sound_provider.dart';
-import 'recognizer.dart'; 
+import '/module/alphabet/recognizer.dart'; 
 
 // ==========================================
 // 1. DATA MODELS
@@ -31,7 +31,7 @@ class GivenFslItem {
   factory GivenFslItem.fromJson(Map<String, dynamic> json) {
     return GivenFslItem(
       position: json['position'] ?? 0,
-      letter: json['letter'] ?? '',
+      letter: (json['letter'] ?? json['number'] ?? '').toString(),
       image: json['image'] ?? json['image_url'] ?? '',
     );
   }
@@ -63,7 +63,7 @@ class QuizQuestion {
       imageUrl: json['image_url'] ?? json['main_image'] ?? '',
       questionText: json['question_text'] ?? '',
       options: List<String>.from(json['options'] ?? []),
-      correctAnswer: json['correct_answer'] ?? '',
+      correctAnswer: (json['correct_answer'] ?? '').toString(),
       givenFsl: (json['given_fsl'] as List<dynamic>?)
               ?.map((e) => GivenFslItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -72,11 +72,13 @@ class QuizQuestion {
   }
 }
 
-class QuizApiService {
+// ==========================================
+// 2. API SERVICE 
+// ==========================================
+class AlphabetQuizApiService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   Future<List<QuizQuestion>> fetchEasyQuestions(String levelId, String typeFilter) async {
-    // Query Firestore strictly for questions belonging to this specific level ID
     final querySnapshot = await _db
         .collection('activity_questions')
         .where('category', isEqualTo: 'alphabet')
@@ -94,17 +96,13 @@ class QuizApiService {
       levelQuestions.add(QuizQuestion.fromJson(data));
     }
 
-    // Try filtering by specific type filter first
     List<QuizQuestion> matchingQuestions = levelQuestions.where((q) => q.type == typeFilter).toList();
 
-    // If filtering by type excludes remaining questions in the level, fall back to all level questions
-    List<QuizQuestion> finalQuestions = (matchingQuestions.length >= levelQuestions.length && matchingQuestions.isNotEmpty)
+    List<QuizQuestion> finalQuestions = matchingQuestions.isNotEmpty
         ? matchingQuestions
         : levelQuestions;
 
     finalQuestions.shuffle();
-
-    // Enforce 5 questions maximum per session
     return finalQuestions.take(5).toList();
   }
 }
@@ -178,13 +176,13 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
   }
 
   LinearGradient _getDialogGradient(Color bgColor) {
-    if (bgColor.value == 0xFF0F0C29) {
+    if (bgColor.value == 0xFF0F0C29) { 
       return const LinearGradient(colors: [Color(0xFF240B36), Color(0xFFC31432)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFF132A13) {
+    } else if (bgColor.value == 0xFF132A13) { 
       return const LinearGradient(colors: [Color(0xFF134E5E), Color(0xFF71B280)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFF001B3A) {
+    } else if (bgColor.value == 0xFF001B3A) { 
       return const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFFE0EAFC) {
+    } else if (bgColor.value == 0xFFE0EAFC) { 
       return const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], begin: Alignment.topLeft, end: Alignment.bottomRight);
     }
     return const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
@@ -285,10 +283,10 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
 // ==========================================
 class EasyActMc extends StatefulWidget {
   final String levelId;
-  final String questionType;
+  final String questionType; 
 
   const EasyActMc({
-    super.key,
+    super.key, 
     required this.levelId,
     required this.questionType,
   });
@@ -298,7 +296,7 @@ class EasyActMc extends StatefulWidget {
 }
 
 class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMixin {
-  final QuizApiService _apiService = QuizApiService();
+  final AlphabetQuizApiService _apiService = AlphabetQuizApiService();
   
   List<QuizQuestion> _questions = [];
   bool _isLoading = true;
@@ -312,19 +310,26 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   int _hearts = 5;
   bool _isCorrect = false;
 
-  // Typing Game State Variables
+  // Typing Game State
   List<String?> _userAnswerSlots = [];
   List<int?> _selectedOptionIndices = [];
   List<String> _shuffledOptions = [];
 
-  // ---------------------------------------------------------
-  // CAMERA & ML PIPELINE VARIABLES
-  // ---------------------------------------------------------
+  // Sequence Order State
+  List<String> _currentSequence = [];
+  List<String> _availableSequenceOptions = [];
+
+  // Matching State
+  Map<String, String?> _matchingAnswers = {}; 
+  String? _selectedLeftMatch;
+
+  // Camera State
   CameraController? _cameraController;
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _handSub;
 
   bool _isCameraInitialized = false;
+  bool _isProcessingFrame = false;
 
   static const double _requiredHoldSeconds = 1.0;
   DateTime? _staticHoldStartTime;
@@ -334,6 +339,13 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   final List<Float32List> _recordingFrames = [];
   static const Duration _dropoutGracePeriod = Duration(milliseconds: 300);
   DateTime? _lastHandsSeenTime;
+
+  // Helper to determine if the current level should initialize the camera
+  bool get _isCameraLevel {
+    if (widget.questionType == 'camera_spell') return true;
+    if (widget.levelId.contains('hard') && widget.levelId != 'alphabet_hard_1') return true;
+    return false;
+  }
 
   static const List<String> _dynamicLetters = ['J', 'Z'];
   bool get _isDynamicLetter {
@@ -348,7 +360,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
   final double successThreshold = 70.0; 
-  // ---------------------------------------------------------
 
   late AnimationController _feedbackAnimController;
   late Animation<double> _scaleAnimation;
@@ -359,7 +370,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     super.initState();
     _loadQuestions();
 
-    if (widget.questionType == 'camera_spell' || widget.levelId.contains('hard')) {
+    if (_isCameraLevel) {
       _initializeCameraPipeline();
     }
 
@@ -391,6 +402,59 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _dynamicSignRecognizer?.dispose();
     _feedbackAnimController.dispose();
     super.dispose();
+  }
+
+  // ==========================================
+  // SAFE IMAGE & BASE64 HELPER LOGIC
+  // ==========================================
+  Uint8List? _safeBase64Decode(String input) {
+    try {
+      String cleaned = input.contains(',') ? input.split(',').last : input;
+      cleaned = cleaned
+          .replaceAll(RegExp(r'\s+'), '')
+          .replaceAll('-', '+')
+          .replaceAll('_', '/');
+
+      cleaned = cleaned.replaceAll(RegExp(r'[^A-Za-z0-9+/=].*$'), '');
+      cleaned = base64.normalize(cleaned);
+
+      return base64Decode(cleaned);
+    } catch (e) {
+      debugPrint("Base64 decoding exception caught: $e");
+      return null;
+    }
+  }
+
+  Widget _buildImageWidget(String pathOrUrl, {BoxFit fit = BoxFit.contain, double size = 24}) {
+    if (pathOrUrl.isEmpty) {
+      return Icon(Icons.image_not_supported, size: size, color: Colors.grey);
+    }
+
+    if (pathOrUrl.startsWith('data:image')) {
+      final bytes = _safeBase64Decode(pathOrUrl);
+      if (bytes != null) {
+        return Image.memory(
+          bytes,
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: size, color: Colors.grey),
+        );
+      }
+      return Icon(Icons.broken_image, size: size, color: Colors.grey);
+    }
+
+    if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
+      return Image.network(
+        pathOrUrl,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) => Icon(Icons.image_not_supported, size: size, color: Colors.grey),
+      );
+    }
+
+    return Image.asset(
+      pathOrUrl,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) => Icon(Icons.image_not_supported, size: size, color: Colors.grey),
+    );
   }
 
   // ==========================================
@@ -428,7 +492,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         await _dynamicSignRecognizer!.initialize();
         _dynamicModelReady = true;
       } catch (e) {
-        debugPrint("J/Z dynamic-sign model failed to load: $e");
+        debugPrint("Dynamic-sign model failed to load: $e");
         _dynamicModelReady = false;
       }
 
@@ -457,12 +521,16 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   void _processCameraFrame(CameraImage image) {
-    if (!_isCameraInitialized || _landmarkerPlugin == null || _isAnswered) return;
+    if (!_isCameraInitialized || _landmarkerPlugin == null || _isAnswered || _isProcessingFrame) return;
+    _isProcessingFrame = true;
+
     try {
       final int sensorOrientation = _cameraController!.description.sensorOrientation;
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Inference Error: $e");
+    } finally {
+      _isProcessingFrame = false;
     }
   }
 
@@ -574,104 +642,55 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
-    final String letter = _questions[_currentIndex].correctAnswer.toUpperCase();
 
-    if (['G', 'H', 'K', 'P', 'Q'].contains(letter)) {
-      final Landmark wrist = liveLms[0];
-      final Landmark mBase = liveLms[9]; 
-      final Landmark indexTip = liveLms[8];
+    final Landmark wrist = liveLms[0];
+    final Landmark mBase = liveLms[9]; 
+    
+    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2) + math.pow(wrist.z - mBase.z, 2));
+    if (dist == 0) dist = 1.0;
+    
+    double bestScore = 0.0;
+    final orientationMatrices = [
+      [1.0, 0.0, 0.0, 1.0, 1.0],
+      [0.0, -1.0, 1.0, 0.0, 1.0],
+      [-1.0, 0.0, 0.0, -1.0, 1.0],
+      [0.0, 1.0, -1.0, 0.0, 1.0],
+      [1.0, 0.0, 0.0, 1.0, -1.0],
+      [0.0, -1.0, 1.0, 0.0, -1.0],
+      [-1.0, 0.0, 0.0, -1.0, -1.0],
+      [0.0, 1.0, -1.0, 0.0, -1.0],
+    ];
 
-      double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2));
-      double distIndex = math.sqrt(math.pow(wrist.x - indexTip.x, 2) + math.pow(wrist.y - indexTip.y, 2));
-      dist = math.max(dist, distIndex * 0.55);
-      if (dist < 0.05) dist = 0.05; 
-      
-      double bestScore = 0.0;
-      final List<int> highPriorityLandmarks = [4, 8, 12]; 
+    for (var matrix in orientationMatrices) {
+      double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
+      double totalDifference = 0.0;
 
-      final orientationMatrices = [
-        [1.0, 0.0, 0.0, 1.0, 1.0],     
-        [0.0, -1.0, 1.0, 0.0, 1.0],    
-        [-1.0, 0.0, 0.0, -1.0, 1.0],   
-        [0.0, 1.0, -1.0, 0.0, 1.0],    
-        [1.0, 0.0, 0.0, 1.0, -1.0],    
-        [0.0, -1.0, 1.0, 0.0, -1.0],   
-        [-1.0, 0.0, 0.0, -1.0, -1.0],  
-        [0.0, 1.0, -1.0, 0.0, -1.0],   
-      ];
-
-      for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
-        if (['G', 'H', 'P', 'Q'].contains(letter) && (mIdx == 0 || mIdx == 2 || mIdx == 4 || mIdx == 6)) continue; 
-
-        var matrix = orientationMatrices[mIdx];
-        double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
-        double totalWeightedDifference = 0.0, totalWeight = 0.0;
-
-        for (int i = 0; i < 21; i++) {
-          double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
-          double dy = (liveLms[i].y - wrist.y) / dist;
-          double rx = dx * xx + dy * xy;
-          double ry = dx * yx + dy * yy;
-          double tx = (template[i]['x'] as num).toDouble();
-          double ty = (template[i]['y'] as num).toDouble();
-          double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2));
-          double weight = highPriorityLandmarks.contains(i) ? 1.5 : 1.0;
-          totalWeightedDifference += (pointDiff * weight);
-          totalWeight += weight;
-        }
-
-        double score = (100.0 - ((totalWeightedDifference / totalWeight) * 45.0)).clamp(0.0, 100.0);
-        if (score > bestScore) bestScore = score;
+      for (int i = 0; i < 21; i++) {
+        double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
+        double dy = (liveLms[i].y - wrist.y) / dist;
+        double dz = (liveLms[i].z - wrist.z) / dist;
+        double rx = dx * xx + dy * xy;
+        double ry = dx * yx + dy * yy;
+        double tx = (template[i]['x'] as num).toDouble();
+        double ty = (template[i]['y'] as num).toDouble();
+        double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
+        
+        double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2) + math.pow(dz - tz, 2));
+        totalDifference += pointDiff;
       }
-      return bestScore;
 
-    } else {
-      final Landmark wrist = liveLms[0];
-      final Landmark mBase = liveLms[9]; 
-      
-      double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2) + math.pow(wrist.z - mBase.z, 2));
-      if (dist == 0) dist = 1.0;
-      
-      double bestScore = 0.0;
-      final orientationMatrices = [
-        [1.0, 0.0, 0.0, 1.0, 1.0],
-        [0.0, -1.0, 1.0, 0.0, 1.0],
-        [-1.0, 0.0, 0.0, -1.0, 1.0],
-        [0.0, 1.0, -1.0, 0.0, 1.0],
-        [1.0, 0.0, 0.0, 1.0, -1.0],
-        [0.0, -1.0, 1.0, 0.0, -1.0],
-        [-1.0, 0.0, 0.0, -1.0, -1.0],
-        [0.0, 1.0, -1.0, 0.0, -1.0],
-      ];
-
-      for (var matrix in orientationMatrices) {
-        double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
-        double totalDifference = 0.0;
-
-        for (int i = 0; i < 21; i++) {
-          double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
-          double dy = (liveLms[i].y - wrist.y) / dist;
-          double dz = (liveLms[i].z - wrist.z) / dist;
-          double rx = dx * xx + dy * xy;
-          double ry = dx * yx + dy * yy;
-          double tx = (template[i]['x'] as num).toDouble();
-          double ty = (template[i]['y'] as num).toDouble();
-          double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
-          
-          double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2) + math.pow(dz - tz, 2));
-          totalDifference += pointDiff;
-        }
-
-        double score = (100.0 - ((totalDifference / 21.0) * 80.0)).clamp(0.0, 100.0);
-        if (score > bestScore) bestScore = score;
-      }
-      return bestScore;
+      double score = (100.0 - ((totalDifference / 21.0) * 80.0)).clamp(0.0, 100.0);
+      if (score > bestScore) bestScore = score;
     }
+    return bestScore;
   }
 
   Future<void> _loadQuestions() async {
     try {
       final questions = await _apiService.fetchEasyQuestions(widget.levelId, widget.questionType);
+      
+      if (!mounted) return; // Fix for setState after dispose
+      
       setState(() {
         _questions = questions;
         _isLoading = false;
@@ -680,6 +699,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         }
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = e.toString().replaceAll("Exception: ", "");
         _isLoading = false;
@@ -692,13 +712,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _selectedAnswer = null;
     _isAnswered = false;
 
-    if (widget.questionType == 'camera_spell' || widget.levelId.contains('hard')) {
-      _isRecordingMotion = false;
-      _staticHoldStartTime = null;
-      _currentScore = 0.0;
-      _holdProgress = 0.0;
-      _loadGestureLibrary(q.correctAnswer.toUpperCase());
-    } else if (q.type == 'typing') {
+    if (q.type == 'typing') {
       final String target = q.correctAnswer.toUpperCase();
       _userAnswerSlots = List<String?>.filled(target.length, null);
       _selectedOptionIndices = List<int?>.filled(target.length, null);
@@ -708,8 +722,23 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           _userAnswerSlots[item.position] = item.letter.toUpperCase();
         }
       }
-
       _shuffledOptions = List<String>.from(q.options)..shuffle();
+    } else if (_isCameraLevel && q.type != 'sequence_order' && q.type != 'matching_type') {
+      _isRecordingMotion = false;
+      _staticHoldStartTime = null;
+      _currentScore = 0.0;
+      _holdProgress = 0.0;
+      _loadGestureLibrary(q.correctAnswer.toUpperCase());
+    } else if (q.type == 'sequence_order') {
+      _currentSequence = [];
+      _availableSequenceOptions = List<String>.from(q.options)..shuffle();
+    } else if (q.type == 'matching_type') {
+      _matchingAnswers = {};
+      _selectedLeftMatch = null;
+      for (var opt in q.options) {
+        String leftItem = opt.contains('|||') ? opt.split('|||')[0] : opt;
+        _matchingAnswers[leftItem] = null;
+      }
     }
   }
 
@@ -718,6 +747,37 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     setState(() => _selectedAnswer = option);
   }
 
+  // Matching Logic
+  void _handleMatchingSelect(String item, bool isLeft) {
+    if (_isAnswered) return;
+    setState(() {
+      if (isLeft) {
+        _selectedLeftMatch = item;
+      } else if (_selectedLeftMatch != null) {
+        _matchingAnswers[_selectedLeftMatch!] = item;
+        _selectedLeftMatch = null;
+      }
+    });
+  }
+
+  // Sequence Logic
+  void _addToSequence(String option) {
+    if (_isAnswered) return;
+    setState(() {
+      _currentSequence.add(option);
+      _availableSequenceOptions.remove(option);
+    });
+  }
+
+  void _removeFromSequence(String option) {
+    if (_isAnswered) return;
+    setState(() {
+      _currentSequence.remove(option);
+      _availableSequenceOptions.add(option);
+    });
+  }
+
+  // Typing Logic
   void _selectTypingLetter(int optionIndex) {
     if (_isAnswered) return;
     int emptySlotIndex = _userAnswerSlots.indexOf(null);
@@ -748,12 +808,40 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     final q = _questions[_currentIndex];
     bool isCorrect = false;
 
-    if (widget.questionType == 'camera_spell' || widget.levelId.contains('hard')) {
-      isCorrect = _currentScore >= successThreshold;
-      _selectedAnswer = isCorrect ? q.correctAnswer : null; 
-    } else if (q.type == 'typing') {
+    if (q.type == 'typing') {
       final userWord = _userAnswerSlots.join('');
       isCorrect = userWord.toUpperCase() == q.correctAnswer.toUpperCase();
+    } else if (q.type == 'fill_in_the_blank') {
+      isCorrect = _selectedAnswer != null; 
+    } else if (q.type == 'sequence_order') {
+      bool sequenceMatch = true;
+      for (int i = 0; i < q.options.length; i++) {
+        if (_currentSequence[i] != q.options[i]) {
+          sequenceMatch = false;
+          break;
+        }
+      }
+      isCorrect = sequenceMatch;
+    } else if (q.type == 'matching_type') {
+      bool allMatched = true;
+      for (var opt in q.options) {
+        if (opt.contains('|||')) {
+          var parts = opt.split('|||');
+          if (_matchingAnswers[parts[0]] != parts[1]) {
+            allMatched = false;
+            break;
+          }
+        } else {
+          if (_matchingAnswers[opt] != opt) {
+            allMatched = false;
+            break;
+          }
+        }
+      }
+      isCorrect = allMatched;
+    } else if (_isCameraLevel) {
+      isCorrect = _currentScore >= successThreshold;
+      _selectedAnswer = isCorrect ? q.correctAnswer : null; 
     } else {
       isCorrect = _selectedAnswer == q.correctAnswer;
     }
@@ -866,7 +954,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
     final IconData feedbackIcon = isCorrect ? Icons.check_rounded : Icons.close_rounded;
 
-    if (bgColor == 0xFF0F0C29) {
+    if (bgColor == 0xFF0F0C29) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Cosmic Victory! 🚀" : "Asteroid Bump! ☄️",
@@ -879,7 +967,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       };
     }
     
-    if (bgColor == 0xFF132A13) {
+    if (bgColor == 0xFF132A13) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Magical Spell! 🌿" : "Lost in the Woods! 🍃",
@@ -892,7 +980,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       };
     }
 
-    if (bgColor == 0xFF001B3A) {
+    if (bgColor == 0xFF001B3A) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Splashtastic! 🌊" : "Washed Away! 🐙",
@@ -905,7 +993,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       };
     }
 
-    if (bgColor == 0xFFE0EAFC) {
+    if (bgColor == 0xFFE0EAFC) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "On Cloud Nine! ☁️" : "A Little Stormy! 🌧️",
@@ -934,7 +1022,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     if (!_isAnswered) return option == _selectedAnswer ? theme.primaryColor.withOpacity(0.2) : theme.cardColor;
     if (option == correctAnswer) return const Color(0xFF58CC02);
     if (option == _selectedAnswer && option != correctAnswer) return const Color(0xFFEA2B2B);
-    return theme.cardColor; 
+    return theme.cardColor;
   }
 
   Color _getButtonTextColor(String option, String correctAnswer, ThemeData theme) {
@@ -951,10 +1039,15 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   bool get _isCheckButtonEnabled {
-    if (widget.questionType == 'camera_spell' || widget.levelId.contains('hard')) return true; 
     final q = _questions[_currentIndex];
+    
     if (q.type == 'typing') return !_userAnswerSlots.contains(null);
-    return _selectedAnswer != null;
+    if (q.type == 'sequence_order') return _currentSequence.length == q.options.length;
+    if (q.type == 'matching_type') return !_matchingAnswers.values.contains(null);
+    
+    if (_isCameraLevel) return true; 
+
+    return _selectedAnswer != null; 
   }
 
   @override
@@ -1070,13 +1163,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Image.asset(
-                          currentQuestion.imageUrl,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => const Center(
-                            child: Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
-                          ),
-                        ),
+                        child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.contain, size: 40),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -1089,12 +1176,21 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 24),
 
-                  if (widget.questionType == 'camera_spell' || widget.levelId.contains('hard'))
-                    _buildCameraLayout(currentQuestion, theme)
-                  else if (currentQuestion.type == 'typing')
+                  // =====================================
+                  // ROUTING LOGIC FOR QUESTION TYPES
+                  // =====================================
+                  if (currentQuestion.type == 'typing')
                     _buildTypingLayout(currentQuestion, theme)
+                  else if (currentQuestion.type == 'fill_in_the_blank')
+                    _buildFillInBlankLayout(currentQuestion, theme)
+                  else if (currentQuestion.type == 'sequence_order')
+                    _buildSequenceLayout(currentQuestion, theme)
+                  else if (currentQuestion.type == 'matching_type')
+                    _buildMatchingLayout(currentQuestion, theme)
+                  else if (_isCameraLevel)
+                    _buildCameraLayout(currentQuestion, theme)
                   else
-                    _buildMultipleChoiceLayout(currentQuestion, theme),
+                    _buildMultipleChoiceLayout(currentQuestion, theme), 
                 ],
               ),
             ),
@@ -1158,7 +1254,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     const SizedBox(height: 18),
                   ],
 
-                  if (!_isAnswered && (widget.questionType == 'camera_spell' || widget.levelId.contains('hard'))) ...[
+                  if (!_isAnswered && currentQuestion.type != 'typing' && _isCameraLevel) ...[
                     Container(
                       width: double.infinity,
                       height: 54,
@@ -1221,6 +1317,197 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       ),
     );
   }
+
+  // =====================================
+  // NEW QUESTION TYPE LAYOUTS
+  // =====================================
+
+  Widget _buildFillInBlankLayout(QuizQuestion currentQuestion, ThemeData theme) {
+    // Replace the first underscore visually with the selected answer
+    String displayedText = currentQuestion.correctAnswer;
+    if (_selectedAnswer != null && displayedText.contains('_')) {
+      displayedText = displayedText.replaceFirst('_', _selectedAnswer!);
+    }
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: Text(
+            displayedText,
+            style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 4, color: theme.colorScheme.onSurface),
+          ),
+        ),
+        const SizedBox(height: 32),
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          alignment: WrapAlignment.center,
+          children: currentQuestion.options.map((option) {
+            bool isSelected = _selectedAnswer == option;
+            return GestureDetector(
+              onTap: () => _handleOptionSelected(option),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  color: isSelected ? theme.primaryColor.withOpacity(0.3) : theme.cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isSelected ? theme.primaryColor : theme.dividerColor,
+                    width: 2,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+              ),
+            );
+          }).toList(),
+        )
+      ],
+    );
+  }
+
+  Widget _buildSequenceLayout(QuizQuestion currentQuestion, ThemeData theme) {
+    return Column(
+      children: [
+        const Text("Tap words below to build the correct sequence:", style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 16),
+        
+        // Sequence Building Area
+        Container(
+          width: double.infinity,
+          height: 60,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _currentSequence.map((option) {
+              return GestureDetector(
+                onTap: () => _removeFromSequence(option),
+                child: Chip(
+                  label: Text(option, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  backgroundColor: theme.primaryColor.withOpacity(0.2),
+                  side: BorderSide(color: theme.primaryColor),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Available Options Area
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: _availableSequenceOptions.map((option) {
+            return GestureDetector(
+              onTap: () => _addToSequence(option),
+              child: Chip(
+                label: Text(option, style: const TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: theme.cardColor,
+                side: BorderSide(color: theme.dividerColor),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMatchingLayout(QuizQuestion currentQuestion, ThemeData theme) {
+    List<String> leftItems = [];
+    List<String> rightItems = [];
+
+    // Parse items (support for "A|||A" structure or standard strings)
+    for (var opt in currentQuestion.options) {
+      if (opt.contains('|||')) {
+        var parts = opt.split('|||');
+        leftItems.add(parts[0]);
+        rightItems.add(parts[1]);
+      } else {
+        leftItems.add(opt);
+        rightItems.add(opt);
+      }
+    }
+    
+    rightItems.shuffle(); // Shuffle the right side for the game
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // LEFT COLUMN
+        Expanded(
+          child: Column(
+            children: leftItems.map((item) {
+              bool isSelected = _selectedLeftMatch == item;
+              bool isMatched = _matchingAnswers[item] != null;
+              
+              return GestureDetector(
+                onTap: isMatched ? null : () => _handleMatchingSelect(item, true),
+                child: Container(
+                  height: 80,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: isMatched ? Colors.green.withOpacity(0.2) : (isSelected ? theme.primaryColor.withOpacity(0.3) : theme.cardColor),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.dividerColor), width: 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: item.startsWith('data:image') 
+                      ? _buildImageWidget(item, fit: BoxFit.contain, size: 40)
+                      : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(width: 16),
+        // RIGHT COLUMN
+        Expanded(
+          child: Column(
+            children: rightItems.map((item) {
+              bool isMatched = _matchingAnswers.containsValue(item);
+              
+              return GestureDetector(
+                onTap: isMatched ? null : () => _handleMatchingSelect(item, false),
+                child: Container(
+                  height: 80,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: isMatched ? Colors.green.withOpacity(0.2) : theme.cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isMatched ? Colors.green : theme.dividerColor, width: 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: item.startsWith('data:image') 
+                      ? _buildImageWidget(item, fit: BoxFit.contain, size: 40)
+                      : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                ),
+              );
+            }).toList(),
+          ),
+        )
+      ],
+    );
+  }
+
+  // =====================================
+  // PREVIOUS LAYOUTS
+  // =====================================
 
   Widget _buildCameraLayout(QuizQuestion currentQuestion, ThemeData theme) {
     bool isPassing = _currentScore >= successThreshold;
@@ -1320,8 +1607,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   Widget _buildMultipleChoiceLayout(QuizQuestion currentQuestion, ThemeData theme) {
     final isImageOption = currentQuestion.options.isNotEmpty && 
-                          (currentQuestion.options[0].contains('.png') || 
-                           currentQuestion.options[0].contains('.jpg'));
+                          (currentQuestion.options[0].startsWith('data:image') ||
+                           currentQuestion.options[0].contains('.png') || 
+                           currentQuestion.options[0].contains('.jpg') ||
+                           currentQuestion.options[0].startsWith('http'));
 
     return GridView.count(
       shrinkWrap: true,
@@ -1344,11 +1633,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
             child: isImageOption
                 ? Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: Image.asset(
-                      option,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Text(option, style: TextStyle(fontSize: 14, color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme))),
-                    ),
+                    child: _buildImageWidget(option, fit: BoxFit.contain, size: 24),
                   )
                 : Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme))),
           ),
@@ -1360,13 +1645,15 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   Widget _buildTypingLayout(QuizQuestion currentQuestion, ThemeData theme) {
     return Column(
       children: [
+        // 1. THE ANSWER SLOTS (Where the user's typed letters appear)
         Wrap(
           spacing: 8,
           runSpacing: 12,
           alignment: WrapAlignment.center,
           children: List.generate(_userAnswerSlots.length, (index) {
             final String? char = _userAnswerSlots[index];
-            final bool isGivenFixed = currentQuestion.givenFsl.any((item) => item.position == index);
+            final givenMatch = currentQuestion.givenFsl.where((item) => item.position == index);
+            final GivenFslItem? givenItem = givenMatch.isNotEmpty ? givenMatch.first : null;
 
             return GestureDetector(
               onTap: () => _removeTypingLetter(index),
@@ -1374,19 +1661,17 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                 width: 52,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: char != null ? (isGivenFixed ? theme.primaryColor.withOpacity(0.08) : theme.primaryColor.withOpacity(0.18)) : theme.cardColor,
+                  color: char != null ? (givenItem != null ? theme.primaryColor.withOpacity(0.08) : theme.primaryColor.withOpacity(0.18)) : theme.cardColor,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: char != null ? theme.primaryColor : theme.dividerColor, width: 2),
                 ),
                 alignment: Alignment.center,
-                child: isGivenFixed && char != null
+                child: givenItem != null && char != null
                     ? Padding(
                         padding: const EdgeInsets.all(4.0),
-                        child: Image.asset(
-                          'assets/pictures/${char.toUpperCase()}.jpg',
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => Text(char, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-                        ),
+                        child: givenItem.image.isNotEmpty
+                            ? _buildImageWidget(givenItem.image, fit: BoxFit.contain, size: 22)
+                            : Text(char, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                       )
                     : Text(char ?? '', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
               ),
@@ -1394,13 +1679,15 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           }),
         ),
         const SizedBox(height: 32),
+        
+        // 2. THE FSL KEYBOARD (The options at the bottom)
         Wrap(
           spacing: 8,
           runSpacing: 8,
           alignment: WrapAlignment.center,
           children: List.generate(_shuffledOptions.length, (index) {
             final bool isUsed = _selectedOptionIndices.contains(index);
-            final String letter = _shuffledOptions[index].toUpperCase();
+            final String optionValue = _shuffledOptions[index];
 
             return GestureDetector(
               onTap: isUsed ? null : () => _selectTypingLetter(index),
@@ -1416,12 +1703,12 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                 child: Opacity(
                   opacity: isUsed ? 0.3 : 1.0,
                   child: Padding(
-                    padding: const EdgeInsets.all(4.0), 
-                    child: Image.asset(
-                      'assets/pictures/$letter.jpg', 
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Center(child: Text(letter, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface))),
-                    ),
+                    padding: const EdgeInsets.all(6.0), 
+                    // ---> FORCE FSL PICTURES HERE <---
+                    child: optionValue.startsWith('data:image') || optionValue.contains('/') || optionValue.contains('.')
+                        ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24)
+                        // If it's a plain letter like "A", load its local FSL image
+                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.contain, size: 30),
                   ),
                 ),
               ),
@@ -1431,4 +1718,4 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       ],
     );
   }
-}
+  }

@@ -1,39 +1,27 @@
 import 'dart:ui'; 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'phrase_tutorial_practice.dart'; 
-
-class PhraseSign {
-  final String label;
-  final String imagePath;
-  const PhraseSign({required this.label, required this.imagePath});
-}
+import 'phrase_tutorial_interface.dart'; // Import the model
 
 class PhraseTutorialDetail extends StatefulWidget {
+  final List<PhraseLesson> phraseList;
   final int initialIndex; 
   
-  const PhraseTutorialDetail({super.key, this.initialIndex = 0});
+  const PhraseTutorialDetail({
+    super.key, 
+    required this.phraseList, 
+    this.initialIndex = 0,
+  });
 
   @override
   _PhraseTutorialDetailState createState() => _PhraseTutorialDetailState();
 }
 
 class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
-  final List<PhraseSign> _phraseList = const [
-    PhraseSign(label: 'GoodAfternoon', imagePath: 'assets/pictures/good_afternoon.jpg'),
-    PhraseSign(label: 'GoodEvening', imagePath: 'assets/pictures/good_evening.jpg'),
-    PhraseSign(label: 'GoodMorning', imagePath: 'assets/pictures/good_morning.jpg'),
-    PhraseSign(label: 'Hello', imagePath: 'assets/pictures/hello.jpg'),
-    PhraseSign(label: 'HowAreYou', imagePath: 'assets/pictures/how_are_you.jpg'),
-    PhraseSign(label: 'ImFine', imagePath: 'assets/pictures/im_fine.jpg'),
-    PhraseSign(label: 'NiceToMeetYou', imagePath: 'assets/pictures/nice_to_meet_you.jpg'),
-    PhraseSign(label: 'SeeYouTom', imagePath: 'assets/pictures/see_you_tom.jpg'),
-    PhraseSign(label: 'ThankYou', imagePath: 'assets/pictures/thank_you.jpg'),
-    PhraseSign(label: 'You\'reWelcome', imagePath: 'assets/pictures/youre_welcome.jpg'),
-  ];
-
   int _currentIndex = 0;
   final int _currentStars = 3; 
 
@@ -44,7 +32,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
   }
 
   void _goToNext() {
-    if (_currentIndex < _phraseList.length - 1) {
+    if (_currentIndex < widget.phraseList.length - 1) {
       if (_currentStars >= 3) {
         setState(() {
           _currentIndex++;
@@ -74,19 +62,54 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
     return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
   }
 
+  // --- SAFE IMAGE HANDLER ---
+  Widget _buildImageWidget(String pathOrUrl, {BoxFit fit = BoxFit.cover}) {
+    if (pathOrUrl.isEmpty) {
+      return const Icon(Icons.image_not_supported, size: 50, color: Colors.grey);
+    }
+
+    if (pathOrUrl.startsWith('data:image')) {
+      try {
+        String cleaned = pathOrUrl.contains(',') ? pathOrUrl.split(',').last : pathOrUrl;
+        cleaned = cleaned.replaceAll(RegExp(r'\s+'), '');
+        return Image.memory(base64Decode(cleaned), fit: fit);
+      } catch (e) {
+        return const Icon(Icons.broken_image, size: 50, color: Colors.grey);
+      }
+    }
+
+    if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
+      return Image.network(
+        pathOrUrl,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+      );
+    }
+
+    return Image.asset(
+      pathOrUrl,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.phraseList.isEmpty) {
+      return const Scaffold(body: Center(child: Text("No data available.")));
+    }
+
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final isDark = theme.brightness == Brightness.dark;
 
-    final currentSign = _phraseList[_currentIndex];
+    final currentSign = widget.phraseList[_currentIndex];
     
     const double baseWidth = 393;
     const double baseHeight = 693; 
     const double maxProgressWidth = 295.0;
     
-    double progressPercentage = (_currentIndex + 1) / _phraseList.length;
+    double progressPercentage = (_currentIndex + 1) / widget.phraseList.length;
 
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
@@ -213,7 +236,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                             left: 0, right: 0, top: 20 * scale,
                             child: Center(
                               child: Text(
-                                currentSign.label,
+                                currentSign.title,
                                 style: TextStyle(
                                   color: textColor, fontSize: 42 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.0
                                 ),
@@ -225,19 +248,19 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                             left: 47 * scale, top: 105 * scale,
                             child: Container(
                               width: 299 * scale, height: 276 * scale,
-                              decoration: ShapeDecoration(
-                                image: DecorationImage(
-                                  image: AssetImage(currentSign.imagePath), 
-                                  fit: BoxFit.cover
-                                ),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16 * scale)),
-                                shadows: [
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                boxShadow: [
                                   BoxShadow(
                                     color: Colors.black.withOpacity(isDark ? 0.3 : 0.06), 
                                     blurRadius: 15, 
                                     offset: const Offset(0, 8),
                                   ),
                                 ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                child: _buildImageWidget(currentSign.imageUrl), // Swapped AssetImage for safe loader
                               ),
                             ),
                           ),
@@ -315,7 +338,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                                     context, 
                                     MaterialPageRoute(
                                       builder: (context) => PhraseTutorialPractice(
-                                        targetPhrase: currentSign.label,
+                                        targetPhrase: currentSign.title,
                                       ),
                                     ),
                                   );

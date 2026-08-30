@@ -1,3 +1,4 @@
+import 'dart:convert'; // Required to decode Base64 images
 import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,49 +8,27 @@ import 'tutorial_practice.dart';
 
 class TutorialSign {
   final String label;
-  final String imagePath;
-  const TutorialSign({required this.label, required this.imagePath});
+  final String gestureKey;
+  final String imageUrl;
+  const TutorialSign({required this.label, required this.gestureKey, required this.imageUrl});
 }
 
 class TutorialInterface3 extends StatefulWidget {
   final int initialIndex; 
+  final List<Map<String, dynamic>> dynamicLessons; // Accepts dynamic data from Firestore
   
-  const TutorialInterface3({super.key, this.initialIndex = 0});
+  const TutorialInterface3({
+    super.key, 
+    this.initialIndex = 0,
+    required this.dynamicLessons,
+  });
 
   @override
   _TutorialInterface3State createState() => _TutorialInterface3State();
 }
 
 class _TutorialInterface3State extends State<TutorialInterface3> {
-  final List<TutorialSign> _alphabetList = const [
-    TutorialSign(label: 'Aa', imagePath: 'assets/pictures/A.jpg'),
-    TutorialSign(label: 'Bb', imagePath: 'assets/pictures/B.jpg'),
-    TutorialSign(label: 'Cc', imagePath: 'assets/pictures/C.jpg'),
-    TutorialSign(label: 'Dd', imagePath: 'assets/pictures/D.jpg'),
-    TutorialSign(label: 'Ee', imagePath: 'assets/pictures/E.jpg'),
-    TutorialSign(label: 'Ff', imagePath: 'assets/pictures/F.jpg'),
-    TutorialSign(label: 'Gg', imagePath: 'assets/pictures/G.jpg'),
-    TutorialSign(label: 'Hh', imagePath: 'assets/pictures/H.jpg'),
-    TutorialSign(label: 'Ii', imagePath: 'assets/pictures/I.jpg'),
-    TutorialSign(label: 'Jj', imagePath: 'assets/pictures/J.jpg'),
-    TutorialSign(label: 'Kk', imagePath: 'assets/pictures/K.jpg'),
-    TutorialSign(label: 'Ll', imagePath: 'assets/pictures/L.jpg'),
-    TutorialSign(label: 'Mm', imagePath: 'assets/pictures/M.jpg'),
-    TutorialSign(label: 'Nn', imagePath: 'assets/pictures/N.jpg'),
-    TutorialSign(label: 'Oo', imagePath: 'assets/pictures/O.jpg'),
-    TutorialSign(label: 'Pp', imagePath: 'assets/pictures/P.jpg'),
-    TutorialSign(label: 'Qq', imagePath: 'assets/pictures/Q.jpg'),
-    TutorialSign(label: 'Rr', imagePath: 'assets/pictures/R.jpg'),
-    TutorialSign(label: 'Ss', imagePath: 'assets/pictures/S.jpg'),
-    TutorialSign(label: 'Tt', imagePath: 'assets/pictures/T.jpg'),
-    TutorialSign(label: 'Uu', imagePath: 'assets/pictures/U.jpg'),
-    TutorialSign(label: 'Vv', imagePath: 'assets/pictures/V.jpg'),
-    TutorialSign(label: 'Ww', imagePath: 'assets/pictures/W.jpg'),
-    TutorialSign(label: 'Xx', imagePath: 'assets/pictures/X.jpg'),
-    TutorialSign(label: 'Yy', imagePath: 'assets/pictures/Y.jpg'),
-    TutorialSign(label: 'Zz', imagePath: 'assets/pictures/Z.jpg'),
-  ];
-
+  late List<TutorialSign> _alphabetList;
   int _currentIndex = 0;
   final int _currentStars = 3; 
 
@@ -57,6 +36,13 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    
+    // Map the incoming dynamic lessons into our strongly-typed list
+    _alphabetList = widget.dynamicLessons.map((lesson) => TutorialSign(
+      label: lesson['title'] ?? '',
+      gestureKey: lesson['gestureKey'] ?? '',
+      imageUrl: lesson['imageUrl'] ?? '', 
+    )).toList();
   }
 
   void _goToNext() {
@@ -90,8 +76,31 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
     return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
   }
 
+  // Helper method to handle Base64 images, Network images, or local Assets
+  ImageProvider _getImageProvider(String url) {
+    if (url.startsWith('data:image')) {
+      // Extract the base64 part by splitting at the comma
+      final base64String = url.split(',').last;
+      return MemoryImage(base64Decode(base64String));
+    } else if (url.startsWith('http')) {
+      return NetworkImage(url);
+    } else if (url.isNotEmpty) {
+      return AssetImage(url);
+    } else {
+      // Fallback in case there is no image url provided
+      return const AssetImage('assets/pictures/A.jpg'); // Update with a real placeholder if you have one
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // If the list is empty, handle gracefully to prevent crashes
+    if (_alphabetList.isEmpty) {
+      return const Scaffold(
+        body: Center(child: Text("No tutorials loaded.")),
+      );
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final currentSign = _alphabetList[_currentIndex];
@@ -230,7 +239,8 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                               width: 299 * scale, height: 276 * scale,
                               decoration: ShapeDecoration(
                                 image: DecorationImage(
-                                  image: AssetImage(currentSign.imagePath), 
+                                  // Use the _getImageProvider here to decode the Base64 image
+                                  image: _getImageProvider(currentSign.imageUrl), 
                                   fit: BoxFit.cover
                                 ),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16 * scale)),
@@ -315,7 +325,8 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                                   elevation: 0,
                                 ),
                                 onPressed: () {
-                                  String letterToPractice = currentSign.label[0]; 
+                                  // Pass the exact gestureKey from Firestore to the practice screen
+                                  String letterToPractice = currentSign.gestureKey; 
                                   Navigator.push(
                                     context, 
                                     MaterialPageRoute(

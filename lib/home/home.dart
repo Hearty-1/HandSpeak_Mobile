@@ -12,7 +12,7 @@ import '../profile/profile.dart';
 import '../leaderboard/arena.dart'; 
 import '../home/settings_screen.dart';
 import '../home/notifications.dart';
-import '../database/database_seeder.dart';
+// import '../database/database_seeder.dart';
 
 void main() {
   runApp(const FigmaToCodeApp()); 
@@ -530,7 +530,7 @@ class SnedInterafce1 extends StatelessWidget {
                         ),
                       ],
                     ),
-                    SizedBox(height: 40 * scale), 
+                   /* SizedBox(height: 40 * scale), 
 
                     // ==========================================
                     // DEV: SEED DATABASE BUTTON
@@ -572,7 +572,7 @@ class SnedInterafce1 extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
+                    ), */
                   ],
                 ),
               );

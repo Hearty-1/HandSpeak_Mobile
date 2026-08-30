@@ -1,7 +1,7 @@
-import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// Import the slide-deck screen to allow routing
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'tutorial_interface_3.dart'; 
 
 class TutorialInterface extends StatefulWidget {
@@ -12,59 +12,37 @@ class TutorialInterface extends StatefulWidget {
 }
 
 class _TutorialInterfaceState extends State<TutorialInterface> {
-  // Centralized tracking list for alphabet progress status
-  final List<Map<String, String>> lessons = [
-    {'title': 'Aa', 'status': 'completed'},
-    {'title': 'Bb', 'status': 'completed'},
-    {'title': 'Cc', 'status': 'completed'},
-    {'title': 'Dd', 'status': 'completed'},
-    {'title': 'Ee', 'status': 'completed'},
-    {'title': 'Ff', 'status': 'completed'},
-    {'title': 'Gg', 'status': 'completed'},
-    {'title': 'Hh', 'status': 'completed'},
-    {'title': 'Ii', 'status': 'completed'},
-    {'title': 'Jj', 'status': 'completed'},
-    {'title': 'Kk', 'status': 'completed'},
-    {'title': 'Ll', 'status': 'completed'},
-    {'title': 'Mm', 'status': 'completed'},
-    {'title': 'Nn', 'status': 'completed'},
-    {'title': 'Oo', 'status': 'completed'},
-    {'title': 'Pp', 'status': 'completed'},
-    {'title': 'Qq', 'status': 'completed'},
-    {'title': 'Rr', 'status': 'completed'},
-    {'title': 'Ss', 'status': 'completed'},
-    {'title': 'Tt', 'status': 'completed'},
-    {'title': 'Uu', 'status': 'completed'},
-    {'title': 'Vv', 'status': 'completed'},
-    {'title': 'Ww', 'status': 'completed'},
-    {'title': 'Xx', 'status': 'completed'},
-    {'title': 'Yy', 'status': 'completed'},
-    {'title': 'Zz', 'status': 'completed'},
+  String _searchQuery = ""; 
+
+  // 1. Define the default local fallback list
+  final List<Map<String, dynamic>> _defaultLessons = [
+    {'title': 'Aa', 'gestureKey': 'A', 'imageUrl': 'assets/pictures/A.jpg'},
+    {'title': 'Bb', 'gestureKey': 'B', 'imageUrl': 'assets/pictures/B.jpg'},
+    {'title': 'Cc', 'gestureKey': 'C', 'imageUrl': 'assets/pictures/C.jpg'},
+    {'title': 'Dd', 'gestureKey': 'D', 'imageUrl': 'assets/pictures/D.jpg'},
+    {'title': 'Ee', 'gestureKey': 'E', 'imageUrl': 'assets/pictures/E.jpg'},
+    {'title': 'Ff', 'gestureKey': 'F', 'imageUrl': 'assets/pictures/F.jpg'},
+    {'title': 'Gg', 'gestureKey': 'G', 'imageUrl': 'assets/pictures/G.jpg'},
+    {'title': 'Hh', 'gestureKey': 'H', 'imageUrl': 'assets/pictures/H.jpg'},
+    {'title': 'Ii', 'gestureKey': 'I', 'imageUrl': 'assets/pictures/I.jpg'},
+    {'title': 'Jj', 'gestureKey': 'J', 'imageUrl': 'assets/pictures/J.jpg'},
+    {'title': 'Kk', 'gestureKey': 'K', 'imageUrl': 'assets/pictures/K.jpg'},
+    {'title': 'Ll', 'gestureKey': 'L', 'imageUrl': 'assets/pictures/L.jpg'},
+    {'title': 'Mm', 'gestureKey': 'M', 'imageUrl': 'assets/pictures/M.jpg'},
+    {'title': 'Nn', 'gestureKey': 'N', 'imageUrl': 'assets/pictures/N.jpg'},
+    {'title': 'Oo', 'gestureKey': 'O', 'imageUrl': 'assets/pictures/O.jpg'},
+    {'title': 'Pp', 'gestureKey': 'P', 'imageUrl': 'assets/pictures/P.jpg'},
+    {'title': 'Qq', 'gestureKey': 'Q', 'imageUrl': 'assets/pictures/Q.jpg'},
+    {'title': 'Rr', 'gestureKey': 'R', 'imageUrl': 'assets/pictures/R.jpg'},
+    {'title': 'Ss', 'gestureKey': 'S', 'imageUrl': 'assets/pictures/S.jpg'},
+    {'title': 'Tt', 'gestureKey': 'T', 'imageUrl': 'assets/pictures/T.jpg'},
+    {'title': 'Uu', 'gestureKey': 'U', 'imageUrl': 'assets/pictures/U.jpg'},
+    {'title': 'Vv', 'gestureKey': 'V', 'imageUrl': 'assets/pictures/V.jpg'},
+    {'title': 'Ww', 'gestureKey': 'W', 'imageUrl': 'assets/pictures/W.jpg'},
+    {'title': 'Xx', 'gestureKey': 'X', 'imageUrl': 'assets/pictures/X.jpg'},
+    {'title': 'Yy', 'gestureKey': 'Y', 'imageUrl': 'assets/pictures/Y.jpg'},
+    {'title': 'Zz', 'gestureKey': 'Z', 'imageUrl': 'assets/pictures/Z.jpg'},
   ];
-
-  List<Map<String, String>> filteredLessons = [];
-
-  @override
-  void initState() {
-    super.initState();
-    filteredLessons = lessons;
-  }
-
-  void _runFilter(String enteredKeyword) {
-    List<Map<String, String>> results = [];
-    if (enteredKeyword.isEmpty) {
-      results = lessons;
-    } else {
-      results = lessons
-          .where((lesson) =>
-              lesson['title']!.toLowerCase().contains(enteredKeyword.toLowerCase()))
-          .toList();
-    }
-
-    setState(() {
-      filteredLessons = results;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +138,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                           ],
                         ),
                         child: TextField(
-                          onChanged: (value) => _runFilter(value), 
+                          onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()), 
                           style: TextStyle(color: theme.colorScheme.onSurface),
                           decoration: InputDecoration(
                             hintText: 'Search letter...',
@@ -175,42 +153,83 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                   ),
                 ),
                 
+                // Hybrid StreamBuilder
                 Expanded(
-                  child: filteredLessons.isEmpty
-                      ? Center(child: Text("No letters found.", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7))))
-                      : ListView.builder(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          itemCount: filteredLessons.length, 
-                          itemBuilder: (context, index) {
-                            final lesson = filteredLessons[index];
-                            final bool isLocked = lesson['status'] == 'locked';
-                            
-                            return LessonCard(
-                              title: lesson['title']!,
-                              isLocked: isLocked,
-                              onTap: () {
-                                if (!isLocked) {
-                                  final originalIndex = lessons.indexOf(lesson);
-                                  
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => TutorialInterface3(initialIndex: originalIndex),
-                                    ),
-                                  );
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text("Complete previous letters to unlock ${lesson['title']}!"),
-                                      backgroundColor: theme.colorScheme.error,
-                                    ),
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('tutorial_lessons')
+                        .where('category', isEqualTo: 'alphabet')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      // 2. Start with a clone of the local data
+                      List<Map<String, dynamic>> mergedLessons = List.from(_defaultLessons);
+
+                      // 3. If Firestore has data, merge it into our local list
+                      if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                        final firestoreLessons = snapshot.data!.docs.map((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          return {
+                            'id': doc.id,
+                            'title': data['displayTitle']?.toString() ?? data['gestureKey']?.toString() ?? '',
+                            'gestureKey': data['gestureKey']?.toString() ?? '',
+                            'imageUrl': data['imageUrl']?.toString() ?? '',
+                          };
+                        }).toList();
+
+                        for (var fsLesson in firestoreLessons) {
+                          // Check if this letter already exists in our default list
+                          int existingIndex = mergedLessons.indexWhere((loc) => 
+                              loc['gestureKey'].toString().toUpperCase() == fsLesson['gestureKey'].toString().toUpperCase()
+                          );
+                          
+                          if (existingIndex != -1) {
+                            // Replace local version with the cloud version
+                            mergedLessons[existingIndex] = fsLesson;
+                          } else {
+                            // Add completely new letter to the list
+                            mergedLessons.add(fsLesson);
+                          }
+                        }
+                      }
+
+                      // Sort the final merged list alphabetically by gestureKey
+                      mergedLessons.sort((a, b) => (a['gestureKey'] as String).compareTo(b['gestureKey'] as String));
+
+                      // 4. Apply local search filter to the merged list
+                      final filteredLessons = mergedLessons.where((lesson) =>
+                          lesson['title']!.toLowerCase().contains(_searchQuery)).toList();
+
+                      if (filteredLessons.isEmpty) {
+                         return Center(child: Text("No letters found.", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7))));
+                      }
+
+                      return ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        itemCount: filteredLessons.length, 
+                        itemBuilder: (context, index) {
+                          final lesson = filteredLessons[index];
+                          final bool isLocked = false; 
+                          
+                          return LessonCard(
+                            title: lesson['title']!,
+                            isLocked: isLocked,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => TutorialInterface3(
+                                    initialIndex: index,
+                                    dynamicLessons: filteredLessons, 
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    }
+                  ),
                 ),
               ],
             ),

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:ui'; 
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; 
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,53 +24,98 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _landmarkSubscription;
   final PhraseRecognizer _phraseRecognizer = PhraseRecognizer();
-  
+
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
 
   // --- Recording state ---
-  // A phrase is one continuous, possibly multi-step motion -- we record
-  // the WHOLE thing, then score once at the end, instead of scoring
-  // every single frame while the user is still mid-gesture.
   bool _isRecordingMotion = false;
   bool _showMotionResult = false;
   DateTime? _startRecordingTime;
   final List<Float32List> _recordingFrames = [];
 
-  // Grace period for momentary hand-tracking loss mid-recording (motion
-  // blur / hand briefly leaving the detection zone during a fast part of
-  // the phrase). Only cancel the recording if hands are missing longer
-  // than this, not on a single dropped frame.
+  // Grace period for momentary hand-tracking loss mid-recording
   static const Duration _dropoutGracePeriod = Duration(milliseconds: 400);
   DateTime? _lastHandsSeenTime;
 
-  // Safety cap: if hand-detection throughput is too low to gather a full
-  // window of real frames in a reasonable time, give up and evaluate on
-  // whatever was captured rather than waiting forever. Phrases are
-  // longer than single letters, so this is a bit more generous than the
-  // letter screen's cap.
+  // Safety cap for maximum recording length
   static const double _maxRecordingSeconds = 12.0;
 
-  String _debugStatus = "1/4 Initializing...";
+  String _debugStatus = "0/4 Fetching training config...";
 
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
 
-  final double successThreshold = 70.0; 
+  // Dynamically populated from Firestore 'gesture_training_data' (defaults to 70.0)
+  double successThreshold = 70.0;
   final int xpReward = 25;
 
   @override
   void initState() {
     super.initState();
-    _initializePipeline();
+    _fetchConfigAndInitialize();
+  }
+
+  /// Fetches gesture parameters from Firestore before starting the vision pipeline
+  Future<void> _fetchConfigAndInitialize() async {
+    try {
+      if (mounted) {
+        setState(() => _debugStatus = "0/4 Fetching gesture config from Firestore...");
+      }
+
+      // Query the gesture_training_data collection matching the target phrase
+      final formattedDocId = "phrases_${widget.targetPhrase.toLowerCase().replaceAll(' ', '_')}";
+      
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('gesture_training_data')
+          .doc(formattedDocId)
+          .get();
+
+      // Fallback query if document ID isn't directly formatted
+      if (!doc.exists) {
+        final query = await FirebaseFirestore.instance
+            .collection('gesture_training_data')
+            .where('category', isEqualTo: 'phrases')
+            .where('gestureKey', isEqualTo: widget.targetPhrase)
+            .limit(1)
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          doc = query.docs.first;
+        }
+      }
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>;
+        
+        if (data['accuracyThreshold'] != null) {
+          final fetchedThreshold = (data['accuracyThreshold'] as num).toDouble();
+          setState(() {
+            successThreshold = fetchedThreshold;
+          });
+          debugPrint("Loaded accuracyThreshold for '${widget.targetPhrase}': $successThreshold%");
+        }
+      } else {
+        debugPrint("No training data found in Firestore for '${widget.targetPhrase}'. Using default threshold: $successThreshold%");
+      }
+    } catch (e) {
+      debugPrint("Error fetching gesture config from Firestore: $e. Using fallback values.");
+    }
+
+    // Proceed to load model and camera pipeline
+    await _initializePipeline();
   }
 
   Future<void> _initializePipeline() async {
     try {
-      setState(() => _debugStatus = "1/4 Loading TFLite Model & Labels...");
+      if (mounted) {
+        setState(() => _debugStatus = "1/4 Loading TFLite Model & Labels...");
+      }
       await _phraseRecognizer.initialize();
 
-      setState(() => _debugStatus = "2/4 Initializing MediaPipe Landmarker...");
+      if (mounted) {
+        setState(() => _debugStatus = "2/4 Initializing MediaPipe Landmarker...");
+      }
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
         minHandDetectionConfidence: 0.5,
@@ -86,10 +131,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         },
       );
 
-      setState(() => _debugStatus = "3/4 Opening Camera Stream...");
+      if (mounted) {
+        setState(() => _debugStatus = "3/4 Opening Camera Stream...");
+      }
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
-        setState(() => _debugStatus = "❌ Error: Camera Hardware Not Found!");
+        if (mounted) {
+          setState(() => _debugStatus = "❌ Error: Camera Hardware Not Found!");
+        }
         return;
       }
 
@@ -99,8 +148,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       );
 
       _controller = CameraController(
-        frontCamera, 
-        ResolutionPreset.medium, 
+        frontCamera,
+        ResolutionPreset.medium,
         enableAudio: false,
       );
 
@@ -125,7 +174,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       if (mounted) {
         setState(() {
           _isInitialized = true;
-          _debugStatus = "✅ PIPELINE ACTIVE: Show hand to camera";
+          _debugStatus = "✅ PIPELINE ACTIVE (Target Pass: ${successThreshold.toStringAsFixed(0)}%)";
         });
       }
     } catch (e) {
@@ -153,24 +202,11 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         setState(() => _debugStatus = "🎥 Recording phrase...");
       }
 
-      // Capture the raw feature vector for this frame into our own
-      // recording list -- we do NOT use processFrame()/its internal
-      // rolling buffer here. That buffer only remembers the last
-      // ~sequenceLength raw camera frames, which can truncate a longer
-      // phrase gesture if the camera delivers frames faster (or slower)
-      // than the model's training-time assumption. Recording every frame
-      // ourselves and resampling the whole thing at the end guarantees
-      // the full phrase is captured regardless of frame rate.
       _recordingFrames.add(_phraseRecognizer.extractFrameFeatures(detectedHands));
 
       final double elapsedSeconds =
           now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
 
-      // Progress is driven by REAL FRAMES CAPTURED, not wall-clock time
-      // -- hand-detection throughput can vary a lot by device, so a
-      // fixed-seconds assumption can leave you with far too few real
-      // frames to represent the whole phrase. Wait for a full
-      // model-length window of real frames, capped by a safety timeout.
       final int requiredFrames = _phraseRecognizer.sequenceLength;
       final bool haveEnoughFrames = _recordingFrames.length >= requiredFrames;
       final bool timedOut = elapsedSeconds >= _maxRecordingSeconds;
@@ -185,10 +221,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         _evaluateRecording();
       }
     } else if (_isRecordingMotion) {
-      // Hands dropped out mid-recording. Only cancel if they've been
-      // missing longer than the grace period -- a single dropped frame
-      // during a fast part of the phrase shouldn't blow away everything
-      // captured so far.
       final lastSeen = _lastHandsSeenTime;
       final bool withinGrace =
           lastSeen != null && now.difference(lastSeen) <= _dropoutGracePeriod;
@@ -202,7 +234,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         });
         _recordingFrames.clear();
       }
-      // else: within grace period -- skip this frame, keep recording.
     }
   }
 
@@ -210,23 +241,18 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     _isRecordingMotion = false;
     _showMotionResult = true;
 
-    // Full raw score breakdown (every label, not just the top pick) so
-    // we can read off the TARGET phrase's own confidence even when it
-    // wasn't the model's top guess -- instead of hard-zeroing the score
-    // just because the top-1 label didn't match.
     final scores = _phraseRecognizer.rawScoresForRecording(_recordingFrames);
 
-    // --- TEMPORARY DEBUG INSTRUMENTATION ---
     final double elapsedForDebug =
         DateTime.now().difference(_startRecordingTime!).inMilliseconds / 1000.0;
     final double effectiveFps =
         elapsedForDebug > 0 ? _recordingFrames.length / elapsedForDebug : 0.0;
+    
     debugPrint(
       "=== ${widget.targetPhrase.toUpperCase()} EVAL === "
       "frames=${_recordingFrames.length} elapsed=${elapsedForDebug.toStringAsFixed(2)}s "
       "fps=${effectiveFps.toStringAsFixed(1)} | scores=$scores",
     );
-    // --- END DEBUG INSTRUMENTATION ---
 
     _recordingFrames.clear();
 
@@ -239,8 +265,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       return;
     }
 
-    // Top prediction -- kept purely for the debug readout, no longer
-    // used to gate the score itself.
     String topLabel = "";
     double topScore = -1.0;
     scores.forEach((label, score) {
@@ -255,8 +279,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     String predictedClean =
         topLabel.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
 
-    // Find the raw score keyed to the actual target phrase, regardless
-    // of whether it happened to be the top prediction.
     double? targetRawScore;
     scores.forEach((label, score) {
       final labelClean = label.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
@@ -264,8 +286,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     });
 
     if (targetRawScore == null) {
-      // Target phrase isn't in the label map at all -- a configuration
-      // problem, not a recognition failure. Don't silently show 0%.
       setState(() {
         _showMotionResult = false;
         _holdProgress = 0.0;
@@ -281,13 +301,12 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       _holdProgress = 0.0;
       _debugStatus =
           "🤖 Top guess: '$predictedClean' (${(topScore * 100).toStringAsFixed(1)}%)\n"
-          "🎯 Target: '$targetClean' — your score: ${finalScore.toStringAsFixed(1)}%";
+          "🎯 Target: '$targetClean' — your score: ${finalScore.toStringAsFixed(1)}% (Req: ${successThreshold.toStringAsFixed(0)}%)";
     });
 
     if (_currentScore >= successThreshold) {
       _onSuccess();
     } else {
-      // Failed attempt: show the score for 2 seconds, then let them retry
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted && !_isSuccessAchieved) {
           setState(() {
@@ -305,13 +324,13 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        
+
         await docRef.set({
-          'phraseXp': FieldValue.increment(xpReward),   
-          'xp': FieldValue.increment(xpReward),           
-          'dailyXp': FieldValue.increment(xpReward),      
-          'weeklyXp': FieldValue.increment(xpReward),     
-          'completedLessons': FieldValue.increment(1),    
+          'phraseXp': FieldValue.increment(xpReward),
+          'xp': FieldValue.increment(xpReward),
+          'dailyXp': FieldValue.increment(xpReward),
+          'weeklyXp': FieldValue.increment(xpReward),
+          'completedLessons': FieldValue.increment(1),
         }, SetOptions(merge: true));
       }
     } catch (e) {
@@ -322,13 +341,13 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   void _onSuccess() async {
     _isSuccessAchieved = true;
     _holdProgress = 0.0;
-    
-    HapticFeedback.heavyImpact(); 
+
+    HapticFeedback.heavyImpact();
     await Future.delayed(const Duration(milliseconds: 100));
-    HapticFeedback.heavyImpact(); 
-    
+    HapticFeedback.heavyImpact();
+
     await _awardXp();
-    
+
     if (!mounted) return;
 
     final theme = Theme.of(context);
@@ -343,7 +362,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
           backgroundColor: theme.cardColor.withOpacity(0.85),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: theme.dividerColor.withOpacity(0.15), width: 1.5), 
+            side: BorderSide(color: theme.dividerColor.withOpacity(0.15), width: 1.5),
           ),
           title: Row(
             children: [
@@ -399,8 +418,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 onPressed: () {
-                  Navigator.pop(context); 
-                  Navigator.pop(context); 
+                  Navigator.pop(context);
+                  Navigator.pop(context);
                 },
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
@@ -432,7 +451,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
 
     String phraseDisplay = widget.targetPhrase;
     String formattedPhrase = widget.targetPhrase.replaceAll(" ", "_").toLowerCase();
-    
+
     bool isPassing = _currentScore >= successThreshold;
     final double screenWidth = MediaQuery.of(context).size.width;
 
@@ -444,11 +463,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     );
 
     return Scaffold(
-      extendBodyBehindAppBar: true, 
+      extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
-      
       appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6), 
+        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: textColor),
@@ -471,52 +489,60 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         title: Text(
           'Practice Mode',
           style: TextStyle(
-            color: textColor, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
+            color: textColor,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
           ),
         ),
       ),
       body: Stack(
         children: [
           Positioned(
-            top: -30, right: -30,
+            top: -30,
+            right: -30,
             child: Container(
-              width: 200, height: 200, 
+              width: 200,
+              height: 200,
               decoration: BoxDecoration(
-                shape: BoxShape.circle, 
+                shape: BoxShape.circle,
                 color: theme.primaryColor.withOpacity(0.2),
               ),
             ),
           ),
           Positioned(
-            bottom: 50, left: -50,
+            bottom: 50,
+            left: -50,
             child: Container(
-              width: 260, height: 260, 
+              width: 260,
+              height: 260,
               decoration: BoxDecoration(
-                shape: BoxShape.circle, 
+                shape: BoxShape.circle,
                 color: const Color(0xFF4CAF50).withOpacity(0.15),
               ),
             ),
           ),
-          
           SafeArea(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
               child: SizedBox(
-                width: double.infinity, 
+                width: double.infinity,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
-                      phraseDisplay, 
+                      phraseDisplay,
                       style: TextStyle(
-                        color: textColor, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'Inter',
+                        color: textColor,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Inter',
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-
-                    // Real-time Logger Box
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(8.0),
@@ -527,8 +553,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                       child: Text(
                         _debugStatus,
                         style: const TextStyle(
-                          color: Colors.yellowAccent, 
-                          fontSize: 12, 
+                          color: Colors.yellowAccent,
+                          fontSize: 12,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'monospace',
                         ),
@@ -536,18 +562,17 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
                     SizedBox(
-                      width: screenWidth * 0.55, 
+                      width: screenWidth * 0.55,
                       child: AspectRatio(
-                        aspectRatio: 1 / 1, 
+                        aspectRatio: 1 / 1,
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(isDark ? 0.3 : 0.06), 
-                                blurRadius: 12, 
+                                color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+                                blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
                             ],
@@ -555,7 +580,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16),
                             child: Image.asset(
-                              "assets/pictures/$formattedPhrase.jpg", 
+                              "assets/pictures/$formattedPhrase.jpg",
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => Container(
                                 color: theme.dividerColor.withOpacity(0.1),
@@ -567,11 +592,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
                     SizedBox(
-                      width: screenWidth * 0.55, 
+                      width: screenWidth * 0.55,
                       child: AspectRatio(
-                        aspectRatio: 1 / 1, 
+                        aspectRatio: 1 / 1,
                         child: Stack(
                           alignment: Alignment.center,
                           fit: StackFit.expand,
@@ -586,8 +610,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.06), 
-                                    blurRadius: 12, 
+                                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+                                    blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
                                 ],
@@ -608,13 +632,16 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                                       ),
                               ),
                             ),
-
                             if (_isInitialized && !_isSuccessAchieved)
                               Center(
                                 child: Container(
-                                  width: 100, height: 100,
+                                  width: 100,
+                                  height: 100,
                                   decoration: BoxDecoration(
-                                    border: Border.all(color: isPassing ? Colors.green.withOpacity(0.8) : Colors.white54, width: 3.0),
+                                    border: Border.all(
+                                      color: isPassing ? Colors.green.withOpacity(0.8) : Colors.white54,
+                                      width: 3.0,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Center(
@@ -627,7 +654,11 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                                           color: Colors.black45,
                                           child: Text(
                                             "Position Hand",
-                                            style: TextStyle(color: isPassing ? Colors.greenAccent : Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                            style: TextStyle(
+                                              color: isPassing ? Colors.greenAccent : Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -640,22 +671,25 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
                     if (_holdProgress > 0.0) ...[
                       Column(
                         children: [
-                          const Text("Hold steady...", style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18)),
+                          const Text(
+                            "Hold steady...",
+                            style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
+                          ),
                           const SizedBox(height: 8),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child: BackdropFilter(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
-                                width: screenWidth * 0.70, height: 16,
+                                width: screenWidth * 0.70,
+                                height: 16,
                                 decoration: BoxDecoration(
-                                  color: theme.cardColor.withOpacity(0.5), 
+                                  color: theme.cardColor.withOpacity(0.5),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: theme.dividerColor.withOpacity(0.2), width: 1)
+                                  border: Border.all(color: theme.dividerColor.withOpacity(0.2), width: 1),
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -684,13 +718,18 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                             decoration: BoxDecoration(
                               color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.75),
                               borderRadius: BorderRadius.circular(30),
-                              border: Border.all(color: isPassing ? Colors.green.withOpacity(0.4) : theme.dividerColor.withOpacity(0.2), width: 1.5),
+                              border: Border.all(
+                                color: isPassing ? Colors.green.withOpacity(0.4) : theme.dividerColor.withOpacity(0.2),
+                                width: 1.5,
+                              ),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
                                 color: isPassing ? Colors.green.shade700 : textColor.withOpacity(0.7),
-                                fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Inter',
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                                fontFamily: 'Inter',
                               ),
                             ),
                           ),
