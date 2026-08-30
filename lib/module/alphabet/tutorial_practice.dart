@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async'; 
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
@@ -8,6 +9,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'recognizer.dart';
 
 /// Dynamic theme visual mapping for thematic icons & graphics
 class _ThemeVisuals {
@@ -83,6 +85,38 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
 
+  // Recording State Variables for Dynamic Letters
+  bool _isRecordingMotion = false;
+  DateTime? _startRecordingTime;
+  bool _showMotionResult = false;
+
+  // Every raw per-frame feature vector captured during the current
+  // recording window. We feed the *whole* thing to the model at the end
+  // (resampled to the model's fixed sequence length), instead of relying
+  // on PhraseRecognizer's internal rolling buffer, which only remembers
+  // the last ~30 raw camera frames -- too short to hold a full 'Z' if the
+  // camera is delivering frames faster than the ~10fps that window
+  // assumes.
+  final List<Float32List> _recordingFrames = [];
+
+  // Grace period for momentary hand-tracking loss during recording. Fast,
+  // large motions like 'Z' are far more prone to a stray frame or two of
+  // lost MediaPipe tracking (motion blur, hand briefly leaving the
+  // optimal detection zone) than a small, controlled motion like 'J'. We
+  // only cancel the recording if hands are missing for longer than this,
+  // instead of on a single dropped frame.
+  static const Duration _dropoutGracePeriod = Duration(milliseconds: 400);
+  DateTime? _lastHandsSeenTime;
+
+  // J and Z are moving signs -- recognized by a dedicated LSTM/TFLite
+  // model (trained with train_lstm.py) instead of static template
+  // matching, since a single frame can't capture the motion.
+  static const List<String> _dynamicLetters = ['J', 'Z'];
+  bool get _isDynamicLetter =>
+      _dynamicLetters.contains(widget.targetLetter.toUpperCase());
+  PhraseRecognizer? _dynamicSignRecognizer;
+  bool _dynamicModelReady = false;
+
   List<dynamic>? _template;
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
@@ -100,7 +134,21 @@ class _TutorialPracticeState extends State<TutorialPractice> {
 
   Future<void> _initializePipeline() async {
     try {
-      await _loadGestureLibrary();
+      if (_isDynamicLetter) {
+        try {
+          _dynamicSignRecognizer = PhraseRecognizer(
+            modelAssetPath: 'assets/alphabet/model.tflite', 
+            labelAssetPath: 'assets/alphabet/label_map.json', 
+          );
+          await _dynamicSignRecognizer!.initialize();
+          _dynamicModelReady = true;
+        } catch (e) {
+          debugPrint("J/Z dynamic-sign model failed to load: $e");
+          _dynamicModelReady = false;
+        }
+      } else {
+        await _loadGestureLibrary();
+      }
 
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
@@ -147,7 +195,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   }
 
   void _processCameraFrame(CameraImage image) {
-    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved || _template == null) return;
+    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
 
     try {
       final int sensorOrientation = _controller!.description.sensorOrientation;
@@ -158,7 +206,138 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   }
 
   void _onHandsDetected(List<Hand> detectedHands) {
-    if (_isSuccessAchieved || _template == null) return;
+    if (_isSuccessAchieved) return;
+
+    // --- DYNAMIC LETTER RECORDING LOGIC ---
+    if (_isDynamicLetter) {
+      if (!_dynamicModelReady || _dynamicSignRecognizer == null) return;
+      if (_showMotionResult) return; 
+
+      final bool handsPresent = detectedHands.isNotEmpty;
+      final now = DateTime.now();
+
+      if (handsPresent) {
+        _lastHandsSeenTime = now;
+
+        // Start a fresh recording when hands enter the frame
+        if (!_isRecordingMotion) {
+           _isRecordingMotion = true;
+           _startRecordingTime = now;
+           _recordingFrames.clear();
+        }
+
+        // Capture the raw feature vector for THIS frame into our own
+        // recording list -- we deliberately do not use
+        // PhraseRecognizer.processFrame()/its internal ring buffer here.
+        // That buffer only ever remembers the last ~_sequenceLength raw
+        // camera frames; if the camera delivers frames faster than the
+        // model's training-time assumption, a slower/larger motion like
+        // 'Z' gets evicted out of the buffer before we ever evaluate it,
+        // leaving only a truncated tail fragment. Recording every frame
+        // ourselves and resampling the *whole* thing at the end (via
+        // predictFromRecording) guarantees the full gesture is captured
+        // regardless of frame rate or how long it actually took.
+        _recordingFrames.add(_dynamicSignRecognizer!.extractFrameFeatures(detectedHands));
+
+        // Calculate exact time elapsed in seconds
+        final double elapsedSeconds = now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
+
+        // Update progress bar based on a strict 3.0 second duration
+        setState(() {
+            _holdProgress = (elapsedSeconds / 3.0).clamp(0.0, 1.0); 
+        });
+
+        // Once 3 seconds have passed, evaluate the FULL recording
+        if (elapsedSeconds >= 3.0) {
+           _isRecordingMotion = false;
+           _showMotionResult = true;
+
+           final result = _dynamicSignRecognizer!.predictFromRecording(_recordingFrames);
+
+           // --- TEMPORARY DEBUG INSTRUMENTATION ---
+           // Prints the full score breakdown under BOTH windowing
+           // strategies, plus how many frames actually got captured and
+           // at what effective frame rate, so we can see what the model
+           // is actually doing instead of guessing. Safe to delete once
+           // we've diagnosed this -- it doesn't affect scoring.
+           final double elapsedForDebug =
+               DateTime.now().difference(_startRecordingTime!).inMilliseconds / 1000.0;
+           final double effectiveFps = elapsedForDebug > 0
+               ? _recordingFrames.length / elapsedForDebug
+               : 0.0;
+           final resampledScores = _dynamicSignRecognizer!
+               .rawScoresForRecording(_recordingFrames, resample: true);
+           final rawTailScores = _dynamicSignRecognizer!
+               .rawScoresForRecording(_recordingFrames, resample: false);
+           debugPrint(
+             "=== ${widget.targetLetter.toUpperCase()} EVAL === "
+             "frames=${_recordingFrames.length} elapsed=${elapsedForDebug.toStringAsFixed(2)}s "
+             "fps=${effectiveFps.toStringAsFixed(1)} | "
+             "FULL-RESAMPLE=$resampledScores | "
+             "RAW-LAST-30=$rawTailScores",
+           );
+           // --- END DEBUG INSTRUMENTATION ---
+
+           _recordingFrames.clear();
+
+           double finalScore = 0.0;
+
+           // Check if the model recognized anything and if the label matches the target letter
+           if (result != null && result.label.toUpperCase() == widget.targetLetter.toUpperCase()) {
+               // Fix for the 5000+ score: Handle both 0.0-1.0 and 0-100 formats dynamically
+               double rawConfidence = result.confidence;
+               double normalizedConfidence = rawConfidence > 1.0 ? rawConfidence : rawConfidence * 100.0;
+               
+               // Clamp ensures the score never visually exceeds 100%
+               finalScore = normalizedConfidence.clamp(0.0, 100.0);
+           }
+           
+           setState(() {
+               _currentScore = finalScore;
+               _holdProgress = 0.0; // Hide the progress bar
+           });
+
+           if (_currentScore >= successThreshold) {
+               _onSuccess();
+           } else {
+               // Failed attempt: Show the score for 2 seconds, then let them try again
+               Future.delayed(const Duration(seconds: 2), () {
+                   if (mounted && !_isSuccessAchieved) {
+                       setState(() {
+                           _showMotionResult = false;
+                           _currentScore = 0.0;
+                       });
+                   }
+               });
+           }
+        }
+      } else if (_isRecordingMotion) {
+        // Hands dropped out mid-recording. Fast, sweeping motions like
+        // 'Z' are much more likely to cause a stray frame or two of lost
+        // MediaPipe tracking than a small motion like 'J' -- don't
+        // punish that with an instant full reset. Only cancel the
+        // recording if hands stay missing longer than the grace period.
+        final lastSeen = _lastHandsSeenTime;
+        final bool withinGrace = lastSeen != null &&
+            now.difference(lastSeen) <= _dropoutGracePeriod;
+
+        if (!withinGrace) {
+          setState(() {
+              _isRecordingMotion = false;
+              _startRecordingTime = null;
+              _holdProgress = 0.0;
+          });
+          _recordingFrames.clear();
+        }
+        // else: within grace period -- just skip this frame (don't
+        // append anything, don't touch the timer) and keep recording on
+        // the next frame where hands reappear.
+      }
+      return;
+    }
+    // ------------------------------------------
+
+    if (_template == null) return; // static template not loaded yet
 
     if (detectedHands.isNotEmpty) {
       double highestScoreAcrossAllHands = 0.0;
@@ -382,6 +561,11 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     _isSuccessAchieved = true;
     _startHoldTime = null;
     _holdProgress = 0.0;
+
+    // Reset recording variables cleanly 
+    _isRecordingMotion = false;
+    _startRecordingTime = null;
+    _showMotionResult = false;
     
     HapticFeedback.heavyImpact(); 
     await Future.delayed(const Duration(milliseconds: 100));
@@ -531,6 +715,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();
+    _dynamicSignRecognizer?.dispose();
     super.dispose();
   }
 
@@ -762,9 +947,10 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                             children: [
                               Icon(visuals.secondaryIcon, color: Colors.green, size: 20),
                               const SizedBox(width: 6),
-                              const Text(
-                                "Hold steady...",
-                                style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
+                              // Dynamic UI Text Switch
+                              Text(
+                                _isDynamicLetter ? "Recording motion..." : "Hold steady...",
+                                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
                               ),
                             ],
                           ),

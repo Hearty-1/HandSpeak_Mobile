@@ -12,6 +12,7 @@ import '../profile/profile.dart';
 import '../leaderboard/arena.dart'; 
 import '../home/settings_screen.dart';
 import '../home/notifications.dart';
+import '../database/database_seeder.dart';
 
 void main() {
   runApp(const FigmaToCodeApp()); 
@@ -528,6 +529,49 @@ class SnedInterafce1 extends StatelessWidget {
                           },
                         ),
                       ],
+                    ),
+                    SizedBox(height: 40 * scale), 
+
+                    // ==========================================
+                    // DEV: SEED DATABASE BUTTON
+                    // ==========================================
+                    Center(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          
+                          // 2. Call your upload function (Change 'uploadQuestions' to whatever your method is actually named!)
+                          await DatabaseSeeder.seedActivities(context);
+                          
+                          // 3. Show a popup confirmation
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Database seed triggered!"),
+                                backgroundColor: Color(0xFFFF3B30),
+                              ),
+                            );
+                          }
+                        },
+                        icon: Icon(Icons.developer_mode_rounded, color: Colors.white, size: 24 * scale),
+                        label: Text(
+                          "DEV: SEED DATABASE",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900, 
+                            color: Colors.white,
+                            fontSize: 14 * scale,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF3B30), 
+                          elevation: 8,
+                          shadowColor: const Color(0xFFFF3B30).withOpacity(0.5),
+                          padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 14 * scale),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16 * scale),
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),

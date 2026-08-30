@@ -4,8 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '/services/progress_service.dart'; 
 import 'phrase_tutorial_interface.dart';
-import 'package:flutter_application_1/module/alphabet/activity_interface.dart'; 
-
+import '/module/alphabet/difficulty_selection.dart';
 class PhraseInterface extends StatelessWidget {
   final int currentXp; 
   final int targetXp; 
@@ -252,7 +251,7 @@ class PhraseInterface extends StatelessWidget {
                             Positioned(
                               left: 20.75 * scale, top: 392 * scale, 
                               child: GestureDetector(
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ActivityInterface())), 
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DifficultySelectionScreen())), 
                                 child: Container(width: 164 * scale, height: 160 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/activity.png"), fit: BoxFit.cover))), 
                               ),
                             ),

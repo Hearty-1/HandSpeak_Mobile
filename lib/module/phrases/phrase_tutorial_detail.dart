@@ -22,12 +22,16 @@ class PhraseTutorialDetail extends StatefulWidget {
 
 class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
   final List<PhraseSign> _phraseList = const [
+    PhraseSign(label: 'GoodAfternoon', imagePath: 'assets/pictures/good_afternoon.jpg'),
+    PhraseSign(label: 'GoodEvening', imagePath: 'assets/pictures/good_evening.jpg'),
+    PhraseSign(label: 'GoodMorning', imagePath: 'assets/pictures/good_morning.jpg'),
     PhraseSign(label: 'Hello', imagePath: 'assets/pictures/hello.jpg'),
-    PhraseSign(label: 'Thank You', imagePath: 'assets/pictures/thank_you.jpg'),
-    PhraseSign(label: 'Sorry', imagePath: 'assets/pictures/sorry.jpg'),
-    PhraseSign(label: 'Please', imagePath: 'assets/pictures/please.jpg'),
-    PhraseSign(label: 'Yes', imagePath: 'assets/pictures/yes.jpg'),
-    PhraseSign(label: 'No', imagePath: 'assets/pictures/no.jpg'),
+    PhraseSign(label: 'HowAreYou', imagePath: 'assets/pictures/how_are_you.jpg'),
+    PhraseSign(label: 'ImFine', imagePath: 'assets/pictures/im_fine.jpg'),
+    PhraseSign(label: 'NiceToMeetYou', imagePath: 'assets/pictures/nice_to_meet_you.jpg'),
+    PhraseSign(label: 'SeeYouTom', imagePath: 'assets/pictures/see_you_tom.jpg'),
+    PhraseSign(label: 'ThankYou', imagePath: 'assets/pictures/thank_you.jpg'),
+    PhraseSign(label: 'You\'reWelcome', imagePath: 'assets/pictures/youre_welcome.jpg'),
   ];
 
   int _currentIndex = 0;

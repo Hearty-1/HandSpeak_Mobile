@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
@@ -26,17 +27,36 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
-  int _consecutiveEmptyFrames = 0;
-  static const int _emptyFrameResetThreshold = 15;
+
+  // --- Recording state ---
+  // A phrase is one continuous, possibly multi-step motion -- we record
+  // the WHOLE thing, then score once at the end, instead of scoring
+  // every single frame while the user is still mid-gesture.
+  bool _isRecordingMotion = false;
+  bool _showMotionResult = false;
+  DateTime? _startRecordingTime;
+  final List<Float32List> _recordingFrames = [];
+
+  // Grace period for momentary hand-tracking loss mid-recording (motion
+  // blur / hand briefly leaving the detection zone during a fast part of
+  // the phrase). Only cancel the recording if hands are missing longer
+  // than this, not on a single dropped frame.
+  static const Duration _dropoutGracePeriod = Duration(milliseconds: 400);
+  DateTime? _lastHandsSeenTime;
+
+  // Safety cap: if hand-detection throughput is too low to gather a full
+  // window of real frames in a reasonable time, give up and evaluate on
+  // whatever was captured rather than waiting forever. Phrases are
+  // longer than single letters, so this is a bit more generous than the
+  // letter screen's cap.
+  static const double _maxRecordingSeconds = 12.0;
 
   String _debugStatus = "1/4 Initializing...";
 
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
-  DateTime? _startHoldTime;
 
   final double successThreshold = 70.0; 
-  final double holdDurationSeconds = 1.0;
   final int xpReward = 25;
 
   @override
@@ -116,67 +136,168 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   }
 
   void _onHandsDetected(List<Hand> detectedHands) {
-    if (_isSuccessAchieved || !mounted) return;
+    if (_isSuccessAchieved || !mounted || _showMotionResult) return;
 
-    if (detectedHands.isEmpty) {
-      _consecutiveEmptyFrames++;
-    } else {
-      _consecutiveEmptyFrames = 0;
-    }
+    final bool handsPresent = detectedHands.isNotEmpty;
+    final now = DateTime.now();
 
-    final RecognitionResult? result = _phraseRecognizer.processFrame(detectedHands);
-    if (result == null) return;
+    if (handsPresent) {
+      _lastHandsSeenTime = now;
 
-    if (result.label.startsWith("ERR:")) {
-      setState(() => _debugStatus = "❌ PREDICTION ERROR:\n${result.label}");
-      return;
-    }
+      // Start a fresh recording when hands enter the frame
+      if (!_isRecordingMotion) {
+        _isRecordingMotion = true;
+        _startRecordingTime = now;
+        _recordingFrames.clear();
+        _phraseRecognizer.resetHandSlotTracking();
+        setState(() => _debugStatus = "🎥 Recording phrase...");
+      }
 
-    if (_consecutiveEmptyFrames >= _emptyFrameResetThreshold) {
-      _phraseRecognizer.resetBuffer();
+      // Capture the raw feature vector for this frame into our own
+      // recording list -- we do NOT use processFrame()/its internal
+      // rolling buffer here. That buffer only remembers the last
+      // ~sequenceLength raw camera frames, which can truncate a longer
+      // phrase gesture if the camera delivers frames faster (or slower)
+      // than the model's training-time assumption. Recording every frame
+      // ourselves and resampling the whole thing at the end guarantees
+      // the full phrase is captured regardless of frame rate.
+      _recordingFrames.add(_phraseRecognizer.extractFrameFeatures(detectedHands));
+
+      final double elapsedSeconds =
+          now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
+
+      // Progress is driven by REAL FRAMES CAPTURED, not wall-clock time
+      // -- hand-detection throughput can vary a lot by device, so a
+      // fixed-seconds assumption can leave you with far too few real
+      // frames to represent the whole phrase. Wait for a full
+      // model-length window of real frames, capped by a safety timeout.
+      final int requiredFrames = _phraseRecognizer.sequenceLength;
+      final bool haveEnoughFrames = _recordingFrames.length >= requiredFrames;
+      final bool timedOut = elapsedSeconds >= _maxRecordingSeconds;
+
       setState(() {
-        _currentScore = 0.0;
+        _holdProgress = (_recordingFrames.length / requiredFrames).clamp(0.0, 1.0);
+        _debugStatus =
+            "🎥 Recording phrase... (${_recordingFrames.length}/$requiredFrames frames)";
+      });
+
+      if (haveEnoughFrames || timedOut) {
+        _evaluateRecording();
+      }
+    } else if (_isRecordingMotion) {
+      // Hands dropped out mid-recording. Only cancel if they've been
+      // missing longer than the grace period -- a single dropped frame
+      // during a fast part of the phrase shouldn't blow away everything
+      // captured so far.
+      final lastSeen = _lastHandsSeenTime;
+      final bool withinGrace =
+          lastSeen != null && now.difference(lastSeen) <= _dropoutGracePeriod;
+
+      if (!withinGrace) {
+        setState(() {
+          _isRecordingMotion = false;
+          _startRecordingTime = null;
+          _holdProgress = 0.0;
+          _debugStatus = "✋ Place your hand inside camera view...";
+        });
+        _recordingFrames.clear();
+      }
+      // else: within grace period -- skip this frame, keep recording.
+    }
+  }
+
+  void _evaluateRecording() {
+    _isRecordingMotion = false;
+    _showMotionResult = true;
+
+    // Full raw score breakdown (every label, not just the top pick) so
+    // we can read off the TARGET phrase's own confidence even when it
+    // wasn't the model's top guess -- instead of hard-zeroing the score
+    // just because the top-1 label didn't match.
+    final scores = _phraseRecognizer.rawScoresForRecording(_recordingFrames);
+
+    // --- TEMPORARY DEBUG INSTRUMENTATION ---
+    final double elapsedForDebug =
+        DateTime.now().difference(_startRecordingTime!).inMilliseconds / 1000.0;
+    final double effectiveFps =
+        elapsedForDebug > 0 ? _recordingFrames.length / elapsedForDebug : 0.0;
+    debugPrint(
+      "=== ${widget.targetPhrase.toUpperCase()} EVAL === "
+      "frames=${_recordingFrames.length} elapsed=${elapsedForDebug.toStringAsFixed(2)}s "
+      "fps=${effectiveFps.toStringAsFixed(1)} | scores=$scores",
+    );
+    // --- END DEBUG INSTRUMENTATION ---
+
+    _recordingFrames.clear();
+
+    if (scores.isEmpty) {
+      setState(() {
+        _showMotionResult = false;
         _holdProgress = 0.0;
-        _startHoldTime = null;
-        _debugStatus = "✋ Place your hand inside camera view...";
+        _debugStatus = "❌ PREDICTION ERROR: model returned no scores";
       });
       return;
     }
 
-    String targetClean = widget.targetPhrase.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
-    String predictedClean = result.label.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
-
-    setState(() {
-      _debugStatus = "🤖 Detected: '$predictedClean'\n🎯 Target: '$targetClean' (${result.confidence.toStringAsFixed(1)}%)";
-    });
-
-    if (predictedClean == targetClean) {
-      _updateGameLogic(result.confidence);
-    } else {
-      _updateGameLogic(0.0);
-    }
-  }
-
-  void _updateGameLogic(double score) {
-    if (!mounted) return;
-    final now = DateTime.now();
-
-    setState(() {
-      _currentScore = score;
-
-      if (_currentScore >= successThreshold) {
-        _startHoldTime ??= now;
-        final difference = now.difference(_startHoldTime!).inMilliseconds / 1000.0;
-        _holdProgress = (difference / holdDurationSeconds).clamp(0.0, 1.0);
-
-        if (difference >= holdDurationSeconds) {
-          _onSuccess();
-        }
-      } else {
-        _startHoldTime = null;
-        _holdProgress = 0.0;
+    // Top prediction -- kept purely for the debug readout, no longer
+    // used to gate the score itself.
+    String topLabel = "";
+    double topScore = -1.0;
+    scores.forEach((label, score) {
+      if (score > topScore) {
+        topScore = score;
+        topLabel = label;
       }
     });
+
+    String targetClean =
+        widget.targetPhrase.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
+    String predictedClean =
+        topLabel.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
+
+    // Find the raw score keyed to the actual target phrase, regardless
+    // of whether it happened to be the top prediction.
+    double? targetRawScore;
+    scores.forEach((label, score) {
+      final labelClean = label.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
+      if (labelClean == targetClean) targetRawScore = score;
+    });
+
+    if (targetRawScore == null) {
+      // Target phrase isn't in the label map at all -- a configuration
+      // problem, not a recognition failure. Don't silently show 0%.
+      setState(() {
+        _showMotionResult = false;
+        _holdProgress = 0.0;
+        _debugStatus = "❌ '${widget.targetPhrase}' not found in label map";
+      });
+      return;
+    }
+
+    final double finalScore = (targetRawScore! * 100.0).clamp(0.0, 100.0);
+
+    setState(() {
+      _currentScore = finalScore;
+      _holdProgress = 0.0;
+      _debugStatus =
+          "🤖 Top guess: '$predictedClean' (${(topScore * 100).toStringAsFixed(1)}%)\n"
+          "🎯 Target: '$targetClean' — your score: ${finalScore.toStringAsFixed(1)}%";
+    });
+
+    if (_currentScore >= successThreshold) {
+      _onSuccess();
+    } else {
+      // Failed attempt: show the score for 2 seconds, then let them retry
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && !_isSuccessAchieved) {
+          setState(() {
+            _showMotionResult = false;
+            _currentScore = 0.0;
+            _debugStatus = "✋ Place your hand inside camera view...";
+          });
+        }
+      });
+    }
   }
 
   Future<void> _awardXp() async {
@@ -200,7 +321,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
 
   void _onSuccess() async {
     _isSuccessAchieved = true;
-    _startHoldTime = null;
     _holdProgress = 0.0;
     
     HapticFeedback.heavyImpact(); 

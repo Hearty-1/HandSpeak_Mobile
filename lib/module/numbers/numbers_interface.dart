@@ -6,7 +6,7 @@ import '/services/progress_service.dart';
 
 import 'numbers_practice.dart'; 
 import 'numbers_tutorial.dart';
-import 'numbers_activity.dart';
+import 'numbers_difficulty_selection.dart';
 import '/leaderboard/arena.dart'; // Target Leaderboard / Challenge screen import
 
 class NumbersInterface extends StatelessWidget {
@@ -294,7 +294,7 @@ class NumbersInterface extends StatelessWidget {
                               child: GestureDetector(
                                 onTap: () => Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (context) => const NumbersActivityInterface()),
+                                  MaterialPageRoute(builder: (context) => const NumbersDifficultySelectionScreen()),
                                 ),
                                 child: Container(
                                   width: 164 * scale,

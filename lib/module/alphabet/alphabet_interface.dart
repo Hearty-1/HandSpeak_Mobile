@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '/services/progress_service.dart';
 import 'practice.dart';
 import 'tutorial.dart';
-import 'activity_interface.dart';
+import 'difficulty_selection.dart';
 import '/leaderboard/arena.dart'; // Target Leaderboard / Challenge screen import
 
 class AlphabetInterface extends StatelessWidget {
@@ -293,7 +293,7 @@ class AlphabetInterface extends StatelessWidget {
                               child: GestureDetector(
                                 onTap: () => Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (context) => const ActivityInterface()),
+                                  MaterialPageRoute(builder: (context) => const DifficultySelectionScreen()),
                                 ),
                                 child: Container(
                                   width: 164 * scale,

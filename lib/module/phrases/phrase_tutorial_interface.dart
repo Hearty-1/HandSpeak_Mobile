@@ -12,12 +12,16 @@ class PhraseTutorialInterface extends StatefulWidget {
 
 class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
   final List<Map<String, String>> lessons = [
+    {'title': 'GoodAfternoon', 'status': 'completed'},
+    {'title': 'GoodEvening', 'status': 'completed'},
+    {'title': 'GoodMorning', 'status': 'completed'},
     {'title': 'Hello', 'status': 'completed'},
-    {'title': 'Thank You', 'status': 'completed'},
-    {'title': 'Good Morning', 'status': 'completed'},
-    {'title': 'Good Afternoon', 'status': 'completed'},
-    {'title': 'How are you?', 'status': 'completed'},
-    {'title': 'I\'m Fine', 'status': 'completed'}
+    {'title': 'HowAreYou', 'status': 'completed'},
+    {'title': 'ImFine', 'status': 'completed'},
+    {'title': 'NiceToMeetYou', 'status': 'completed'},
+    {'title': 'SeeYouTom', 'status': 'completed'},
+    {'title': 'ThankYou', 'status': 'completed'},
+    {'title': 'You\'reWelcome', 'status': 'completed'}
   ];
 
   List<Map<String, String>> filteredLessons = [];

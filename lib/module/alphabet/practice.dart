@@ -8,6 +8,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'recognizer.dart';
 
 /// Dynamic theme visual mapping for thematic icons & graphics
 class _ThemeVisuals {
@@ -86,6 +87,15 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   int _currentIdx = 0;
   String get targetLetter => _alphabet[_currentIdx];
 
+  // J and Z are moving signs -- a single static template can't represent
+  // them, so they're recognized by a small dedicated LSTM/TFLite model
+  // (trained with train_lstm.py) instead of the frame-by-frame template
+  // matching used for every other letter.
+  static const List<String> _dynamicLetters = ['J', 'Z'];
+  bool get _isDynamicLetter => _dynamicLetters.contains(targetLetter);
+  PhraseRecognizer? _dynamicSignRecognizer;
+  bool _dynamicModelReady = false;
+
   List<dynamic>? _template;
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
@@ -114,6 +124,21 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
       );
 
       _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
+
+      // Loaded once up front (not per-letter) since the continuous A-Z
+      // loop revisits J and Z repeatedly -- keeping it warm avoids
+      // reloading the model every lap through the alphabet.
+      try {
+        _dynamicSignRecognizer = PhraseRecognizer(
+          modelAssetPath: 'assets/alphabet/model.tflite',
+          labelAssetPath: 'assets/alphabet/label_map.json',
+        );
+        await _dynamicSignRecognizer!.initialize();
+        _dynamicModelReady = true;
+      } catch (e) {
+        debugPrint("J/Z dynamic-sign model failed to load: $e");
+        _dynamicModelReady = false;
+      }
 
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
@@ -154,7 +179,10 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   }
 
   void _processCameraFrame(CameraImage image) {
-    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved || _template == null) return;
+    // NOTE: no longer gated on `_template == null` -- J/Z have no static
+    // template at all, so that check would block the pipeline forever
+    // whenever a dynamic letter comes up in the rotation.
+    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
 
     try {
       final int sensorOrientation = _controller!.description.sensorOrientation;
@@ -165,7 +193,26 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   }
 
   void _onHandsDetected(List<Hand> detectedHands) {
-    if (_isSuccessAchieved || _template == null) return;
+    if (_isSuccessAchieved) return;
+
+    if (_isDynamicLetter) {
+      if (!_dynamicModelReady || _dynamicSignRecognizer == null) return;
+
+      final result = _dynamicSignRecognizer!.processFrame(detectedHands);
+      final bool handsPresent = _dynamicSignRecognizer!.handsPresentInLastFrame;
+      // Only count it if hands are actually in frame right now AND the
+      // model's current top prediction is the letter being practiced --
+      // otherwise a stale window (hands just left frame) could keep
+      // reporting a lingering high-confidence match.
+      final double score = (handsPresent && result != null && result.label == targetLetter)
+          ? result.confidence
+          : 0.0;
+
+      _updateGameLogic(score);
+      return;
+    }
+
+    if (_template == null) return; // static template not loaded yet
 
     if (detectedHands.isNotEmpty) {
       double highestScoreAcrossAllHands = 0.0;
@@ -410,6 +457,10 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
       _currentScore = 0.0;
     });
 
+    // Clear leftover frames so a fresh J/Z attempt (or the transition
+    // away from one) doesn't start from a stale window.
+    _dynamicSignRecognizer?.resetBuffer();
+
     await _loadGestureLibrary(targetLetter);
   }
 
@@ -419,6 +470,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();
+    _dynamicSignRecognizer?.dispose();
     super.dispose();
   }
 

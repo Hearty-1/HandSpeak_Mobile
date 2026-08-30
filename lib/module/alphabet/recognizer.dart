@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -16,30 +15,27 @@ class RecognitionResult {
 /// them through the FSL LSTM model.
 ///
 /// Feature layout matches train_fsl_lstm.py exactly:
-///   - Up to 2 hands per frame, assigned to slots via temporally
-///     consistent nearest-previous-position matching (see
-///     _assignHandsToSlots), seeded by ascending wrist x on the first
-///     frame a hand appears. NOT a per-frame x-sort -- that flips slot
-///     identity whenever two hands cross paths in x, which looks like
-///     a teleport to the LSTM. train_fsl_lstm.py's clip preprocessing
-///     MUST replicate this exact frame-by-frame matching (see the
-///     inline note where it's implemented below), not just sort each
-///     frame independently, or inference will diverge from training.
-///   - Each hand contributes 21 landmarks * 3 coords (x, y, z),
-///     normalized wrist-relative AND scale-normalized: translate so the
-///     wrist is the origin, then divide every coordinate by the max
-///     wrist-to-landmark distance in that frame, so distance from the
-///     camera doesn't affect the features.
+///   - Up to 2 hands per frame, sorted by ascending wrist x (this plugin
+///     doesn't expose left/right handedness, so "sorted by x" is the
+///     deterministic convention used on both the training and inference
+///     sides).
+///   - Each hand contributes 21 landmarks * 3 coords (x, y, z), normalized
+///     wrist-relative: (x_i - x_0, y_i - y_0, z_i - z_0).
 ///   - A missing hand slot is zero-padded (63 zeros).
 ///   - Total: 2 * 21 * 3 = 126 features per frame.
-///
-/// ‼️ BOTH of the above (slot assignment AND scale normalization) must
-/// be replicated exactly in train_fsl_lstm.py and the model re-exported
-/// before deploying this file. The currently-shipped .tflite was
-/// trained on the OLD feature distribution (unscaled, plain x-sort) --
-/// running this version against that model will make predictions
-/// worse, not better, until retrained.
 class PhraseRecognizer {
+  PhraseRecognizer({
+    this.modelAssetPath = 'assets/phrases/fsl_model.tflite',
+    this.labelAssetPath = 'assets/phrases/label_map.json',
+  });
+
+  /// Asset paths are configurable so this same class can drive any
+  /// 30x126 hands-sequence LSTM/TFLite model -- e.g. the full phrase
+  /// vocabulary (default) or a smaller dedicated model like a J/Z
+  /// moving-letter recognizer -- without duplicating this file.
+  final String modelAssetPath;
+  final String labelAssetPath;
+
   Interpreter? _interpreter;
   List<String> _labels = [];
 
@@ -49,14 +45,6 @@ class PhraseRecognizer {
   static const int _numCoords = 3;
   static const int _featuresPerHand = _numLandmarks * _numCoords; // 63
   static const int _numFeatures = _numHands * _featuresPerHand; // 126
-
-  /// The model's fixed sequence length. Exposed so callers that manage
-  /// their own recording window (like a timed "record then evaluate"
-  /// flow) know how many REAL frames they should try to accumulate
-  /// before evaluating -- rather than assuming a fixed wall-clock
-  /// duration will produce enough frames, which breaks down on devices
-  /// where the hand-detection stream runs slower than expected.
-  int get sequenceLength => _sequenceLength;
 
   // Fixed-length ring buffer, always exactly _sequenceLength frames long.
   // It starts fully zero-padded so the model can run inference from the
@@ -69,28 +57,10 @@ class PhraseRecognizer {
   bool _handsPresentInLastFrame = false;
   bool get handsPresentInLastFrame => _handsPresentInLastFrame;
 
-  // Per-recording state for temporally-consistent hand-slot assignment
-  // (see _assignHandsToSlots). Tracks each slot's most recent wrist
-  // position so a new frame's hands can be matched to "whichever slot
-  // they were in last", instead of re-sorting by x every single frame
-  // -- which flips slot identity the instant two hands cross paths in
-  // x, looking to the LSTM like both hands teleported in one frame.
-  List<Landmark?> _lastSlotWrist = List<Landmark?>.filled(_numHands, null);
-
-  /// Clears the hand-slot tracking history. Call this at the start of a
-  /// new recording attempt (alongside clearing your own frame list, or
-  /// alongside [resetBuffer] for the continuous ring-buffer flow) so
-  /// leftover positions from a previous attempt can't influence the
-  /// first frame's slot assignment.
-  void resetHandSlotTracking() {
-    _lastSlotWrist = List<Landmark?>.filled(_numHands, null);
-  }
-
   /// Initializes the TFLite interpreter and label mapping
   Future<void> initialize() async {
     // 1. Load raw model bytes into memory
-    final ByteData rawData =
-        await rootBundle.load('assets/phrases/model.tflite');
+    final ByteData rawData = await rootBundle.load(modelAssetPath);
 
     // Sanity Check: Detect if the asset is a Git LFS text pointer instead of
     // a real binary
@@ -118,14 +88,13 @@ class PhraseRecognizer {
     if (!_shapeMatches(inputShape, expected)) {
       throw Exception(
         "Model input shape mismatch. Expected $expected but "
-        "fsl_model.tflite reports $inputShape. Re-export with "
-        "train_fsl_lstm.py (check SEQUENCE_LENGTH / NUM_FEATURES).",
+        "$modelAssetPath reports $inputShape. Re-export with "
+        "train_lstm.py (check --sequence_length / feature count).",
       );
     }
 
     // 4. Load and Parse Label Map JSON
-    final labelData =
-        await rootBundle.loadString('assets/phrases/label_map.json');
+    final labelData = await rootBundle.loadString(labelAssetPath);
     final dynamic decodedJson = json.decode(labelData);
 
     if (decodedJson is Map<String, dynamic>) {
@@ -145,7 +114,7 @@ class PhraseRecognizer {
     if (!_shapeMatches(outputShape, expectedOut)) {
       throw Exception(
         "Model output shape $outputShape doesn't match label count "
-        "$expectedOut. label_map.json and model.tflite were exported "
+        "$expectedOut. label_map.json and fsl_model.tflite were exported "
         "from different runs -- re-export both together.",
       );
     }
@@ -159,119 +128,22 @@ class PhraseRecognizer {
     return true;
   }
 
-  /// Wrist-relative, scale-normalized coordinates for a single hand's 21
-  /// landmarks. Translates so the wrist sits at the origin, THEN divides
-  /// every coordinate by the max wrist-to-landmark distance in that
-  /// frame -- so a hand held close to the camera and the same hand held
-  /// far away produce the same normalized values. Mirrors
-  /// normalize_hand() in train_fsl_lstm.py exactly (see the class-level
-  /// retraining note for what has to change there to match).
+  /// Wrist-relative normalization for a single hand's 21 landmarks.
+  /// Mirrors normalize_hand() in train_fsl_lstm.py exactly.
   List<double> _normalizeHand(List<Landmark> landmarks) {
     if (landmarks.length != _numLandmarks) {
       return List<double>.filled(_featuresPerHand, 0.0);
     }
     final wrist = landmarks[0];
-
-    // First pass: translate relative to the wrist, and find the max
-    // distance from the wrist to any landmark (the scale factor).
-    double maxDist = 0.0;
-    final relative = List<List<double>>.generate(_numLandmarks, (i) {
-      final lm = landmarks[i];
-      final dx = lm.x - wrist.x;
-      final dy = lm.y - wrist.y;
-      final dz = lm.z - wrist.z;
-      final dist = math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (dist > maxDist) maxDist = dist;
-      return [dx, dy, dz];
-    });
-
-    // Guard against a degenerate/all-zero hand (shouldn't happen with
-    // real landmarks, but avoids a divide-by-zero if it ever does).
-    final double scale = maxDist > 1e-6 ? maxDist : 1.0;
-
     final out = List<double>.filled(_featuresPerHand, 0.0);
     for (int i = 0; i < _numLandmarks; i++) {
+      final lm = landmarks[i];
       final base = i * _numCoords;
-      out[base] = relative[i][0] / scale;
-      out[base + 1] = relative[i][1] / scale;
-      out[base + 2] = relative[i][2] / scale;
+      out[base] = lm.x - wrist.x;
+      out[base + 1] = lm.y - wrist.y;
+      out[base + 2] = lm.z - wrist.z;
     }
     return out;
-  }
-
-  double _wristDistance(Landmark a, Landmark b) {
-    final dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
-    return math.sqrt(dx * dx + dy * dy + dz * dz);
-  }
-
-  /// Assigns up to [_numHands] detected hands to fixed feature-vector
-  /// slots in a temporally-consistent way, instead of re-sorting by x
-  /// every frame. Fixes the "teleportation" glitch: a pure per-frame
-  /// x-sort flips which hand occupies which slot the instant two hands
-  /// cross paths in x, and since the LSTM reads slot identity as a
-  /// continuous trajectory over time, that flip looks like both hands
-  /// jumping to the other's position in a single frame -- which is
-  /// exactly what was derailing two-handed, hands-crossing signs.
-  ///
-  /// Strategy: for 2 hands, try both possible slot assignments and pick
-  /// whichever keeps each hand closest to where "its" slot's hand was
-  /// in the previous frame. Falls back to the original ascending-x
-  /// ordering when there's no previous-frame history to compare
-  /// against (e.g. the very first frame of a recording) -- so slot
-  /// identity is still seeded deterministically.
-  List<Hand?> _assignHandsToSlots(List<Hand> hands) {
-    final capped = hands.length > _numHands ? hands.sublist(0, _numHands) : hands;
-    final result = List<Hand?>.filled(_numHands, null);
-
-    if (capped.isEmpty) return result;
-
-    if (capped.length == 1) {
-      final wrist = capped[0].landmarks[0];
-      int slot = 0;
-      final prev0 = _lastSlotWrist[0];
-      final prev1 = _lastSlotWrist[1];
-      if (prev0 != null && prev1 != null) {
-        slot = _wristDistance(wrist, prev1) < _wristDistance(wrist, prev0) ? 1 : 0;
-      } else if (prev0 == null && prev1 != null) {
-        slot = 1;
-      }
-      result[slot] = capped[0];
-      _lastSlotWrist[slot] = wrist;
-      return result;
-    }
-
-    // 2 hands.
-    final a = capped[0];
-    final b = capped[1];
-    final aw = a.landmarks[0];
-    final bw = b.landmarks[0];
-    final prev0 = _lastSlotWrist[0];
-    final prev1 = _lastSlotWrist[1];
-
-    Hand slot0Hand, slot1Hand;
-    if (prev0 == null || prev1 == null) {
-      // No prior frame to compare against -- seed with the original
-      // ascending-x convention.
-      final sorted = [a, b]..sort((x, y) => x.landmarks[0].x.compareTo(y.landmarks[0].x));
-      slot0Hand = sorted[0];
-      slot1Hand = sorted[1];
-    } else {
-      final costStraight = _wristDistance(aw, prev0) + _wristDistance(bw, prev1);
-      final costSwapped = _wristDistance(bw, prev0) + _wristDistance(aw, prev1);
-      if (costSwapped < costStraight) {
-        slot0Hand = b;
-        slot1Hand = a;
-      } else {
-        slot0Hand = a;
-        slot1Hand = b;
-      }
-    }
-
-    result[0] = slot0Hand;
-    result[1] = slot1Hand;
-    _lastSlotWrist[0] = slot0Hand.landmarks[0];
-    _lastSlotWrist[1] = slot1Hand.landmarks[0];
-    return result;
   }
 
   /// Builds this frame's 126-length feature vector from whatever hands
@@ -281,11 +153,12 @@ class PhraseRecognizer {
 
     if (hands.isEmpty) return vec; // all zeros -> zero-padded hand frame
 
-    final assigned = _assignHandsToSlots(hands);
-    for (int slot = 0; slot < _numHands; slot++) {
-      final hand = assigned[slot];
-      if (hand == null) continue;
-      final normalized = _normalizeHand(hand.landmarks);
+    // Deterministic left-to-right ordering since handedness isn't exposed.
+    final sorted = List<Hand>.from(hands)
+      ..sort((a, b) => a.landmarks[0].x.compareTo(b.landmarks[0].x));
+
+    for (int slot = 0; slot < _numHands && slot < sorted.length; slot++) {
+      final normalized = _normalizeHand(sorted[slot].landmarks);
       final start = slot * _featuresPerHand;
       for (int i = 0; i < _featuresPerHand; i++) {
         vec[start + i] = normalized[i];
@@ -302,16 +175,16 @@ class PhraseRecognizer {
   ///
   /// IMPORTANT: this is a *rolling* window of the last [_sequenceLength]
   /// raw camera frames -- it has no concept of "the whole gesture." It's
-  /// the right tool for continuous, no-explicit-start/stop recognition.
-  /// It is NOT the right tool for a "record for N seconds, then evaluate
-  /// once" flow: if the gesture's real-world duration doesn't fit inside
+  /// the right tool for continuous, no-explicit-start/stop recognition
+  /// (e.g. a live "is the target sign currently being held" check). It is
+  /// NOT the right tool for a "record for N seconds, then evaluate once"
+  /// flow: if the gesture's real-world duration doesn't fit inside
   /// [_sequenceLength] frames at whatever frame rate the camera happens
-  /// to deliver, evaluating this buffer at the end of a recording only
-  /// sees the most recent tail slice of the motion. Phrases are longer
-  /// and more complex than single letters, so this matters even more
-  /// here than it did for J/Z. For a timed recording flow, use
-  /// [extractFrameFeatures] to collect every frame yourself, then call
-  /// [predictFromRecording] once at the end.
+  /// to deliver, evaluating this buffer at the end of the recording only
+  /// sees the most recent tail slice of the motion, not the whole thing.
+  /// For that use case, use [extractFrameFeatures] to collect every frame
+  /// of the recording yourself, then call [predictFromRecording] once at
+  /// the end.
   RecognitionResult? processFrame(List<Hand> hands) {
     _handsPresentInLastFrame = hands.isNotEmpty;
 
@@ -326,9 +199,9 @@ class PhraseRecognizer {
 
   /// Extracts one frame's 126-length feature vector without touching the
   /// rolling buffer. Use this when you're managing your own recording
-  /// window (e.g. "capture everything between hand-enters-frame and
-  /// enough real frames accumulated") instead of relying on the
-  /// continuous ring buffer that [processFrame] maintains.
+  /// window (e.g. "capture everything between hand-enters-frame and a
+  /// fixed timeout") instead of relying on the continuous ring buffer
+  /// that [processFrame] maintains.
   Float32List extractFrameFeatures(List<Hand> hands) {
     _handsPresentInLastFrame = hands.isNotEmpty;
     return _extractFeatureVector(hands);
@@ -340,9 +213,13 @@ class PhraseRecognizer {
   /// out to be or how long it actually took in wall-clock time.
   ///
   /// [rawFrames] is first resampled to exactly [_sequenceLength] evenly
-  /// spaced frames spanning the *entire* input, matching how a
-  /// variable-duration gesture recording should be normalized to a
-  /// fixed-length sequence.
+  /// spaced frames spanning the *entire* input (see
+  /// [_resampleToSequenceLength]), matching how a variable-duration
+  /// gesture recording should be normalized to a fixed-length sequence
+  /// (mirroring train_fsl_lstm.py's handling of variable-duration
+  /// training clips). This guarantees a larger, slower gesture like 'Z'
+  /// is represented across its full motion instead of being truncated to
+  /// whatever fits in a raw last-N-frames tail window.
   RecognitionResult? predictFromRecording(List<Float32List> rawFrames) {
     if (rawFrames.isEmpty) {
       return RecognitionResult(label: "No motion recorded", confidence: 0.0);
@@ -374,6 +251,8 @@ class PhraseRecognizer {
       return RecognitionResult(label: "Labels not loaded", confidence: 0.0);
     }
     if (frames.length != _sequenceLength) {
+      // Should be unreachable (both call sites guarantee this), but fail
+      // loudly instead of silently feeding a misshapen tensor.
       return RecognitionResult(
         label: "ERR: expected $_sequenceLength frames, got ${frames.length}",
         confidence: 0.0,
@@ -400,10 +279,11 @@ class PhraseRecognizer {
     );
   }
 
-  /// Runs raw inference and returns EVERY label's output score, keyed by
-  /// label -- not just the winning one. `_predict` uses this internally
-  /// to pick the argmax; exposed separately (via [rawScoresForRecording])
-  /// so callers can inspect the full distribution for debugging.
+  /// Runs raw inference and returns EVERY label's output score (whatever
+  /// scale the model natively produces), keyed by label -- not just the
+  /// winning one. `_predict` uses this internally to pick the argmax;
+  /// exposed separately (via [rawScoresForRecording]) so callers can
+  /// inspect the full distribution for debugging.
   Map<String, double> _rawScores(List<Float32List> frames) {
     if (_interpreter == null || _labels.isEmpty || frames.length != _sequenceLength) {
       return {};
@@ -434,10 +314,15 @@ class PhraseRecognizer {
   }
 
   /// DEBUG TOOL: returns every label's raw score for an arbitrary-length
-  /// recording, letting you compare windowing strategies side by side.
-  /// [resample] = true mirrors [predictFromRecording]. [resample] =
-  /// false takes the RAW LAST [_sequenceLength] frames only (zero-padded
-  /// at the front if the recording is shorter).
+  /// recording, letting you compare two different windowing strategies
+  /// side by side without changing what the app actually scores on.
+  ///
+  /// [resample] = true (default) mirrors [predictFromRecording]: evenly
+  /// resample the whole recording down to [_sequenceLength] frames.
+  /// [resample] = false instead takes the RAW LAST [_sequenceLength]
+  /// frames only (zero-padding at the front if the recording is
+  /// shorter) -- i.e. exactly what the old rolling-buffer/[processFrame]
+  /// approach would have seen.
   Map<String, double> rawScoresForRecording(
     List<Float32List> rawFrames, {
     bool resample = true,
@@ -467,7 +352,6 @@ class PhraseRecognizer {
       _frameBuffer[i] = Float32List(_numFeatures);
     }
     _handsPresentInLastFrame = false;
-    resetHandSlotTracking();
   }
 
   void dispose() {
