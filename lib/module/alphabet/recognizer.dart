@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -27,6 +28,15 @@ class PhraseRecognizer {
   Interpreter? _interpreter;
   List<String> _labels = [];
 
+  // True when the loaded model has a single sigmoid output neuron (shape
+  // [1, 1]) rather than one softmax unit per label (shape [1, labels.length]).
+  // scripts/train_gesture_lstm.py produces this for isolated binary models
+  // (`--target alphabet_j`), which is how the J/Z models are trained: the
+  // model emits P(positive class) only, while `_labels` still has 2 entries
+  // (out_labels = [f"not_{target}", target]) so downstream code that expects
+  // a label per class keeps working unchanged.
+  bool _binarySigmoidOutput = false;
+
   static const int _numHands = 2;
   static const int _numLandmarks = 21;
   static const int _numCoords = 3;
@@ -41,7 +51,7 @@ class PhraseRecognizer {
   bool _handsPresentInLastFrame = false;
   bool get handsPresentInLastFrame => _handsPresentInLastFrame;
 
-  /// Initializes the TFLite interpreter and label mapping
+  /// Initializes the TFLite interpreter from local assets
   Future<void> initialize() async {
     final ByteData rawData = await rootBundle.load(modelAssetPath);
 
@@ -56,29 +66,44 @@ class PhraseRecognizer {
       rawData.buffer.asUint8List(rawData.offsetInBytes, rawData.lengthInBytes),
     );
 
+    await _loadInterpreterFromBytes(alignedBytes);
+  }
+
+  /// Initializes the TFLite interpreter directly from an in-memory byte buffer
+  Future<void> initializeFromBuffer(Uint8List modelBytes, {List<String>? customLabels}) async {
+    if (modelBytes.lengthInBytes < 1000) {
+      throw Exception("Invalid or corrupted TFLite byte buffer length.");
+    }
+
+    await _loadInterpreterFromBytes(modelBytes, customLabels: customLabels);
+  }
+
+  Future<void> _loadInterpreterFromBytes(Uint8List modelBytes, {List<String>? customLabels}) async {
     final options = InterpreterOptions()..threads = 2;
-    _interpreter = Interpreter.fromBuffer(alignedBytes, options: options);
+    _interpreter = Interpreter.fromBuffer(modelBytes, options: options);
 
     _interpreter!.allocateTensors();
     final inputShape = _interpreter!.getInputTensor(0).shape;
     final expected = [1, sequenceLength, _numFeatures];
     if (!_shapeMatches(inputShape, expected)) {
       throw Exception(
-        "Model input shape mismatch. Expected $expected but "
-        "$modelAssetPath reports $inputShape. Re-export with "
-        "train_lstm.py (check --sequence_length / feature count).",
+        "Model input shape mismatch. Expected $expected but reports $inputShape.",
       );
     }
 
-    final labelData = await rootBundle.loadString(labelAssetPath);
-    final dynamic decodedJson = json.decode(labelData);
+    if (customLabels != null && customLabels.isNotEmpty) {
+      _labels = customLabels;
+    } else {
+      final labelData = await rootBundle.loadString(labelAssetPath);
+      final dynamic decodedJson = json.decode(labelData);
 
-    if (decodedJson is Map<String, dynamic>) {
-      final entries = decodedJson.entries.toList();
-      entries.sort((a, b) => (a.value as num).compareTo(b.value as num));
-      _labels = entries.map((e) => e.key).toList();
-    } else if (decodedJson is List) {
-      _labels = decodedJson.map((e) => e.toString()).toList();
+      if (decodedJson is Map<String, dynamic>) {
+        final entries = decodedJson.entries.toList();
+        entries.sort((a, b) => (a.value as num).compareTo(b.value as num));
+        _labels = entries.map((e) => e.key).toList();
+      } else if (decodedJson is List) {
+        _labels = decodedJson.map((e) => e.toString()).toList();
+      }
     }
 
     if (_labels.isEmpty) {
@@ -87,11 +112,18 @@ class PhraseRecognizer {
 
     final outputShape = _interpreter!.getOutputTensor(0).shape;
     final expectedOut = [1, _labels.length];
-    if (!_shapeMatches(outputShape, expectedOut)) {
+
+    if (_shapeMatches(outputShape, expectedOut)) {
+      _binarySigmoidOutput = false;
+    } else if (_labels.length == 2 && _shapeMatches(outputShape, [1, 1])) {
+      // Binary classifier with a single sigmoid output neuron: the model
+      // reports P(positive class) only, and P(negative) = 1 - that value.
+      // See the class-level comment on _binarySigmoidOutput.
+      _binarySigmoidOutput = true;
+    } else {
       throw Exception(
-        "Model output shape $outputShape doesn't match label count "
-        "$expectedOut. label_map.json and model were exported from "
-        "different runs -- re-export both together.",
+        "Model output shape $outputShape doesn't match label count $expectedOut "
+        "(and isn't a [1, 1] binary-sigmoid output for the 2 labels provided).",
       );
     }
   }
@@ -104,54 +136,90 @@ class PhraseRecognizer {
     return true;
   }
 
-  List<double> _normalizeHand(List<Landmark> landmarks) {
-    if (landmarks.length != _numLandmarks) {
-      return List<double>.filled(_featuresPerHand, 0.0);
-    }
-    final wrist = landmarks[0];
-    final out = List<double>.filled(_featuresPerHand, 0.0);
-    for (int i = 0; i < _numLandmarks; i++) {
-      final lm = landmarks[i];
-      final base = i * _numCoords;
-      out[base] = lm.x - wrist.x;
-      out[base + 1] = lm.y - wrist.y;
-      out[base + 2] = lm.z - wrist.z;
-    }
-    return out;
-  }
-
-  Float32List _extractFeatureVector(List<Hand> hands) {
+  /// Extracts raw screen landmark coordinates without wrist normalization
+  Float32List extractRawFrameFeatures(List<Hand> hands) {
     final vec = Float32List(_numFeatures);
-
     if (hands.isEmpty) return vec;
 
     final sorted = List<Hand>.from(hands)
       ..sort((a, b) => a.landmarks[0].x.compareTo(b.landmarks[0].x));
 
     for (int slot = 0; slot < _numHands && slot < sorted.length; slot++) {
-      final normalized = _normalizeHand(sorted[slot].landmarks);
+      final landmarks = sorted[slot].landmarks;
       final start = slot * _featuresPerHand;
-      for (int i = 0; i < _featuresPerHand; i++) {
-        vec[start + i] = normalized[i];
+      for (int i = 0; i < _numLandmarks && i < landmarks.length; i++) {
+        final base = start + i * _numCoords;
+        vec[base] = landmarks[i].x;
+        vec[base + 1] = landmarks[i].y;
+        vec[base + 2] = landmarks[i].z;
       }
     }
     return vec;
   }
 
-  RecognitionResult? processFrame(List<Hand> hands) {
-    _handsPresentInLastFrame = hands.isNotEmpty;
+  // Landmark index of the middle-finger MCP, used as the scale reference —
+  // must match MIDDLE_MCP in the web's lib/posture-metrics.ts.
+  static const int _middleMcpIdx = 9;
 
-    final frameVector = _extractFeatureVector(hands);
+  /// Converts a raw feature vector into wrist-centered, scale-normalized
+  /// coordinates. This MUST exactly match
+  /// lib/posture-metrics.ts:normalizeFeatureVector on the web, because that
+  /// is the transform applied to every training sample before it reaches
+  /// the LSTM (see scripts/export-training-dataset.js and
+  /// train_gesture_lstm.py). Previously this only re-centered on the wrist
+  /// and never divided by scale, so live predictions were fed feature
+  /// vectors on a completely different scale than the ones the model was
+  /// trained on — the model saw out-of-distribution input on every frame,
+  /// which is why confidence stayed near 0 even for a correctly-performed
+  /// sign.
+  ///
+  /// Both hand slots are normalized using hand slot 0's (the primary hand's)
+  /// wrist and scale — never each hand's own — again to match the web,
+  /// since for two-handed signs hand 2's position relative to hand 1 can be
+  /// part of what the sign means.
+  Float32List normalizeFrameVector(Float32List rawVec) {
+    final Float32List normVec = Float32List(_numFeatures);
 
-    _frameBuffer.removeAt(0);
-    _frameBuffer.add(frameVector);
+    final wristX = rawVec[0];
+    final wristY = rawVec[1];
+    final wristZ = rawVec[2];
 
-    return _predict(_frameBuffer);
+    final midX = rawVec[_middleMcpIdx * _numCoords];
+    final midY = rawVec[_middleMcpIdx * _numCoords + 1];
+    final dx = midX - wristX;
+    final dy = midY - wristY;
+    final rawScale = math.sqrt(dx * dx + dy * dy);
+    // Falls back to 1 when no primary hand is present (an all-zero vector),
+    // matching the web's `|| 1` — keeps the vector all-zero instead of
+    // dividing by zero.
+    final scale = rawScale == 0.0 ? 1.0 : rawScale;
+
+    for (int slot = 0; slot < _numHands; slot++) {
+      final start = slot * _featuresPerHand;
+      for (int i = 0; i < _numLandmarks; i++) {
+        final base = start + i * _numCoords;
+        normVec[base] = (rawVec[base] - wristX) / scale;
+        normVec[base + 1] = (rawVec[base + 1] - wristY) / scale;
+        normVec[base + 2] = (rawVec[base + 2] - wristZ) / scale;
+      }
+    }
+    return normVec;
   }
 
   Float32List extractFrameFeatures(List<Hand> hands) {
     _handsPresentInLastFrame = hands.isNotEmpty;
-    return _extractFeatureVector(hands);
+    return extractRawFrameFeatures(hands);
+  }
+
+  RecognitionResult? processFrame(List<Hand> hands) {
+    _handsPresentInLastFrame = hands.isNotEmpty;
+    final rawVector = extractRawFrameFeatures(hands);
+    final normVector = normalizeFrameVector(rawVector);
+
+    _frameBuffer.removeAt(0);
+    _frameBuffer.add(normVector);
+
+    return _predict(_frameBuffer);
   }
 
   RecognitionResult? predictFromRecording(List<Float32List> rawFrames) {
@@ -159,7 +227,8 @@ class PhraseRecognizer {
       return RecognitionResult(label: "No motion recorded", confidence: 0.0);
     }
     final resampled = _resampleToSequenceLength(rawFrames);
-    return _predict(resampled);
+    final normalized = resampled.map((f) => normalizeFrameVector(f)).toList();
+    return _predict(normalized);
   }
 
   List<Float32List> _resampleToSequenceLength(List<Float32List> frames) {
@@ -220,9 +289,21 @@ class PhraseRecognizer {
       }
 
       final inputTensor = flatInput.reshape([1, sequenceLength, _numFeatures]);
-      final outputTensor =
-          List.filled(1 * _labels.length, 0.0).reshape([1, _labels.length]);
 
+      if (_binarySigmoidOutput) {
+        final outputTensor = List.filled(1, 0.0).reshape([1, 1]);
+        _interpreter!.run(inputTensor, outputTensor);
+
+        final double p = (outputTensor[0][0] as num).toDouble();
+        // _labels == [f"not_{target}", target] (see train_gesture_lstm.py),
+        // so index 0 is the negative class and index 1 is the positive one.
+        return {
+          _labels[0]: 1.0 - p,
+          _labels[1]: p,
+        };
+      }
+
+      final outputTensor = List.filled(1 * _labels.length, 0.0).reshape([1, _labels.length]);
       _interpreter!.run(inputTensor, outputTensor);
 
       final List<dynamic> rawScores = outputTensor[0] as List<dynamic>;
@@ -233,7 +314,7 @@ class PhraseRecognizer {
       return result;
     } catch (e) {
       return {};
-    }
+    } 
   }
 
   Map<String, double> rawScoresForRecording(
@@ -244,7 +325,8 @@ class PhraseRecognizer {
     final frames = resample
         ? _resampleToSequenceLength(rawFrames)
         : _lastNFramesZeroPadded(rawFrames, sequenceLength);
-    return _rawScores(frames);
+    final normalized = frames.map((f) => normalizeFrameVector(f)).toList();
+    return _rawScores(normalized);
   }
 
   List<Float32List> _lastNFramesZeroPadded(List<Float32List> frames, int n) {
