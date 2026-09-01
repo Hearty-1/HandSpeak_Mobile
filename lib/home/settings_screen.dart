@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../providers/theme_provider.dart';
 import '../providers/sound_provider.dart';
+// Make sure this path matches where you saved the new service file!
+import '../services/local_notification_service.dart'; 
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -112,8 +114,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 secondary: const Icon(CupertinoIcons.flame_fill, color: Colors.deepOrange),
                 title: Text("Streak Reminders", style: TextStyle(color: textColor)),
                 value: _streakNotif,
-                onChanged: (val) {
+                onChanged: (val) async {
                   setState(() => _streakNotif = val);
+                  if (val) {
+                    await LocalNotificationService.scheduleStreakReminder();
+                  } else {
+                    await LocalNotificationService.cancelStreakReminder();
+                  }
                 },
               ),
               Divider(height: 1, color: theme.dividerColor),
@@ -122,8 +129,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 secondary: const Icon(CupertinoIcons.star_fill, color: Color(0xFFFFB800)),
                 title: Text("Daily Challenges", style: TextStyle(color: textColor)),
                 value: _dailyChallengesNotif,
-                onChanged: (val) {
+                onChanged: (val) async {
                   setState(() => _dailyChallengesNotif = val);
+                  if (val) {
+                    // Assuming you add this method to your service
+                    // await LocalNotificationService.scheduleDailyReminder(); 
+                  } else {
+                    // await LocalNotificationService.cancelDailyReminder();
+                  }
                 },
               ),
               Divider(height: 1, color: theme.dividerColor),
@@ -134,6 +147,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: _friendNotif,
                 onChanged: (val) {
                   setState(() => _friendNotif = val);
+                  // Since friend events happen outside the device, this would sync to 
+                  // Firebase to let FCM know if it's allowed to send pushes.
                 },
               ),
             ],
