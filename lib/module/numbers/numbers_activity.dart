@@ -518,7 +518,8 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                           levelsMap[levelId] = {
                             'levelId': levelId,
                             'type': data['type'] ?? 'fill_in',
-                            'title': 'Level ${levelId.split('_').last}: ${data['type']?.toString().replaceAll('_', ' ').toUpperCase() ?? 'CHALLENGE'}',
+                            // UPDATE: Modified this line to only display the level number
+                            'title': 'Level ${levelId.split('_').last}',
                           };
                         }
                       }

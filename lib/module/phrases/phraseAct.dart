@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart'; 
 import '/providers/sound_provider.dart'; 
 import '/services/progress_service.dart'; 
-import 'easyAct_mc.dart'; 
+import '../alphabet/easyAct_mc.dart'; 
 
 // ==========================================
 // 1. KIDDIE PROCEDURAL BACKGROUND WIDGET
@@ -16,7 +16,7 @@ class ThemedBackground extends StatelessWidget {
 
   Widget _buildGlowingOrb(double size, Color color, double top, double left) {
     return Positioned(
-      top: top,
+      top: top, 
       left: left,
       child: Container(
         width: size,
@@ -315,16 +315,16 @@ class ThemedBackground extends StatelessWidget {
 // ==========================================
 // 2. BACKEND-CONNECTED ACTIVITY INTERFACE
 // ==========================================
-class ActivityInterface extends StatefulWidget {
+class PhraseActivityInterface extends StatefulWidget {
   final String difficulty; // "easy", "medium", or "hard"
 
-  const ActivityInterface({super.key, required this.difficulty});
+  const PhraseActivityInterface({super.key, required this.difficulty});
 
   @override
-  State<ActivityInterface> createState() => _ActivityInterfaceState();
+  State<PhraseActivityInterface> createState() => _PhraseActivityInterfaceState();
 }
 
-class _ActivityInterfaceState extends State<ActivityInterface> {
+class _PhraseActivityInterfaceState extends State<PhraseActivityInterface> {
   late SoundProvider _soundProvider;
 
   @override
@@ -424,7 +424,7 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
 
   // Capitalize text for screen header
   String get _appBarTitle {
-    if (widget.difficulty.isEmpty) return 'Alphabet Activity';
+    if (widget.difficulty.isEmpty) return 'Phrase Activity';
     return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} Activity';
   }
 
@@ -478,12 +478,12 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                   if (data != null && data['progress'] != null) { 
                     progressMap = Map<String, dynamic>.from(data['progress']); 
                     
-                    final String prefix = 'alphabet_${currentDifficulty}_';
+                    final String prefix = 'phrase_${currentDifficulty}_';
                     progressMap.forEach((key, value) { 
                       final int stars = (value as num).toInt();
                       if (key.startsWith(prefix)) totalCategoryStars += stars;
-                      if (key.startsWith('alphabet_easy_')) totalEasyStars += stars;
-                      if (key.startsWith('alphabet_medium_')) totalMediumStars += stars;
+                      if (key.startsWith('phrase_easy_')) totalEasyStars += stars;
+                      if (key.startsWith('phrase_medium_')) totalMediumStars += stars;
                     });
                   }
                 }
@@ -500,7 +500,7 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('activity_questions')
-                      .where('category', isEqualTo: 'alphabet')
+                      .where('category', isEqualTo: 'phrase')
                       .snapshots(),
                   builder: (context, questionsSnapshot) {
                     if (questionsSnapshot.connectionState == ConnectionState.waiting) {
@@ -509,12 +509,12 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
 
                     final docs = questionsSnapshot.data?.docs ?? [];
 
-                    // Group questions by unique level (e.g., "alphabet_medium_1", "alphabet_medium_2")
+                    // Group questions by unique level (e.g., "phrase_medium_1", "phrase_medium_2")
                     final Map<String, Map<String, dynamic>> levelsMap = {};
                     for (var doc in docs) {
                       final data = doc.data() as Map<String, dynamic>;
                       final String? levelId = data['level'];
-                      if (levelId != null && levelId.startsWith('alphabet_${currentDifficulty}_')) {
+                      if (levelId != null && levelId.startsWith('phrase_${currentDifficulty}_')) {
                         if (!levelsMap.containsKey(levelId)) {
                           levelsMap[levelId] = {
                             'levelId': levelId,

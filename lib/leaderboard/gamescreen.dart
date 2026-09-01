@@ -1,0 +1,1853 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:camera/camera.dart';
+import 'package:hand_landmarker/hand_landmarker.dart';
+
+import '/module/alphabet/recognizer.dart';
+
+class GameProperScreen extends StatefulWidget {
+  final String roomCode;
+  final String challengeTitle;
+  final bool isHost;
+
+  const GameProperScreen({
+    super.key,
+    required this.roomCode,
+    required this.challengeTitle,
+    required this.isHost,
+  });
+
+  @override
+  State<GameProperScreen> createState() => _GameProperScreenState();
+}
+
+class _GameProperScreenState extends State<GameProperScreen> {
+  late final String _currentUserId;
+  late final String _displayName;
+
+  List<Map<String, dynamic>> _questions = [];
+  int _currentQuestionIndex = 0;
+  int _score = 0;
+
+  bool _isLoading = true;
+  bool _hasAnswered = false;
+  bool _isCleaningUp = false;
+  String _selectedAnswer = '';
+
+  // Controllers & State variables per question type
+  final TextEditingController _identificationController = TextEditingController();
+
+  // Typing state
+  List<String?> _userAnswerSlots = [];
+  List<int?> _selectedOptionIndices = [];
+  List<String> _shuffledOptions = [];
+
+  // Sequence state
+  List<String> _currentSequence = [];
+  List<String> _availableSequenceOptions = [];
+
+  // Matching state
+  Map<String, String?> _matchingAnswers = {};
+  String? _selectedLeftMatch;
+
+  // Camera & ML Recognition State
+  CameraController? _cameraController;
+  HandLandmarkerPlugin? _landmarkerPlugin;
+  StreamSubscription<List<Hand>>? _handSub;
+
+  bool _isCameraInitialized = false;
+  bool _isProcessingFrame = false;
+
+  static const double _requiredHoldSeconds = 1.0;
+  DateTime? _staticHoldStartTime;
+
+  bool _isRecordingMotion = false;
+  DateTime? _startRecordingTime;
+  final List<Float32List> _recordingFrames = [];
+  static const Duration _dropoutGracePeriod = Duration(milliseconds: 300);
+  DateTime? _lastHandsSeenTime;
+
+  PhraseRecognizer? _dynamicSignRecognizer;
+  bool _dynamicModelReady = false;
+
+  List<dynamic>? _template;
+  double _currentScore = 0.0;
+  double _holdProgress = 0.0;
+  final double successThreshold = 70.0;
+
+  static const List<String> _dynamicLetters = ['J', 'Z'];
+
+  bool get _isDynamicLetter {
+    if (_questions.isEmpty || _currentQuestionIndex >= _questions.length) return false;
+    final correctAnswer = _extractCorrectAnswer(_questions[_currentQuestionIndex]);
+    return _dynamicLetters.contains(correctAnswer.toUpperCase());
+  }
+
+  Timer? _timer;
+  int _timeLeft = 15;
+  int _maxTime = 15;
+  int _totalRounds = 10;
+  String _category = 'Alphabet';
+
+  @override
+  void initState() {
+    super.initState();
+    _initUser();
+    _setupGameAndPlayer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _identificationController.dispose();
+    _handSub?.cancel();
+    _cameraController?.stopImageStream();
+    _cameraController?.dispose();
+    _landmarkerPlugin?.dispose();
+    _dynamicSignRecognizer?.dispose();
+    super.dispose();
+  }
+
+  void _initUser() {
+    final user = FirebaseAuth.instance.currentUser;
+    _currentUserId = user?.uid ?? 'guest_${DateTime.now().millisecondsSinceEpoch}';
+
+    if (user != null && user.displayName != null && user.displayName!.trim().isNotEmpty) {
+      _displayName = user.displayName!;
+    } else {
+      final shortUid = _currentUserId.length >= 4 
+          ? _currentUserId.substring(0, 4) 
+          : _currentUserId;
+      _displayName = 'Guest_$shortUid';
+    }
+  }
+
+  // ==========================================
+  // CAMERA & ML PIPELINE INTEGRATION
+  // ==========================================
+  Future<void> _initializeCameraPipeline() async {
+    if (_isCameraInitialized) return;
+    try {
+      _landmarkerPlugin = HandLandmarkerPlugin.create(
+        numHands: 2,
+        minHandDetectionConfidence: 0.5,
+        delegate: HandLandmarkerDelegate.gpu,
+      );
+      _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
+
+      final cameras = await availableCameras();
+      if (cameras.isNotEmpty) {
+        final frontCamera = cameras.firstWhere(
+          (camera) => camera.lensDirection == CameraLensDirection.front,
+          orElse: () => cameras.first,
+        );
+        _cameraController = CameraController(
+          frontCamera,
+          ResolutionPreset.medium,
+          enableAudio: false,
+        );
+        await _cameraController!.initialize();
+        await _cameraController!.startImageStream(_processCameraFrame);
+      }
+
+      try {
+        _dynamicSignRecognizer = PhraseRecognizer(
+          modelAssetPath: 'assets/alphabet/model.tflite',
+          labelAssetPath: 'assets/alphabet/label_map.json',
+        );
+        await _dynamicSignRecognizer!.initialize();
+        _dynamicModelReady = true;
+      } catch (e) {
+        debugPrint("Dynamic-sign model failed to load: $e");
+        _dynamicModelReady = false;
+      }
+
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = true;
+        });
+      }
+    } catch (e) {
+      debugPrint("Camera Pipeline Setup Failed: $e");
+    }
+  }
+
+  Future<void> _loadGestureLibrary(String letter) async {
+    try {
+      String jsonString = await rootBundle.loadString('assets/alphabet/${letter.toUpperCase()}.json');
+      if (mounted) {
+        setState(() {
+          _template = jsonDecode(jsonString);
+        });
+      }
+    } catch (e) {
+      debugPrint("Could not find gesture resource profile for: $letter");
+      if (mounted) {
+        setState(() {
+          _template = null;
+        });
+      }
+    }
+  }
+
+  void _processCameraFrame(CameraImage image) {
+    if (!_isCameraInitialized || _landmarkerPlugin == null || _hasAnswered || _isProcessingFrame) return;
+    _isProcessingFrame = true;
+
+    try {
+      final int sensorOrientation = _cameraController!.description.sensorOrientation;
+      _landmarkerPlugin!.processFrame(image, sensorOrientation);
+    } catch (e) {
+      debugPrint("Inference Error: $e");
+    } finally {
+      _isProcessingFrame = false;
+    }
+  }
+
+  void _onHandsDetected(List<Hand> detectedHands) {
+    if (_hasAnswered || _questions.isEmpty || _currentQuestionIndex >= _questions.length) return;
+
+    final currentQ = _questions[_currentQuestionIndex];
+    final type = _determineQuestionType(currentQ);
+    if (type != 'camera_spell') return;
+
+    final now = DateTime.now();
+    final correctAnswer = _extractCorrectAnswer(currentQ).toUpperCase();
+
+    if (_isDynamicLetter) {
+      if (!_dynamicModelReady || _dynamicSignRecognizer == null) return;
+
+      final bool handsPresent = detectedHands.isNotEmpty;
+
+      if (handsPresent) {
+        _lastHandsSeenTime = now;
+        if (!_isRecordingMotion) {
+          _isRecordingMotion = true;
+          _startRecordingTime = now;
+          _recordingFrames.clear();
+        }
+
+        _recordingFrames.add(_dynamicSignRecognizer!.extractFrameFeatures(detectedHands));
+        final double elapsedSeconds = now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
+
+        if (mounted) {
+          setState(() {
+            _holdProgress = (elapsedSeconds / _requiredHoldSeconds).clamp(0.0, 1.0);
+          });
+        }
+
+        if (elapsedSeconds >= _requiredHoldSeconds) {
+          _isRecordingMotion = false;
+          final result = _dynamicSignRecognizer!.predictFromRecording(_recordingFrames);
+          _recordingFrames.clear();
+
+          double finalScore = 0.0;
+          if (result != null && result.label.toUpperCase() == correctAnswer) {
+            double rawConfidence = result.confidence;
+            double normalizedConfidence = rawConfidence > 1.0 ? rawConfidence : rawConfidence * 100.0;
+            finalScore = normalizedConfidence.clamp(0.0, 100.0);
+          }
+
+          _currentScore = finalScore;
+          _holdProgress = 0.0;
+
+          if (_currentScore >= successThreshold) {
+            _submitAnswer(correctAnswer);
+          } else {
+            _startRecordingTime = null;
+          }
+        }
+      } else if (_isRecordingMotion) {
+        final lastSeen = _lastHandsSeenTime;
+        final bool withinGrace = lastSeen != null && now.difference(lastSeen) <= _dropoutGracePeriod;
+        if (!withinGrace) {
+          if (mounted) {
+            setState(() {
+              _isRecordingMotion = false;
+              _startRecordingTime = null;
+              _holdProgress = 0.0;
+            });
+          }
+          _recordingFrames.clear();
+        }
+      }
+      return;
+    }
+
+    if (_template == null) return;
+
+    if (detectedHands.isNotEmpty) {
+      double highestScoreAcrossAllHands = 0.0;
+      for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
+        final double score = _calculateScore(detectedHands[handIdx].landmarks, _template!);
+        if (score > highestScoreAcrossAllHands) highestScoreAcrossAllHands = score;
+      }
+
+      _currentScore = highestScoreAcrossAllHands;
+
+      if (_currentScore >= successThreshold) {
+        _staticHoldStartTime ??= now;
+        final double holdSecs = now.difference(_staticHoldStartTime!).inMilliseconds / 1000.0;
+        _holdProgress = (holdSecs / _requiredHoldSeconds).clamp(0.0, 1.0);
+
+        if (holdSecs >= _requiredHoldSeconds) {
+          _staticHoldStartTime = null;
+          _holdProgress = 1.0;
+          _submitAnswer(correctAnswer);
+          return;
+        }
+      } else {
+        _staticHoldStartTime = null;
+        _holdProgress = 0.0;
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+    } else {
+      _staticHoldStartTime = null;
+      _currentScore = 0.0;
+      _holdProgress = 0.0;
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
+    if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
+
+    final Landmark wrist = liveLms[0];
+    final Landmark mBase = liveLms[9];
+
+    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2) + math.pow(wrist.z - mBase.z, 2));
+    if (dist == 0) dist = 1.0;
+
+    double bestScore = 0.0;
+    final orientationMatrices = [
+      [1.0, 0.0, 0.0, 1.0, 1.0],
+      [0.0, -1.0, 1.0, 0.0, 1.0],
+      [-1.0, 0.0, 0.0, -1.0, 1.0],
+      [0.0, 1.0, -1.0, 0.0, 1.0],
+      [1.0, 0.0, 0.0, 1.0, -1.0],
+      [0.0, -1.0, 1.0, 0.0, -1.0],
+      [-1.0, 0.0, 0.0, -1.0, -1.0],
+      [0.0, 1.0, -1.0, 0.0, -1.0],
+    ];
+
+    for (var matrix in orientationMatrices) {
+      double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
+      double totalDifference = 0.0;
+
+      for (int i = 0; i < 21; i++) {
+        double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
+        double dy = (liveLms[i].y - wrist.y) / dist;
+        double dz = (liveLms[i].z - wrist.z) / dist;
+        double rx = dx * xx + dy * xy;
+        double ry = dx * yx + dy * yy;
+        double tx = (template[i]['x'] as num).toDouble();
+        double ty = (template[i]['y'] as num).toDouble();
+        double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
+
+        double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2) + math.pow(dz - tz, 2));
+        totalDifference += pointDiff;
+      }
+
+      double score = (100.0 - ((totalDifference / 21.0) * 80.0)).clamp(0.0, 100.0);
+      if (score > bestScore) bestScore = score;
+    }
+    return bestScore;
+  }
+
+  dynamic _getValueCaseInsensitive(Map<String, dynamic> map, List<String> possibleKeys) {
+    for (var key in possibleKeys) {
+      if (map.containsKey(key) && map[key] != null) {
+        return map[key];
+      }
+    }
+    for (var entry in map.entries) {
+      final keyClean = entry.key.toLowerCase().replaceAll('_', '').replaceAll(' ', '');
+      for (var pk in possibleKeys) {
+        if (keyClean == pk.toLowerCase().replaceAll('_', '').replaceAll(' ', '')) {
+          if (entry.value != null) return entry.value;
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _setupGameAndPlayer() async {
+    try {
+      final roomRef = FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode);
+
+      await roomRef.collection('players').doc(_currentUserId).set({
+        'uid': _currentUserId,
+        'name': _displayName,
+        'isHost': widget.isHost,
+        'score': 0,
+        'currentAnswer': '',
+        'questionsCompleted': 0,
+        'currentQuestionIndex': -1,
+        'joinedAt': FieldValue.serverTimestamp(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      final roomDoc = await roomRef.get();
+      if (roomDoc.exists) {
+        final roomData = roomDoc.data() as Map<String, dynamic>;
+        _maxTime = roomData['timerDuration'] ?? 15;
+        _totalRounds = roomData['totalRounds'] ?? 10;
+        _category = (roomData['category'] ?? 'Alphabet').toString();
+      }
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('activity_questions')
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        var allQuestions = snapshot.docs.map((doc) => doc.data()).toList();
+
+        var filteredQuestions = allQuestions.where((q) {
+          final catVal = _getValueCaseInsensitive(q, ['category', 'topic', 'subject', 'group', 'tag']);
+          final cat = (catVal ?? '').toString().trim().toLowerCase();
+          final targetCat = _category.trim().toLowerCase();
+          return cat == targetCat || cat.contains(targetCat) || targetCat.contains(cat);
+        }).toList();
+
+        if (filteredQuestions.isEmpty) {
+          filteredQuestions = allQuestions;
+        }
+
+        filteredQuestions.shuffle();
+
+        setState(() {
+          _questions = filteredQuestions.take(_totalRounds).toList();
+          _isLoading = false;
+        });
+
+        _setupCurrentQuestionState();
+        _startTimer();
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      debugPrint("Error setting up game: $e");
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _setupCurrentQuestionState() {
+    if (_questions.isEmpty || _currentQuestionIndex >= _questions.length) return;
+
+    final q = _questions[_currentQuestionIndex];
+    final type = _determineQuestionType(q);
+    final String correctAnswer = _extractCorrectAnswer(q);
+    final List<dynamic> options = _extractOptions(q);
+
+    _hasAnswered = false;
+    _selectedAnswer = '';
+    _identificationController.clear();
+
+    if (type == 'camera_spell') {
+      _isRecordingMotion = false;
+      _staticHoldStartTime = null;
+      _currentScore = 0.0;
+      _holdProgress = 0.0;
+      if (!_isCameraInitialized) {
+        _initializeCameraPipeline().then((_) {
+          _loadGestureLibrary(correctAnswer);
+        });
+      } else {
+        _loadGestureLibrary(correctAnswer);
+      }
+    } else if (type == 'typing') {
+      final target = correctAnswer.toUpperCase();
+      _userAnswerSlots = List<String?>.filled(target.length, null);
+      _selectedOptionIndices = List<int?>.filled(target.length, null);
+
+      final givenFsl = _extractGivenFsl(q);
+      for (var item in givenFsl) {
+        int pos = item['position'] ?? -1;
+        if (pos >= 0 && pos < target.length) {
+          _userAnswerSlots[pos] = (item['letter'] ?? item['number'] ?? '').toString().toUpperCase();
+        }
+      }
+      _shuffledOptions = options.map((e) => e.toString()).toList()..shuffle();
+    } else if (type == 'sequence_order') {
+      _currentSequence = [];
+      _availableSequenceOptions = options.map((e) => e.toString()).toList()..shuffle();
+    } else if (type == 'matching_type') {
+      _matchingAnswers = {};
+      _selectedLeftMatch = null;
+      for (var opt in options) {
+        String optStr = opt.toString();
+        String leftItem = optStr.contains('|||') ? optStr.split('|||')[0] : optStr;
+        _matchingAnswers[leftItem] = null;
+      }
+    }
+  }
+
+  void _startTimer() {
+    _timeLeft = _maxTime;
+    _timer?.cancel();
+
+    if (_maxTime == 0) return;
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          if (_timeLeft > 0) {
+            _timeLeft--;
+          } else {
+            _timer?.cancel();
+            _handleTimeOut();
+          }
+        });
+      }
+    });
+  }
+
+  void _handleTimeOut() {
+    if (!_hasAnswered) {
+      final q = _questions[_currentQuestionIndex];
+      final type = _determineQuestionType(q);
+
+      String ans = '';
+      if (type == 'typing') {
+        ans = _userAnswerSlots.join('');
+      } else if (type == 'sequence_order') {
+        ans = _currentSequence.join(',');
+      } else if (type == 'identification' || type == 'camera_spell') {
+        ans = _identificationController.text.trim();
+      } else {
+        ans = _selectedAnswer;
+      }
+
+      _submitAnswer(ans);
+    }
+  }
+
+  void _submitAnswer(String answer) {
+    if (_hasAnswered) return;
+
+    final currentQ = _questions[_currentQuestionIndex];
+    final String type = _determineQuestionType(currentQ);
+    final String correctAnswer = _extractCorrectAnswer(currentQ).toLowerCase();
+
+    bool isCorrect = false;
+
+    if (type == 'camera_spell') {
+      isCorrect = _currentScore >= successThreshold || answer.trim().toLowerCase() == correctAnswer;
+      if (answer.isEmpty && isCorrect) {
+        answer = correctAnswer;
+      }
+    } else if (type == 'typing') {
+      isCorrect = answer.trim().toLowerCase() == correctAnswer;
+    } else if (type == 'sequence_order') {
+      final List<dynamic> options = _extractOptions(currentQ);
+      isCorrect = _currentSequence.join(',') == options.join(',');
+    } else if (type == 'matching_type') {
+      bool allMatched = true;
+      final List<dynamic> options = _extractOptions(currentQ);
+      for (var opt in options) {
+        String optStr = opt.toString();
+        if (optStr.contains('|||')) {
+          var parts = optStr.split('|||');
+          if (_matchingAnswers[parts[0]] != parts[1]) {
+            allMatched = false;
+            break;
+          }
+        } else {
+          if (_matchingAnswers[optStr] != optStr) {
+            allMatched = false;
+            break;
+          }
+        }
+      }
+      isCorrect = allMatched;
+    } else {
+      isCorrect = answer.isNotEmpty && answer.trim().toLowerCase() == correctAnswer;
+    }
+
+    setState(() {
+      _hasAnswered = true;
+      _selectedAnswer = answer;
+    });
+
+    _timer?.cancel();
+
+    if (isCorrect) {
+      int speedBonus = 0;
+      if (_maxTime > 0) {
+        speedBonus = (100 * (_timeLeft / _maxTime)).round();
+      }
+      setState(() {
+        _score += speedBonus + 50;
+      });
+    }
+
+    _syncAnswerToFirestore(answer);
+
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) _moveToNextQuestion();
+    });
+  }
+
+  Future<void> _syncAnswerToFirestore(String answer) async {
+    await FirebaseFirestore.instance
+        .collection('rooms')
+        .doc(widget.roomCode)
+        .collection('players')
+        .doc(_currentUserId)
+        .set({
+      'score': _score,
+      'currentAnswer': answer,
+      'questionsCompleted': _currentQuestionIndex + 1,
+      'currentQuestionIndex': _currentQuestionIndex,
+      'lastUpdated': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  void _moveToNextQuestion() {
+    if (_currentQuestionIndex < _questions.length - 1) {
+      setState(() {
+        _currentQuestionIndex++;
+      });
+      _setupCurrentQuestionState();
+      _startTimer();
+    } else {
+      _showFinalLeaderboard();
+    }
+  }
+
+  // Question Property Extractors
+  String _extractQuestionText(Map<String, dynamic> q) {
+    final val = _getValueCaseInsensitive(q, [
+      'question_text', 'questionText', 'question', 'title', 'text', 'prompt', 'item', 'query'
+    ]);
+    return val?.toString().trim() ?? '';
+  }
+
+  String? _extractQuestionImage(Map<String, dynamic> q) {
+    final val = _getValueCaseInsensitive(q, [
+      'image_url', 'imageUrl', 'main_image', 'mainImage', 'image', 'img',
+      'question_image', 'questionImage', 'media_url', 'mediaUrl', 'photo', 'picture', 'path', 'src', 'url'
+    ]);
+    if (val != null && val.toString().trim().isNotEmpty) {
+      return val.toString().trim();
+    }
+    return null;
+  }
+
+  String _extractCorrectAnswer(Map<String, dynamic> q) {
+    final val = _getValueCaseInsensitive(q, [
+      'correct_answer', 'correctAnswer', 'answer', 'correct', 'right_answer', 'rightAnswer', 'solution'
+    ]);
+    return val?.toString().trim() ?? '';
+  }
+
+  List<dynamic> _extractOptions(Map<String, dynamic> q) {
+    final rawOptions = _getValueCaseInsensitive(q, [
+      'options', 'choices', 'answers', 'items', 'options_list', 'choices_list'
+    ]);
+
+    if (rawOptions is List && rawOptions.isNotEmpty) {
+      return rawOptions;
+    }
+    if (rawOptions is Map && rawOptions.isNotEmpty) {
+      return rawOptions.values.toList();
+    }
+    if (rawOptions is String && rawOptions.contains(',')) {
+      return rawOptions.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+    return [];
+  }
+
+  List<Map<String, dynamic>> _extractGivenFsl(Map<String, dynamic> q) {
+    final rawFsl = _getValueCaseInsensitive(q, ['given_fsl', 'givenFsl', 'given_fsl_items']);
+    if (rawFsl is List) {
+      return rawFsl.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
+
+  String _determineQuestionType(Map<String, dynamic> q) {
+    final typeVal = _getValueCaseInsensitive(q, ['type', 'question_type', 'questionType', 'kind']);
+    String type = typeVal?.toString().toLowerCase().trim() ?? '';
+
+    if (type == 'multiple_choice' || 
+        type == 'mcq' || 
+        type == 'text_to_sign' || 
+        type == 'sign_to_text') {
+      return 'multiple_choice';
+    }
+
+    if (type == 'typing') return 'typing';
+    if (type == 'fill_in_the_blank') return 'fill_in_the_blank';
+    if (type == 'sequence_order') return 'sequence_order';
+    if (type == 'matching_type') return 'matching_type';
+    if (type == 'camera_spell') return 'camera_spell';
+    
+    if (type.contains('true') || type.contains('tf') || type == 'boolean') return 'true_false';
+    if (type == 'identification' || type == 'ident') return 'identification';
+
+    final opts = _extractOptions(q);
+    if (opts.isEmpty) return 'identification';
+
+    if (opts.length == 2) {
+      final optStrings = opts.map((e) => e.toString().toLowerCase().trim()).toList();
+      if (optStrings.contains('true') || optStrings.contains('false') ||
+          optStrings.any((e) => e.contains('thumbs up') || e.contains('thumbs down'))) {
+        return 'true_false';
+      }
+    }
+
+    return 'multiple_choice';
+  }
+
+  Widget _buildSafeImage(String? imageSource, {double? height, double? width, BoxFit fit = BoxFit.contain}) {
+    if (imageSource == null || imageSource.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final cleaned = imageSource
+        .replaceAll('\n', '')
+        .replaceAll('\r', '')
+        .replaceAll('\t', '')
+        .replaceAll('\\', '/')
+        .trim();
+
+    if (cleaned.startsWith('data:image') || _isRawBase64(cleaned)) {
+      try {
+        final base64String = cleaned.contains(',') ? cleaned.split(',').last : cleaned;
+        return Image.memory(
+          base64Decode(base64String),
+          height: height,
+          width: width,
+          fit: fit,
+          errorBuilder: (_, __, ___) => _buildErrorBox("Image Error"),
+        );
+      } catch (_) {
+        return _buildErrorBox("Invalid Base64");
+      }
+    }
+
+    if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
+      return Image.network(
+        cleaned,
+        height: height,
+        width: width,
+        fit: fit,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return SizedBox(
+            height: height ?? 60,
+            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        },
+        errorBuilder: (_, __, ___) => _buildErrorBox("Network Error"),
+      );
+    }
+
+    String assetPath = cleaned.startsWith('assets/') ? cleaned : 'assets/pictures/$cleaned';
+
+    return Image.asset(
+      assetPath,
+      height: height,
+      width: width,
+      fit: fit,
+      errorBuilder: (_, __, ___) {
+        return Image.asset(
+          cleaned,
+          height: height,
+          width: width,
+          fit: fit,
+          errorBuilder: (_, __, ___) => _buildErrorBox("Asset Missing"),
+        );
+      },
+    );
+  }
+
+  bool _isRawBase64(String str) {
+    return str.length > 100 && !str.startsWith('http') && !str.contains('/') && !str.endsWith('.png') && !str.endsWith('.jpg');
+  }
+
+  Widget _buildErrorBox(String message) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0x1FF44336),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x4DF44336)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.broken_image_rounded, color: Colors.red, size: 20),
+          const SizedBox(height: 2),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 8, color: Colors.red, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Dynamic Layout Renderers ---
+
+  Widget _buildMultipleChoiceOptions(List<dynamic> options, String correctAnswer, ThemeData theme, Color textColor, Map<String, int> answerCounts) {
+    final bool isImageGrid = options.any((opt) {
+      final str = opt.toString();
+      return str.contains('assets/') || str.startsWith('http') || str.startsWith('data:image') || str.endsWith('.jpg') || str.endsWith('.png');
+    });
+
+    return GridView.builder(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: isImageGrid ? 1.2 : 2.2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: options.length,
+      itemBuilder: (context, index) {
+        final rawOption = options[index];
+        String optionText = '';
+        String? optionImage;
+
+        if (rawOption is Map) {
+          final textVal = _getValueCaseInsensitive(Map<String, dynamic>.from(rawOption), ['text', 'label', 'title', 'value', 'option']);
+          optionText = textVal?.toString() ?? '';
+          final imgVal = _getValueCaseInsensitive(Map<String, dynamic>.from(rawOption), ['image', 'image_url', 'imageUrl', 'img', 'url', 'src', 'photo', 'path']);
+          if (imgVal != null && imgVal.toString().trim().isNotEmpty) {
+            optionImage = imgVal.toString().trim();
+          }
+        } else {
+          final str = rawOption.toString().trim();
+          if (str.startsWith('http') || str.startsWith('data:image') || str.endsWith('.png') || str.endsWith('.jpg') || str.contains('assets/')) {
+            optionImage = str;
+          } else {
+            optionText = str;
+          }
+        }
+
+        final String optionComparisonValue = optionText.isNotEmpty ? optionText : (optionImage ?? rawOption.toString());
+        final bool isOptionSelected = _selectedAnswer.trim().toLowerCase() == optionComparisonValue.trim().toLowerCase();
+        final bool isOptionCorrect = optionComparisonValue.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
+        final int selectCount = answerCounts[optionComparisonValue.trim().toLowerCase()] ?? 0;
+
+        Color tileBg = theme.cardColor.withAlpha(204);
+        Color borderColor = textColor.withAlpha(25);
+
+        if (_hasAnswered) {
+          if (isOptionCorrect) {
+            tileBg = const Color(0x334CAF50);
+            borderColor = const Color(0xFF4CAF50);
+          } else if (isOptionSelected) {
+            tileBg = const Color(0x33F34B1B);
+            borderColor = const Color(0xFFF34B1B);
+          }
+        }
+
+        return InkWell(
+          onTap: _hasAnswered ? null : () => _submitAnswer(optionComparisonValue),
+          borderRadius: BorderRadius.circular(18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: tileBg,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: borderColor, width: isOptionSelected || (_hasAnswered && isOptionCorrect) ? 2.5 : 1.0),
+            ),
+            child: Stack(
+              children: [
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (optionImage != null && optionImage.isNotEmpty)
+                        Expanded(child: _buildSafeImage(optionImage, fit: BoxFit.contain)),
+                      if (optionText.isNotEmpty) ...[
+                        if (optionImage != null) const SizedBox(height: 4),
+                        Text(
+                          optionText,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textColor),
+                        ),
+                      ]
+                    ],
+                  ),
+                ),
+                if (selectCount > 0)
+                  Positioned(
+                    top: 2, right: 2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface.withAlpha(230),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_rounded, size: 10, color: textColor.withAlpha(180)),
+                          const SizedBox(width: 2),
+                          Text("$selectCount", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: textColor)),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTrueFalseOptions(List<dynamic> options, String correctAnswer, ThemeData theme, Color textColor, Map<String, int> answerCounts) {
+    List<dynamic> tfOptions = options.isNotEmpty ? options : ['True', 'False'];
+
+    return Row(
+      children: tfOptions.map((opt) {
+        String optStr = opt.toString().trim();
+        final bool isImage = optStr.contains('assets/') || optStr.endsWith('.jpg') || optStr.endsWith('.png') || optStr.startsWith('http');
+        
+        final bool isOptionSelected = _selectedAnswer.trim().toLowerCase() == optStr.toLowerCase();
+        final bool isOptionCorrect = optStr.toLowerCase() == correctAnswer.toLowerCase();
+        final int selectCount = answerCounts[optStr.toLowerCase()] ?? 0;
+
+        Color tileBg = theme.cardColor.withAlpha(204);
+        Color borderColor = textColor.withAlpha(25);
+
+        if (_hasAnswered) {
+          if (isOptionCorrect) {
+            tileBg = const Color(0x334CAF50);
+            borderColor = const Color(0xFF4CAF50);
+          } else if (isOptionSelected) {
+            tileBg = const Color(0x33F34B1B);
+            borderColor = const Color(0xFFF34B1B);
+          }
+        }
+
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6.0),
+            child: InkWell(
+              onTap: _hasAnswered ? null : () => _submitAnswer(optStr),
+              borderRadius: BorderRadius.circular(20),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                height: 120,
+                decoration: BoxDecoration(
+                  color: tileBg,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: borderColor, width: isOptionSelected || (_hasAnswered && isOptionCorrect) ? 2.5 : 1.0),
+                ),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: isImage
+                          ? Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: _buildSafeImage(optStr, fit: BoxFit.contain),
+                            )
+                          : Text(
+                              optStr.toUpperCase(),
+                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textColor),
+                            ),
+                    ),
+                    if (selectCount > 0)
+                      Positioned(
+                        top: 8, right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface.withAlpha(230),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.person_rounded, size: 12, color: textColor.withAlpha(180)),
+                              const SizedBox(width: 3),
+                              Text("$selectCount", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: textColor)),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildTypingLayout(Map<String, dynamic> currentQuestion, ThemeData theme, Color textColor) {
+    final givenFsl = _extractGivenFsl(currentQuestion);
+
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Wrap(
+            spacing: 8, runSpacing: 10,
+            alignment: WrapAlignment.center,
+            children: List.generate(_userAnswerSlots.length, (index) {
+              final String? char = _userAnswerSlots[index];
+              final givenMatch = givenFsl.where((item) => item['position'] == index);
+              final Map<String, dynamic>? givenItem = givenMatch.isNotEmpty ? givenMatch.first : null;
+
+              return InkWell(
+                onTap: _hasAnswered ? null : () {
+                  if (givenItem != null) return;
+                  if (_userAnswerSlots[index] != null) {
+                    setState(() {
+                      _userAnswerSlots[index] = null;
+                      _selectedOptionIndices[index] = null;
+                    });
+                  }
+                },
+                child: Container(
+                  width: 48, height: 56,
+                  decoration: BoxDecoration(
+                    color: char != null ? theme.primaryColor.withAlpha(40) : theme.cardColor.withAlpha(204),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: char != null ? theme.primaryColor : textColor.withAlpha(30), width: 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: givenItem != null && givenItem['image'] != null && (givenItem['image'] as String).isNotEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(4.0),
+                          child: _buildSafeImage(givenItem['image'], fit: BoxFit.contain),
+                        )
+                      : Text(char ?? '', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 8, runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: List.generate(_shuffledOptions.length, (index) {
+              final bool isUsed = _selectedOptionIndices.contains(index);
+              final String optVal = _shuffledOptions[index];
+
+              return InkWell(
+                onTap: (isUsed || _hasAnswered) ? null : () {
+                  int emptySlot = _userAnswerSlots.indexOf(null);
+                  if (emptySlot != -1) {
+                    setState(() {
+                      _userAnswerSlots[emptySlot] = optVal;
+                      _selectedOptionIndices[emptySlot] = index;
+                    });
+                  }
+                },
+                child: Opacity(
+                  opacity: isUsed ? 0.3 : 1.0,
+                  child: Container(
+                    width: 52, height: 52,
+                    decoration: BoxDecoration(
+                      color: theme.cardColor.withAlpha(204),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: theme.primaryColor, width: 1.5),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: Center(
+                      child: optVal.contains('/') || optVal.contains('.') || optVal.startsWith('http') || optVal.startsWith('data:image')
+                          ? _buildSafeImage(optVal, fit: BoxFit.contain)
+                          : _buildSafeImage('assets/pictures/${optVal.toUpperCase()}.jpg', fit: BoxFit.contain),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 16),
+          if (!_hasAnswered)
+            ElevatedButton(
+              onPressed: _userAnswerSlots.contains(null) ? null : () => _submitAnswer(_userAnswerSlots.join('')),
+              style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor),
+              child: Text("SUBMIT", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSequenceLayout(ThemeData theme, Color textColor) {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity, height: 56,
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: theme.cardColor.withAlpha(204),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.primaryColor),
+          ),
+          child: Wrap(
+            spacing: 8, runSpacing: 8,
+            children: _currentSequence.map((item) {
+              return Chip(
+                label: Text(item, style: const TextStyle(fontWeight: FontWeight.bold)),
+                onDeleted: _hasAnswered ? null : () {
+                  setState(() {
+                    _currentSequence.remove(item);
+                    _availableSequenceOptions.add(item);
+                  });
+                },
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: _availableSequenceOptions.map((item) {
+            return InkWell(
+              onTap: _hasAnswered ? null : () {
+                setState(() {
+                  _currentSequence.add(item);
+                  _availableSequenceOptions.remove(item);
+                });
+              },
+              child: Chip(
+                label: Text(item, style: const TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: theme.cardColor,
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 14),
+        if (!_hasAnswered)
+          ElevatedButton(
+            onPressed: _availableSequenceOptions.isNotEmpty ? null : () => _submitAnswer(_currentSequence.join(',')),
+            style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor),
+            child: Text("SUBMIT ORDER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+          )
+      ],
+    );
+  }
+
+  Widget _buildMatchingLayout(Map<String, dynamic> q, ThemeData theme, Color textColor) {
+    final List<dynamic> options = _extractOptions(q);
+    List<String> leftItems = [];
+    List<String> rightItems = [];
+
+    for (var opt in options) {
+      String str = opt.toString();
+      if (str.contains('|||')) {
+        var parts = str.split('|||');
+        leftItems.add(parts[0]);
+        rightItems.add(parts[1]);
+      } else {
+        leftItems.add(str);
+        rightItems.add(str);
+      }
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            children: leftItems.map((item) {
+              bool isSelected = _selectedLeftMatch == item;
+              bool isMatched = _matchingAnswers[item] != null;
+              return InkWell(
+                onTap: (_hasAnswered || isMatched) ? null : () {
+                  setState(() => _selectedLeftMatch = item);
+                },
+                child: Container(
+                  height: 60, margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: isMatched ? Colors.green.withAlpha(50) : (isSelected ? theme.primaryColor.withAlpha(80) : theme.cardColor),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : textColor.withAlpha(30))),
+                  ),
+                  child: Center(
+                    child: item.contains('/') || item.endsWith('.jpg') || item.endsWith('.png')
+                        ? _buildSafeImage(item, height: 40)
+                        : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            children: rightItems.map((item) {
+              bool isMatched = _matchingAnswers.containsValue(item);
+              return InkWell(
+                onTap: (_hasAnswered || isMatched || _selectedLeftMatch == null) ? null : () {
+                  setState(() {
+                    _matchingAnswers[_selectedLeftMatch!] = item;
+                    _selectedLeftMatch = null;
+                  });
+                },
+                child: Container(
+                  height: 60, margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: isMatched ? Colors.green.withAlpha(50) : theme.cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isMatched ? Colors.green : textColor.withAlpha(30)),
+                  ),
+                  child: Center(
+                    child: item.contains('/') || item.endsWith('.jpg') || item.endsWith('.png')
+                        ? _buildSafeImage(item, height: 40)
+                        : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIdentificationInput(String correctAnswer, ThemeData theme, Color textColor) {
+    final bool isCorrect = _selectedAnswer.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        TextField(
+          controller: _identificationController,
+          enabled: !_hasAnswered,
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 16),
+          decoration: InputDecoration(
+            hintText: "Type your answer here...",
+            filled: true,
+            fillColor: theme.cardColor.withAlpha(204),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: theme.primaryColor, width: 2)),
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (!_hasAnswered)
+          SizedBox(
+            width: double.infinity, height: 48,
+            child: ElevatedButton(
+              onPressed: () => _submitAnswer(_identificationController.text.trim()),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.primaryColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text("SUBMIT ANSWER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isCorrect ? const Color(0x334CAF50) : const Color(0x33F34B1B),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              isCorrect ? "Correct!" : "Correct Answer: $correctAnswer",
+              style: TextStyle(
+                color: isCorrect ? const Color(0xFF4CAF50) : const Color(0xFFF34B1B),
+                fontWeight: FontWeight.bold, fontSize: 16,
+              ),
+            ),
+          )
+      ],
+    );
+  }
+
+  // Camera Spell Layout with Real Camera Stream & Gesture Status
+  Widget _buildCameraSpellLayout(String correctAnswer, ThemeData theme, Color textColor) {
+    final bool isPassing = _currentScore >= successThreshold;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                width: 3.5,
+                color: isPassing ? Colors.greenAccent : theme.primaryColor.withAlpha(120),
+              ),
+              boxShadow: [
+                if (isPassing)
+                  BoxShadow(
+                    color: Colors.greenAccent.withAlpha(150),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                  )
+              ],
+            ),
+            clipBehavior: Clip.hardEdge,
+            child: _isCameraInitialized && _cameraController != null && _cameraController!.value.isInitialized
+                ? FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _cameraController!.value.previewSize?.height ?? 1,
+                      height: _cameraController!.value.previewSize?.width ?? 1,
+                      child: CameraPreview(_cameraController!),
+                    ),
+                  )
+                : Center(
+                    child: CircularProgressIndicator(color: theme.primaryColor),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        if (_holdProgress > 0.0) ...[
+          Column(
+            children: [
+              Text(
+                _isDynamicLetter ? "Recording motion..." : "Holding sign steady...",
+                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 15),
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 220,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: textColor.withAlpha(30),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: _holdProgress,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.greenAccent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          )
+        ] else ...[
+          Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              decoration: BoxDecoration(
+                color: isPassing ? Colors.green.withAlpha(50) : theme.cardColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isPassing ? Colors.greenAccent : textColor.withAlpha(30),
+                  width: 1.5,
+                ),
+              ),
+              child: Text(
+                _hasAnswered
+                    ? "Submitted: $_selectedAnswer"
+                    : "Sign Match: ${_currentScore.toStringAsFixed(1)}%",
+                style: TextStyle(
+                  color: isPassing ? Colors.green : textColor,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+
+        if (!_hasAnswered)
+          ElevatedButton(
+            onPressed: () => _submitAnswer(correctAnswer),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.primaryColor,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            child: Text(
+              "SKIP / SUBMIT GESTURE",
+              style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildHorizontalPlayerList() {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('rooms')
+          .doc(widget.roomCode)
+          .collection('players')
+          .orderBy('score', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final docs = snapshot.data!.docs;
+
+        return SizedBox(
+          height: 48,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final player = docs[index].data() as Map<String, dynamic>;
+              final bool isMe = player['uid'] == _currentUserId;
+              final String name = player['name'] ?? 'Player';
+              final int score = player['score'] ?? 0;
+
+              return Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isMe ? theme.primaryColor.withAlpha(46) : theme.cardColor.withAlpha(204),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isMe ? theme.primaryColor : textColor.withAlpha(25),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Text("#${index + 1}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: isMe ? theme.primaryColor : textColor.withAlpha(178))),
+                    const SizedBox(width: 6),
+                    Text(isMe ? "$name (You)" : name, style: TextStyle(fontWeight: isMe ? FontWeight.bold : FontWeight.w600, fontSize: 13, color: textColor)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: theme.primaryColor.withAlpha(25), borderRadius: BorderRadius.circular(8)),
+                      child: Text("$score pts", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: theme.primaryColor)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _showFinalLeaderboard() {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('rooms')
+              .doc(widget.roomCode)
+              .collection('players')
+              .orderBy('score', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const AlertDialog(
+                content: SizedBox(
+                  height: 100, 
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+
+            final docs = snapshot.data!.docs;
+            final List<Map<String, dynamic>> players = 
+                docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+
+            final top3 = players.take(3).toList();
+            final remaining = players.length > 3 ? players.sublist(3) : <Map<String, dynamic>>[];
+
+            return AlertDialog(
+              backgroundColor: theme.scaffoldBackgroundColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: const Column(
+                children: [
+                  Text("🏆", style: TextStyle(fontSize: 40)),
+                  SizedBox(height: 4),
+                  Text(
+                    "Congratulations!",
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildPodiumSection(top3, theme, textColor),
+                      const SizedBox(height: 16),
+                      if (remaining.isNotEmpty) ...[
+                        const Divider(),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: remaining.length,
+                          itemBuilder: (context, index) {
+                            final player = remaining[index];
+                            final rank = index + 4;
+                            return ListTile(
+                              dense: true,
+                              leading: Text(
+                                "#$rank",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor.withAlpha(150),
+                                ),
+                              ),
+                              title: Text(
+                                player['name'] ?? 'Player',
+                                style: TextStyle(color: textColor),
+                              ),
+                              trailing: Text(
+                                "${player['score']} pts",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.primaryColor,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _deleteRoomAndExit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      "LEAVE ROOM",
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPodiumSection(
+    List<Map<String, dynamic>> top3, 
+    ThemeData theme, 
+    Color textColor,
+  ) {
+    if (top3.isEmpty) return const SizedBox.shrink();
+
+    final first = top3.isNotEmpty ? top3[0] : null;
+    final second = top3.length > 1 ? top3[1] : null;
+    final third = top3.length > 2 ? top3[2] : null;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (second != null)
+          _buildPodiumColumn(
+            player: second,
+            rank: 2,
+            height: 90,
+            badgeColor: const Color(0xFFC0C0C0),
+            icon: "🥈",
+            theme: theme,
+            textColor: textColor,
+          )
+        else
+          const SizedBox(width: 80),
+
+        const SizedBox(width: 8),
+
+        if (first != null)
+          _buildPodiumColumn(
+            player: first,
+            rank: 1,
+            height: 125,
+            badgeColor: const Color(0xFFFFD700),
+            icon: "🥇",
+            theme: theme,
+            textColor: textColor,
+          ),
+
+        const SizedBox(width: 8),
+
+        if (third != null)
+          _buildPodiumColumn(
+            player: third,
+            rank: 3,
+            height: 70,
+            badgeColor: const Color(0xFFCD7F32),
+            icon: "🥉",
+            theme: theme,
+            textColor: textColor,
+          )
+        else
+          const SizedBox(width: 80),
+      ],
+    );
+  }
+
+  Widget _buildPodiumColumn({
+    required Map<String, dynamic> player,
+    required int rank,
+    required double height,
+    required Color badgeColor,
+    required String icon,
+    required ThemeData theme,
+    required Color textColor,
+  }) {
+    final String name = player['name'] ?? 'Player';
+    final int score = player['score'] ?? 0;
+
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 22)),
+          const SizedBox(height: 2),
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: rank == 1 ? 14 : 12,
+              color: textColor,
+            ),
+          ),
+          Text(
+            "$score pts",
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: theme.primaryColor,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            height: height,
+            decoration: BoxDecoration(
+              color: badgeColor.withAlpha(50),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              border: Border.all(color: badgeColor, width: 2),
+            ),
+            child: Center(
+              child: Text(
+                "#$rank",
+                style: TextStyle(
+                  fontSize: rank == 1 ? 28 : 22,
+                  fontWeight: FontWeight.w900,
+                  color: badgeColor,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteRoomAndExit() async {
+    if (_isCleaningUp) return;
+    setState(() => _isCleaningUp = true);
+
+    try {
+      final roomRef = FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode);
+      if (widget.isHost) {
+        final playersSnapshot = await roomRef.collection('players').get();
+        final batch = FirebaseFirestore.instance.batch();
+        for (var doc in playersSnapshot.docs) {
+          batch.delete(doc.reference);
+        }
+        batch.delete(roomRef);
+        await batch.commit();
+      } else {
+        await roomRef.collection('players').doc(_currentUserId).delete();
+      }
+    } catch (e) {
+      debugPrint("Error deleting room data: $e");
+    } finally {
+      if (mounted) {
+        Navigator.pop(context);
+        Navigator.pop(context);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: Center(child: CircularProgressIndicator(color: theme.primaryColor)),
+      );
+    }
+
+    if (_questions.isEmpty) {
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: Center(child: Text("No questions found for this category.", style: TextStyle(color: textColor, fontWeight: FontWeight.bold))),
+      );
+    }
+
+    final currentQuestion = _questions[_currentQuestionIndex];
+    final String questionText = _extractQuestionText(currentQuestion);
+    final String? questionImageUrl = _extractQuestionImage(currentQuestion);
+    final List<dynamic> options = _extractOptions(currentQuestion);
+    final String correctAnswer = _extractCorrectAnswer(currentQuestion);
+    final String questionType = _determineQuestionType(currentQuestion);
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        title: Text(
+          "Question ${_currentQuestionIndex + 1} / ${_questions.length}",
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w900, fontFamily: 'Inter'),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(icon: Icon(Icons.close_rounded, color: textColor), onPressed: _deleteRoomAndExit),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildHorizontalPlayerList(),
+              const SizedBox(height: 12),
+
+              if (_maxTime > 0) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: (_timeLeft / _maxTime).clamp(0.0, 1.0),
+                    backgroundColor: textColor.withAlpha(25),
+                    valueColor: AlwaysStoppedAnimation<Color>(_timeLeft < 5 ? const Color(0xFFF34B1B) : theme.primaryColor),
+                    minHeight: 8,
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+
+              Expanded(
+                flex: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor.withAlpha(204),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: textColor.withAlpha(20)),
+                  ),
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (questionText.isNotEmpty)
+                          Text(questionText, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: textColor), textAlign: TextAlign.center),
+                        if (questionImageUrl != null) ...[
+                          const SizedBox(height: 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: _buildSafeImage(questionImageUrl, height: 160),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16), 
+
+              Expanded(
+                flex: 5,
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).collection('players').snapshots(),
+                  builder: (context, snapshot) {
+                    Map<String, int> answerCounts = {};
+                    if (snapshot.hasData) {
+                      for (var doc in snapshot.data!.docs) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final int qIndex = data['currentQuestionIndex'] ?? -1;
+                        final String ans = (data['currentAnswer'] ?? '').toString().trim().toLowerCase();
+                        if (qIndex == _currentQuestionIndex && ans.isNotEmpty) {
+                          answerCounts[ans] = (answerCounts[ans] ?? 0) + 1;
+                        }
+                      }
+                    }
+
+                    switch (questionType) {
+                      case 'true_false':
+                        return _buildTrueFalseOptions(options, correctAnswer, theme, textColor, answerCounts);
+                      case 'typing':
+                        return _buildTypingLayout(currentQuestion, theme, textColor);
+                      case 'sequence_order':
+                        return _buildSequenceLayout(theme, textColor);
+                      case 'matching_type':
+                        return _buildMatchingLayout(currentQuestion, theme, textColor);
+                      case 'camera_spell':
+                        return _buildCameraSpellLayout(correctAnswer, theme, textColor);
+                      case 'identification':
+                        return _buildIdentificationInput(correctAnswer, theme, textColor);
+                      case 'multiple_choice':
+                      default:
+                        return _buildMultipleChoiceOptions(options, correctAnswer, theme, textColor, answerCounts);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

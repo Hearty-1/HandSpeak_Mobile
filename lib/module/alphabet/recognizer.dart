@@ -13,44 +13,28 @@ class RecognitionResult {
 
 /// Consumes MediaPipe `Hand` results (via package:hand_landmarker) and runs
 /// them through the FSL LSTM model.
-///
-/// Feature layout matches train_fsl_lstm.py exactly:
-///   - Up to 2 hands per frame, sorted by ascending wrist x (this plugin
-///     doesn't expose left/right handedness, so "sorted by x" is the
-///     deterministic convention used on both the training and inference
-///     sides).
-///   - Each hand contributes 21 landmarks * 3 coords (x, y, z), normalized
-///     wrist-relative: (x_i - x_0, y_i - y_0, z_i - z_0).
-///   - A missing hand slot is zero-padded (63 zeros).
-///   - Total: 2 * 21 * 3 = 126 features per frame.
 class PhraseRecognizer {
   PhraseRecognizer({
     this.modelAssetPath = 'assets/phrases/fsl_model.tflite',
     this.labelAssetPath = 'assets/phrases/label_map.json',
+    this.sequenceLength = 30,
   });
 
-  /// Asset paths are configurable so this same class can drive any
-  /// 30x126 hands-sequence LSTM/TFLite model -- e.g. the full phrase
-  /// vocabulary (default) or a smaller dedicated model like a J/Z
-  /// moving-letter recognizer -- without duplicating this file.
   final String modelAssetPath;
   final String labelAssetPath;
+  final int sequenceLength;
 
   Interpreter? _interpreter;
   List<String> _labels = [];
 
-  static const int _sequenceLength = 30; // frames per window
   static const int _numHands = 2;
   static const int _numLandmarks = 21;
   static const int _numCoords = 3;
   static const int _featuresPerHand = _numLandmarks * _numCoords; // 63
   static const int _numFeatures = _numHands * _featuresPerHand; // 126
 
-  // Fixed-length ring buffer, always exactly _sequenceLength frames long.
-  // It starts fully zero-padded so the model can run inference from the
-  // very first camera frame instead of waiting to accumulate 30 real ones.
-  final List<Float32List> _frameBuffer = List.generate(
-    _sequenceLength,
+  late final List<Float32List> _frameBuffer = List.generate(
+    sequenceLength,
     (_) => Float32List(_numFeatures),
   );
 
@@ -59,11 +43,8 @@ class PhraseRecognizer {
 
   /// Initializes the TFLite interpreter and label mapping
   Future<void> initialize() async {
-    // 1. Load raw model bytes into memory
     final ByteData rawData = await rootBundle.load(modelAssetPath);
 
-    // Sanity Check: Detect if the asset is a Git LFS text pointer instead of
-    // a real binary
     if (rawData.lengthInBytes < 1000) {
       throw Exception(
         "Corrupted TFLite file (${rawData.lengthInBytes} bytes). "
@@ -75,16 +56,12 @@ class PhraseRecognizer {
       rawData.buffer.asUint8List(rawData.offsetInBytes, rawData.lengthInBytes),
     );
 
-    // 2. Initialize TFLite Interpreter
     final options = InterpreterOptions()..threads = 2;
     _interpreter = Interpreter.fromBuffer(alignedBytes, options: options);
 
-    // 3. Allocate memory buffers and verify the shape the model actually
-    // expects, so a mismatched export fails loudly here instead of deep
-    // inside a native buffer-size exception during a live demo.
     _interpreter!.allocateTensors();
     final inputShape = _interpreter!.getInputTensor(0).shape;
-    final expected = [1, _sequenceLength, _numFeatures];
+    final expected = [1, sequenceLength, _numFeatures];
     if (!_shapeMatches(inputShape, expected)) {
       throw Exception(
         "Model input shape mismatch. Expected $expected but "
@@ -93,7 +70,6 @@ class PhraseRecognizer {
       );
     }
 
-    // 4. Load and Parse Label Map JSON
     final labelData = await rootBundle.loadString(labelAssetPath);
     final dynamic decodedJson = json.decode(labelData);
 
@@ -114,8 +90,8 @@ class PhraseRecognizer {
     if (!_shapeMatches(outputShape, expectedOut)) {
       throw Exception(
         "Model output shape $outputShape doesn't match label count "
-        "$expectedOut. label_map.json and fsl_model.tflite were exported "
-        "from different runs -- re-export both together.",
+        "$expectedOut. label_map.json and model were exported from "
+        "different runs -- re-export both together.",
       );
     }
   }
@@ -128,8 +104,6 @@ class PhraseRecognizer {
     return true;
   }
 
-  /// Wrist-relative normalization for a single hand's 21 landmarks.
-  /// Mirrors normalize_hand() in train_fsl_lstm.py exactly.
   List<double> _normalizeHand(List<Landmark> landmarks) {
     if (landmarks.length != _numLandmarks) {
       return List<double>.filled(_featuresPerHand, 0.0);
@@ -146,14 +120,11 @@ class PhraseRecognizer {
     return out;
   }
 
-  /// Builds this frame's 126-length feature vector from whatever hands
-  /// MediaPipe detected (0, 1, or 2 of them).
   Float32List _extractFeatureVector(List<Hand> hands) {
     final vec = Float32List(_numFeatures);
 
-    if (hands.isEmpty) return vec; // all zeros -> zero-padded hand frame
+    if (hands.isEmpty) return vec;
 
-    // Deterministic left-to-right ordering since handedness isn't exposed.
     final sorted = List<Hand>.from(hands)
       ..sort((a, b) => a.landmarks[0].x.compareTo(b.landmarks[0].x));
 
@@ -167,59 +138,22 @@ class PhraseRecognizer {
     return vec;
   }
 
-  /// Feeds one camera frame's detection result into the sliding window and
-  /// returns a prediction. Call this on every frame from
-  /// `landmarkStream.listen(...)` -- the buffer is always full (zero-padded
-  /// at start), so this returns a result on every call, not just once
-  /// warmed up.
-  ///
-  /// IMPORTANT: this is a *rolling* window of the last [_sequenceLength]
-  /// raw camera frames -- it has no concept of "the whole gesture." It's
-  /// the right tool for continuous, no-explicit-start/stop recognition
-  /// (e.g. a live "is the target sign currently being held" check). It is
-  /// NOT the right tool for a "record for N seconds, then evaluate once"
-  /// flow: if the gesture's real-world duration doesn't fit inside
-  /// [_sequenceLength] frames at whatever frame rate the camera happens
-  /// to deliver, evaluating this buffer at the end of the recording only
-  /// sees the most recent tail slice of the motion, not the whole thing.
-  /// For that use case, use [extractFrameFeatures] to collect every frame
-  /// of the recording yourself, then call [predictFromRecording] once at
-  /// the end.
   RecognitionResult? processFrame(List<Hand> hands) {
     _handsPresentInLastFrame = hands.isNotEmpty;
 
     final frameVector = _extractFeatureVector(hands);
 
-    // FIFO: drop oldest frame, push new one.
     _frameBuffer.removeAt(0);
     _frameBuffer.add(frameVector);
 
     return _predict(_frameBuffer);
   }
 
-  /// Extracts one frame's 126-length feature vector without touching the
-  /// rolling buffer. Use this when you're managing your own recording
-  /// window (e.g. "capture everything between hand-enters-frame and a
-  /// fixed timeout") instead of relying on the continuous ring buffer
-  /// that [processFrame] maintains.
   Float32List extractFrameFeatures(List<Hand> hands) {
     _handsPresentInLastFrame = hands.isNotEmpty;
     return _extractFeatureVector(hands);
   }
 
-  /// Runs a single prediction over an arbitrary, variable-length list of
-  /// raw per-frame feature vectors -- e.g. everything captured during a
-  /// timed recording window, regardless of how many frames that turned
-  /// out to be or how long it actually took in wall-clock time.
-  ///
-  /// [rawFrames] is first resampled to exactly [_sequenceLength] evenly
-  /// spaced frames spanning the *entire* input (see
-  /// [_resampleToSequenceLength]), matching how a variable-duration
-  /// gesture recording should be normalized to a fixed-length sequence
-  /// (mirroring train_fsl_lstm.py's handling of variable-duration
-  /// training clips). This guarantees a larger, slower gesture like 'Z'
-  /// is represented across its full motion instead of being truncated to
-  /// whatever fits in a raw last-N-frames tail window.
   RecognitionResult? predictFromRecording(List<Float32List> rawFrames) {
     if (rawFrames.isEmpty) {
       return RecognitionResult(label: "No motion recorded", confidence: 0.0);
@@ -228,16 +162,12 @@ class PhraseRecognizer {
     return _predict(resampled);
   }
 
-  /// Evenly resamples [frames] (any length >= 1) down or up to exactly
-  /// [_sequenceLength] frames, indexing proportionally across the full
-  /// span of the input so the result always represents the complete
-  /// recording from first frame to last -- never just a tail slice.
   List<Float32List> _resampleToSequenceLength(List<Float32List> frames) {
-    if (frames.length == _sequenceLength) return frames;
-    return List<Float32List>.generate(_sequenceLength, (i) {
+    if (frames.length == sequenceLength) return frames;
+    return List<Float32List>.generate(sequenceLength, (i) {
       final double t = frames.length <= 1
           ? 0.0
-          : i * (frames.length - 1) / (_sequenceLength - 1);
+          : i * (frames.length - 1) / (sequenceLength - 1);
       final int idx = t.round().clamp(0, frames.length - 1);
       return frames[idx];
     });
@@ -250,11 +180,9 @@ class PhraseRecognizer {
     if (_labels.isEmpty) {
       return RecognitionResult(label: "Labels not loaded", confidence: 0.0);
     }
-    if (frames.length != _sequenceLength) {
-      // Should be unreachable (both call sites guarantee this), but fail
-      // loudly instead of silently feeding a misshapen tensor.
+    if (frames.length != sequenceLength) {
       return RecognitionResult(
-        label: "ERR: expected $_sequenceLength frames, got ${frames.length}",
+        label: "ERR: expected $sequenceLength frames, got ${frames.length}",
         confidence: 0.0,
       );
     }
@@ -279,24 +207,19 @@ class PhraseRecognizer {
     );
   }
 
-  /// Runs raw inference and returns EVERY label's output score (whatever
-  /// scale the model natively produces), keyed by label -- not just the
-  /// winning one. `_predict` uses this internally to pick the argmax;
-  /// exposed separately (via [rawScoresForRecording]) so callers can
-  /// inspect the full distribution for debugging.
   Map<String, double> _rawScores(List<Float32List> frames) {
-    if (_interpreter == null || _labels.isEmpty || frames.length != _sequenceLength) {
+    if (_interpreter == null || _labels.isEmpty || frames.length != sequenceLength) {
       return {};
     }
     try {
-      final Float32List flatInput = Float32List(_sequenceLength * _numFeatures);
+      final Float32List flatInput = Float32List(sequenceLength * _numFeatures);
       int index = 0;
       for (final frame in frames) {
         flatInput.setRange(index, index + _numFeatures, frame);
         index += _numFeatures;
       }
 
-      final inputTensor = flatInput.reshape([1, _sequenceLength, _numFeatures]);
+      final inputTensor = flatInput.reshape([1, sequenceLength, _numFeatures]);
       final outputTensor =
           List.filled(1 * _labels.length, 0.0).reshape([1, _labels.length]);
 
@@ -313,16 +236,6 @@ class PhraseRecognizer {
     }
   }
 
-  /// DEBUG TOOL: returns every label's raw score for an arbitrary-length
-  /// recording, letting you compare two different windowing strategies
-  /// side by side without changing what the app actually scores on.
-  ///
-  /// [resample] = true (default) mirrors [predictFromRecording]: evenly
-  /// resample the whole recording down to [_sequenceLength] frames.
-  /// [resample] = false instead takes the RAW LAST [_sequenceLength]
-  /// frames only (zero-padding at the front if the recording is
-  /// shorter) -- i.e. exactly what the old rolling-buffer/[processFrame]
-  /// approach would have seen.
   Map<String, double> rawScoresForRecording(
     List<Float32List> rawFrames, {
     bool resample = true,
@@ -330,7 +243,7 @@ class PhraseRecognizer {
     if (rawFrames.isEmpty) return {};
     final frames = resample
         ? _resampleToSequenceLength(rawFrames)
-        : _lastNFramesZeroPadded(rawFrames, _sequenceLength);
+        : _lastNFramesZeroPadded(rawFrames, sequenceLength);
     return _rawScores(frames);
   }
 
@@ -343,12 +256,8 @@ class PhraseRecognizer {
     return [...pad, ...frames];
   }
 
-  /// Resets the buffer back to all-zero frames (e.g. when the user
-  /// backs out of a practice attempt). Note this re-fills with zero
-  /// vectors, NOT an empty list -- processFrame() assumes the buffer is
-  /// always exactly _sequenceLength long.
   void resetBuffer() {
-    for (int i = 0; i < _sequenceLength; i++) {
+    for (int i = 0; i < sequenceLength; i++) {
       _frameBuffer[i] = Float32List(_numFeatures);
     }
     _handsPresentInLastFrame = false;

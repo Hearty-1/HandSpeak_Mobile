@@ -77,11 +77,7 @@ flutter_launcher_icons:
 flutter:
   assets:
     - assets/hand_landmarker.task
-    - assets/phrases/model.tflite
-    - assets/phrases/label_map.json
     - assets/alphabet/
-    - assets/alphabet/model.tflite
-    - assets/alphabet/label_map.json
     - assets/numbers/
     - assets/pictures/
     - assets/sounds/

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'numbers_tutorial_detail.dart'; 
 
 class NumbersTutorialInterface extends StatefulWidget {
@@ -11,49 +12,27 @@ class NumbersTutorialInterface extends StatefulWidget {
 }
 
 class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
-  final List<Map<String, String>> lessons = [
-    {'title': '1', 'status': 'completed'},
-    {'title': '2', 'status': 'completed'},
-    {'title': '3', 'status': 'completed'},
-    {'title': '4', 'status': 'completed'},
-    {'title': '5', 'status': 'completed'},
-    {'title': '6', 'status': 'completed'},
-    {'title': '7', 'status': 'completed'},
-    {'title': '8', 'status': 'completed'},
-    {'title': '9', 'status': 'completed'},
-    {'title': '10', 'status': 'completed'},
+  String _searchQuery = ""; 
+
+  // 1. Define the default local fallback list for numbers[cite: 13]
+  final List<Map<String, dynamic>> _defaultLessons = [
+    {'title': '1', 'gestureKey': '1', 'imageUrl': 'assets/pictures/1.png'},
+    {'title': '2', 'gestureKey': '2', 'imageUrl': 'assets/pictures/2.png'},
+    {'title': '3', 'gestureKey': '3', 'imageUrl': 'assets/pictures/3.png'},
+    {'title': '4', 'gestureKey': '4', 'imageUrl': 'assets/pictures/4.png'},
+    {'title': '5', 'gestureKey': '5', 'imageUrl': 'assets/pictures/5.png'},
+    {'title': '6', 'gestureKey': '6', 'imageUrl': 'assets/pictures/6.png'},
+    {'title': '7', 'gestureKey': '7', 'imageUrl': 'assets/pictures/7.png'},
+    {'title': '8', 'gestureKey': '8', 'imageUrl': 'assets/pictures/8.png'},
+    {'title': '9', 'gestureKey': '9', 'imageUrl': 'assets/pictures/9.png'},
+    {'title': '10', 'gestureKey': '10', 'imageUrl': 'assets/pictures/10.png'},
   ];
-
-  List<Map<String, String>> filteredLessons = [];
-
-  @override
-  void initState() {
-    super.initState();
-    filteredLessons = lessons;
-  }
-
-  void _runFilter(String enteredKeyword) {
-    List<Map<String, String>> results = [];
-    if (enteredKeyword.isEmpty) {
-      results = lessons;
-    } else {
-      results = lessons
-          .where((lesson) =>
-              lesson['title']!.toLowerCase().contains(enteredKeyword.toLowerCase()))
-          .toList();
-    }
-
-    setState(() {
-      filteredLessons = results;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    // Dynamically adjust status bar icon brightness according to active theme mode
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -62,12 +41,12 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
     );
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      extendBodyBehindAppBar: true, 
       backgroundColor: theme.scaffoldBackgroundColor,
       
-      // --- FROSTED PREMIUM APP BAR ---
+      // --- GLASSMORPHISM APP BAR ---[cite: 13]
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withOpacity(0.4), 
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -84,81 +63,53 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
             fontSize: 22, 
             fontFamily: 'Inter', 
             fontWeight: FontWeight.w800, 
-            letterSpacing: -0.96,
+            letterSpacing: -0.96
           ),
         ),
       ),
       
       body: Stack(
         children: [
-          // Ambient background decorative glow circles matching AlphabetInterface
+          // Ambient Color Blobs[cite: 13]
           Positioned(
-            top: 140,
-            right: -40,
+            top: -50, left: -50,
             child: Container(
-              width: 200,
-              height: 200,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: theme.primaryColor.withOpacity(0.3),
-              ),
+              width: 250, height: 250,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: theme.primaryColor.withOpacity(0.25)),
             ),
           ),
           Positioned(
-            bottom: 120,
-            left: -60,
+            bottom: 100, right: -80,
             child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: theme.colorScheme.secondary.withOpacity(0.2),
-              ),
+              width: 280, height: 280,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.secondary.withOpacity(0.15)),
             ),
           ),
 
           SafeArea(
             child: Column(
               children: [
-                // Frosted Search Bar Container Frame
+                // Glassmorphism Search Bar Container[cite: 13]
                 Padding(
-                  padding: const EdgeInsets.all(20.0),
+                  padding: const EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 10.0),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: theme.cardColor.withOpacity(0.65),
+                          color: theme.cardColor.withOpacity(0.6),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: theme.colorScheme.surface.withOpacity(0.8),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.02),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            )
-                          ],
+                          border: Border.all(color: theme.colorScheme.surface.withOpacity(0.7), width: 1.5),
                         ),
                         child: TextField(
-                          onChanged: (value) => _runFilter(value),
-                          style: TextStyle(
-                            color: theme.colorScheme.onSurface,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()), 
+                          style: TextStyle(color: theme.colorScheme.onSurface),
                           decoration: InputDecoration(
-                            hintText: 'Search number...', 
-                            hintStyle: TextStyle(
-                              color: theme.colorScheme.onSurface.withOpacity(0.4),
-                            ),
-                            prefixIcon: Icon(
-                              Icons.search,
-                              color: theme.colorScheme.onSurface,
-                            ),
+                            hintText: 'Search number...',
+                            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.w500),
+                            prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurface.withOpacity(0.5)),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(vertical: 12),
                           ),
@@ -168,51 +119,90 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                   ),
                 ),
                 
+                // Hybrid StreamBuilder[cite: 13]
                 Expanded(
-                  child: filteredLessons.isEmpty
-                      ? Center(
-                          child: Text(
-                            "No numbers found.", 
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.onSurface,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: filteredLessons.length,
-                          itemBuilder: (context, index) {
-                            final lesson = filteredLessons[index];
-                            final bool isLocked = lesson['status'] == 'locked';
-                            
-                            return LessonCard(
-                              title: lesson['title']!,
-                              isLocked: isLocked,
-                              onTap: () {
-                                if (!isLocked) {
-                                  final originalIndex = lessons.indexOf(lesson);
-                                  
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => NumbersTutorialDetail(initialIndex: originalIndex),
-                                    ),
-                                  );
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text("Complete previous numbers to unlock ${lesson['title']}!"),
-                                      backgroundColor: theme.colorScheme.error,
-                                    ),
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('tutorial_lessons')
+                        .where('category', isEqualTo: 'numbers')
+                        .snapshots(),
+                    builder: (context, cmsSnapshot) {
+                      // 2. Start with a clone of the local data[cite: 13]
+                      List<Map<String, dynamic>> mergedLessons = List.from(_defaultLessons);
+
+                      // 3. If Firestore has data, merge it into our local list[cite: 13]
+                      if (cmsSnapshot.hasData && cmsSnapshot.data!.docs.isNotEmpty) {
+                        final firestoreLessons = cmsSnapshot.data!.docs.map((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          return {
+                            'id': doc.id,
+                            'title': data['displayTitle']?.toString() ?? data['gestureKey']?.toString() ?? '',
+                            'gestureKey': data['gestureKey']?.toString() ?? '',
+                            'imageUrl': data['imageUrl']?.toString() ?? '',
+                          };
+                        }).toList();
+
+                        for (var fsLesson in firestoreLessons) {
+                          int existingIndex = mergedLessons.indexWhere((loc) => 
+                              loc['gestureKey'].toString() == fsLesson['gestureKey'].toString()
+                          );
+                          
+                          if (existingIndex != -1) {
+                            mergedLessons[existingIndex] = fsLesson; // Replace local[cite: 13]
+                          } else {
+                            mergedLessons.add(fsLesson); // Add new[cite: 13]
+                          }
+                        }
+                      }
+
+                      // Sort numerically
+                      mergedLessons.sort((a, b) {
+                        int numA = int.tryParse(a['gestureKey'].toString()) ?? 0;
+                        int numB = int.tryParse(b['gestureKey'].toString()) ?? 0;
+                        return numA.compareTo(numB);
+                      });
+
+                      // 4. Apply search filter
+                      final List<Map<String, dynamic>> finalDisplayList = [];
+                      for (int i = 0; i < mergedLessons.length; i++) {
+                        final lesson = mergedLessons[i];
+                        if (lesson['title']!.toLowerCase().contains(_searchQuery)) {
+                          finalDisplayList.add({
+                            ...lesson,
+                            'originalIndex': i,
+                          });
+                        }
+                      }
+
+                      if (finalDisplayList.isEmpty) {
+                         return Center(child: Text("No numbers found.", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7))));
+                      }
+
+                      return ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        itemCount: finalDisplayList.length, 
+                        itemBuilder: (context, index) {
+                          final lesson = finalDisplayList[index];
+                          
+                          return LessonCard(
+                            title: lesson['title']!,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => NumbersTutorialDetail(
+                                    initialIndex: lesson['originalIndex'],
+                                    dynamicLessons: mergedLessons, // Pass full merged list[cite: 13, 14]
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    }
+                  ),
                 ),
               ],
             ),
@@ -223,17 +213,12 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
   }
 }
 
-// --- MICRO-GLASS PREMIUM LESSON INTERFACE CARD ---
 class LessonCard extends StatelessWidget {
   final String title;
-  final bool isLocked;
   final VoidCallback onTap;
 
   const LessonCard({
-    super.key, 
-    required this.title, 
-    required this.isLocked, 
-    required this.onTap,
+    super.key, required this.title, required this.onTap,
   });
 
   @override
@@ -241,54 +226,40 @@ class LessonCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 15.0),
-      child: GestureDetector(
-        onTap: onTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+      padding: const EdgeInsets.only(bottom: 15),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: GestureDetector(
+            onTap: onTap,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
               decoration: BoxDecoration(
-                color: isLocked 
-                    ? theme.cardColor.withOpacity(0.35) 
-                    : theme.cardColor.withOpacity(0.65),
+                color: theme.cardColor.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isLocked 
-                      ? theme.colorScheme.surface.withOpacity(0.4) 
-                      : theme.primaryColor.withOpacity(0.5), 
-                  width: 2,
+                  color: theme.primaryColor.withOpacity(0.5), 
+                  width: 1.5
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  )
-                ],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    title, 
+                    title,
                     style: TextStyle(
-                      fontSize: 32, 
-                      fontWeight: FontWeight.w900, 
-                      fontFamily: 'Inter',
-                      color: isLocked 
-                          ? theme.colorScheme.onSurface.withOpacity(0.38) 
-                          : theme.colorScheme.onSurface,
+                      fontSize: 30, fontWeight: FontWeight.w900, fontFamily: 'Inter',
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
-                  Icon(
-                    isLocked ? Icons.lock_outline : Icons.play_circle_fill, 
-                    color: isLocked 
-                        ? theme.colorScheme.onSurface.withOpacity(0.38) 
-                        : theme.primaryColor, 
-                    size: 32,
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: theme.cardColor, shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 8, spreadRadius: 1)],
+                    ),
+                    child: Icon(Icons.play_arrow_rounded, color: theme.primaryColor, size: 22),
                   ),
                 ],
               ),

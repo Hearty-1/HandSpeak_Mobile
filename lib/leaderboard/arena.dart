@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
@@ -8,6 +9,7 @@ import '../home/home.dart';
 import '../module/module.dart';
 import '../profile/profile.dart';
 import '../profile/add_friend_screen.dart';
+import 'gamescreen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   final String initialTab;
@@ -531,7 +533,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   Expanded(
                     child: _buildEnhancedStatBadge(
                       theme,
-                      Icons.star_rounded,
+                      Icons.bolt_rounded,
                       "$currentUserXp",
                       _rankTimeframe == 'weekly' ? "Weekly XP" : "Total XP",
                       theme.primaryColor,
@@ -790,7 +792,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   SizedBox(height: 8 * scale),
                   Row(
                     children: [
-                      Icon(Icons.star_rounded, color: theme.primaryColor, size: 16 * scale),
+                      Icon(Icons.bolt_rounded, color: theme.primaryColor, size: 16 * scale),
                       SizedBox(width: 4 * scale),
                       Text(
                         xpText,
@@ -1081,7 +1083,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           ),
           Row(
             children: [
-              Icon(Icons.star_rounded, color: theme.primaryColor, size: 18 * scale),
+              Icon(Icons.bolt_rounded, color: theme.primaryColor, size: 18 * scale),
               SizedBox(width: 4 * scale),
               Text(
                 "$xp",
@@ -1095,6 +1097,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 }
 
+// --- FUNCTIONAL GROUP CHALLENGE HUB SCREEN ---
 // --- FUNCTIONAL GROUP CHALLENGE HUB SCREEN ---
 class GroupChallengeHubScreen extends StatefulWidget {
   const GroupChallengeHubScreen({super.key});
@@ -1110,6 +1113,15 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
   final List<String> _invitedFriendUids = [];
+
+  // --- HOST SELECTION STATE ---
+  String _selectedCategory = 'Alphabet';
+  int _selectedRounds = 10;
+  int _selectedTimer = 15; // In seconds (0 = Untimed)
+
+  final List<String> _categories = ['Alphabet', 'Numbers', 'Common Phrases', 'Greetings', 'Family'];
+  final List<int> _roundsOptions = [5, 10, 15, 20];
+  final List<int> _timerOptions = [10, 15, 30, 0]; // 0 = Untimed
 
   Widget _buildSafeAvatar({
     required BuildContext context,
@@ -1135,7 +1147,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     }
 
     Widget imageWidget;
-
     if (photoUrl.startsWith('data:image')) {
       try {
         final String base64String = photoUrl.split(',').last;
@@ -1176,8 +1187,8 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     return String.fromCharCodes(Iterable.generate(6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
   }
 
-  Future<void> _handleJoinRoom() async {
-    final code = _codeController.text.trim().toUpperCase();
+  Future<void> _handleJoinRoom([String? customCode]) async {
+    final code = (customCode ?? _codeController.text).trim().toUpperCase();
     if (code.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter a room code.")));
       return;
@@ -1228,14 +1239,22 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
 
     try {
       final String code = _generateRoomCode();
-      const String title = "Classroom Challenge";
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get();
+      final userData = userDoc.data() as Map<String, dynamic>?;
+      final hostName = userData?['displayName'] ?? userData?['name'] ?? 'Host';
+      final String roomTitle = "$hostName's Room";
 
       await FirebaseFirestore.instance.collection('rooms').doc(code).set({
         'code': code,
-        'title': title,
+        'title': roomTitle,
         'hostUid': _currentUserId,
+        'hostName': hostName,
+        'category': _selectedCategory,
+        'totalRounds': _selectedRounds,
+        'timerDuration': _selectedTimer,
         'playerUids': [_currentUserId],
         'invitedUids': _invitedFriendUids,
+        'maxPlayers': 10,
         'status': 'waiting',
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -1246,7 +1265,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           MaterialPageRoute(
             builder: (context) => RoomLobbyScreen(
               roomCode: code,
-              challengeTitle: title,
+              challengeTitle: roomTitle,
               isHost: true,
             ),
           ),
@@ -1296,26 +1315,14 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                 children: [
                   Text(
                     "Invite Friends",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      fontFamily: 'Inter',
-                      color: textColor,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Inter', color: textColor),
                   ),
                   const SizedBox(height: 16),
                   Expanded(
                     child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('users')
-                          .snapshots(),
+                      stream: FirebaseFirestore.instance.collection('users').snapshots(),
                       builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return Center(child: Text('Error loading users: ${snapshot.error}'));
-                        }
-                        if (!snapshot.hasData) {
-                          return Center(child: CircularProgressIndicator(color: theme.primaryColor));
-                        }
+                        if (!snapshot.hasData) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
 
                         final users = snapshot.data!.docs.where((doc) {
                           final String otherUserId = doc.id;
@@ -1333,22 +1340,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
 
                         if (users.isEmpty) {
                           return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.group_off_rounded, size: 48, color: textColor.withOpacity(0.3)),
-                                const SizedBox(height: 12),
-                                Text(
-                                  "No mutual friends found.",
-                                  style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 16),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  "Follow each other to invite them to games!",
-                                  style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12),
-                                ),
-                              ],
-                            ),
+                            child: Text("No mutual friends found.", style: TextStyle(color: textColor, fontWeight: FontWeight.w700)),
                           );
                         }
 
@@ -1361,36 +1353,10 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                             final String? photoUrl = userData['avatar'] ?? userData['photoUrl'] ?? userData['avatarUrl'];
                             final bool isSelected = _invitedFriendUids.contains(uid);
 
-                            final bool isOnline = userData['isOnline'] == true ||
-                                userData['presence']?.toString().toLowerCase() == 'online' ||
-                                userData['status']?.toString().toLowerCase() == 'online';
-
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
-                              leading: _buildSafeAvatar(
-                                context: context,
-                                photoUrl: photoUrl,
-                                name: name,
-                                radius: 20,
-                              ),
+                              leading: _buildSafeAvatar(context: context, photoUrl: photoUrl, name: name, radius: 20),
                               title: Text(name, style: TextStyle(fontWeight: FontWeight.w700, color: textColor)),
-                              subtitle: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 4,
-                                    backgroundColor: isOnline ? const Color(0xFF4CAF50) : Colors.grey,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    isOnline ? "Online" : "Offline",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isOnline ? const Color(0xFF4CAF50) : Colors.grey,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
                               trailing: IconButton(
                                 icon: Icon(
                                   isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
@@ -1398,11 +1364,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                                 ),
                                 onPressed: () {
                                   setModalState(() {
-                                    if (isSelected) {
-                                      _invitedFriendUids.remove(uid);
-                                    } else {
-                                      _invitedFriendUids.add(uid);
-                                    }
+                                    isSelected ? _invitedFriendUids.remove(uid) : _invitedFriendUids.add(uid);
                                   });
                                   setState(() {});
                                 },
@@ -1418,11 +1380,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                     height: 50,
                     child: ElevatedButton(
                       onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.primaryColor,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
+                      style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                       child: Text("Done", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900)),
                     ),
                   )
@@ -1449,28 +1407,15 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          "Group Challenges",
-          style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter', fontSize: 20),
-        ),
+        title: Text("Group Challenges", style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter', fontSize: 20)),
         centerTitle: true,
-        flexibleSpace: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: theme.scaffoldBackgroundColor.withOpacity(0.4),
-                border: Border(bottom: BorderSide(color: textColor.withOpacity(0.08), width: 1.0)),
-              ),
-            ),
-          ),
-        ),
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
+            // TOP HEADER CARD
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance.collection('users').doc(_currentUserId).snapshots(),
               builder: (context, snapshot) {
@@ -1485,12 +1430,8 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                 return Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: theme.cardColor.withOpacity(0.7),
+                    color: const Color(0xFFFFB703),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 6))
-                    ],
                   ),
                   child: Row(
                     children: [
@@ -1498,15 +1439,15 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Classroom Challenge", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, fontFamily: 'Inter', color: textColor)),
+                            const Text("Classroom Challenge", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)),
                             const SizedBox(height: 6),
-                            Text("Join your teacher's room or host one for your group.", style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.6), fontWeight: FontWeight.w500)),
+                            Text("Join your teacher's room or create one for your group.", style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7), fontWeight: FontWeight.w600)),
                             const SizedBox(height: 16),
                             Row(
                               children: [
-                                _buildStatSquare(theme, "$userXp", "Your XP"),
+                                _buildStatSquare("$userXp", "Your Points"),
                                 const SizedBox(width: 10),
-                                _buildStatSquare(theme, "$streak ⚡", "Streak"),
+                                _buildStatSquare("$streak", "Level"),
                               ],
                             )
                           ],
@@ -1514,13 +1455,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                       ),
                       const SizedBox(width: 12),
                       Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Icon(Icons.groups_rounded, size: 36, color: theme.primaryColor),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), shape: BoxShape.circle),
+                        child: const Icon(Icons.groups_rounded, size: 36, color: Colors.black87),
                       ),
                     ],
                   ),
@@ -1529,6 +1466,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             ),
             const SizedBox(height: 20),
 
+            // SEGMENT TOGGLE BUTTONS
             Container(
               height: 48,
               padding: const EdgeInsets.all(4),
@@ -1546,19 +1484,11 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         duration: const Duration(milliseconds: 200),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: isJoinMode ? theme.cardColor.withOpacity(0.85) : Colors.transparent,
+                          color: isJoinMode ? theme.cardColor.withOpacity(0.9) : Colors.transparent,
                           borderRadius: BorderRadius.circular(16),
-                          border: isJoinMode ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.0) : null,
-                          boxShadow: isJoinMode ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))] : null,
+                          boxShadow: isJoinMode ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4)] : null,
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.login_rounded, color: isJoinMode ? const Color(0xFFF34B1B) : textColor.withOpacity(0.5), size: 18),
-                            const SizedBox(width: 6),
-                            Text("Join Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isJoinMode ? textColor : textColor.withOpacity(0.5))),
-                          ],
-                        ),
+                        child: Text("Join a Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
                       ),
                     ),
                   ),
@@ -1569,19 +1499,11 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         duration: const Duration(milliseconds: 200),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: !isJoinMode ? theme.cardColor.withOpacity(0.85) : Colors.transparent,
+                          color: !isJoinMode ? theme.cardColor.withOpacity(0.9) : Colors.transparent,
                           borderRadius: BorderRadius.circular(16),
-                          border: !isJoinMode ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.0) : null,
-                          boxShadow: !isJoinMode ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))] : null,
+                          boxShadow: !isJoinMode ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4)] : null,
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add_circle_outline_rounded, color: !isJoinMode ? const Color(0xFFF34B1B) : textColor.withOpacity(0.5), size: 18),
-                            const SizedBox(width: 6),
-                            Text("Create Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: !isJoinMode ? textColor : textColor.withOpacity(0.5))),
-                          ],
-                        ),
+                        child: Text("Create Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
                       ),
                     ),
                   ),
@@ -1597,24 +1519,24 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     );
   }
 
-  Widget _buildStatSquare(ThemeData theme, String val, String label) {
-    final textColor = theme.colorScheme.onSurface;
+  Widget _buildStatSquare(String val, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.primaryColor.withOpacity(0.12),
+        color: Colors.white.withOpacity(0.4),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.primaryColor.withOpacity(0.2), width: 1.0),
       ),
       child: Column(
         children: [
-          Text(val, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: textColor)),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.primaryColor)),
+          Text(val, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Colors.black)),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black.withOpacity(0.7))),
         ],
       ),
     );
   }
 
+  // --- JOIN VIEW WITH ACTIVE ROOMS ---
+  // --- JOIN VIEW WITH ACTIVE ROOMS ---
   Widget _buildJoinView(ThemeData theme) {
     final textColor = theme.colorScheme.onSurface;
     return Column(
@@ -1629,10 +1551,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                 decoration: BoxDecoration(
                   color: theme.cardColor.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
-                  ],
+                  border: Border.all(color: textColor.withOpacity(0.08)),
                 ),
                 child: TextField(
                   controller: _codeController,
@@ -1641,22 +1560,19 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                   decoration: InputDecoration(
                     hintText: "e.g. FSL001",
                     hintStyle: TextStyle(color: textColor.withOpacity(0.4), fontWeight: FontWeight.bold),
-                    filled: true,
-                    fillColor: Colors.transparent,
+                    border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 12),
             ElevatedButton(
-              onPressed: isLoading ? null : _handleJoinRoom,
+              onPressed: isLoading ? null : () => _handleJoinRoom(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFF34B1B),
                 padding: const EdgeInsets.all(16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
               ),
               child: isLoading
                   ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -1664,47 +1580,222 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             )
           ],
         ),
+        const SizedBox(height: 24),
+
+        // ACTIVE ROOMS LIST (Displaying All Available Rooms)
+        Text("Active Rooms", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: textColor)),
+        const SizedBox(height: 12),
+
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('rooms')
+              .where('status', isEqualTo: 'waiting')
+              // Note: Removed .limit(10) to display all available active rooms.
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator(color: theme.primaryColor));
+            }
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(20),
+                width: double.infinity,
+                decoration: BoxDecoration(color: theme.cardColor.withOpacity(0.5), borderRadius: BorderRadius.circular(16)),
+                child: Center(
+                  child: Text("No active public rooms available.", style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
+                ),
+              );
+            }
+
+            final docs = snapshot.data!.docs;
+ 
+            return Column(
+              children: docs.map((doc) {
+                final roomData = doc.data() as Map<String, dynamic>;
+                final code = roomData['code'] ?? doc.id;
+                final title = roomData['title'] ?? 'Challenge Room';
+                final category = roomData['category'] ?? 'Alphabet';
+                final List playerUids = roomData['playerUids'] ?? [];
+                final int maxPlayers = roomData['maxPlayers'] ?? 10;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: textColor.withOpacity(0.08)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.12), shape: BoxShape.circle),
+                        child: Icon(Icons.groups_rounded, color: theme.primaryColor, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: textColor)),
+                            const SizedBox(height: 2),
+                            Text("${playerUids.length}/$maxPlayers players · $category", style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => _handleJoinRoom(code),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(12)),
+                          child: Row(
+                            children: [
+                              Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF4CAF50), shape: BoxShape.circle)),
+                              const SizedBox(width: 4),
+                              const Text("Live", style: TextStyle(color: Color(0xFF2E7D32), fontWeight: FontWeight.bold, fontSize: 11)),
+                              const SizedBox(width: 6),
+                              Text(code, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: textColor)),
+                              Icon(Icons.chevron_right_rounded, size: 16, color: textColor.withOpacity(0.6)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
       ],
     );
   }
 
+  // --- CREATE VIEW WITH HOST OPTIONS ---
   Widget _buildCreateView(ThemeData theme) {
     final textColor = theme.colorScheme.onSurface;
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.cardColor.withOpacity(0.7),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 5)),
-        ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF34B1B).withOpacity(0.1),
-              shape: BoxShape.circle,
+          Center(
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: const Color(0xFFF34B1B).withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.add_circle_rounded, size: 36, color: Color(0xFFF34B1B)),
+                ),
+                const SizedBox(height: 10),
+                Text("Host a Challenge", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Inter', color: textColor)),
+                const SizedBox(height: 4),
+                Text("Configure your game settings and choose topics.", textAlign: TextAlign.center, style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12.5)),
+              ],
             ),
-            child: const Icon(Icons.add_circle_rounded, size: 36, color: Color(0xFFF34B1B)),
           ),
-          const SizedBox(height: 12),
-          Text("Host a Challenge", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Inter', color: textColor)),
-          const SizedBox(height: 6),
-          Text("Create a custom room and invite friends to compete.", textAlign: TextAlign.center, style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13)),
-          
           const SizedBox(height: 20),
-          
+
+          // CATEGORY SELECTOR
+          Text("⚡ Choose Sign Category", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: textColor.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: textColor.withOpacity(0.1)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedCategory,
+                isExpanded: true,
+                dropdownColor: theme.cardColor,
+                style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
+                items: _categories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat))).toList(),
+                onChanged: (val) {
+                  if (val != null) setState(() => _selectedCategory = val);
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ROUNDS SELECTOR
+          Text("🎯 Select Number of Rounds", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
+          const SizedBox(height: 8),
+          Row(
+            children: _roundsOptions.map((rounds) {
+              final bool isSelected = _selectedRounds == rounds;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedRounds = rounds),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isSelected ? theme.primaryColor : textColor.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isSelected ? theme.primaryColor : textColor.withOpacity(0.1)),
+                    ),
+                    child: Text(
+                      "$rounds",
+                      style: TextStyle(fontWeight: FontWeight.w900, color: isSelected ? theme.colorScheme.onPrimary : textColor),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+
+          // TIMER DURATION SELECTOR
+          Text("⏱️ Timer Duration per Question", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
+          const SizedBox(height: 8),
+          Row(
+            children: _timerOptions.map((timerSec) {
+              final bool isSelected = _selectedTimer == timerSec;
+              final String label = timerSec == 0 ? "Untimed" : "${timerSec}s";
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedTimer = timerSec),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFF34B1B) : textColor.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isSelected ? const Color(0xFFF34B1B) : textColor.withOpacity(0.1)),
+                    ),
+                    child: Text(
+                      label,
+                      style: TextStyle(fontWeight: FontWeight.w900, color: isSelected ? Colors.white : textColor, fontSize: 12),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 20),
+
+          // INVITE FRIENDS
           InkWell(
             onTap: _showInviteFriendsSheet,
             borderRadius: BorderRadius.circular(16),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: textColor.withOpacity(0.03),
-                border: Border.all(color: textColor.withOpacity(0.1), width: 1.0),
+                border: Border.all(color: textColor.withOpacity(0.1)),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -1717,14 +1808,8 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                   if (_invitedFriendUids.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF4CAF50).withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        "${_invitedFriendUids.length} Selected", 
-                        style: const TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold, fontSize: 11),
-                      ),
+                      decoration: BoxDecoration(color: const Color(0xFF4CAF50).withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                      child: Text("${_invitedFriendUids.length} Selected", style: const TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold, fontSize: 11)),
                     )
                   else
                     Icon(Icons.arrow_forward_ios_rounded, size: 14, color: textColor.withOpacity(0.4)),
@@ -1732,9 +1817,8 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               ),
             ),
           ),
-          
-          const SizedBox(height: 16),
-          
+          const SizedBox(height: 20),
+
           SizedBox(
             width: double.infinity,
             height: 50,
@@ -1743,7 +1827,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
               ),
               child: isLoading
                   ? CircularProgressIndicator(color: theme.colorScheme.onPrimary)
@@ -1757,7 +1840,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
 }
 
 // --- FUNCTIONAL ROOM LOBBY SCREEN ---
-class RoomLobbyScreen extends StatelessWidget {
+class RoomLobbyScreen extends StatefulWidget {
   final String roomCode;
   final String challengeTitle;
   final bool isHost;
@@ -1768,6 +1851,58 @@ class RoomLobbyScreen extends StatelessWidget {
     required this.challengeTitle,
     this.isHost = false,
   });
+
+  @override
+  State<RoomLobbyScreen> createState() => _RoomLobbyScreenState();
+}
+
+class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
+  StreamSubscription<DocumentSnapshot>? _roomSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForGameStart();
+  }
+
+  // This function listens to the database in the background.
+  // When the host changes the status to 'active', it pulls EVERYONE into the game.
+  void _listenForGameStart() {
+    _roomSubscription = FirebaseFirestore.instance
+        .collection('rooms')
+        .doc(widget.roomCode)
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data() as Map<String, dynamic>;
+        
+        if (data['status'] == 'active') {
+          // Cancel the listener so it doesn't trigger multiple times
+          _roomSubscription?.cancel();
+          
+          if (mounted) {
+            // PushReplacement removes the lobby screen so players can't hit "back" into it
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => GameProperScreen(
+                  roomCode: widget.roomCode,
+                  challengeTitle: widget.challengeTitle,
+                  isHost: widget.isHost,
+                ),
+              ),
+            );
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _roomSubscription?.cancel();
+    super.dispose();
+  }
 
   Widget _buildSafeAvatar({
     required BuildContext context,
@@ -1846,7 +1981,7 @@ class RoomLobbyScreen extends StatelessWidget {
         centerTitle: true,
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('rooms').doc(roomCode).snapshots(),
+        stream: FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).snapshots(),
         builder: (context, roomSnapshot) {
           if (roomSnapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator(color: theme.primaryColor));
@@ -1878,7 +2013,7 @@ class RoomLobbyScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         Text(
-                          challengeTitle,
+                          widget.challengeTitle,
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textColor),
                           textAlign: TextAlign.center,
                         ),
@@ -1886,7 +2021,7 @@ class RoomLobbyScreen extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _buildInfoPill(theme, "Room Code", roomCode),
+                            _buildInfoPill(theme, "Room Code", widget.roomCode),
                             const SizedBox(width: 12),
                             _buildInfoPill(theme, "Players", "${playerUids.length}/10"),
                           ],
@@ -1943,20 +2078,22 @@ class RoomLobbyScreen extends StatelessWidget {
                     width: double.infinity,
                     height: 54,
                     child: ElevatedButton(
-                      onPressed: isHost
+                      onPressed: widget.isHost
                           ? () async {
-                              await FirebaseFirestore.instance.collection('rooms').doc(roomCode).update({
+                              // Host updates the status. The StreamSubscription in initState
+                              // will catch this and automatically navigate everyone.
+                              await FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).update({
                                 'status': 'active',
                               });
                             }
                           : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: isHost ? const Color(0xFFF34B1B) : theme.disabledColor,
+                        backgroundColor: widget.isHost ? const Color(0xFFF34B1B) : theme.disabledColor,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                         elevation: 0,
                       ),
                       child: Text(
-                        isHost ? "START MATCH" : "WAITING FOR HOST...",
+                        widget.isHost ? "START MATCH" : "WAITING FOR HOST...",
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w900,

@@ -28,17 +28,15 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
 
-  // --- Recording state ---
+  // Recording state
   bool _isRecordingMotion = false;
   bool _showMotionResult = false;
   DateTime? _startRecordingTime;
   final List<Float32List> _recordingFrames = [];
 
-  // Grace period for momentary hand-tracking loss mid-recording
   static const Duration _dropoutGracePeriod = Duration(milliseconds: 400);
   DateTime? _lastHandsSeenTime;
 
-  // Safety cap for maximum recording length
   static const double _maxRecordingSeconds = 12.0;
 
   String _debugStatus = "0/4 Fetching training config...";
@@ -46,8 +44,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
 
-  // Dynamically populated from Firestore 'gesture_training_data' (defaults to 70.0)
+  // Dynamic parameters from Firestore gesture_training_data
   double successThreshold = 70.0;
+  int targetSequenceLength = 30;
   final int xpReward = 25;
 
   @override
@@ -56,26 +55,23 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     _fetchConfigAndInitialize();
   }
 
-  /// Fetches gesture parameters from Firestore before starting the vision pipeline
+  /// Fetches gesture configuration directly from `gesture_training_data` collection in Firestore.
   Future<void> _fetchConfigAndInitialize() async {
     try {
       if (mounted) {
-        setState(() => _debugStatus = "0/4 Fetching gesture config from Firestore...");
+        setState(() => _debugStatus = "0/4 Querying Firestore 'gesture_training_data'...");
       }
 
-      // Query the gesture_training_data collection matching the target phrase
       final formattedDocId = "phrases_${widget.targetPhrase.toLowerCase().replaceAll(' ', '_')}";
-      
+
       DocumentSnapshot doc = await FirebaseFirestore.instance
           .collection('gesture_training_data')
           .doc(formattedDocId)
           .get();
 
-      // Fallback query if document ID isn't directly formatted
       if (!doc.exists) {
         final query = await FirebaseFirestore.instance
             .collection('gesture_training_data')
-            .where('category', isEqualTo: 'phrases')
             .where('gestureKey', isEqualTo: widget.targetPhrase)
             .limit(1)
             .get();
@@ -87,31 +83,38 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data() as Map<String, dynamic>;
-        
-        if (data['accuracyThreshold'] != null) {
-          final fetchedThreshold = (data['accuracyThreshold'] as num).toDouble();
-          setState(() {
-            successThreshold = fetchedThreshold;
-          });
-          debugPrint("Loaded accuracyThreshold for '${widget.targetPhrase}': $successThreshold%");
+
+        // Fetch sequenceLength if available
+        if (data['sequenceLength'] != null) {
+          targetSequenceLength = (data['sequenceLength'] as num).toInt();
         }
+
+        // Fetch threshold directly or map from toleranceBounds
+        if (data['accuracyThreshold'] != null) {
+          successThreshold = (data['accuracyThreshold'] as num).toDouble();
+        } else if (data['toleranceBounds'] != null && data['toleranceBounds']['distance'] != null) {
+          successThreshold = (data['toleranceBounds']['distance'] as num).toDouble();
+        }
+
+        debugPrint(
+          "Firestore gesture data loaded: docId=${doc.id}, sequenceLength=$targetSequenceLength, threshold=$successThreshold%",
+        );
       } else {
-        debugPrint("No training data found in Firestore for '${widget.targetPhrase}'. Using default threshold: $successThreshold%");
+        debugPrint("No Firestore doc found for '${widget.targetPhrase}'. Using defaults.");
       }
     } catch (e) {
-      debugPrint("Error fetching gesture config from Firestore: $e. Using fallback values.");
+      debugPrint("Error fetching gesture data from Firestore: $e");
     }
 
-    // Proceed to load model and camera pipeline
     await _initializePipeline();
   }
 
   Future<void> _initializePipeline() async {
     try {
       if (mounted) {
-        setState(() => _debugStatus = "1/4 Loading TFLite Model & Labels...");
+        setState(() => _debugStatus = "1/4 Initializing Phrase Recognizer...");
       }
-      await _phraseRecognizer.initialize();
+      await _phraseRecognizer.initialize(customSequenceLength: targetSequenceLength);
 
       if (mounted) {
         setState(() => _debugStatus = "2/4 Initializing MediaPipe Landmarker...");
@@ -174,7 +177,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       if (mounted) {
         setState(() {
           _isInitialized = true;
-          _debugStatus = "✅ PIPELINE ACTIVE (Target Pass: ${successThreshold.toStringAsFixed(0)}%)";
+          _debugStatus = "✅ PIPELINE ACTIVE (Pass Rate: ${successThreshold.toStringAsFixed(0)}%)";
         });
       }
     } catch (e) {
@@ -193,7 +196,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     if (handsPresent) {
       _lastHandsSeenTime = now;
 
-      // Start a fresh recording when hands enter the frame
       if (!_isRecordingMotion) {
         _isRecordingMotion = true;
         _startRecordingTime = now;
@@ -247,7 +249,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         DateTime.now().difference(_startRecordingTime!).inMilliseconds / 1000.0;
     final double effectiveFps =
         elapsedForDebug > 0 ? _recordingFrames.length / elapsedForDebug : 0.0;
-    
+
     debugPrint(
       "=== ${widget.targetPhrase.toUpperCase()} EVAL === "
       "frames=${_recordingFrames.length} elapsed=${elapsedForDebug.toStringAsFixed(2)}s "
@@ -301,7 +303,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       _holdProgress = 0.0;
       _debugStatus =
           "🤖 Top guess: '$predictedClean' (${(topScore * 100).toStringAsFixed(1)}%)\n"
-          "🎯 Target: '$targetClean' — your score: ${finalScore.toStringAsFixed(1)}% (Req: ${successThreshold.toStringAsFixed(0)}%)";
+          "🎯 Target: '$targetClean' — score: ${finalScore.toStringAsFixed(1)}% (Req: ${successThreshold.toStringAsFixed(0)}%)";
     });
 
     if (_currentScore >= successThreshold) {
