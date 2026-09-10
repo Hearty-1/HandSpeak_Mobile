@@ -14,6 +14,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Enabled desugaring for Kotlin DSL
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -47,6 +49,8 @@ flutter {
 }
 
 dependencies {
+    // Added desugaring dependency
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("androidx.concurrent:concurrent-futures:1.1.0")
     implementation("org.tensorflow:tensorflow-lite-select-tf-ops:+")
 }

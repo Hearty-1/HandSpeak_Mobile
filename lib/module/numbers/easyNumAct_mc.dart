@@ -173,13 +173,20 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
   }
 
   LinearGradient _getDialogGradient(Color bgColor) {
-    if (bgColor.value == 0xFF0F0C29) { 
-      return const LinearGradient(colors: [Color(0xFF240B36), Color(0xFFC31432)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFF132A13) { 
-      return const LinearGradient(colors: [Color(0xFF134E5E), Color(0xFF71B280)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFF001B3A) { 
+    // Galaxy Explorer (0xFF080928)
+    if (bgColor.value == 0xFF080928) { 
+      return const LinearGradient(colors: [Color(0xFF282059), Color(0xFF8750A1)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+    } 
+    // Enchanted Forest (0xFF1D3D3A)
+    else if (bgColor.value == 0xFF1D3D3A) { 
+      return const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+    } 
+    // Deep Ocean (0xFF001B3A)
+    else if (bgColor.value == 0xFF001B3A) { 
       return const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFFE0EAFC) { 
+    } 
+    // Cloudy Sky (0xFFE0EAFC)
+    else if (bgColor.value == 0xFFE0EAFC) { 
       return const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], begin: Alignment.topLeft, end: Alignment.bottomRight);
     }
     return const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
@@ -320,9 +327,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   Map<String, String?> _matchingAnswers = {}; 
   String? _selectedLeftMatch;
 
-  // ---------------------------------------------------------
-  // CAMERA & ML PIPELINE VARIABLES
-  // ---------------------------------------------------------
+  // Camera & ML Pipeline Variables
   CameraController? _cameraController;
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _handSub;
@@ -362,7 +367,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
   final double successThreshold = 70.0; 
-  // ---------------------------------------------------------
 
   late AnimationController _feedbackAnimController;
   late Animation<double> _scaleAnimation;
@@ -373,8 +377,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     super.initState();
     _loadQuestions();
 
-    // Only strictly initialize if it's explicitly a camera level type to save resources,
-    // though the question setup will re-verify later.
     if (_isCameraLevel) {
       _initializeCameraPipeline();
     }
@@ -401,7 +403,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   @override
   void dispose() {
     _handSub?.cancel();
-    _cameraController?.stopImageStream();
+    if (_cameraController?.value.isStreamingImages ?? false) {
+      _cameraController?.stopImageStream();
+    }
     _cameraController?.dispose();
     _landmarkerPlugin?.dispose();
     _dynamicSignRecognizer?.dispose();
@@ -409,9 +413,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     super.dispose();
   }
 
-  // ==========================================
-  // SAFE IMAGE & BASE64 HELPER LOGIC
-  // ==========================================
   Uint8List? _safeBase64Decode(String input) {
     try {
       String cleaned = input.contains(',') ? input.split(',').last : input;
@@ -462,9 +463,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     );
   }
 
-  // ==========================================
-  // PIPELINE AND ML LOGIC
-  // ==========================================
   Future<void> _initializeCameraPipeline() async {
     if (_isCameraInitialized) return;
     try {
@@ -718,7 +716,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     _selectedAnswer = null;
     _isAnswered = false;
 
-    // Check dynamically if the current question requires the camera
     if (_isCameraQuestion(q)) {
       _initializeCameraPipeline(); 
     }
@@ -758,7 +755,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     setState(() => _selectedAnswer = option);
   }
 
-  // Matching Logic
   void _handleMatchingSelect(String item, bool isLeft) {
     if (_isAnswered) return;
     setState(() {
@@ -771,7 +767,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     });
   }
 
-  // Sequence Logic
   void _addToSequence(String option) {
     if (_isAnswered) return;
     setState(() {
@@ -788,7 +783,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     });
   }
 
-  // Typing Logic
   void _selectTypingLetter(int optionIndex) {
     if (_isAnswered) return;
     int emptySlotIndex = _userAnswerSlots.indexOf(null);
@@ -965,32 +959,35 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
     final IconData feedbackIcon = isCorrect ? Icons.check_rounded : Icons.close_rounded;
 
-    if (bgColor == 0xFF0F0C29) { 
+    // GALAXY EXPLORER THEME (0xFF080928)
+    if (bgColor == 0xFF080928) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Cosmic Victory! 🚀" : "Asteroid Bump! ☄️",
         'subtitle': isCorrect ? "Out of this world accuracy!" : "Recalibrate trajectory and try again.",
         'gradient': isCorrect 
-            ? const LinearGradient(colors: [Color(0xFF240B36), Color(0xFFC31432)])
-            : const LinearGradient(colors: [Color(0xFF4A00E0), Color(0xFF8E2DE2)]),
-        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
-        'accentColor': const Color(0xFFFF2A85),
+            ? const LinearGradient(colors: [Color(0xFF282059), Color(0xFF8750A1)])
+            : const LinearGradient(colors: [Color(0xFF4A0E17), Color(0xFF9B111E)]),
+        'badgeColor': isCorrect ? const Color(0xFF00E676) : const Color(0xFFFF2A85),
+        'accentColor': isCorrect ? const Color(0xFF8750A1) : const Color(0xFFFF2A85),
       };
     }
     
-    if (bgColor == 0xFF132A13) { 
+    // ENCHANTED FOREST THEME (0xFF1D3D3A)
+    if (bgColor == 0xFF1D3D3A) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Magical Spell! 🌿" : "Lost in the Woods! 🍃",
         'subtitle': isCorrect ? "Ancient wisdom guided you!" : "Listen to the forest breeze and retry.",
         'gradient': isCorrect 
-            ? const LinearGradient(colors: [Color(0xFF134E5E), Color(0xFF71B280)])
-            : const LinearGradient(colors: [Color(0xFF2C3E50), Color(0xFF000000)]),
-        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
-        'accentColor': const Color(0xFFFFD700),
+            ? const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)])
+            : const LinearGradient(colors: [Color(0xFF3E2723), Color(0xFF8D6E63)]),
+        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFE53935),
+        'accentColor': isCorrect ? const Color(0xFFD7B3A1) : const Color(0xFFE53935),
       };
     }
 
+    // DEEP OCEAN THEME (0xFF001B3A)
     if (bgColor == 0xFF001B3A) { 
       return {
         'icon': feedbackIcon,
@@ -998,12 +995,13 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         'subtitle': isCorrect ? "Riding the big wave like a pro!" : "Take a breath and dive back in.",
         'gradient': isCorrect 
             ? const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)])
-            : const LinearGradient(colors: [Color(0xFF1F4037), Color(0xFF99F2C8)]),
-        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
-        'accentColor': const Color(0xFF00E5FF),
+            : const LinearGradient(colors: [Color(0xFF1C2833), Color(0xFF4A5568)]),
+        'badgeColor': isCorrect ? const Color(0xFF00E5FF) : const Color(0xFFFF5252),
+        'accentColor': isCorrect ? const Color(0xFF005C97) : const Color(0xFFFF5252),
       };
     }
 
+    // CLOUDY SKY THEME (0xFFE0EAFC)
     if (bgColor == 0xFFE0EAFC) { 
       return {
         'icon': feedbackIcon,
@@ -1011,12 +1009,13 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         'subtitle': isCorrect ? "Bright sky ahead, great job!" : "The sun will shine on your next guess.",
         'gradient': isCorrect 
             ? const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)])
-            : const LinearGradient(colors: [Color(0xFF8E9EAB), Color(0xFFEEF2F3)]),
-        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
-        'accentColor': const Color(0xFF5C7CFA),
+            : const LinearGradient(colors: [Color(0xFF546E7A), Color(0xFF78909C)]),
+        'badgeColor': isCorrect ? const Color(0xFF5C7CFA) : const Color(0xFFFF6B6B),
+        'accentColor': isCorrect ? const Color(0xFF3F2B96) : const Color(0xFFFF6B6B),
       };
     }
 
+    // DEFAULT WARM THEME (0xFFFFF9E5)
     return {
       'icon': feedbackIcon,
       'title': isCorrect ? "Awesome Job! 🎉" : "Not Quite! 💡",
@@ -1187,9 +1186,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 24),
 
-                  // =====================================
-                  // ROUTING LOGIC FOR ALL QUESTION TYPES
-                  // =====================================
                   if (currentQuestion.type == 'typing')
                     _buildTypingLayout(currentQuestion, theme)
                   else if (currentQuestion.type == 'fill_in_the_blank')
@@ -1201,7 +1197,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                   else if (_isCameraQuestion(currentQuestion))
                     _buildCameraLayout(currentQuestion, theme)
                   else
-                    // Fallback handles standard multiple choice (text & image options)
                     _buildMultipleChoiceLayout(currentQuestion, theme), 
                 ],
               ),
@@ -1329,10 +1324,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       ),
     );
   }
-
-  // =====================================
-  // QUESTION TYPE LAYOUTS
-  // =====================================
 
   Widget _buildFillInBlankLayout(QuizQuestion currentQuestion, ThemeData theme) {
     String displayedText = currentQuestion.correctAnswer;

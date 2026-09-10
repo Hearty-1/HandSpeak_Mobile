@@ -176,16 +176,53 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
   }
 
   LinearGradient _getDialogGradient(Color bgColor) {
-    if (bgColor.value == 0xFF0F0C29) { 
-      return const LinearGradient(colors: [Color(0xFF240B36), Color(0xFFC31432)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFF132A13) { 
-      return const LinearGradient(colors: [Color(0xFF134E5E), Color(0xFF71B280)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFF001B3A) { 
-      return const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFFE0EAFC) { 
-      return const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+    final hex = bgColor.value & 0xFFFFFF;
+    final r = bgColor.red;
+    final g = bgColor.green;
+    final b = bgColor.blue;
+
+    // 1. Cosmic / Galaxy Theme (0x080928)
+    if (hex == 0x080928 || (r <= 15 && g <= 15 && b >= 30 && b <= 50)) { 
+      return const LinearGradient(
+        colors: [Color(0xFF282059), Color(0xFF8750A1)], 
+        begin: Alignment.topLeft, 
+        end: Alignment.bottomRight,
+      );
+    } 
+    
+    // 2. Enchanted Forest Theme (0x1D3D3A)
+    if (hex == 0x1D3D3A || ((r >= 20 && r <= 38) && (g >= 50 && g <= 75) && (b >= 45 && b <= 70))) { 
+      return const LinearGradient(
+        colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)], 
+        begin: Alignment.topLeft, 
+        end: Alignment.bottomRight,
+      );
+    } 
+    
+    // 3. Deep Ocean Theme (0x001B3A)
+    if (hex == 0x001B3A || (r <= 5 && (g >= 20 && g <= 35) && (b >= 50 && b <= 65))) { 
+      return const LinearGradient(
+        colors: [Color(0xFF001B3A), Color(0xFF00305A)], 
+        begin: Alignment.topLeft, 
+        end: Alignment.bottomRight,
+      );
+    } 
+    
+    // 4. Sky / Cloud Theme (0xE0EAFC)
+    if (hex == 0xE0EAFC || (r >= 210 && g >= 220 && b >= 240)) { 
+      return const LinearGradient(
+        colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], 
+        begin: Alignment.topLeft, 
+        end: Alignment.bottomRight,
+      );
     }
-    return const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+
+    // Default Fallback
+    return const LinearGradient(
+      colors: [Color(0xFF11998E), Color(0xFF38EF7D)], 
+      begin: Alignment.topLeft, 
+      end: Alignment.bottomRight,
+    );
   }
 
   @override
@@ -340,7 +377,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   static const Duration _dropoutGracePeriod = Duration(milliseconds: 300);
   DateTime? _lastHandsSeenTime;
 
-  // Helper to determine if the current level should initialize the camera
   bool get _isCameraLevel {
     if (widget.questionType == 'camera_spell') return true;
     if (widget.levelId.contains('hard') && widget.levelId != 'alphabet_hard_1') return true;
@@ -689,7 +725,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     try {
       final questions = await _apiService.fetchEasyQuestions(widget.levelId, widget.questionType);
       
-      if (!mounted) return; // Fix for setState after dispose
+      if (!mounted) return;
       
       setState(() {
         _questions = questions;
@@ -747,7 +783,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     setState(() => _selectedAnswer = option);
   }
 
-  // Matching Logic
   void _handleMatchingSelect(String item, bool isLeft) {
     if (_isAnswered) return;
     setState(() {
@@ -760,7 +795,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     });
   }
 
-  // Sequence Logic
   void _addToSequence(String option) {
     if (_isAnswered) return;
     setState(() {
@@ -777,7 +811,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     });
   }
 
-  // Typing Logic
   void _selectTypingLetter(int optionIndex) {
     if (_isAnswered) return;
     int emptySlotIndex = _userAnswerSlots.indexOf(null);
@@ -951,65 +984,85 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   Map<String, dynamic> _getThemeFeedbackVisuals(BuildContext context, bool isCorrect) {
-    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
+    final color = Theme.of(context).scaffoldBackgroundColor;
     final IconData feedbackIcon = isCorrect ? Icons.check_rounded : Icons.close_rounded;
 
-    if (bgColor == 0xFF0F0C29) { 
+    final hex = color.value & 0xFFFFFF;
+    final r = color.red;
+    final g = color.green;
+    final b = color.blue;
+
+    // 1. Cosmic / Galaxy Theme (0x080928)
+    if (hex == 0x080928 || (r <= 15 && g <= 15 && b >= 30 && b <= 50)) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Cosmic Victory! 🚀" : "Asteroid Bump! ☄️",
-        'subtitle': isCorrect ? "Out of this world accuracy!" : "Recalibrate trajectory and try again.",
+        'subtitle': isCorrect 
+            ? "Out of this world accuracy!" 
+            : "Trajectory off course!",
         'gradient': isCorrect 
-            ? const LinearGradient(colors: [Color(0xFF240B36), Color(0xFFC31432)])
-            : const LinearGradient(colors: [Color(0xFF4A00E0), Color(0xFF8E2DE2)]),
-        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
-        'accentColor': const Color(0xFFFF2A85),
-      };
-    }
-    
-    if (bgColor == 0xFF132A13) { 
-      return {
-        'icon': feedbackIcon,
-        'title': isCorrect ? "Magical Spell! 🌿" : "Lost in the Woods! 🍃",
-        'subtitle': isCorrect ? "Ancient wisdom guided you!" : "Listen to the forest breeze and retry.",
-        'gradient': isCorrect 
-            ? const LinearGradient(colors: [Color(0xFF134E5E), Color(0xFF71B280)])
-            : const LinearGradient(colors: [Color(0xFF2C3E50), Color(0xFF000000)]),
-        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
-        'accentColor': const Color(0xFFFFD700),
+            ? const LinearGradient(colors: [Color(0xFF282059), Color(0xFF8750A1)])
+            : const LinearGradient(colors: [Color(0xFF080928), Color(0xFF4A1828)]),
+        'badgeColor': isCorrect ? const Color(0xFF8750A1) : const Color(0xFFEA2B2B),
+        'accentColor': const Color(0xFF9F88D8),
       };
     }
 
-    if (bgColor == 0xFF001B3A) { 
+    // 2. Enchanted Forest Theme (0x1D3D3A)
+    if (hex == 0x1D3D3A || ((r >= 20 && r <= 38) && (g >= 50 && g <= 75) && (b >= 45 && b <= 70))) { 
+      return {
+        'icon': feedbackIcon,
+        'title': isCorrect ? "Magical Spell! 🌿" : "Lost in the Woods! 🍃",
+        'subtitle': isCorrect 
+            ? "Ancient wisdom guided you!" 
+            : "The forest breeze threw you off!",
+        'gradient': isCorrect 
+            ? const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)])
+            : const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4A2A22)]),
+        'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
+        'accentColor': const Color(0xFFD7B3A1),
+      };
+    }
+
+    // 3. Deep Ocean Theme (0x001B3A)
+    if (hex == 0x001B3A || (r <= 5 && (g >= 20 && g <= 35) && (b >= 50 && b <= 65))) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Splashtastic! 🌊" : "Washed Away! 🐙",
-        'subtitle': isCorrect ? "Riding the big wave like a pro!" : "Take a breath and dive back in.",
+        'subtitle': isCorrect 
+            ? "Riding the big wave like a pro!" 
+            : "Caught in the ocean current!",
         'gradient': isCorrect 
-            ? const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)])
-            : const LinearGradient(colors: [Color(0xFF1F4037), Color(0xFF99F2C8)]),
+            ? const LinearGradient(colors: [Color(0xFF001B3A), Color(0xFF00305A)])
+            : const LinearGradient(colors: [Color(0xFF001B3A), Color(0xFF3A1C28)]),
         'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
         'accentColor': const Color(0xFF00E5FF),
       };
     }
 
-    if (bgColor == 0xFFE0EAFC) { 
+    // 4. Sky / Cloud Theme (0xE0EAFC)
+    if (hex == 0xE0EAFC || (r >= 210 && g >= 220 && b >= 240)) { 
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "On Cloud Nine! ☁️" : "A Little Stormy! 🌧️",
-        'subtitle': isCorrect ? "Bright sky ahead, great job!" : "The sun will shine on your next guess.",
+        'subtitle': isCorrect 
+            ? "Bright sky ahead, great job!" 
+            : "A quick raincloud passed through!",
         'gradient': isCorrect 
             ? const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)])
-            : const LinearGradient(colors: [Color(0xFF8E9EAB), Color(0xFFEEF2F3)]),
+            : const LinearGradient(colors: [Color(0xFF4B6CB7), Color(0xFF182848)]),
         'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
         'accentColor': const Color(0xFF5C7CFA),
       };
     }
 
+    // Default Fallback
     return {
       'icon': feedbackIcon,
       'title': isCorrect ? "Awesome Job! 🎉" : "Not Quite! 💡",
-      'subtitle': isCorrect ? "You nailed the correct answer!" : "Review the sign and try again.",
+      'subtitle': isCorrect 
+          ? "You nailed the correct answer!" 
+          : "Don't give up, try again!",
       'gradient': isCorrect 
           ? const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)])
           : const LinearGradient(colors: [Color(0xFFCB2D3E), Color(0xFFEF473A)]),
@@ -1176,9 +1229,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   ),
                   const SizedBox(height: 24),
 
-                  // =====================================
-                  // ROUTING LOGIC FOR QUESTION TYPES
-                  // =====================================
                   if (currentQuestion.type == 'typing')
                     _buildTypingLayout(currentQuestion, theme)
                   else if (currentQuestion.type == 'fill_in_the_blank')
@@ -1242,7 +1292,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                                 Text(
                                   _isCorrect 
                                       ? (feedbackData['subtitle'] as String)
-                                      : "Correct Answer: ${currentQuestion.correctAnswer}",
+                                      : "${feedbackData['subtitle']} Correct Answer: ${currentQuestion.correctAnswer}",
                                   style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
                                 ),
                               ],
@@ -1318,12 +1368,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     );
   }
 
-  // =====================================
-  // NEW QUESTION TYPE LAYOUTS
-  // =====================================
-
   Widget _buildFillInBlankLayout(QuizQuestion currentQuestion, ThemeData theme) {
-    // Replace the first underscore visually with the selected answer
     String displayedText = currentQuestion.correctAnswer;
     if (_selectedAnswer != null && displayedText.contains('_')) {
       displayedText = displayedText.replaceFirst('_', _selectedAnswer!);
@@ -1380,7 +1425,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         const Text("Tap words below to build the correct sequence:", style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 16),
         
-        // Sequence Building Area
         Container(
           width: double.infinity,
           height: 60,
@@ -1407,7 +1451,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         ),
         const SizedBox(height: 24),
 
-        // Available Options Area
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -1431,7 +1474,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     List<String> leftItems = [];
     List<String> rightItems = [];
 
-    // Parse items (support for "A|||A" structure or standard strings)
     for (var opt in currentQuestion.options) {
       if (opt.contains('|||')) {
         var parts = opt.split('|||');
@@ -1443,13 +1485,12 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       }
     }
     
-    rightItems.shuffle(); // Shuffle the right side for the game
+    rightItems.shuffle();
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // LEFT COLUMN
         Expanded(
           child: Column(
             children: leftItems.map((item) {
@@ -1476,7 +1517,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           ),
         ),
         const SizedBox(width: 16),
-        // RIGHT COLUMN
         Expanded(
           child: Column(
             children: rightItems.map((item) {
@@ -1504,10 +1544,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       ],
     );
   }
-
-  // =====================================
-  // PREVIOUS LAYOUTS
-  // =====================================
 
   Widget _buildCameraLayout(QuizQuestion currentQuestion, ThemeData theme) {
     bool isPassing = _currentScore >= successThreshold;
@@ -1645,7 +1681,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   Widget _buildTypingLayout(QuizQuestion currentQuestion, ThemeData theme) {
     return Column(
       children: [
-        // 1. THE ANSWER SLOTS (Where the user's typed letters appear)
         Wrap(
           spacing: 8,
           runSpacing: 12,
@@ -1680,7 +1715,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         ),
         const SizedBox(height: 32),
         
-        // 2. THE FSL KEYBOARD (The options at the bottom)
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -1704,10 +1738,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   opacity: isUsed ? 0.3 : 1.0,
                   child: Padding(
                     padding: const EdgeInsets.all(6.0), 
-                    // ---> FORCE FSL PICTURES HERE <---
                     child: optionValue.startsWith('data:image') || optionValue.contains('/') || optionValue.contains('.')
                         ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24)
-                        // If it's a plain letter like "A", load its local FSL image
                         : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.contain, size: 30),
                   ),
                 ),
@@ -1718,4 +1750,4 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       ],
     );
   }
-  }
+}

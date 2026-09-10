@@ -74,14 +74,14 @@ class ThemeProvider extends ChangeNotifier {
     ThemeOption(
       name: "Galaxy Explorer",
       mode: AppThemeMode.galaxy,
-      bgColor: const Color(0xFF0F0C29),
-      primaryColor: const Color(0xFFFF2A85),
+      bgColor: const Color(0xFF080928), // Updated #080928
+      primaryColor: const Color(0xFF8750A1), // Updated #8750A1
     ),
     ThemeOption(
       name: "Enchanted Forest",
       mode: AppThemeMode.enchantedForest,
-      bgColor: const Color(0xFF132A13),
-      primaryColor: const Color(0xFFFFD700),
+      bgColor: const Color(0xFF1D3D3A),
+      primaryColor: const Color(0xFFD7B3A1),
     ),
     ThemeOption(
       name: "Deep Ocean",
@@ -113,15 +113,12 @@ class ThemeProvider extends ChangeNotifier {
   }
 
   void setTheme(AppThemeMode mode) async {
-    // 1. Update locally for immediate UI change
     _themeMode = mode;
     notifyListeners();
     
-    // 2. Save locally to the device
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString(themePrefKey, mode.name);
 
-    // 3. Save to Firestore (Makes it per-account)
     User? currentUser = FirebaseAuth.instance.currentUser;
     
     if (currentUser != null) {
@@ -160,7 +157,6 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  // Changed to public and Future so the Login screen can trigger an instant refresh
   Future<void> loadThemeFromPrefs() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? savedThemeName = prefs.getString(themePrefKey);
@@ -177,33 +173,35 @@ class ThemeProvider extends ChangeNotifier {
   
   static final ThemeData defaultWarmTheme = _buildTheme(
     Brightness.light, 
-    const Color(0xFFFFF9E5), // Background
-    const Color(0xFFFFB800), // Primary
-    const Color(0xFF7DC579), // Secondary
-    Colors.white,            // Card
-    const Color(0xFF322144), // Text
+    const Color(0xFFFFF9E5),
+    const Color(0xFFFFB800),
+    const Color(0xFF7DC579),
+    Colors.white,
+    const Color(0xFF322144),
     glassBorder: Colors.white.withOpacity(0.6),
     glassHighlight: Colors.white.withOpacity(0.8),
   );
   
+  // UPDATED GALAXY EXPLORER PALETTE
   static final ThemeData galaxyTheme = _buildTheme(
     Brightness.dark, 
-    const Color(0xFF0F0C29), 
-    const Color(0xFFFF2A85), 
-    const Color(0xFF9D4EDD), 
-    const Color(0xFF1F184A), 
-    Colors.white,
-    glassBorder: Colors.white.withOpacity(0.18),
-    glassHighlight: Colors.white.withOpacity(0.35),
+    const Color(0xFF080928), // Background
+    const Color(0xFF8750A1), // Primary Accent
+    const Color(0xFF293088), // Secondary Accent
+    const Color(0xFF282059), // Card Surface
+    const Color(0xFF9F88D8), // Text / Soft Lavender Highlight
+    glassBorder: const Color(0xFF483048).withOpacity(0.4),
+    glassHighlight: const Color(0xFF9F88D8).withOpacity(0.35),
   );
   
+  // UPDATED ENCHANTED FOREST PALETTE
   static final ThemeData enchantedForestTheme = _buildTheme(
     Brightness.dark, 
-    const Color(0xFF132A13), 
-    const Color(0xFFFFD700), 
-    const Color(0xFF52B788), 
-    const Color(0xFF1F4124), 
-    const Color(0xFFE5F9E0),
+    const Color(0xFF1D3D3A), 
+    const Color(0xFFD7B3A1), 
+    const Color(0xFFB8D4CF), 
+    const Color(0xFF4D7C73), 
+    const Color(0xFFF2F5F4), 
     glassBorder: Colors.white.withOpacity(0.15),
     glassHighlight: Colors.white.withOpacity(0.30),
   );
@@ -247,7 +245,6 @@ class ThemeProvider extends ChangeNotifier {
       scaffoldBackgroundColor: bg,
       primaryColor: primary,
       cardColor: card,
-      // Translucent divider/border default so borders don't look solid
       dividerColor: glassBorder,
       extensions: [
         GlassThemeExtension(

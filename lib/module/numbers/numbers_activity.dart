@@ -114,7 +114,7 @@ class ThemedBackground extends StatelessWidget {
               width: 32,
               height: 20,
               decoration: const BoxDecoration(
-                color: Color(0xFFFF5252),
+                color: Color(0xFFD7B3A1), // Updated to Enchanted Forest Primary
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: const Row(
@@ -130,7 +130,7 @@ class ThemedBackground extends StatelessWidget {
               width: 14,
               height: 12,
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E7),
+                color: const Color(0xFFF2F5F4), // Updated to Enchanted Forest Text
                 borderRadius: BorderRadius.circular(3),
               ),
             )
@@ -163,23 +163,24 @@ class ThemedBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (bgColor.value == 0xFF0F0C29) { 
+    // UPDATED: Galaxy Theme Palettes
+    if (bgColor.value == 0xFF080928) { 
       return Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF0F0C29), Color(0xFF302B63), Color(0xFF24243E)],
+            colors: [Color(0xFF080928), Color(0xFF282059), Color(0xFF080928)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
         child: Stack(
           children: [
-            _buildGlowingOrb(300, const Color(0xFFFF2A85), -50, -100),
-            _buildGlowingOrb(400, const Color(0xFF4A00E0), 400, 200),
-            _buildGlowingOrb(200, const Color(0xFF00E5FF), 700, -50),
-            Positioned(top: 120, right: 30, child: Transform.rotate(angle: -0.5, child: const Icon(Icons.rocket_launch_rounded, color: Color(0xFFFF2A85), size: 48))),
-            Positioned(top: 480, left: 25, child: Transform.rotate(angle: 0.3, child: const Icon(Icons.public_rounded, color: Color(0xFF00E5FF), size: 54))),
-            Positioned(top: 720, right: 40, child: const Icon(Icons.brightness_3_rounded, color: Color(0xFFFFD700), size: 40)),
+            _buildGlowingOrb(300, const Color(0xFF8750A1), -50, -100),
+            _buildGlowingOrb(400, const Color(0xFF293088), 400, 200),
+            _buildGlowingOrb(200, const Color(0xFF9F88D8), 700, -50),
+            Positioned(top: 120, right: 30, child: Transform.rotate(angle: -0.5, child: const Icon(Icons.rocket_launch_rounded, color: Color(0xFF8750A1), size: 48))),
+            Positioned(top: 480, left: 25, child: Transform.rotate(angle: 0.3, child: const Icon(Icons.public_rounded, color: Color(0xFF9F88D8), size: 54))),
+            Positioned(top: 720, right: 40, child: const Icon(Icons.brightness_3_rounded, color: Color(0xFF9F88D8), size: 40)),
             ...List.generate(20, (index) {
               final random = Random(index);
               return Positioned(
@@ -187,7 +188,7 @@ class ThemedBackground extends StatelessWidget {
                 left: random.nextDouble() * 380,
                 child: Icon(
                   Icons.auto_awesome, 
-                  color: Colors.white.withOpacity(random.nextDouble() * 0.5 + 0.2),
+                  color: const Color(0xFF9F88D8).withOpacity(random.nextDouble() * 0.5 + 0.2),
                   size: random.nextDouble() * 18 + 10,
                 ),
               );
@@ -197,29 +198,30 @@ class ThemedBackground extends StatelessWidget {
       );
     }
     
-    if (bgColor.value == 0xFF132A13) { 
+    // UPDATED: Enchanted Forest Theme Palettes
+    if (bgColor.value == 0xFF1D3D3A) { 
       return Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF132A13), Color(0xFF31572C), Color(0xFF4F772D)],
+            colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73), Color(0xFF1D3D3A)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
         ),
         child: Stack(
           children: [
-            _buildGlowingOrb(350, const Color(0xFFFFD700), -100, 150), 
-            _buildGlowingOrb(250, const Color(0xFF90BE6D), 300, -100),
+            _buildGlowingOrb(350, const Color(0xFFD7B3A1), -100, 150), 
+            _buildGlowingOrb(250, const Color(0xFFB8D4CF), 300, -100),
             _buildMushroom(220, 25, 1.2),
             _buildMushroom(540, 320, 1.1),
             _buildMushroom(780, 50, 1.3),
-            Positioned(top: 140, right: 40, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFFFFD700).withOpacity(0.6), size: 36)),
-            Positioned(top: 410, left: 30, child: Icon(Icons.eco_rounded, color: const Color(0xFF90BE6D).withOpacity(0.5), size: 32)),
+            Positioned(top: 140, right: 40, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFFD7B3A1).withOpacity(0.8), size: 36)),
+            Positioned(top: 410, left: 30, child: Icon(Icons.eco_rounded, color: const Color(0xFFB8D4CF).withOpacity(0.7), size: 32)),
             ...List.generate(15, (index) {
               final random = Random(index + 50);
               return _buildGlowingOrb(
                 random.nextDouble() * 20 + 10, 
-                const Color(0xFFFFFF99), 
+                const Color(0xFFF2F5F4), 
                 random.nextDouble() * 900, 
                 random.nextDouble() * 380
               );
@@ -348,24 +350,26 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
-    if (bgColor == 0xFF0F0C29) {
+    // UPDATED: Galaxy Color Palette
+    if (bgColor == 0xFF080928) {
       return {
-        'primary': const Color(0xFFFF2A85), 
-        'text': Colors.white,
-        'line': Colors.white54,
-        'dividerText': Colors.white70,
-        'appBarIcon': Colors.white,
-        'cardBg': Colors.black54,
+        'primary': const Color(0xFF8750A1), 
+        'text': const Color(0xFF9F88D8),
+        'line': const Color(0xFF9F88D8).withOpacity(0.5),
+        'dividerText': const Color(0xFF9F88D8).withOpacity(0.7),
+        'appBarIcon': const Color(0xFF9F88D8),
+        'cardBg': const Color(0xFF282059),
       };
     }
-    if (bgColor == 0xFF132A13) {
+    // UPDATED: Enchanted Forest Color Palette
+    if (bgColor == 0xFF1D3D3A) {
       return {
-        'primary': const Color(0xFFFFD700), 
-        'text': Colors.white,
-        'line': Colors.white54,
-        'dividerText': Colors.white70,
-        'appBarIcon': Colors.white,
-        'cardBg': Colors.black54,
+        'primary': const Color(0xFFD7B3A1), 
+        'text': const Color(0xFFF2F5F4),
+        'line': const Color(0xFFB8D4CF).withOpacity(0.5),
+        'dividerText': const Color(0xFFF2F5F4).withOpacity(0.7),
+        'appBarIcon': const Color(0xFFF2F5F4),
+        'cardBg': const Color(0xFF4D7C73),
       };
     }
     if (bgColor == 0xFF001B3A) {
@@ -518,7 +522,6 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                           levelsMap[levelId] = {
                             'levelId': levelId,
                             'type': data['type'] ?? 'fill_in',
-                            // UPDATE: Modified this line to only display the level number
                             'title': 'Level ${levelId.split('_').last}',
                           };
                         }

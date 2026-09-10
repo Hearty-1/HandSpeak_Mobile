@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart'; 
@@ -23,7 +24,53 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
   bool _isLoading = false; 
   bool _obscurePassword = true;
 
+  // Rate Limiting & Brute Force Protection
+  int _failedAttempts = 0;
+  static const int _maxAttempts = 5;
+  static const int _lockoutDurationSeconds = 30;
+  int _remainingLockoutSeconds = 0;
+  Timer? _lockoutTimer;
+
+  @override
+  void dispose() {
+    _lockoutTimer?.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _startLockoutTimer() {
+    setState(() {
+      _remainingLockoutSeconds = _lockoutDurationSeconds;
+    });
+
+    _lockoutTimer?.cancel();
+    _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_remainingLockoutSeconds <= 1) {
+        timer.cancel();
+        setState(() {
+          _failedAttempts = 0;
+          _remainingLockoutSeconds = 0;
+        });
+      } else {
+        setState(() {
+          _remainingLockoutSeconds--;
+        });
+      }
+    });
+  }
+
   void _handleLogin() async {
+    if (_remainingLockoutSeconds > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Too many attempts. Please wait $_remainingLockoutSeconds seconds."),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     String email = _emailController.text.trim();
     String password = _passwordController.text.trim();
 
@@ -46,19 +93,20 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       String displayName = userProfile['name'] ?? email.split('@')[0];
 
       if (status == 'approved') {
+        // Reset failed attempts on success
+        _failedAttempts = 0;
+
         if (!mounted) return;
         
-        // ADDED: Refresh the theme for the newly logged-in user!
         await Provider.of<ThemeProvider>(context, listen: false).loadThemeFromPrefs();
 
-        // Now that the theme is loaded, navigate to the Home screen
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => SnedInterafce1(userName: displayName)),
         );
       } else {
-        setState(() => _isLoading = false); // Stop loading if pending
+        setState(() => _isLoading = false);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -68,14 +116,28 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
         );
       }
     } else {
-      setState(() => _isLoading = false); // Stop loading if failed
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Login failed. Please check your credentials."),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      setState(() => _isLoading = false);
+      _failedAttempts++;
+
+      if (_failedAttempts >= _maxAttempts) {
+        _startLockoutTimer();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Too many failed attempts. Account temporarily locked for 30 seconds."),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        int remaining = _maxAttempts - _failedAttempts;
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Login failed. Check credentials. ($remaining attempts remaining)"),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -90,7 +152,8 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
 
   @override
   Widget build(BuildContext context) {
-    // Makes the top status bar icons dark so they are visible on a white background
+    bool isButtonDisabled = _isLoading || _remainingLockoutSeconds > 0;
+
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -129,6 +192,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                   hint: "Email",
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  enabled: _remainingLockoutSeconds == 0,
                 ),
                 const SizedBox(height: 16),
 
@@ -137,6 +201,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                   hint: "Password",
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  enabled: _remainingLockoutSeconds == 0,
                   suffixIcon: Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: IconButton(
@@ -181,13 +246,14 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleLogin, 
+                    onPressed: isButtonDisabled ? null : _handleLogin, 
                     style: ElevatedButton.styleFrom(
                       elevation: 0,
                       backgroundColor: const Color(0xFFFFB800),
+                      disabledBackgroundColor: Colors.grey.shade400,
                       foregroundColor: Colors.white, 
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(32), // Fully pill-shaped button
+                        borderRadius: BorderRadius.circular(32),
                       ),
                     ),
                     child: _isLoading
@@ -196,14 +262,16 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                             height: 24, 
                             child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
                           )
-                        : const Text(
-                            'Login', 
-                            style: TextStyle(
+                        : Text(
+                            _remainingLockoutSeconds > 0
+                                ? 'Locked out (${_remainingLockoutSeconds}s)'
+                                : 'Login', 
+                            style: const TextStyle(
                               color: Colors.white, 
                               fontSize: 17, 
                               fontWeight: FontWeight.w600, 
                               letterSpacing: -0.4,
-                            )
+                            ),
                           ),
                   ),
                 ),
@@ -245,17 +313,18 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
     );
   }
 
-  // Fully rounded text field helper
   Widget _buildTextField({
     required String hint, 
     required TextEditingController controller, 
     bool obscureText = false, 
+    bool enabled = true,
     TextInputType keyboardType = TextInputType.text,
     Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
       obscureText: obscureText,
+      enabled: enabled,
       keyboardType: keyboardType,
       style: const TextStyle(
         fontSize: 16,
@@ -269,11 +338,10 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
           fontSize: 16,
         ),
         filled: true,
-        fillColor: const Color(0xFFF2F2F7), 
-        // Increased horizontal padding so text doesn't hug the curve too tightly
+        fillColor: enabled ? const Color(0xFFF2F2F7) : Colors.grey.shade200, 
         contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18), 
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(32), // Changed to 32 for fully rounded fields
+          borderRadius: BorderRadius.circular(32),
           borderSide: BorderSide.none, 
         ),
         suffixIcon: suffixIcon,

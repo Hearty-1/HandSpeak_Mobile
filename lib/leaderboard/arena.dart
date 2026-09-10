@@ -1240,7 +1240,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     try {
       final String code = _generateRoomCode();
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get();
-      final userData = userDoc.data() as Map<String, dynamic>?;
+      final userData = userDoc.data();
       final hostName = userData?['displayName'] ?? userData?['name'] ?? 'Host';
       final String roomTitle = "$hostName's Room";
 

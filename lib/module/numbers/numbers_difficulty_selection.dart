@@ -38,20 +38,22 @@ class _NumbersDifficultySelectionScreenState
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
-    if (bgColor == 0xFF0F0C29) { // Galaxy
+    // UPDATED: Galaxy Color Palette
+    if (bgColor == 0xFF080928) { // Galaxy
       return {
-        'primary': const Color(0xFFFF2A85),
-        'text': Colors.white,
-        'appBarIcon': Colors.white,
-        'cardBg': Colors.black54,
+        'primary': const Color(0xFF8750A1),
+        'text': const Color(0xFF9F88D8),
+        'appBarIcon': const Color(0xFF9F88D8),
+        'cardBg': const Color(0xFF282059),
       };
     }
-    if (bgColor == 0xFF132A13) { // Enchanted Forest
+    // UPDATED: Enchanted Forest Color Palette
+    if (bgColor == 0xFF1D3D3A) { // Enchanted Forest
       return {
-        'primary': const Color(0xFFFFD700),
-        'text': Colors.white,
-        'appBarIcon': Colors.white,
-        'cardBg': Colors.black54,
+        'primary': const Color(0xFFD7B3A1),
+        'text': const Color(0xFFF2F5F4),
+        'appBarIcon': const Color(0xFFF2F5F4),
+        'cardBg': const Color(0xFF4D7C73),
       };
     }
     if (bgColor == 0xFF001B3A) { // Ocean
@@ -80,18 +82,18 @@ class _NumbersDifficultySelectionScreenState
   }
 
   void _navigateToActivity(BuildContext context, String difficulty) {
-  _soundProvider.stopBgm();
+    _soundProvider.stopBgm();
 
-  // Navigates to NumbersActivityInterface map screen before question screen
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => NumbersActivityInterface(difficulty: difficulty),
-    ),
-  ).then((_) {
-    _soundProvider.playBgm();
-  });
-}
+    // Navigates to NumbersActivityInterface map screen before question screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NumbersActivityInterface(difficulty: difficulty),
+      ),
+    ).then((_) {
+      _soundProvider.playBgm();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

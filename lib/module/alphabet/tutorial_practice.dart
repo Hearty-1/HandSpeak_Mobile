@@ -93,8 +93,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   PhraseRecognizer? _dynamicSignRecognizer;
   bool _dynamicModelReady = false;
 
-  Map<String, dynamic>? _cloudGestureData;
-  Map<String, dynamic>? _toleranceBounds;
   int _targetSequenceLength = 30;
   Uint8List? _cloudModelBytes;
   List<String>? _cloudModelLabels;
@@ -212,8 +210,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
 
       if (docSnapshot.exists && docSnapshot.data() != null) {
         final data = docSnapshot.data()!;
-        _cloudGestureData = data;
-        _toleranceBounds = data['toleranceBounds'] as Map<String, dynamic>?;
         if (data['sequenceLength'] != null) {
           _targetSequenceLength = (data['sequenceLength'] as num).toInt();
         }
