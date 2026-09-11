@@ -6,6 +6,7 @@ import '/services/progress_service.dart';
 import 'alphabet/alphabet_interface.dart'; 
 import 'numbers/numbers_interface.dart';  
 import 'phrases/phrase_interface.dart'; 
+import 'civic/civic_interface.dart';
 import '../profile/profile.dart';  
 import '../home/home.dart';  
 import '../leaderboard/arena.dart'; 
@@ -43,8 +44,31 @@ class SnedInterface2 extends StatelessWidget {
           if (data != null) { 
             alphabetXp = data['alphabetXp'] ?? 0; 
             numbersXp = data['numbersXp'] ?? 0; 
-            wordsXp = data['wordsXp'] ?? 0; 
+            wordsXp = data['phraseXp'] ?? data['wordsXp'] ?? 0; 
             civicsXp = data['civicsXp'] ?? 0; 
+
+            if (data['progress'] != null) {
+              Map<String, dynamic> progressMap = Map<String, dynamic>.from(data['progress']);
+              int mappedAlphabetXp = 0;
+              int mappedNumbersXp = 0;
+              int mappedWordsXp = 0;
+              int mappedCivicsXp = 0;
+
+              progressMap.forEach((key, value) {
+                int xpValue = (value as num).toInt();
+                final lowerKey = key.toLowerCase();
+                
+                if (lowerKey.startsWith('alphabet')) mappedAlphabetXp += xpValue;
+                if (lowerKey.startsWith('number')) mappedNumbersXp += xpValue;
+                if (lowerKey.startsWith('phrase') || lowerKey.startsWith('word')) mappedWordsXp += xpValue;
+                if (lowerKey.startsWith('civic')) mappedCivicsXp += xpValue;
+              });
+
+              if (mappedAlphabetXp > alphabetXp) alphabetXp = mappedAlphabetXp;
+              if (mappedNumbersXp > numbersXp) numbersXp = mappedNumbersXp;
+              if (mappedWordsXp > wordsXp) wordsXp = mappedWordsXp;
+              if (mappedCivicsXp > civicsXp) civicsXp = mappedCivicsXp;
+            }
           }
         }
 
@@ -54,7 +78,7 @@ class SnedInterface2 extends StatelessWidget {
         int displayAlpXp = alphabetXp > targetXp ? targetXp : alphabetXp; 
         int displayNumXp = numbersXp > targetXp ? targetXp : numbersXp; 
         int displayWordsXp = wordsXp > targetXp ? targetXp : wordsXp; 
-        int displayCivicsXp = civicsXp > targetXp ? targetXp : civicsXp; 
+        int displayCivicsXp = civicsXp > targetXp ? targetXp : civicsXp;
 
         return LayoutBuilder(
           builder: (context, constraints) { 
@@ -261,11 +285,11 @@ class SnedInterface2 extends StatelessWidget {
                                 child: Opacity(
                                   opacity: isWordsLocked ? 0.40 : 1.0,  
                                   child: Container(
-                                    width: 144 * scale, 
-                                    height: 144 * scale, 
+                                    width: 150 * scale, 
+                                    height: 150 * scale, 
                                     decoration: const BoxDecoration(
                                       image: DecorationImage(
-                                        image: AssetImage("assets/pictures/commons.png"), 
+                                        image: AssetImage("assets/pictures/words.png"), 
                                         fit: BoxFit.cover,
                                       ),
                                     ),
@@ -340,27 +364,91 @@ class SnedInterface2 extends StatelessWidget {
                             ),
                             
                             Positioned(
-                              left: 217 * scale, top: 381 * scale,  
-                              child: Opacity(
-                                opacity: isCivicsLocked ? 0.40 : 1.0,  
-                                child: Container(width: 154 * scale, height: 153 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/civic.png"), fit: BoxFit.cover))), 
+                              left: 200 * scale, top: 360 * scale,  
+                              child: GestureDetector(
+                                onTap: isCivicsLocked 
+                                  ? null 
+                                  : () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => CivicInterface(
+                                          currentXp: displayCivicsXp,
+                                          targetXp: targetXp,
+                                        ),
+                                      ),
+                                    ),
+                                child: Opacity(
+                                  opacity: isCivicsLocked ? 0.40 : 1.0,  
+                                  child: Container(
+                                    width: 180 * scale, 
+                                    height: 180 * scale, 
+                                    decoration: const BoxDecoration(
+                                      image: DecorationImage(
+                                        image: AssetImage("assets/pictures/civic.png"), 
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ), 
+                                ),
                               ),
                             ),
                             Positioned(
                               left: 218 * scale, top: 353 * scale,  
-                              child: Opacity(
-                                opacity: isCivicsLocked ? 0.60 : 1.0, 
-                                child: Text('Civic Observances', textAlign: TextAlign.center, style: TextStyle(color: textColor, fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44)), 
+                              child: GestureDetector(
+                                onTap: isCivicsLocked 
+                                  ? null 
+                                  : () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => CivicInterface(
+                                          currentXp: displayCivicsXp,
+                                          targetXp: targetXp,
+                                        ),
+                                      ),
+                                    ),
+                                child: Opacity(
+                                  opacity: isCivicsLocked ? 0.60 : 1.0, 
+                                  child: Text(
+                                    'Civic Observances', 
+                                    textAlign: TextAlign.center, 
+                                    style: TextStyle(
+                                      color: textColor, 
+                                      fontSize: 24 * scale, 
+                                      fontFamily: 'Inter', 
+                                      fontWeight: FontWeight.w800, 
+                                      letterSpacing: -1.44,
+                                    ),
+                                  ), 
+                                ),
                               ),
                             ),
                             if (isCivicsLocked) 
-                              Positioned(left: 253.50 * scale, top: 386 * scale, child: Container(width: 90 * scale, height: 119 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/locked.png"), fit: BoxFit.fill)))) 
+                              Positioned(
+                                left: 253.50 * scale, top: 386 * scale, 
+                                child: Container(
+                                  width: 90 * scale, 
+                                  height: 119 * scale, 
+                                  decoration: const BoxDecoration(
+                                    image: DecorationImage(
+                                      image: AssetImage("assets/pictures/locked.png"), 
+                                      fit: BoxFit.fill,
+                                    ),
+                                  ),
+                                ),
+                              ) 
                             else 
                               Positioned(
                                 left: 253.50 * scale, top: 386 * scale, 
                                 child: GestureDetector(
-                                  onTap: () { 
-                                  },
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => CivicInterface(
+                                        currentXp: displayCivicsXp,
+                                        targetXp: targetXp,
+                                      ),
+                                    ),
+                                  ),
                                   child: SizedBox(width: 90 * scale, height: 119 * scale), 
                                 ),
                               ),

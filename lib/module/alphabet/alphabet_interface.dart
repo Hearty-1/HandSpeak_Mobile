@@ -289,7 +289,7 @@ class AlphabetInterface extends StatelessWidget {
                             
                             Positioned(
                               left: 20.75 * scale,
-                              top: 392 * scale,
+                              top: 392 * scale, 
                               child: GestureDetector(
                                 onTap: () => Navigator.push(
                                   context,
@@ -300,7 +300,7 @@ class AlphabetInterface extends StatelessWidget {
                                   height: 160 * scale,
                                   decoration: const BoxDecoration(
                                     image: DecorationImage(
-                                      image: AssetImage("assets/pictures/activity.png"),
+                                      image: AssetImage("assets/pictures/actt.png"),
                                       fit: BoxFit.cover,
                                     ),
                                   ),
@@ -323,7 +323,7 @@ class AlphabetInterface extends StatelessWidget {
                                   height: 159 * scale,
                                   decoration: const BoxDecoration(
                                     image: DecorationImage(
-                                      image: AssetImage("assets/pictures/challenge.png"),
+                                      image: AssetImage("assets/pictures/battle.png"),
                                       fit: BoxFit.cover,
                                     ),
                                   ),

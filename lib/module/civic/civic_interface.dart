@@ -3,14 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '/services/progress_service.dart'; 
-import 'phrase_tutorial_interface.dart';
-import '/module/alphabet/difficulty_selection.dart';
+import 'civic_tutorial_interface.dart';
+import 'civic_difficulty_selection.dart';
 import '/leaderboard/arena.dart';
-class PhraseInterface extends StatelessWidget {
+
+class CivicInterface extends StatelessWidget {
   final int currentXp; 
   final int targetXp; 
 
-  const PhraseInterface({
+  const CivicInterface({
     super.key, 
     this.currentXp = 0, 
     this.targetXp = 1000, 
@@ -35,27 +36,26 @@ class PhraseInterface extends StatelessWidget {
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(), 
       builder: (context, snapshot) { 
-        
-        int phraseXp = 0; 
-        int phraseStars = 0;  
+        int civicXp = 0; 
+        int civicStars = 0;  
 
         if (snapshot.hasData && snapshot.data!.exists) { 
           final data = snapshot.data!.data() as Map<String, dynamic>?; 
           if (data != null) { 
-            phraseXp = data['phraseXp'] ?? 0; 
+            civicXp = data['civicXp'] ?? 0; 
             
             if (data['progress'] != null) { 
               Map<String, dynamic> progressMap = Map<String, dynamic>.from(data['progress']); 
               progressMap.forEach((key, value) { 
-                if (key.startsWith('phrase_')) { 
-                  phraseStars += (value as num).toInt(); 
+                if (key.startsWith('civic_')) { 
+                  civicStars += (value as num).toInt(); 
                 }
               });
             }
           }
         }
         
-        int displayXp = phraseXp > targetXp ? targetXp : phraseXp; 
+        int displayXp = civicXp > targetXp ? targetXp : civicXp; 
 
         return Scaffold(
           extendBodyBehindAppBar: true, 
@@ -83,7 +83,7 @@ class PhraseInterface extends StatelessWidget {
               ),
             ),
             title: Text(
-              'Words/Phrases', 
+              'Civic', 
               style: TextStyle(
                 color: textColor, 
                 fontSize: 22, 
@@ -95,7 +95,11 @@ class PhraseInterface extends StatelessWidget {
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 16.0), 
-                child: Image.asset("assets/pictures/image 66.png", width: 45), 
+                child: Image.asset(
+                  "assets/pictures/image 66.png",
+                  width: 45,
+                  errorBuilder: (c, o, s) => Icon(Icons.account_balance, color: theme.primaryColor, size: 28),
+                ), 
               ),
             ],
           ),
@@ -106,7 +110,6 @@ class PhraseInterface extends StatelessWidget {
 
               return Stack(
                 children: [
-                  // Ambient Theme-Aware Background Orbs
                   Positioned(
                     top: -50, left: -50,
                     child: Container(
@@ -128,7 +131,6 @@ class PhraseInterface extends StatelessWidget {
                     ),
                   ),
 
-                  // Main Content
                   SingleChildScrollView(
                     physics: const BouncingScrollPhysics(), 
                     child: Padding(
@@ -149,14 +151,16 @@ class PhraseInterface extends StatelessWidget {
                               ),
                             ),
 
-                            // Tutorial Row
                             Positioned(
                               left: 24 * scale, top: 80 * scale, 
                               child: Container(
                                 width: 130 * scale, 
                                 height: 110 * scale, 
                                 decoration: const BoxDecoration(
-                                  image: DecorationImage(image: AssetImage("assets/pictures/tutor.png"), fit: BoxFit.fill),
+                                  image: DecorationImage(
+                                    image: AssetImage("assets/pictures/tutor.png"), 
+                                    fit: BoxFit.fill,
+                                  ),
                                 ),
                               ), 
                             ),
@@ -188,20 +192,22 @@ class PhraseInterface extends StatelessWidget {
                                       'Start Learn', 
                                       style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 13 * scale),
                                     ), 
-                                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PhraseTutorialInterface())), 
+                                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CivicTutorialInterface())), 
                                   ),
                                 ],
                               ),
                             ),
 
-                            // Practice Row
                             Positioned(
                               left: 16 * scale, top: 200 * scale, 
                               child: Container(
                                 width: 135 * scale, 
                                 height: 135 * scale, 
                                 decoration: const BoxDecoration(
-                                  image: DecorationImage(image: AssetImage("assets/pictures/practice.png"), fit: BoxFit.cover),
+                                  image: DecorationImage(
+                                    image: AssetImage("assets/pictures/practice.png"), 
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
                               ), 
                             ),
@@ -233,13 +239,12 @@ class PhraseInterface extends StatelessWidget {
                                       'Train Sign', 
                                       style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 13 * scale),
                                     ), 
-                                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PhraseTutorialInterface())), 
+                                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CivicTutorialInterface())), 
                                   ),
                                 ],
                               ),
                             ),
 
-                            // Activity & Challenges
                             Positioned(
                               left: 56.75 * scale, top: 355 * scale, 
                               child: Text('Activity', style: TextStyle(color: textColor, fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44)),
@@ -252,8 +257,17 @@ class PhraseInterface extends StatelessWidget {
                             Positioned(
                               left: 20.75 * scale, top: 392 * scale, 
                               child: GestureDetector(
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DifficultySelectionScreen())), 
-                                child: Container(width: 164 * scale, height: 160 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/actt.png"), fit: BoxFit.cover))), 
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CivicDifficultySelectionScreen())), 
+                                child: Container(
+                                  width: 164 * scale, 
+                                  height: 160 * scale, 
+                                  decoration: const BoxDecoration(
+                                    image: DecorationImage(
+                                      image: AssetImage("assets/pictures/actt.png"), 
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ), 
                               ),
                             ),
                             Positioned(
@@ -265,18 +279,26 @@ class PhraseInterface extends StatelessWidget {
                                     builder: (context) => const LeaderboardScreen(initialTab: 'challenges'),
                                   ),
                                 ),
-                                child: Container(width: 159 * scale, height: 159 * scale, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage("assets/pictures/battle.png"), fit: BoxFit.cover))), 
+                                child: Container(
+                                  width: 159 * scale, 
+                                  height: 159 * scale, 
+                                  decoration: const BoxDecoration(
+                                    image: DecorationImage(
+                                      image: AssetImage("assets/pictures/battle.png"), 
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ), 
                               ),
                             ),
 
-                            // Sub Activity Metrics
                             Positioned(
                               left: 13.75 * scale, top: 565 * scale, 
                               child: _buildSubMetricPanel(
                                 context: context,
                                 scale: scale, 
-                                valueDisplay: "$phraseStars Stars", 
-                                progress: (phraseStars / 10).clamp(0.0, 1.0),
+                                valueDisplay: "$civicStars Stars", 
+                                progress: (civicStars / 10).clamp(0.0, 1.0),
                               ),
                             ),
                             Positioned(
@@ -284,8 +306,8 @@ class PhraseInterface extends StatelessWidget {
                               child: _buildSubMetricPanel(
                                 context: context,
                                 scale: scale, 
-                                valueDisplay: "0 XP", 
-                                progress: 0.0,
+                                valueDisplay: "$civicXp XP", 
+                                progress: (civicXp / targetXp).clamp(0.0, 1.0),
                               ),
                             ),
                           ],
@@ -337,14 +359,26 @@ class PhraseInterface extends StatelessWidget {
                 left: 56 * scale, top: 5 * scale, 
                 child: Text(
                   'Progress', 
-                  style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 14 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w600, letterSpacing: -0.90),
+                  style: TextStyle(
+                    color: textColor.withOpacity(0.7), 
+                    fontSize: 14 * scale, 
+                    fontFamily: 'Google Sans Flex', 
+                    fontWeight: FontWeight.w600, 
+                    letterSpacing: -0.90,
+                  ),
                 ),
               ), 
               Positioned(
                 left: 56 * scale, top: 24 * scale, 
                 child: Text(
                   '$currentXp / $targetXp XP', 
-                  style: TextStyle(color: theme.primaryColor, fontSize: 16 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.0),
+                  style: TextStyle(
+                    color: theme.primaryColor, 
+                    fontSize: 16 * scale, 
+                    fontFamily: 'Holtwood One SC', 
+                    fontWeight: FontWeight.w400, 
+                    letterSpacing: -1.0,
+                  ),
                 ),
               ), 
               
@@ -352,7 +386,10 @@ class PhraseInterface extends StatelessWidget {
                 left: 130 * scale, top: 26 * scale, 
                 child: Container(
                   width: maxTrackWidth * scale, height: 6 * scale, 
-                  decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.15), borderRadius: BorderRadius.circular(25 * scale)), 
+                  decoration: BoxDecoration(
+                    color: theme.dividerColor.withOpacity(0.15), 
+                    borderRadius: BorderRadius.circular(25 * scale),
+                  ), 
                 ),
               ),
               Positioned(
@@ -406,12 +443,24 @@ class PhraseInterface extends StatelessWidget {
                 left: 45 * scale, top: 8 * scale,  
                 child: Text(
                   valueDisplay, 
-                  style: TextStyle(color: theme.primaryColor, fontSize: 13 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400, letterSpacing: -1.20),
+                  style: TextStyle(
+                    color: theme.primaryColor, 
+                    fontSize: 13 * scale, 
+                    fontFamily: 'Holtwood One SC', 
+                    fontWeight: FontWeight.w400, 
+                    letterSpacing: -1.20,
+                  ),
                 ),
               ),
               Positioned(
                 left: 12 * scale, top: 28 * scale, 
-                child: Container(width: 154 * scale, height: 4 * scale, decoration: BoxDecoration(color: theme.dividerColor.withOpacity(0.15), borderRadius: BorderRadius.circular(25 * scale))), 
+                child: Container(
+                  width: 154 * scale, height: 4 * scale, 
+                  decoration: BoxDecoration(
+                    color: theme.dividerColor.withOpacity(0.15), 
+                    borderRadius: BorderRadius.circular(25 * scale),
+                  ),
+                ), 
               ),
               Positioned(
                 left: 12 * scale, top: 28 * scale, 

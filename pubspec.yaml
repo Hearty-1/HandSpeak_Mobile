@@ -52,6 +52,7 @@ dependencies:
   provider: ^6.1.5+1
   shared_preferences: ^2.5.5
   audioplayers: ^6.7.1
+  video_player: ^2.8.2
 
 dev_dependencies:
   flutter_test:
@@ -81,6 +82,7 @@ flutter:
     - assets/hand_landmarker.task
     - assets/alphabet/
     - assets/numbers/
+    - assets/phrases/
     - assets/pictures/
     - assets/sounds/
     - assets/pictures/background1.jpg

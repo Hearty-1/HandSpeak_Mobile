@@ -8,11 +8,11 @@ import 'package:flutter_application_1/module/alphabet/alphabet_interface.dart';
 import 'package:flutter_application_1/module/numbers/numbers_interface.dart'; 
 import '../services/progress_service.dart'; 
 import '../module/module.dart'; 
+import '../module/phrases/phrase_interface.dart';
 import '../profile/profile.dart'; 
 import '../leaderboard/arena.dart'; 
 import '../home/settings_screen.dart';
 import '../home/notifications.dart';
-// import '../database/database_seeder.dart';
 
 void main() {
   runApp(const FigmaToCodeApp()); 
@@ -79,6 +79,43 @@ class SnedInterafce1 extends StatelessWidget {
         errorBuilder: (_, __, ___) => Icon(Icons.person, color: theme.primaryColor, size: 26 * scale),
       );
     }
+  }
+
+  Widget _buildDynamicModuleCard(BuildContext context, String moduleType, double scale) {
+    String title;
+    String imagePath;
+    Widget targetScreen;
+
+    final String key = moduleType.toLowerCase().trim();
+
+    if (key.contains('phrase') || key.contains('word') || key.contains('common')) {
+      title = 'Common Words';
+      imagePath = 'assets/pictures/commons.png';
+      targetScreen = const PhraseInterface();
+    } else if (key.contains('number')) {
+      title = 'Numbers';
+      imagePath = 'assets/pictures/numbers.png';
+      targetScreen = const NumbersInterface();
+    } else {
+      title = 'Alphabet';
+      imagePath = 'assets/pictures/abc.png';
+      targetScreen = const AlphabetInterface();
+    }
+
+    return _buildGlassCategoryCard(
+      context: context,
+      title: title,
+      imagePath: imagePath,
+      scale: scale,
+      onTap: () async {
+        await ProgressService().trackRecentModule(key);
+        if (!context.mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => targetScreen),
+        );
+      },
+    );
   }
 
   @override
@@ -286,6 +323,14 @@ class SnedInterafce1 extends StatelessWidget {
               int stars = 0; 
               String? avatarUrl; 
               bool hasUnreadNotifications = false;
+              List<String> recentModules = [];
+
+              String normalizeKey(String raw) {
+                final k = raw.toLowerCase().trim();
+                if (k.contains('number')) return 'numbers';
+                if (k.contains('phrase') || k.contains('word') || k.contains('common')) return 'common words';
+                return 'alphabet';
+              }
 
               if (userSnapshot.hasData && userSnapshot.data!.exists) { 
                 final userData = userSnapshot.data!.data() as Map<String, dynamic>?; 
@@ -300,7 +345,34 @@ class SnedInterafce1 extends StatelessWidget {
                   hasUnreadNotifications = rawNotifications.any(
                     (n) => (n is Map) && (n['isRead'] == false),
                   );
+
+                  List<String> userLoggedModules = [];
+
+                  if (userData['recentModules'] != null && (userData['recentModules'] as List).isNotEmpty) {
+                    userLoggedModules = (userData['recentModules'] as List)
+                        .map((e) => normalizeKey(e.toString()))
+                        .toSet()
+                        .toList();
+                  } 
+                  else if (userData['progress'] != null && (userData['progress'] as Map).isNotEmpty) {
+                    userLoggedModules = (userData['progress'] as Map<String, dynamic>)
+                        .keys
+                        .map((key) => normalizeKey(key))
+                        .toSet()
+                        .toList();
+                  }
+
+                  // Always backfill missing modules so all 3 categories remain available on Home
+                  const defaultCategories = ['alphabet', 'numbers', 'common words'];
+                  recentModules = [
+                    ...userLoggedModules,
+                    ...defaultCategories.where((cat) => !userLoggedModules.contains(cat)),
+                  ];
                 }
+              }
+
+              if (recentModules.isEmpty) {
+                recentModules = ['alphabet', 'numbers', 'common words'];
               }
 
               int targetXp = 1000; 
@@ -501,78 +573,18 @@ class SnedInterafce1 extends StatelessWidget {
                       style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5), 
                     ),
                     SizedBox(height: 16 * scale), 
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween, 
-                      children: [
-                        _buildGlassCategoryCard(
-                          context: context,  
-                          title: 'Alphabet',  
-                          imagePath: 'assets/pictures/abc.png', 
-                          scale: scale,  
-                          onTap: () {
-                            Navigator.push( 
-                              context, 
-                              MaterialPageRoute(builder: (context) => const AlphabetInterface()), 
-                            );
-                          },
-                        ),
-                        _buildGlassCategoryCard(
-                          context: context,  
-                          title: 'Numbers',  
-                          imagePath: 'assets/pictures/numbers.png', 
-                          scale: scale,  
-                          onTap: () {
-                            Navigator.push( 
-                              context, 
-                              MaterialPageRoute(builder: (context) => const NumbersInterface()), 
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                   /* SizedBox(height: 40 * scale), 
-
-                    // ==========================================
-                    // DEV: SEED DATABASE BUTTON
-                    // ==========================================
-                    Center(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          
-                          // 2. Call your upload function (Change 'uploadQuestions' to whatever your method is actually named!)
-                          await DatabaseSeeder.seedActivities(context);
-                          
-                          // 3. Show a popup confirmation
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Database seed triggered!"),
-                                backgroundColor: Color(0xFFFF3B30),
-                              ),
-                            );
-                          }
-                        },
-                        icon: Icon(Icons.developer_mode_rounded, color: Colors.white, size: 24 * scale),
-                        label: Text(
-                          "DEV: SEED DATABASE",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900, 
-                            color: Colors.white,
-                            fontSize: 14 * scale,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF3B30), 
-                          elevation: 8,
-                          shadowColor: const Color(0xFFFF3B30).withOpacity(0.5),
-                          padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 14 * scale),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16 * scale),
-                          ),
-                        ),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: recentModules.map((moduleKey) {
+                          return Padding(
+                            padding: EdgeInsets.only(right: 16 * scale),
+                            child: _buildDynamicModuleCard(context, moduleKey, scale),
+                          );
+                        }).toList(),
                       ),
-                    ), */
+                    ),
                   ],
                 ),
               );
