@@ -10,6 +10,7 @@ import '../module/module.dart';
 import '../profile/profile.dart';
 import '../profile/add_friend_screen.dart';
 import 'gamescreen.dart';
+import 'solo_challenge.dart' hide GameProperScreen;
 
 class LeaderboardScreen extends StatefulWidget {
   final String initialTab;
@@ -647,7 +648,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             iconColor: theme.primaryColor,
             xpText: "Earn XP",
             scale: scale,
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SoloChallengeSetupScreen()),
+              );
+            },
           ),
 
           SizedBox(height: 28 * scale),
@@ -1098,7 +1104,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 }
 
 // --- FUNCTIONAL GROUP CHALLENGE HUB SCREEN ---
-// --- FUNCTIONAL GROUP CHALLENGE HUB SCREEN ---
 class GroupChallengeHubScreen extends StatefulWidget {
   const GroupChallengeHubScreen({super.key});
 
@@ -1119,7 +1124,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
   int _selectedRounds = 10;
   int _selectedTimer = 15; // In seconds (0 = Untimed)
 
-  final List<String> _categories = ['Alphabet', 'Numbers', 'Common Phrases', 'Greetings', 'Family'];
+  final List<String> _categories = ['Alphabet', 'Numbers', 'Common Phrases', 'Civic Observances'];
   final List<int> _roundsOptions = [5, 10, 15, 20];
   final List<int> _timerOptions = [10, 15, 30, 0]; // 0 = Untimed
 
@@ -1536,7 +1541,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
   }
 
   // --- JOIN VIEW WITH ACTIVE ROOMS ---
-  // --- JOIN VIEW WITH ACTIVE ROOMS ---
   Widget _buildJoinView(ThemeData theme) {
     final textColor = theme.colorScheme.onSurface;
     return Column(
@@ -1590,7 +1594,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           stream: FirebaseFirestore.instance
               .collection('rooms')
               .where('status', isEqualTo: 'waiting')
-              // Note: Removed .limit(10) to display all available active rooms.
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1865,8 +1868,6 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
     _listenForGameStart();
   }
 
-  // This function listens to the database in the background.
-  // When the host changes the status to 'active', it pulls EVERYONE into the game.
   void _listenForGameStart() {
     _roomSubscription = FirebaseFirestore.instance
         .collection('rooms')
@@ -1877,11 +1878,9 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
         final data = snapshot.data() as Map<String, dynamic>;
         
         if (data['status'] == 'active') {
-          // Cancel the listener so it doesn't trigger multiple times
           _roomSubscription?.cancel();
           
           if (mounted) {
-            // PushReplacement removes the lobby screen so players can't hit "back" into it
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -2080,8 +2079,6 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
                     child: ElevatedButton(
                       onPressed: widget.isHost
                           ? () async {
-                              // Host updates the status. The StreamSubscription in initState
-                              // will catch this and automatically navigate everyone.
                               await FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).update({
                                 'status': 'active',
                               });
