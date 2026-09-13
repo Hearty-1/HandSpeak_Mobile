@@ -55,6 +55,30 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     _fetchConfigAndInitialize();
   }
 
+  /// Normalizes a gesture name into the same "key" shape the web dashboard
+  /// uses for its Firestore doc ids (see normalizeGestureKey() in
+  /// lib/content-service.ts on the web side — keep both in sync).
+  ///
+  /// THIS IS THE ROOT-CAUSE FIX: the web only lowercased the teacher-typed
+  /// symbol when building the doc id (e.g. "Good Afternoon" ->
+  /// "phrases_good afternoon", space kept), while this screen stripped
+  /// spaces from its own hardcoded PascalCase title ("GoodAfternoon" ->
+  /// "phrases_goodafternoon"). Those two ids never matched, so the doc-id
+  /// read below always missed the real, approved document — the trained
+  /// accuracyThreshold on it never reached this screen, which is why
+  /// successThreshold stayed stuck at its 0.0/default fallback no matter
+  /// what was trained on the web.
+  String _normalizeGestureKey(String key) {
+    final camelSplit = key.replaceAllMapped(
+      RegExp(r'([a-z0-9])([A-Z])'),
+      (m) => '${m[1]}_${m[2]}',
+    );
+    return camelSplit
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
   /// Fetches gesture configuration directly from `gesture_training_data` collection in Firestore.
   Future<void> _fetchConfigAndInitialize() async {
     try {
@@ -62,7 +86,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         setState(() => _debugStatus = "0/4 Querying Firestore 'gesture_training_data'...");
       }
 
-      final formattedDocId = "phrases_${widget.targetPhrase.toLowerCase().replaceAll(' ', '_')}";
+      final normalizedKey = _normalizeGestureKey(widget.targetPhrase);
+      final formattedDocId = "phrases_$normalizedKey";
 
       DocumentSnapshot doc = await FirebaseFirestore.instance
           .collection('gesture_training_data')
@@ -70,14 +95,30 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
           .get();
 
       if (!doc.exists) {
-        final query = await FirebaseFirestore.instance
+        // Fallback 1: match on the normalized key field the web now stamps
+        // on every approved doc (gestureKeyNormalized) — catches docs whose
+        // id wasn't migrated yet (see scripts/migrate-gesture-doc-ids.js).
+        final normalizedQuery = await FirebaseFirestore.instance
             .collection('gesture_training_data')
-            .where('gestureKey', isEqualTo: widget.targetPhrase)
+            .where('gestureKeyNormalized', isEqualTo: normalizedKey)
             .limit(1)
             .get();
 
-        if (query.docs.isNotEmpty) {
-          doc = query.docs.first;
+        if (normalizedQuery.docs.isNotEmpty) {
+          doc = normalizedQuery.docs.first;
+        } else {
+          // Fallback 2 (legacy): exact, case-sensitive match on the raw
+          // gestureKey field, for docs written before gestureKeyNormalized
+          // existed at all.
+          final legacyQuery = await FirebaseFirestore.instance
+              .collection('gesture_training_data')
+              .where('gestureKey', isEqualTo: widget.targetPhrase)
+              .limit(1)
+              .get();
+
+          if (legacyQuery.docs.isNotEmpty) {
+            doc = legacyQuery.docs.first;
+          }
         }
       }
 
@@ -89,18 +130,35 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
           targetSequenceLength = (data['sequenceLength'] as num).toInt();
         }
 
-        // Fetch threshold directly or map from toleranceBounds
-        if (data['accuracyThreshold'] != null) {
-          successThreshold = (data['accuracyThreshold'] as num).toDouble();
-        } else if (data['toleranceBounds'] != null && data['toleranceBounds']['distance'] != null) {
-          successThreshold = (data['toleranceBounds']['distance'] as num).toDouble();
+        // Fetch threshold directly or map from toleranceBounds. Guard
+        // against 0/negative values — a trained threshold should never be
+        // <= 0, so treat that as "not actually configured" and keep the
+        // class default (70.0) rather than let every attempt trivially
+        // pass (or display a nonsensical 0% requirement).
+        final num? rawThreshold = data['accuracyThreshold'] as num?;
+        final num? rawDistance = data['toleranceBounds'] != null
+            ? data['toleranceBounds']['distance'] as num?
+            : null;
+
+        if (rawThreshold != null && rawThreshold > 0) {
+          successThreshold = rawThreshold.toDouble();
+        } else if (rawDistance != null && rawDistance > 0) {
+          successThreshold = rawDistance.toDouble();
+        } else {
+          debugPrint(
+            "Doc ${doc.id} found but accuracyThreshold/toleranceBounds.distance "
+            "was missing or <= 0 — keeping default successThreshold=$successThreshold%.",
+          );
         }
 
         debugPrint(
           "Firestore gesture data loaded: docId=${doc.id}, sequenceLength=$targetSequenceLength, threshold=$successThreshold%",
         );
       } else {
-        debugPrint("No Firestore doc found for '${widget.targetPhrase}'. Using defaults.");
+        debugPrint(
+          "No Firestore doc found for '${widget.targetPhrase}' (tried id='$formattedDocId', "
+          "gestureKeyNormalized='$normalizedKey'). Using defaults.",
+        );
       }
     } catch (e) {
       debugPrint("Error fetching gesture data from Firestore: $e");

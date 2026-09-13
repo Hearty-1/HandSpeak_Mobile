@@ -1,0 +1,12 @@
+{
+  "GoodAfternoon": 0,
+  "GoodEvening": 1,
+  "GoodMorning": 2,
+  "Hello": 3,
+  "HowAreYou": 4,
+  "ImFine": 5,
+  "NiceToMeetYou": 6,
+  "SeeYouTom": 7,
+  "ThankYou": 8,
+  "You'reWelcome": 9
+}

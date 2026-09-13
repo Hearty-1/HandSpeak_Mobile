@@ -97,7 +97,7 @@ class PhraseRecognizer {
       final labelData = await rootBundle.loadString(labelAssetPath);
       final dynamic decodedJson = json.decode(labelData);
 
-      if (decodedJson is Map<String, dynamic>) {
+      if (decodedJson is Map<String, dynamic>) { 
         final entries = decodedJson.entries.toList();
         entries.sort((a, b) => (a.value as num).compareTo(b.value as num));
         _labels = entries.map((e) => e.key).toList();
@@ -149,7 +149,8 @@ class PhraseRecognizer {
       final start = slot * _featuresPerHand;
       for (int i = 0; i < _numLandmarks && i < landmarks.length; i++) {
         final base = start + i * _numCoords;
-        vec[base] = landmarks[i].x;
+        // APPLIED FIX: Invert the X coordinate to counter the mirrored front-facing camera
+        vec[base] = 1.0 - landmarks[i].x; 
         vec[base + 1] = landmarks[i].y;
         vec[base + 2] = landmarks[i].z;
       }
@@ -177,6 +178,17 @@ class PhraseRecognizer {
   /// wrist and scale — never each hand's own — again to match the web,
   /// since for two-handed signs hand 2's position relative to hand 1 can be
   /// part of what the sign means.
+  ///
+  /// IMPORTANT: this applies uniformly to BOTH hand slots, including an
+  /// empty (all-zero) second-hand slot for single-handed signs like J/Z —
+  /// it does NOT special-case "empty" as leave-as-zero. That matches
+  /// lib/posture-metrics.ts:normalizeFeatureVector exactly, which has no
+  /// such special case either: for a one-handed take, the zero-padded
+  /// second-hand region still gets shifted to (0 - wristX)/scale etc, and
+  /// the model was trained on that non-zero artifact. A previous version of
+  /// this function skipped normalizing an "empty" slot and left it as
+  /// literal zero, which is itself a mismatch with training data for every
+  /// single-handed frame — do not reintroduce that check.
   Float32List normalizeFrameVector(Float32List rawVec) {
     final Float32List normVec = Float32List(_numFeatures);
 
@@ -189,9 +201,7 @@ class PhraseRecognizer {
     final dx = midX - wristX;
     final dy = midY - wristY;
     final rawScale = math.sqrt(dx * dx + dy * dy);
-    // Falls back to 1 when no primary hand is present (an all-zero vector),
-    // matching the web's `|| 1` — keeps the vector all-zero instead of
-    // dividing by zero.
+    // Falls back to 1 when no primary hand is present
     final scale = rawScale == 0.0 ? 1.0 : rawScale;
 
     for (int slot = 0; slot < _numHands; slot++) {
