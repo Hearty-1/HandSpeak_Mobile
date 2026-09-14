@@ -13,15 +13,14 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
-    compileOptions {
-        // Enabled desugaring for Kotlin DSL
-        isCoreLibraryDesugaringEnabled = true
+   compileOptions {
+        isCoreLibraryDesugaringEnabled = true // Add this exact line
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = "17"
     }
 
     defaultConfig {

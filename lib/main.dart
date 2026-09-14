@@ -40,6 +40,9 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: themeProvider.activeTheme, 
           themeMode: themeProvider.activeThemeMode,
+          navigatorObservers: [
+            Provider.of<SoundProvider>(context, listen: false).navigatorObserver,
+          ],
           // We replaced the static home: const MainLogin() with this StreamBuilder
           home: StreamBuilder<User?>(
             stream: FirebaseAuth.instance.authStateChanges(),

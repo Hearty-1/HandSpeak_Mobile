@@ -5,11 +5,14 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart'; // Added Provider import
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import '/module/alphabet/recognizer.dart';
+// Replace with your actual path to SoundProvider
+import '/providers/sound_provider.dart'; 
 
 // ==========================================
 // 1. SOLO CHALLENGE SETUP SCREEN
@@ -730,6 +733,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
       }
     });
 
+    // 🔊 PLAY SOUND EFFECTS FOR ENGAGING FEEDBACK
+    final soundProvider = Provider.of<SoundProvider>(context, listen: false);
+    if (isCorrect) {
+      soundProvider.playCorrect();
+    } else {
+      soundProvider.playIncorrect();
+    }
+
     _timer?.cancel();
     if (isCorrect) {
       int timeBonus = _maxTime > 0 ? (100 * (_timeLeft / _maxTime)).round() : 0;
@@ -1052,96 +1063,96 @@ class _GameProperScreenState extends State<GameProperScreen> {
     );
   }
 
-Widget _buildSequenceLayout(ThemeData theme, Color textColor) {
-  return Column(
-    children: [
-      Container(
-        height: 64,
-        width: double.infinity,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.primaryColor),
+  Widget _buildSequenceLayout(ThemeData theme, Color textColor) {
+    return Column(
+      children: [
+        Container(
+          height: 64,
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.primaryColor),
+          ),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _currentSequence.map((item) {
+              final isImg = _isImageString(item);
+              return Chip(
+                backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                label: isImg
+                    ? SizedBox(height: 26, width: 26, child: _buildSafeImage(item))
+                    : Text(
+                        item,
+                        style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+                      ),
+                onDeleted: _hasAnswered
+                    ? null
+                    : () => setState(() {
+                          _currentSequence.remove(item);
+                          _availableSequenceOptions.add(item);
+                        }),
+              );
+            }).toList(),
+          ),
         ),
-        child: Wrap(
+        const SizedBox(height: 16),
+        Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: _currentSequence.map((item) {
+          children: _availableSequenceOptions.map((item) {
             final isImg = _isImageString(item);
-            return Chip(
-              backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            return ActionChip(
+              backgroundColor: theme.cardColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: theme.primaryColor.withValues(alpha: 0.2)),
+              ),
               label: isImg
-                  ? SizedBox(height: 26, width: 26, child: _buildSafeImage(item))
+                  ? SizedBox(height: 28, width: 28, child: _buildSafeImage(item))
                   : Text(
                       item,
-                      style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
                     ),
-              onDeleted: _hasAnswered
+              onPressed: _hasAnswered
                   ? null
                   : () => setState(() {
-                        _currentSequence.remove(item);
-                        _availableSequenceOptions.add(item);
+                        _availableSequenceOptions.remove(item);
+                        _currentSequence.add(item);
                       }),
             );
           }).toList(),
         ),
-      ),
-      const SizedBox(height: 16),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: _availableSequenceOptions.map((item) {
-          final isImg = _isImageString(item);
-          return ActionChip(
-            backgroundColor: theme.cardColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: theme.primaryColor.withValues(alpha: 0.2)),
-            ),
-            label: isImg
-                ? SizedBox(height: 28, width: 28, child: _buildSafeImage(item))
-                : Text(
-                    item,
-                    style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
-                  ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton(
             onPressed: _hasAnswered
                 ? null
-                : () => setState(() {
-                      _availableSequenceOptions.remove(item);
-                      _currentSequence.add(item);
-                    }),
-          );
-        }).toList(),
-      ),
-      const SizedBox(height: 20),
-      SizedBox(
-        width: double.infinity,
-        height: 48,
-        child: ElevatedButton(
-          onPressed: _hasAnswered
-              ? null
-              : () => _submitAnswer(_currentSequence.join(',')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.primaryColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+                : () => _submitAnswer(_currentSequence.join(',')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
-          ),
-          child: Text(
-            "SUBMIT SEQUENCE",
-            style: TextStyle(
-              color: theme.colorScheme.onPrimary,
-              fontWeight: FontWeight.w900,
-              fontSize: 15,
+            child: Text(
+              "SUBMIT SEQUENCE",
+              style: TextStyle(
+                color: theme.colorScheme.onPrimary,
+                fontWeight: FontWeight.w900,
+                fontSize: 15,
+              ),
             ),
           ),
         ),
-      ),
-    ],
-  );
-}
+      ],
+    );
+  }
 
   Widget _buildMatchingLayout(Map<String, dynamic> q, ThemeData theme, Color textColor) {
     final List<dynamic> options = _extractOptions(q);
@@ -1315,6 +1326,9 @@ Widget _buildSequenceLayout(ThemeData theme, Color textColor) {
   }
 
   void _showFinalScoreDialog() {
+    // 🔊 PLAY LEVEL COMPLETE SOUND EFFECT
+    Provider.of<SoundProvider>(context, listen: false).playLevelComplete();
+
     FirebaseFirestore.instance.collection('users').doc(_currentUserId).set({
       'xp': FieldValue.increment(_score),
       'dailyXp': FieldValue.increment(_score),

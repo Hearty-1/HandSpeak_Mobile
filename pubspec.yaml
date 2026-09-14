@@ -51,8 +51,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   provider: ^6.1.5+1
   shared_preferences: ^2.5.5
-  audioplayers: ^6.7.1
   video_player: ^2.8.2
+  firebase_storage: ^13.5.0
+  just_audio: ^0.9.36
 
 dev_dependencies:
   flutter_test:
