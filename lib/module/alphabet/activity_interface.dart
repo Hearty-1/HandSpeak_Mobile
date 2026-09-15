@@ -114,7 +114,7 @@ class ThemedBackground extends StatelessWidget {
               width: 32,
               height: 20,
               decoration: const BoxDecoration(
-                color: Color(0xFFD7B3A1), // Updated to Enchanted Forest Primary
+                color: Color(0xFFD7B3A1), 
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: const Row(
@@ -130,7 +130,7 @@ class ThemedBackground extends StatelessWidget {
               width: 14,
               height: 12,
               decoration: BoxDecoration(
-                color: const Color(0xFFF2F5F4), // Updated to Enchanted Forest Text
+                color: const Color(0xFFF2F5F4), 
                 borderRadius: BorderRadius.circular(3),
               ),
             )
@@ -151,9 +151,9 @@ class ThemedBackground extends StatelessWidget {
           height: 80,
           child: Stack(
             children: [
-              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.5)))),
-              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.6)))),
-              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.5)))),
+              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
+              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.8)))),
+              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
             ],
           ),
         ),
@@ -161,9 +161,66 @@ class ThemedBackground extends StatelessWidget {
     );
   }
 
+  Widget _buildHotAirBalloon(double top, double left, Color balloonColor, double scale) {
+    return Positioned(
+      top: top,
+      left: left,
+      child: Transform.scale(
+        scale: scale,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 52,
+              decoration: BoxDecoration(
+                color: balloonColor,
+                borderRadius: const BorderRadius.all(Radius.elliptical(44, 52)),
+                boxShadow: [
+                  BoxShadow(color: balloonColor.withOpacity(0.4), blurRadius: 8, spreadRadius: 1)
+                ],
+              ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: Container(
+                      width: 16,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.35),
+                        borderRadius: const BorderRadius.all(Radius.elliptical(16, 52)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 12,
+              height: 8,
+              decoration: const BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: Colors.black26, width: 1.5),
+                  right: BorderSide(color: Colors.black26, width: 1.5),
+                ),
+              ),
+            ),
+            Container(
+              width: 14,
+              height: 10,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFB74D),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // UPDATED: Galaxy Theme Palettes
     if (bgColor.value == 0xFF080928) { 
       return Container(
         decoration: const BoxDecoration(
@@ -198,7 +255,6 @@ class ThemedBackground extends StatelessWidget {
       );
     }
     
-    // UPDATED: Enchanted Forest Theme Palettes
     if (bgColor.value == 0xFF1D3D3A) { 
       return Container(
         decoration: const BoxDecoration(
@@ -296,18 +352,81 @@ class ThemedBackground extends StatelessWidget {
       );
     }
     
+    // ENHANCED DEFAULT THEME: Kid-Friendly Playground Palette
+    const confettiColors = [
+      Color(0xFFFF6B8B),
+      Color(0xFFFFB74D),
+      Color(0xFF4DD0E1),
+      Color(0xFFAED581),
+      Color(0xFFBA68C8),
+    ];
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFFFFF9E5), Color(0xFFFFE0B2)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFF5D6), Color(0xFFFFE3E8), Color(0xFFE0F7FA)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
         ),
       ),
       child: Stack(
         children: [
-          _buildGlowingOrb(400, const Color(0xFFFFB800).withOpacity(0.4), -100, -100),
-          _buildGlowingOrb(300, const Color(0xFFFFCC80).withOpacity(0.5), 500, 200),
+          _buildGlowingOrb(350, const Color(0xFFFFCA28).withOpacity(0.5), -100, -80),
+          _buildGlowingOrb(300, const Color(0xFFFF80AB).withOpacity(0.35), 450, 180),
+          _buildGlowingOrb(250, const Color(0xFF4DD0E1).withOpacity(0.35), 700, -60),
+
+          Positioned(
+            top: 45,
+            right: 25,
+            child: Icon(Icons.wb_sunny_rounded, color: const Color(0xFFFFB300).withOpacity(0.9), size: 72),
+          ),
+
+          _buildCloud(70, -30, 1.1),
+          _buildCloud(380, 190, 1.0),
+          _buildCloud(680, -20, 1.2),
+
+          _buildHotAirBalloon(150, 260, const Color(0xFFFF6B8B), 1.2),
+          _buildHotAirBalloon(450, 30, const Color(0xFF4DD0E1), 1.0),
+          _buildHotAirBalloon(720, 270, const Color(0xFFFFB74D), 1.1),
+
+          Positioned(
+            top: 280,
+            left: 45,
+            child: Transform.rotate(
+              angle: -0.2,
+              child: Icon(Icons.extension_rounded, color: const Color(0xFFBA68C8).withOpacity(0.7), size: 36),
+            ),
+          ),
+          Positioned(
+            top: 590,
+            right: 40,
+            child: Transform.rotate(
+              angle: 0.3,
+              child: Icon(Icons.pets_rounded, color: const Color(0xFFFF6B8B).withOpacity(0.65), size: 38),
+            ),
+          ),
+          Positioned(
+            top: 190,
+            left: 170,
+            child: Icon(Icons.music_note_rounded, color: const Color(0xFF4DD0E1).withOpacity(0.7), size: 30),
+          ),
+
+          ...List.generate(24, (index) {
+            final random = Random(index + 200);
+            final color = confettiColors[random.nextInt(confettiColors.length)];
+            return Positioned(
+              top: random.nextDouble() * 900,
+              left: random.nextDouble() * 380,
+              child: Transform.rotate(
+                angle: random.nextDouble() * 3.14,
+                child: Icon(
+                  random.nextBool() ? Icons.star_rounded : Icons.auto_awesome_rounded,
+                  color: color.withOpacity(random.nextDouble() * 0.5 + 0.3),
+                  size: random.nextDouble() * 18 + 10,
+                ),
+              ),
+            );
+            }),
         ],
       ),
     );
@@ -318,7 +437,7 @@ class ThemedBackground extends StatelessWidget {
 // 2. BACKEND-CONNECTED ACTIVITY INTERFACE
 // ==========================================
 class ActivityInterface extends StatefulWidget {
-  final String difficulty; // "easy", "medium", or "hard"
+  final String difficulty;
 
   const ActivityInterface({super.key, required this.difficulty});
 
@@ -350,60 +469,75 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
-    // UPDATED: Galaxy Color Palette
-    if (bgColor == 0xFF080928) {
+    if (bgColor == 0xFF080928) { // Space Theme
+      const nodeColor = Color(0xFF9F88D8);
       return {
         'primary': const Color(0xFF8750A1), 
         'text': const Color(0xFF9F88D8),
-        'line': const Color(0xFF9F88D8).withOpacity(0.5),
+        'line': nodeColor.withOpacity(0.6),
         'dividerText': const Color(0xFF9F88D8).withOpacity(0.7),
         'appBarIcon': const Color(0xFF9F88D8),
         'cardBg': const Color(0xFF282059),
+        'nodeColor': nodeColor,
+        'nodeLightColor': const Color(0xFFC3B1E1),
       };
     }
-    // UPDATED: Enchanted Forest Color Palette
-    if (bgColor == 0xFF1D3D3A) {
+    if (bgColor == 0xFF1D3D3A) { // Forest Theme
+      const nodeColor = Color(0xFFB8D4CF);
       return {
         'primary': const Color(0xFFD7B3A1), 
         'text': const Color(0xFFF2F5F4),
-        'line': const Color(0xFFB8D4CF).withOpacity(0.5),
+        'line': nodeColor.withOpacity(0.6),
         'dividerText': const Color(0xFFF2F5F4).withOpacity(0.7),
         'appBarIcon': const Color(0xFFF2F5F4),
         'cardBg': const Color(0xFF4D7C73),
+        'nodeColor': nodeColor,
+        'nodeLightColor': const Color(0xFFE2F1ED),
       };
     }
-    if (bgColor == 0xFF001B3A) {
+    if (bgColor == 0xFF001B3A) { // Ocean Theme
+      const nodeColor = Color(0xFF00E5FF);
       return {
         'primary': const Color(0xFF00E5FF), 
         'text': Colors.white,
-        'line': Colors.white54,
+        'line': nodeColor.withOpacity(0.6),
         'dividerText': Colors.white70,
         'appBarIcon': Colors.white,
         'cardBg': Colors.black54,
+        'nodeColor': nodeColor,
+        'nodeLightColor': const Color(0xFF80F3FF),
       };
     }
-    if (bgColor == 0xFFE0EAFC) {
+    if (bgColor == 0xFFE0EAFC) { // Sky Theme
+      const nodeColor = Color(0xFF5C7CFA);
       return {
         'primary': const Color(0xFF5C7CFA), 
         'text': const Color(0xFF1E1E1E),
-        'line': Colors.black38,
+        'line': nodeColor.withOpacity(0.6),
         'dividerText': Colors.black54,
         'appBarIcon': const Color(0xFF322144),
         'cardBg': Colors.white.withOpacity(0.9),
+        'nodeColor': nodeColor,
+        'nodeLightColor': const Color(0xFF91A7FF),
       };
     }
     
+    // Default Theme (Yellow Nodes)
+    const defaultNodeYellow = Color(0xFFFFB300);
     return {
-      'primary': const Color(0xFFFFB800),
-      'text': const Color(0xFF322144),
-      'line': Colors.grey.shade500,
-      'dividerText': Colors.grey.shade700,
-      'appBarIcon': const Color(0xFF322144),
-      'cardBg': Colors.white.withOpacity(0.9),
+      'primary': const Color(0xFFFF6B8B),
+      'text': const Color(0xFF332050),
+      'line': defaultNodeYellow.withOpacity(0.6),
+      'dividerText': const Color(0xFF6E5686),
+      'appBarIcon': const Color(0xFF332050),
+      'cardBg': Colors.white.withOpacity(0.92),
+      'nodeColor': defaultNodeYellow,
+      'nodeLightColor': const Color(0xFFFFD54F),
     };
   }
 
   Widget _buildVerticalPathLine(Map<String, dynamic> themeStyles) {
+    final Color nodeColor = themeStyles['nodeColor'];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Column(
@@ -414,10 +548,10 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: themeStyles['line'],
+              color: nodeColor,
               shape: BoxShape.circle,
               boxShadow: [
-                BoxShadow(color: themeStyles['primary'].withOpacity(0.3), blurRadius: 4, spreadRadius: 1)
+                BoxShadow(color: nodeColor.withOpacity(0.4), blurRadius: 4, spreadRadius: 1)
               ],
             ),
           ),
@@ -426,7 +560,6 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
     );
   }
 
-  // Capitalize text for screen header
   String get _appBarTitle {
     if (widget.difficulty.isEmpty) return 'Alphabet Activity';
     return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} Activity';
@@ -437,6 +570,8 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
     final themeStyles = _getThemeStyles(context);
     final scaffoldBgColor = Theme.of(context).scaffoldBackgroundColor;
     final String currentDifficulty = widget.difficulty.isNotEmpty ? widget.difficulty.toLowerCase() : 'easy';
+    final Color nodeColor = themeStyles['nodeColor'];
+    final Color nodeLightColor = themeStyles['nodeLightColor'];
 
     return Scaffold( 
       extendBodyBehindAppBar: true, 
@@ -469,7 +604,7 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
               stream: ProgressService().getUserProgressStream(), 
               builder: (context, userProgressSnapshot) { 
                 if (userProgressSnapshot.connectionState == ConnectionState.waiting) { 
-                  return Center(child: CircularProgressIndicator(color: themeStyles['primary'])); 
+                  return Center(child: CircularProgressIndicator(color: nodeColor)); 
                 }
 
                 int totalCategoryStars = 0; 
@@ -492,7 +627,6 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                   }
                 }
 
-                // Unlock criteria based on accumulated stars
                 bool isTierUnlocked = true;
                 if (currentDifficulty == 'medium') {
                   isTierUnlocked = totalEasyStars >= 5;
@@ -500,7 +634,6 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                   isTierUnlocked = totalMediumStars >= 5;
                 }
 
-                // Query questions matching current difficulty from 'activity_questions'
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('activity_questions')
@@ -508,12 +641,11 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                       .snapshots(),
                   builder: (context, questionsSnapshot) {
                     if (questionsSnapshot.connectionState == ConnectionState.waiting) {
-                      return Center(child: CircularProgressIndicator(color: themeStyles['primary']));
+                      return Center(child: CircularProgressIndicator(color: nodeColor));
                     }
 
                     final docs = questionsSnapshot.data?.docs ?? [];
 
-                    // Group questions by unique level (e.g., "alphabet_medium_1", "alphabet_medium_2")
                     final Map<String, Map<String, dynamic>> levelsMap = {};
                     for (var doc in docs) {
                       final data = doc.data() as Map<String, dynamic>;
@@ -523,14 +655,12 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                           levelsMap[levelId] = {
                             'levelId': levelId,
                             'type': data['type'] ?? 'fill_in',
-                            // UPDATE: Modified this line to only display the level number
                             'title': 'Level ${levelId.split('_').last}',
                           };
                         }
                       }
                     }
 
-                    // Sort levels sequentially (e.g., 1, 2, 3)
                     final levelKeys = levelsMap.keys.toList()..sort();
 
                     if (levelKeys.isEmpty) {
@@ -560,13 +690,13 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                               decoration: BoxDecoration( 
                                 color: themeStyles['cardBg'], 
                                 borderRadius: BorderRadius.circular(20), 
-                                border: Border.all(color: themeStyles['primary'], width: 2), 
+                                border: Border.all(color: nodeColor, width: 2), 
                                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))], 
                               ),
                               child: Row( 
                                 mainAxisSize: MainAxisSize.min, 
                                 children: [ 
-                                  Icon(Icons.star_rounded, color: themeStyles['primary'], size: 24), 
+                                  Icon(Icons.star_rounded, color: nodeColor, size: 24), 
                                   const SizedBox(width: 6), 
                                   Text( 
                                     "$totalCategoryStars / ${levelKeys.length * 3} Stars", 
@@ -612,7 +742,7 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                                             children: List.generate(3, (starIdx) { 
                                               return Icon( 
                                                 starIdx < earnedStars ? Icons.star_rounded : Icons.star_border_rounded, 
-                                                color: themeStyles['primary'], 
+                                                color: nodeColor, 
                                                 size: 20, 
                                               );
                                             }),
@@ -656,7 +786,7 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                                                 height: 104,
                                                 decoration: BoxDecoration(
                                                   shape: BoxShape.circle,
-                                                  color: isUnlocked ? themeStyles['primary'].withOpacity(0.25) : Colors.black12,
+                                                  color: isUnlocked ? nodeColor.withOpacity(0.3) : Colors.black12,
                                                 ),
                                               ),
                                               Container( 
@@ -666,14 +796,14 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                                                   shape: BoxShape.circle, 
                                                   gradient: LinearGradient(
                                                     colors: isUnlocked 
-                                                      ? [themeStyles['primary'].withOpacity(0.7), themeStyles['primary']]
+                                                      ? [nodeLightColor, nodeColor]
                                                       : [Colors.grey.shade400, Colors.grey.shade700],
                                                     begin: Alignment.topLeft,
                                                     end: Alignment.bottomRight,
                                                   ),
                                                   boxShadow: [ 
                                                     BoxShadow( 
-                                                      color: (isUnlocked ? themeStyles['primary'] : Colors.black).withOpacity(0.5), 
+                                                      color: (isUnlocked ? nodeColor : Colors.black).withOpacity(0.5), 
                                                       blurRadius: 10, 
                                                       offset: const Offset(0, 6), 
                                                     )

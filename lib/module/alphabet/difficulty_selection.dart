@@ -36,7 +36,6 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
-    // UPDATED: Galaxy Color Palette
     if (bgColor == 0xFF080928) { // Galaxy
       return {
         'primary': const Color(0xFF8750A1), 
@@ -45,7 +44,6 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
         'cardBg': const Color(0xFF282059),
       };
     }
-    // UPDATED: Enchanted Forest Color Palette
     if (bgColor == 0xFF1D3D3A) { // Enchanted Forest
       return {
         'primary': const Color(0xFFD7B3A1), 
@@ -71,11 +69,12 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
       };
     }
     
+    // Default Kid-Friendly Playground Theme
     return {
-      'primary': const Color(0xFFFFB800),
-      'text': const Color(0xFF322144),
-      'appBarIcon': const Color(0xFF322144),
-      'cardBg': Colors.white.withOpacity(0.9),
+      'primary': const Color(0xFFFF6B8B),
+      'text': const Color(0xFF332050),
+      'appBarIcon': const Color(0xFF332050),
+      'cardBg': Colors.white.withOpacity(0.92),
     };
   }
 
@@ -136,7 +135,6 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
                       return Center(child: CircularProgressIndicator(color: themeStyles['primary']));
                     }
 
-                    // 1. Calculate earned stars per difficulty
                     int easyStars = 0;
                     int mediumStars = 0;
                     int hardStars = 0;
@@ -154,7 +152,6 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
                       }
                     }
 
-                    // 2. Dynamically calculate total available max stars per difficulty tier
                     final Set<String> easyLevels = {};
                     final Set<String> mediumLevels = {};
                     final Set<String> hardLevels = {};
@@ -171,12 +168,10 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
                       }
                     }
 
-                    // Each level offers up to 3 stars (default to 9 stars if collection is empty)
                     final int maxEasyStars = easyLevels.isNotEmpty ? easyLevels.length * 3 : 9;
                     final int maxMediumStars = mediumLevels.isNotEmpty ? mediumLevels.length * 3 : 9;
                     final int maxHardStars = hardLevels.isNotEmpty ? hardLevels.length * 3 : 9;
 
-                    // Required stars to unlock next tier (50% of available stars)
                     final int starsToUnlockMedium = (maxEasyStars * 0.5).ceil();
                     final int starsToUnlockHard = (maxMediumStars * 0.5).ceil();
 
@@ -325,8 +320,6 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Progress Bar & Star Counter
                     Row(
                       children: [
                         Expanded(

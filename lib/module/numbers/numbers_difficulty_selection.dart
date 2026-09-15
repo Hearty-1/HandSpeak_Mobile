@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
-import 'numbers_activity.dart'; // Provides NumbersActivityInterface & ThemedBackground
+import 'numbers_activity.dart'; 
 
 class NumbersDifficultySelectionScreen extends StatefulWidget {
   const NumbersDifficultySelectionScreen({super.key});
@@ -38,7 +38,6 @@ class _NumbersDifficultySelectionScreenState
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
-    // UPDATED: Galaxy Color Palette
     if (bgColor == 0xFF080928) { // Galaxy
       return {
         'primary': const Color(0xFF8750A1),
@@ -47,7 +46,6 @@ class _NumbersDifficultySelectionScreenState
         'cardBg': const Color(0xFF282059),
       };
     }
-    // UPDATED: Enchanted Forest Color Palette
     if (bgColor == 0xFF1D3D3A) { // Enchanted Forest
       return {
         'primary': const Color(0xFFD7B3A1),
@@ -73,18 +71,18 @@ class _NumbersDifficultySelectionScreenState
       };
     }
 
+    // Default Kid-Friendly Playground Theme
     return {
-      'primary': const Color(0xFFFFB800),
-      'text': const Color(0xFF322144),
-      'appBarIcon': const Color(0xFF322144),
-      'cardBg': Colors.white.withOpacity(0.9),
+      'primary': const Color(0xFFFF6B8B),
+      'text': const Color(0xFF332050),
+      'appBarIcon': const Color(0xFF332050),
+      'cardBg': Colors.white.withOpacity(0.92),
     };
   }
 
   void _navigateToActivity(BuildContext context, String difficulty) {
     _soundProvider.stopBgm();
 
-    // Navigates to NumbersActivityInterface map screen before question screen
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -142,7 +140,6 @@ class _NumbersDifficultySelectionScreenState
                       );
                     }
 
-                    // 1. Calculate earned stars per difficulty tier
                     int easyStars = 0;
                     int mediumStars = 0;
                     int hardStars = 0;
@@ -160,7 +157,6 @@ class _NumbersDifficultySelectionScreenState
                       }
                     }
 
-                    // 2. Dynamically calculate total available max stars per difficulty tier
                     final Set<String> easyLevels = {};
                     final Set<String> mediumLevels = {};
                     final Set<String> hardLevels = {};
@@ -177,12 +173,10 @@ class _NumbersDifficultySelectionScreenState
                       }
                     }
 
-                    // Each level offers up to 3 stars (defaults to 9 stars per tier if collection is empty)
                     final int maxEasyStars = easyLevels.isNotEmpty ? easyLevels.length * 3 : 9;
                     final int maxMediumStars = mediumLevels.isNotEmpty ? mediumLevels.length * 3 : 9;
                     final int maxHardStars = hardLevels.isNotEmpty ? hardLevels.length * 3 : 9;
 
-                    // Required stars to unlock next tier (50% of available tier stars)
                     final int starsToUnlockMedium = (maxEasyStars * 0.5).ceil();
                     final int starsToUnlockHard = (maxMediumStars * 0.5).ceil();
 
@@ -336,8 +330,6 @@ class _NumbersDifficultySelectionScreenState
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // Progress Bar & Star Counter
                     Row(
                       children: [
                         Expanded(

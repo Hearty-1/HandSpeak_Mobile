@@ -1,11 +1,14 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sound_provider.dart';
 import '../../services/progress_service.dart';
-import 'civicAct.dart' as civic_act;
-import 'dart:math';
+import 'phraseAct.dart' as phrase_act;
 
+// ==========================================
+// 1. KIDDIE PROCEDURAL BACKGROUND WIDGET
+// ==========================================
 class ThemedBackground extends StatelessWidget {
   final Color bgColor;
 
@@ -429,16 +432,19 @@ class ThemedBackground extends StatelessWidget {
   }
 }
 
-class CivicActivityInterface extends StatefulWidget {
+// ==========================================
+// 2. BACKEND-CONNECTED PHRASES ACTIVITY INTERFACE
+// ==========================================
+class PhrasesActivityInterface extends StatefulWidget {
   final String difficulty;
 
-  const CivicActivityInterface({super.key, required this.difficulty});
+  const PhrasesActivityInterface({super.key, required this.difficulty});
 
   @override
-  State<CivicActivityInterface> createState() => _CivicActivityInterfaceState();
+  State<PhrasesActivityInterface> createState() => _PhrasesActivityInterfaceState();
 }
 
-class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
+class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
   late dynamic _soundProvider;
 
   @override
@@ -560,8 +566,8 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
   }
 
   String get _appBarTitle {
-    if (widget.difficulty.isEmpty) return 'Civic Activity';
-    return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} Civic Activity';
+    if (widget.difficulty.isEmpty) return 'Phrases Activity';
+    return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} Phrases Activity';
   }
 
   @override
@@ -616,12 +622,12 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
                   if (data != null && data['progress'] != null) { 
                     progressMap = Map<String, dynamic>.from(data['progress']); 
                     
-                    final String prefix = 'civic_${currentDifficulty}_';
+                    final String prefix = 'phrases_${currentDifficulty}_';
                     progressMap.forEach((key, value) { 
                       final int stars = (value as num).toInt();
                       if (key.startsWith(prefix)) totalCategoryStars += stars;
-                      if (key.startsWith('civic_easy_')) totalEasyStars += stars;
-                      if (key.startsWith('civic_medium_')) totalMediumStars += stars;
+                      if (key.startsWith('phrases_easy_')) totalEasyStars += stars;
+                      if (key.startsWith('phrases_medium_')) totalMediumStars += stars;
                     });
                   }
                 }
@@ -636,7 +642,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('activity_questions')
-                      .where('category', isEqualTo: 'civic')
+                      .where('category', isEqualTo: 'phrases')
                       .snapshots(),
                   builder: (context, questionsSnapshot) {
                     if (questionsSnapshot.connectionState == ConnectionState.waiting) {
@@ -649,7 +655,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
                     for (var doc in docs) {
                       final data = doc.data() as Map<String, dynamic>;
                       final String? levelId = data['level'];
-                      if (levelId != null && levelId.startsWith('civic_${currentDifficulty}_')) {
+                      if (levelId != null && levelId.startsWith('phrases_${currentDifficulty}_')) {
                         if (!levelsMap.containsKey(levelId)) {
                           levelsMap[levelId] = {
                             'levelId': levelId,
@@ -761,7 +767,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
                                                   Navigator.push(
                                                     context, 
                                                     MaterialPageRoute(
-                                                      builder: (context) => civic_act.CivicActivityInterface(
+                                                      builder: (context) => phrase_act.PhraseActivityInterface(
                                                         levelId: levelId,
                                                         title: title,
                                                       ),

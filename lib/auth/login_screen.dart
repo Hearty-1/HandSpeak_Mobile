@@ -141,13 +141,44 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
     }
   }
 
-  void _handleForgotPassword() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Forgot Password tapped!"),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  void _handleForgotPassword() async {
+    String email = _emailController.text.trim();
+
+    // Require the user to enter an email before requesting a reset
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please enter your email in the text field first."),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Call the new AuthService method
+    String? error = await _authService.sendPasswordResetEmail(email);
+
+    if (!mounted) return;
+
+    if (error == null) {
+      // Success case
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("A password reset link has been sent to $email."),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      // Error case (e.g., user not found, badly formatted email)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
   }
 
   @override

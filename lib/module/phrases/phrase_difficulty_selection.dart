@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
-import '/providers/sound_provider.dart';
-import '/services/progress_service.dart';
+import '../../providers/sound_provider.dart';
+import '../../services/progress_service.dart';
 
-
-// This imports your interface and the ThemedBackground widget you have inside it
-import 'phraseAct.dart'; 
+// Import phrase_activity.dart where PhrasesActivityInterface is defined
+import 'phrase_activity.dart'; 
 
 class PhraseDifficultySelectionScreen extends StatefulWidget {
   const PhraseDifficultySelectionScreen({super.key});
@@ -36,7 +35,6 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
     super.dispose(); 
   }
 
-  // Exact theme style logic mirrored from your provided alphabet code
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
@@ -86,7 +84,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PhraseActivityInterface(difficulty: difficulty),
+        builder: (context) => PhrasesActivityInterface(difficulty: difficulty),
       ),
     ).then((_) {
       _soundProvider.playBgm();
@@ -130,7 +128,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('activity_questions')
-                      .where('category', isEqualTo: 'phrase') // Changed to phrase
+                      .where('category', isEqualTo: 'phrases')
                       .snapshots(),
                   builder: (context, questionsSnapshot) {
                     if (userProgressSnapshot.connectionState == ConnectionState.waiting ||
@@ -149,10 +147,9 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                         final progressMap = Map<String, dynamic>.from(data['progress']);
                         
                         progressMap.forEach((key, value) {
-                          // Updated to match phrase keys
-                          if (key.startsWith('phrase_easy_')) easyStars += (value as num).toInt();
-                          if (key.startsWith('phrase_medium_')) mediumStars += (value as num).toInt();
-                          if (key.startsWith('phrase_hard_')) hardStars += (value as num).toInt();
+                          if (key.startsWith('phrases_easy_')) easyStars += (value as num).toInt();
+                          if (key.startsWith('phrases_medium_')) mediumStars += (value as num).toInt();
+                          if (key.startsWith('phrases_hard_')) hardStars += (value as num).toInt();
                         });
                       }
                     }
@@ -167,20 +164,17 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                         final qData = doc.data() as Map<String, dynamic>;
                         final String? levelId = qData['level'];
                         if (levelId != null) {
-                          // Updated to match phrase keys
-                          if (levelId.startsWith('phrase_easy_')) easyLevels.add(levelId);
-                          if (levelId.startsWith('phrase_medium_')) mediumLevels.add(levelId);
-                          if (levelId.startsWith('phrase_hard_')) hardLevels.add(levelId);
+                          if (levelId.startsWith('phrases_easy_')) easyLevels.add(levelId);
+                          if (levelId.startsWith('phrases_medium_')) mediumLevels.add(levelId);
+                          if (levelId.startsWith('phrases_hard_')) hardLevels.add(levelId);
                         }
                       }
                     }
 
-                    // Each level offers up to 3 stars (default to 9 stars if collection is empty)
                     final int maxEasyStars = easyLevels.isNotEmpty ? easyLevels.length * 3 : 9;
                     final int maxMediumStars = mediumLevels.isNotEmpty ? mediumLevels.length * 3 : 9;
                     final int maxHardStars = hardLevels.isNotEmpty ? hardLevels.length * 3 : 9;
 
-                    // Required stars to unlock next tier (50% of available stars)
                     final int starsToUnlockMedium = (maxEasyStars * 0.5).ceil();
                     final int starsToUnlockHard = (maxMediumStars * 0.5).ceil();
 
@@ -195,7 +189,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                           context,
                           themeStyles: themeStyles,
                           title: "EASY",
-                          subtitle: "Common greetings & words", // Adjusted subtitle for phrases
+                          subtitle: "Common greetings & words",
                           icon: Icons.star_rounded,
                           color: const Color(0xFF58CC02),
                           isUnlocked: true,
@@ -208,7 +202,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                           context,
                           themeStyles: themeStyles,
                           title: "MEDIUM",
-                          subtitle: "Full expressions & questions", // Adjusted subtitle for phrases
+                          subtitle: "Full expressions & questions",
                           icon: Icons.bolt_rounded,
                           color: const Color(0xFFFFB800),
                           isUnlocked: isMediumUnlocked,
@@ -222,7 +216,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                           context,
                           themeStyles: themeStyles,
                           title: "HARD",
-                          subtitle: "Complex phrase signing", // Adjusted subtitle for phrases
+                          subtitle: "Complex phrase signing",
                           icon: Icons.local_fire_department_rounded,
                           color: const Color(0xFFFF2A85),
                           isUnlocked: isHardUnlocked,
@@ -330,7 +324,6 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                     ),
                     const SizedBox(height: 12),
 
-                    // Progress Bar & Star Counter
                     Row(
                       children: [
                         Expanded(

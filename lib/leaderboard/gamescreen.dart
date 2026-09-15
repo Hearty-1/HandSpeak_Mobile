@@ -9,8 +9,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
+import 'package:provider/provider.dart';
 
 import '/module/alphabet/recognizer.dart';
+import '/providers/sound_provider.dart';
+import '/providers/theme_provider.dart';
 
 class GameProperScreen extends StatefulWidget {
   final String roomCode;
@@ -28,7 +31,7 @@ class GameProperScreen extends StatefulWidget {
   State<GameProperScreen> createState() => _GameProperScreenState();
 }
 
-class _GameProperScreenState extends State<GameProperScreen> {
+class _GameProperScreenState extends State<GameProperScreen> with SingleTickerProviderStateMixin {
   late final String _currentUserId;
   late final String _displayName;
 
@@ -96,15 +99,23 @@ class _GameProperScreenState extends State<GameProperScreen> {
   int _totalRounds = 10;
   String _category = 'Alphabet';
 
+  // Visual Animation Controller for pulses
+  late AnimationController _pulseController;
+
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
     _initUser();
     _setupGameAndPlayer();
   }
 
   @override
   void dispose() {
+    _pulseController.dispose();
     _timer?.cancel();
     _identificationController.dispose();
     _handSub?.cancel();
@@ -576,6 +587,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
       isCorrect = answer.isNotEmpty && answer.trim().toLowerCase() == correctAnswer;
     }
 
+    // Play Audio Feedback via SoundProvider
+    final soundProvider = context.read<SoundProvider>();
+    if (isCorrect) {
+      soundProvider.playCorrect();
+    } else {
+      soundProvider.playIncorrect();
+    }
+
     setState(() {
       _hasAnswered = true;
       _selectedAnswer = answer;
@@ -803,7 +822,123 @@ class _GameProperScreenState extends State<GameProperScreen> {
     );
   }
 
-  // --- Dynamic Layout Renderers ---
+  // --- Dynamic Animated & Theme-Aligned Feedback Components ---
+
+  Widget _buildThemedFeedbackBanner(ThemeData theme, Color textColor) {
+    if (!_hasAnswered || _questions.isEmpty) return const SizedBox.shrink();
+
+    final currentQ = _questions[_currentQuestionIndex];
+    final String correctAnswer = _extractCorrectAnswer(currentQ);
+    final String type = _determineQuestionType(currentQ);
+
+    bool isCorrect = false;
+    if (type == 'sequence_order') {
+      final options = _extractOptions(currentQ);
+      isCorrect = _selectedAnswer == options.join(',');
+    } else {
+      isCorrect = _selectedAnswer.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
+    }
+
+    final Color feedbackColor = isCorrect ? theme.colorScheme.primary : theme.colorScheme.error;
+
+    AppThemeMode themeMode = AppThemeMode.defaultWarm;
+    try {
+      themeMode = Provider.of<ThemeProvider>(context, listen: false).themeMode;
+    } catch (_) {}
+
+    IconData feedbackIcon = Icons.cancel_rounded;
+    String feedbackTitle = isCorrect ? "CORRECT!" : "INCORRECT";
+
+    if (isCorrect) {
+      switch (themeMode) {
+        case AppThemeMode.galaxy:
+          feedbackIcon = Icons.auto_awesome_rounded;
+          feedbackTitle = "COSMIC SUCCESS! +50 pts";
+          break;
+        case AppThemeMode.enchantedForest:
+          feedbackIcon = Icons.eco_rounded;
+          feedbackTitle = "NATURAL BLOOM! +50 pts";
+          break;
+        case AppThemeMode.ocean:
+          feedbackIcon = Icons.water_drop_rounded;
+          feedbackTitle = "DEEP IMPACT! +50 pts";
+          break;
+        case AppThemeMode.cloudy:
+          feedbackIcon = Icons.filter_drama_rounded;
+          feedbackTitle = "SKY HIGH! +50 pts";
+          break;
+        case AppThemeMode.defaultWarm:
+        feedbackIcon = Icons.star_rounded;
+          feedbackTitle = "SUNNY STRIKE! +50 pts";
+          break;
+      }
+    } else {
+      feedbackTitle = "Incorrect! Answer: $correctAnswer";
+    }
+
+    final glassTheme = theme.extension<GlassThemeExtension>();
+    final Color bannerBorderColor = glassTheme?.glassBorder ?? feedbackColor;
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.80, end: 1.0),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.elasticOut,
+      builder: (context, scaleValue, child) {
+        return Transform.scale(
+          scale: scaleValue,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  feedbackColor.withAlpha(80),
+                  glassTheme?.glassCard ?? feedbackColor.withAlpha(40),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: isCorrect ? feedbackColor : bannerBorderColor, width: 2.5),
+              boxShadow: [
+                BoxShadow(
+                  color: feedbackColor.withAlpha(120),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  feedbackIcon,
+                  color: feedbackColor,
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    feedbackTitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- Visual Layout Renderers ---
 
   Widget _buildMultipleChoiceOptions(List<dynamic> options, String correctAnswer, ThemeData theme, Color textColor, Map<String, int> answerCounts) {
     final bool isImageGrid = options.any((opt) {
@@ -814,7 +949,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
     return GridView.builder(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: isImageGrid ? 1.2 : 2.2,
+        childAspectRatio: isImageGrid ? 1.2 : 2.1,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
       ),
@@ -845,68 +980,102 @@ class _GameProperScreenState extends State<GameProperScreen> {
         final bool isOptionCorrect = optionComparisonValue.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
         final int selectCount = answerCounts[optionComparisonValue.trim().toLowerCase()] ?? 0;
 
-        Color tileBg = theme.cardColor.withAlpha(204);
-        Color borderColor = textColor.withAlpha(25);
+        Color tileBg = theme.cardColor.withAlpha(200);
+        Color borderColor = theme.colorScheme.outline.withAlpha(100);
 
         if (_hasAnswered) {
           if (isOptionCorrect) {
-            tileBg = const Color(0x334CAF50);
-            borderColor = const Color(0xFF4CAF50);
+            tileBg = theme.colorScheme.primary.withAlpha(70);
+            borderColor = theme.colorScheme.primary;
           } else if (isOptionSelected) {
-            tileBg = const Color(0x33F34B1B);
-            borderColor = const Color(0xFFF34B1B);
+            tileBg = theme.colorScheme.error.withAlpha(70);
+            borderColor = theme.colorScheme.error;
           }
         }
 
-        return InkWell(
-          onTap: _hasAnswered ? null : () => _submitAnswer(optionComparisonValue),
-          borderRadius: BorderRadius.circular(18),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: tileBg,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor, width: isOptionSelected || (_hasAnswered && isOptionCorrect) ? 2.5 : 1.0),
-            ),
-            child: Stack(
-              children: [
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (optionImage != null && optionImage.isNotEmpty)
-                        Expanded(child: _buildSafeImage(optionImage, fit: BoxFit.contain)),
-                      if (optionText.isNotEmpty) ...[
-                        if (optionImage != null) const SizedBox(height: 4),
-                        Text(
-                          optionText,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textColor),
-                        ),
-                      ]
-                    ],
-                  ),
+        return AnimatedScale(
+          scale: isOptionSelected ? 1.02 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: InkWell(
+            onTap: _hasAnswered ? null : () => _submitAnswer(optionComparisonValue),
+            borderRadius: BorderRadius.circular(20),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    tileBg,
+                    tileBg.withAlpha(180),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                if (selectCount > 0)
-                  Positioned(
-                    top: 2, right: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface.withAlpha(230),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.person_rounded, size: 10, color: textColor.withAlpha(180)),
-                          const SizedBox(width: 2),
-                          Text("$selectCount", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: textColor)),
-                        ],
-                      ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: borderColor, width: isOptionSelected || (_hasAnswered && isOptionCorrect) ? 2.5 : 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: (_hasAnswered && isOptionCorrect)
+                        ? theme.colorScheme.primary.withAlpha(100)
+                        : Colors.black.withAlpha(20),
+                    blurRadius: (_hasAnswered && isOptionCorrect) ? 14 : 6,
+                    spreadRadius: (_hasAnswered && isOptionCorrect) ? 1 : 0,
+                    offset: const Offset(0, 3),
+                  )
+                ],
+              ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (optionImage != null && optionImage.isNotEmpty)
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _buildSafeImage(optionImage, fit: BoxFit.contain),
+                            ),
+                          ),
+                        if (optionText.isNotEmpty) ...[
+                          if (optionImage != null) const SizedBox(height: 4),
+                          Text(
+                            optionText,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: textColor,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ]
+                      ],
                     ),
                   ),
-              ],
+                  if (selectCount > 0)
+                    Positioned(
+                      top: 2, right: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [theme.primaryColor, theme.colorScheme.secondary],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.person_rounded, size: 10, color: Colors.white),
+                            const SizedBox(width: 3),
+                            Text("$selectCount", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.white)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         );
@@ -926,16 +1095,16 @@ class _GameProperScreenState extends State<GameProperScreen> {
         final bool isOptionCorrect = optStr.toLowerCase() == correctAnswer.toLowerCase();
         final int selectCount = answerCounts[optStr.toLowerCase()] ?? 0;
 
-        Color tileBg = theme.cardColor.withAlpha(204);
-        Color borderColor = textColor.withAlpha(25);
+        Color tileBg = theme.cardColor.withAlpha(200);
+        Color borderColor = theme.colorScheme.outline.withAlpha(100);
 
         if (_hasAnswered) {
           if (isOptionCorrect) {
-            tileBg = const Color(0x334CAF50);
-            borderColor = const Color(0xFF4CAF50);
+            tileBg = theme.colorScheme.primary.withAlpha(70);
+            borderColor = theme.colorScheme.primary;
           } else if (isOptionSelected) {
-            tileBg = const Color(0x33F34B1B);
-            borderColor = const Color(0xFFF34B1B);
+            tileBg = theme.colorScheme.error.withAlpha(70);
+            borderColor = theme.colorScheme.error;
           }
         }
 
@@ -944,14 +1113,24 @@ class _GameProperScreenState extends State<GameProperScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 6.0),
             child: InkWell(
               onTap: _hasAnswered ? null : () => _submitAnswer(optStr),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(22),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 height: 120,
                 decoration: BoxDecoration(
-                  color: tileBg,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: borderColor, width: isOptionSelected || (_hasAnswered && isOptionCorrect) ? 2.5 : 1.0),
+                  gradient: LinearGradient(
+                    colors: [tileBg, tileBg.withAlpha(180)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: borderColor, width: isOptionSelected || (_hasAnswered && isOptionCorrect) ? 2.5 : 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (_hasAnswered && isOptionCorrect) ? theme.colorScheme.primary.withAlpha(100) : Colors.black12,
+                      blurRadius: 10, offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Stack(
                   children: [
@@ -963,7 +1142,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                             )
                           : Text(
                               optStr.toUpperCase(),
-                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textColor),
+                              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textColor, letterSpacing: 1.0),
                             ),
                     ),
                     if (selectCount > 0)
@@ -972,14 +1151,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surface.withAlpha(230),
+                            color: theme.primaryColor,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
                             children: [
-                              Icon(Icons.person_rounded, size: 12, color: textColor.withAlpha(180)),
+                              const Icon(Icons.person_rounded, size: 12, color: Colors.white),
                               const SizedBox(width: 3),
-                              Text("$selectCount", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: textColor)),
+                              Text("$selectCount", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.white)),
                             ],
                           ),
                         ),
@@ -1018,12 +1197,19 @@ class _GameProperScreenState extends State<GameProperScreen> {
                     });
                   }
                 },
-                child: Container(
-                  width: 48, height: 56,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 50, height: 58,
                   decoration: BoxDecoration(
-                    color: char != null ? theme.primaryColor.withAlpha(40) : theme.cardColor.withAlpha(204),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: char != null ? theme.primaryColor : textColor.withAlpha(30), width: 2),
+                    color: char != null ? theme.primaryColor.withAlpha(50) : theme.cardColor.withAlpha(180),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: char != null ? theme.primaryColor : textColor.withAlpha(40),
+                      width: char != null ? 2.5 : 1.5,
+                    ),
+                    boxShadow: char != null
+                        ? [BoxShadow(color: theme.primaryColor.withAlpha(80), blurRadius: 8)]
+                        : null,
                   ),
                   alignment: Alignment.center,
                   child: givenItem != null && givenItem['image'] != null && (givenItem['image'] as String).isNotEmpty
@@ -1031,14 +1217,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
                           padding: const EdgeInsets.all(4.0),
                           child: _buildSafeImage(givenItem['image'], fit: BoxFit.contain),
                         )
-                      : Text(char ?? '', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
+                      : Text(char ?? '', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor)),
                 ),
               );
             }),
           ),
           const SizedBox(height: 20),
           Wrap(
-            spacing: 8, runSpacing: 8,
+            spacing: 10, runSpacing: 10,
             alignment: WrapAlignment.center,
             children: List.generate(_shuffledOptions.length, (index) {
               final bool isUsed = _selectedOptionIndices.contains(index);
@@ -1054,16 +1240,18 @@ class _GameProperScreenState extends State<GameProperScreen> {
                     });
                   }
                 },
-                child: Opacity(
-                  opacity: isUsed ? 0.3 : 1.0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: isUsed ? 0.25 : 1.0,
                   child: Container(
-                    width: 52, height: 52,
+                    width: 54, height: 54,
                     decoration: BoxDecoration(
-                      color: theme.cardColor.withAlpha(204),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: theme.primaryColor, width: 1.5),
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: theme.primaryColor, width: 2),
+                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
                     ),
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(5),
                     child: Center(
                       child: optVal.contains('/') || optVal.contains('.') || optVal.startsWith('http') || optVal.startsWith('data:image')
                           ? _buildSafeImage(optVal, fit: BoxFit.contain)
@@ -1074,12 +1262,17 @@ class _GameProperScreenState extends State<GameProperScreen> {
               );
             }),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           if (!_hasAnswered)
             ElevatedButton(
               onPressed: _userAnswerSlots.contains(null) ? null : () => _submitAnswer(_userAnswerSlots.join('')),
-              style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor),
-              child: Text("SUBMIT", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.primaryColor,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 4,
+              ),
+              child: Text("SUBMIT ANSWER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
             ),
         ],
       ),
@@ -1090,18 +1283,21 @@ class _GameProperScreenState extends State<GameProperScreen> {
     return Column(
       children: [
         Container(
-          width: double.infinity, height: 56,
+          width: double.infinity, height: 60,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: theme.cardColor.withAlpha(204),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.primaryColor),
+            color: theme.cardColor.withAlpha(200),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: theme.primaryColor, width: 2),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
           ),
           child: Wrap(
             spacing: 8, runSpacing: 8,
             children: _currentSequence.map((item) {
               return Chip(
-                label: Text(item, style: const TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: theme.primaryColor.withAlpha(50),
+                side: BorderSide(color: theme.primaryColor),
+                label: Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 onDeleted: _hasAnswered ? null : () {
                   setState(() {
                     _currentSequence.remove(item);
@@ -1112,9 +1308,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
             }).toList(),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         Wrap(
-          spacing: 8, runSpacing: 8,
+          spacing: 10, runSpacing: 10,
           children: _availableSequenceOptions.map((item) {
             return InkWell(
               onTap: _hasAnswered ? null : () {
@@ -1124,17 +1320,22 @@ class _GameProperScreenState extends State<GameProperScreen> {
                 });
               },
               child: Chip(
-                label: Text(item, style: const TextStyle(fontWeight: FontWeight.bold)),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                label: Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 backgroundColor: theme.cardColor,
+                side: BorderSide(color: theme.colorScheme.outline),
               ),
             );
           }).toList(),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         if (!_hasAnswered)
           ElevatedButton(
             onPressed: _availableSequenceOptions.isNotEmpty ? null : () => _submitAnswer(_currentSequence.join(',')),
-            style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.primaryColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
             child: Text("SUBMIT ORDER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
           )
       ],
@@ -1172,9 +1373,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
                 child: Container(
                   height: 60, margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: isMatched ? Colors.green.withAlpha(50) : (isSelected ? theme.primaryColor.withAlpha(80) : theme.cardColor),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : textColor.withAlpha(30))),
+                    color: isMatched ? theme.colorScheme.primary.withAlpha(60) : (isSelected ? theme.primaryColor.withAlpha(90) : theme.cardColor),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: isMatched ? theme.colorScheme.primary : (isSelected ? theme.primaryColor : textColor.withAlpha(40)), width: 2),
                   ),
                   child: Center(
                     child: item.contains('/') || item.endsWith('.jpg') || item.endsWith('.png')
@@ -1201,9 +1402,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
                 child: Container(
                   height: 60, margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
-                    color: isMatched ? Colors.green.withAlpha(50) : theme.cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isMatched ? Colors.green : textColor.withAlpha(30)),
+                    color: isMatched ? theme.colorScheme.primary.withAlpha(60) : theme.cardColor,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: isMatched ? theme.colorScheme.primary : textColor.withAlpha(40), width: 2),
                   ),
                   child: Center(
                     child: item.contains('/') || item.endsWith('.jpg') || item.endsWith('.png')
@@ -1233,35 +1434,37 @@ class _GameProperScreenState extends State<GameProperScreen> {
             hintText: "Type your answer here...",
             filled: true,
             fillColor: theme.cardColor.withAlpha(204),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: theme.primaryColor, width: 2)),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide(color: theme.primaryColor, width: 2.5)),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
         if (!_hasAnswered)
           SizedBox(
-            width: double.infinity, height: 48,
+            width: double.infinity, height: 50,
             child: ElevatedButton(
               onPressed: () => _submitAnswer(_identificationController.text.trim()),
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                elevation: 4,
               ),
-              child: Text("SUBMIT ANSWER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+              child: Text("SUBMIT ANSWER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 16)),
             ),
           )
         else
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
-              color: isCorrect ? const Color(0x334CAF50) : const Color(0x33F34B1B),
-              borderRadius: BorderRadius.circular(12),
+              color: isCorrect ? theme.colorScheme.primary.withAlpha(60) : theme.colorScheme.error.withAlpha(60),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: isCorrect ? theme.colorScheme.primary : theme.colorScheme.error, width: 2),
             ),
             child: Text(
               isCorrect ? "Correct!" : "Correct Answer: $correctAnswer",
               style: TextStyle(
-                color: isCorrect ? const Color(0xFF4CAF50) : const Color(0xFFF34B1B),
-                fontWeight: FontWeight.bold, fontSize: 16,
+                color: isCorrect ? theme.colorScheme.primary : theme.colorScheme.error,
+                fontWeight: FontWeight.w900, fontSize: 16,
               ),
             ),
           )
@@ -1269,7 +1472,6 @@ class _GameProperScreenState extends State<GameProperScreen> {
     );
   }
 
-  // Camera Spell Layout with Real Camera Stream & Gesture Status
   Widget _buildCameraSpellLayout(String correctAnswer, ThemeData theme, Color textColor) {
     final bool isPassing = _currentScore >= successThreshold;
 
@@ -1277,37 +1479,55 @@ class _GameProperScreenState extends State<GameProperScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                width: 3.5,
-                color: isPassing ? Colors.greenAccent : theme.primaryColor.withAlpha(120),
-              ),
-              boxShadow: [
-                if (isPassing)
-                  BoxShadow(
-                    color: Colors.greenAccent.withAlpha(150),
-                    blurRadius: 20,
-                    spreadRadius: 2,
-                  )
-              ],
-            ),
-            clipBehavior: Clip.hardEdge,
-            child: _isCameraInitialized && _cameraController != null && _cameraController!.value.isInitialized
-                ? FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _cameraController!.value.previewSize?.height ?? 1,
-                      height: _cameraController!.value.previewSize?.width ?? 1,
-                      child: CameraPreview(_cameraController!),
-                    ),
-                  )
-                : Center(
-                    child: CircularProgressIndicator(color: theme.primaryColor),
+          child: Stack(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    width: 3.5,
+                    color: isPassing ? theme.colorScheme.primary : theme.primaryColor.withAlpha(160),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isPassing ? theme.colorScheme.primary.withAlpha(160) : Colors.black26,
+                      blurRadius: isPassing ? 24 : 10,
+                      spreadRadius: isPassing ? 2 : 0,
+                    )
+                  ],
+                ),
+                clipBehavior: Clip.hardEdge,
+                child: _isCameraInitialized && _cameraController != null && _cameraController!.value.isInitialized
+                    ? FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: _cameraController!.value.previewSize?.height ?? 1,
+                          height: _cameraController!.value.previewSize?.width ?? 1,
+                          child: CameraPreview(_cameraController!),
+                        ),
+                      )
+                    : Center(
+                        child: CircularProgressIndicator(color: theme.primaryColor),
+                      ),
+              ),
+
+              // Scanning Overlay Viewfinder Corners
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: CustomPaint(
+                      painter: ViewfinderCornersPainter(
+                        color: isPassing ? theme.colorScheme.primary : theme.primaryColor,
+                        pulseValue: _pulseController.value,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
@@ -1317,14 +1537,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
             children: [
               Text(
                 _isDynamicLetter ? "Recording motion..." : "Holding sign steady...",
-                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 15),
+                style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w900, fontSize: 15),
               ),
               const SizedBox(height: 6),
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  width: 220,
-                  height: 12,
+                  width: 240,
+                  height: 14,
                   decoration: BoxDecoration(
                     color: textColor.withAlpha(30),
                     borderRadius: BorderRadius.circular(12),
@@ -1335,7 +1555,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
                       widthFactor: _holdProgress,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.greenAccent,
+                          gradient: LinearGradient(
+                            colors: [theme.primaryColor, theme.colorScheme.secondary],
+                          ),
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
@@ -1349,23 +1571,24 @@ class _GameProperScreenState extends State<GameProperScreen> {
           Center(
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
               decoration: BoxDecoration(
-                color: isPassing ? Colors.green.withAlpha(50) : theme.cardColor,
-                borderRadius: BorderRadius.circular(20),
+                color: isPassing ? theme.colorScheme.primary.withAlpha(60) : theme.cardColor,
+                borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: isPassing ? Colors.greenAccent : textColor.withAlpha(30),
-                  width: 1.5,
+                  color: isPassing ? theme.colorScheme.primary : textColor.withAlpha(40),
+                  width: 2.0,
                 ),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
               ),
               child: Text(
                 _hasAnswered
                     ? "Submitted: $_selectedAnswer"
                     : "Sign Match: ${_currentScore.toStringAsFixed(1)}%",
                 style: TextStyle(
-                  color: isPassing ? Colors.green : textColor,
+                  color: isPassing ? theme.colorScheme.primary : textColor,
                   fontWeight: FontWeight.w900,
-                  fontSize: 14,
+                  fontSize: 15,
                 ),
               ),
             ),
@@ -1379,11 +1602,12 @@ class _GameProperScreenState extends State<GameProperScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.primaryColor,
               padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              elevation: 4,
             ),
             child: Text(
               "SKIP / SUBMIT GESTURE",
-              style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold),
+              style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 14),
             ),
           ),
       ],
@@ -1409,7 +1633,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
         final docs = snapshot.data!.docs;
 
         return SizedBox(
-          height: 48,
+          height: 52,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -1420,27 +1644,54 @@ class _GameProperScreenState extends State<GameProperScreen> {
               final String name = player['name'] ?? 'Player';
               final int score = player['score'] ?? 0;
 
-              return Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                margin: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isMe ? theme.primaryColor.withAlpha(46) : theme.cardColor.withAlpha(204),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isMe ? theme.primaryColor : textColor.withAlpha(25),
-                    width: 1.5,
+                  gradient: LinearGradient(
+                    colors: isMe
+                        ? [theme.primaryColor.withAlpha(90), theme.primaryColor.withAlpha(40)]
+                        : [theme.cardColor, theme.cardColor.withAlpha(180)],
                   ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isMe ? theme.primaryColor : textColor.withAlpha(30),
+                    width: isMe ? 2.0 : 1.0,
+                  ),
+                  boxShadow: isMe
+                      ? [BoxShadow(color: theme.primaryColor.withAlpha(80), blurRadius: 8)]
+                      : null,
                 ),
                 child: Row(
                   children: [
-                    Text("#${index + 1}", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: isMe ? theme.primaryColor : textColor.withAlpha(178))),
-                    const SizedBox(width: 6),
-                    Text(isMe ? "$name (You)" : name, style: TextStyle(fontWeight: isMe ? FontWeight.bold : FontWeight.w600, fontSize: 13, color: textColor)),
-                    const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: theme.primaryColor.withAlpha(25), borderRadius: BorderRadius.circular(8)),
-                      child: Text("$score pts", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: theme.primaryColor)),
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: isMe ? theme.primaryColor : textColor.withAlpha(30),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        "#${index + 1}",
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isMe ? "$name (You)" : name,
+                      style: TextStyle(fontWeight: isMe ? FontWeight.w900 : FontWeight.w600, fontSize: 13, color: textColor),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor.withAlpha(40),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        "$score pts",
+                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: theme.primaryColor),
+                      ),
                     ),
                   ],
                 ),
@@ -1486,14 +1737,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
 
             return AlertDialog(
               backgroundColor: theme.scaffoldBackgroundColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
               title: const Column(
                 children: [
-                  Text("🏆", style: TextStyle(fontSize: 40)),
-                  SizedBox(height: 4),
+                  Text("🏆", style: TextStyle(fontSize: 48)),
+                  SizedBox(height: 6),
                   Text(
-                    "Congratulations!",
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22),
+                    "VICTORY BOARD",
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: 1.0),
                   ),
                 ],
               ),
@@ -1504,7 +1755,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _buildPodiumSection(top3, theme, textColor),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 18),
                       if (remaining.isNotEmpty) ...[
                         const Divider(),
                         ListView.builder(
@@ -1525,12 +1776,12 @@ class _GameProperScreenState extends State<GameProperScreen> {
                               ),
                               title: Text(
                                 player['name'] ?? 'Player',
-                                style: TextStyle(color: textColor),
+                                style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
                               ),
                               trailing: Text(
                                 "${player['score']} pts",
                                 style: TextStyle(
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w900,
                                   color: theme.primaryColor,
                                 ),
                               ),
@@ -1549,13 +1800,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
                     onPressed: _deleteRoomAndExit,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: theme.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                     ),
                     child: const Text(
-                      "LEAVE ROOM",
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      "EXIT TO MAIN MENU",
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15),
                     ),
                   ),
                 ),
@@ -1586,8 +1838,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
           _buildPodiumColumn(
             player: second,
             rank: 2,
-            height: 90,
-            badgeColor: const Color(0xFFC0C0C0),
+            height: 95,
+            badgeGradient: const [Color(0xFFE0E0E0), Color(0xFF9E9E9E)],
             icon: "🥈",
             theme: theme,
             textColor: textColor,
@@ -1601,8 +1853,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
           _buildPodiumColumn(
             player: first,
             rank: 1,
-            height: 125,
-            badgeColor: const Color(0xFFFFD700),
+            height: 130,
+            badgeGradient: const [Color(0xFFFFD700), Color(0xFFFFA500)],
             icon: "🥇",
             theme: theme,
             textColor: textColor,
@@ -1614,8 +1866,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
           _buildPodiumColumn(
             player: third,
             rank: 3,
-            height: 70,
-            badgeColor: const Color(0xFFCD7F32),
+            height: 75,
+            badgeGradient: const [Color(0xFFCD7F32), Color(0xFF8B4513)],
             icon: "🥉",
             theme: theme,
             textColor: textColor,
@@ -1630,7 +1882,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
     required Map<String, dynamic> player,
     required int rank,
     required double height,
-    required Color badgeColor,
+    required List<Color> badgeGradient,
     required String icon,
     required ThemeData theme,
     required Color textColor,
@@ -1642,7 +1894,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(icon, style: const TextStyle(fontSize: 22)),
+          Text(icon, style: const TextStyle(fontSize: 26)),
           const SizedBox(height: 2),
           Text(
             name,
@@ -1658,7 +1910,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
             "$score pts",
             style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w900,
               color: theme.primaryColor,
             ),
           ),
@@ -1666,17 +1918,22 @@ class _GameProperScreenState extends State<GameProperScreen> {
           Container(
             height: height,
             decoration: BoxDecoration(
-              color: badgeColor.withAlpha(50),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              border: Border.all(color: badgeColor, width: 2),
+              gradient: LinearGradient(
+                colors: badgeGradient,
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
             ),
             child: Center(
               child: Text(
                 "#$rank",
                 style: TextStyle(
-                  fontSize: rank == 1 ? 28 : 22,
+                  fontSize: rank == 1 ? 30 : 24,
                   fontWeight: FontWeight.w900,
-                  color: badgeColor,
+                  color: Colors.white,
+                  shadows: const [Shadow(color: Colors.black45, blurRadius: 4)],
                 ),
               ),
             ),
@@ -1717,6 +1974,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
+    final glassTheme = theme.extension<GlassThemeExtension>();
 
     if (_isLoading) {
       return Scaffold(
@@ -1745,13 +2003,28 @@ class _GameProperScreenState extends State<GameProperScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: Text(
-          "Question ${_currentQuestionIndex + 1} / ${_questions.length}",
-          style: TextStyle(color: textColor, fontWeight: FontWeight.w900, fontFamily: 'Inter'),
+        title: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: glassTheme?.glassCard ?? theme.cardColor.withAlpha(180),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: glassTheme?.glassBorder ?? textColor.withAlpha(30)),
+          ),
+          child: Text(
+            "ROUND ${_currentQuestionIndex + 1} OF ${_questions.length}",
+            style: TextStyle(color: textColor, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1.0),
+          ),
         ),
         centerTitle: true,
         actions: [
-          IconButton(icon: Icon(Icons.close_rounded, color: textColor), onPressed: _deleteRoomAndExit),
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(color: theme.cardColor, shape: BoxShape.circle),
+              child: Icon(Icons.close_rounded, color: textColor, size: 20),
+            ),
+            onPressed: _deleteRoomAndExit,
+          ),
         ],
       ),
       body: SafeArea(
@@ -1764,48 +2037,113 @@ class _GameProperScreenState extends State<GameProperScreen> {
               const SizedBox(height: 12),
 
               if (_maxTime > 0) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: (_timeLeft / _maxTime).clamp(0.0, 1.0),
-                    backgroundColor: textColor.withAlpha(25),
-                    valueColor: AlwaysStoppedAnimation<Color>(_timeLeft < 5 ? const Color(0xFFF34B1B) : theme.primaryColor),
-                    minHeight: 8,
-                  ),
+                Row(
+                  children: [
+                    Icon(Icons.timer_sharp, size: 18, color: _timeLeft < 5 ? theme.colorScheme.error : theme.primaryColor),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          value: (_timeLeft / _maxTime).clamp(0.0, 1.0),
+                          backgroundColor: textColor.withAlpha(30),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _timeLeft < 5 ? theme.colorScheme.error : theme.primaryColor,
+                          ),
+                          minHeight: 10,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      "${_timeLeft}s",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                        color: _timeLeft < 5 ? theme.colorScheme.error : textColor,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 14),
               ],
 
+              // Enhanced Glassmorphic Question Display Card
               Expanded(
                 flex: 4,
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: theme.cardColor.withAlpha(204),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: textColor.withAlpha(20)),
-                  ),
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (questionText.isNotEmpty)
-                          Text(questionText, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: textColor), textAlign: TextAlign.center),
-                        if (questionImageUrl != null) ...[
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: _buildSafeImage(questionImageUrl, height: 160),
-                          ),
-                        ],
+                    gradient: LinearGradient(
+                      colors: [
+                        glassTheme?.glassCard ?? theme.cardColor.withAlpha(220),
+                        theme.cardColor.withAlpha(160),
                       ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: glassTheme?.glassBorder ?? textColor.withAlpha(30), width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 4)),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withAlpha(35),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _category.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: theme.primaryColor,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (questionText.isNotEmpty)
+                                Text(
+                                  questionText,
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor, height: 1.3),
+                                  textAlign: TextAlign.center,
+                                ),
+                              if (questionImageUrl != null) ...[
+                                const SizedBox(height: 12),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: textColor.withAlpha(30)),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: _buildSafeImage(questionImageUrl, height: 150),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
 
-              const SizedBox(height: 16), 
+              const SizedBox(height: 12),
+
+              _buildThemedFeedbackBanner(theme, textColor),
 
               Expanded(
                 flex: 5,
@@ -1850,4 +2188,63 @@ class _GameProperScreenState extends State<GameProperScreen> {
       ),
     );
   }
+}
+
+// Custom Viewfinder Corner Bracket Painter for Camera Visual Identification
+class ViewfinderCornersPainter extends CustomPainter {
+  final Color color;
+  final double pulseValue;
+
+  ViewfinderCornersPainter({required this.color, required this.pulseValue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withAlpha((180 + (pulseValue * 75)).toInt())
+      ..strokeWidth = 3.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    const cornerLength = 22.0;
+
+    // Top-Left
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, cornerLength)
+        ..lineTo(0, 0)
+        ..lineTo(cornerLength, 0),
+      paint,
+    );
+
+    // Top-Right
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width - cornerLength, 0)
+        ..lineTo(size.width, 0)
+        ..lineTo(size.width, cornerLength),
+      paint,
+    );
+
+    // Bottom-Left
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, size.height - cornerLength)
+        ..lineTo(0, size.height)
+        ..lineTo(cornerLength, size.height),
+      paint,
+    );
+
+    // Bottom-Right
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width - cornerLength, size.height)
+        ..lineTo(size.width, size.height)
+        ..lineTo(size.width, size.height - cornerLength),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant ViewfinderCornersPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.pulseValue != pulseValue;
 }
