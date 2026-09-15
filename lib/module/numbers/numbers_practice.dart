@@ -8,6 +8,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 /// Dynamic theme visual mapping for thematic icons & graphics
 class _ThemeVisuals {
@@ -77,6 +78,9 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _landmarkSubscription;
+
+  // Static in-memory cache shared across calls
+  static final Map<String, List<dynamic>> _templateCache = {};
 
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
@@ -167,11 +171,45 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   }
 
   Future<void> _loadGestureLibrary(String number) async {
-    try {
-      String jsonString = await rootBundle.loadString('assets/numbers/$number.json');
+    // 1. Check in-memory cache first
+    if (_templateCache.containsKey(number)) {
       if (mounted) {
         setState(() {
-          _template = jsonDecode(jsonString);
+          _template = _templateCache[number];
+        });
+      }
+      return;
+    }
+
+    try {
+      // 2. Fetch from Firebase Cloud Storage
+      final ref = FirebaseStorage.instance.ref().child('numbers/$number.json');
+      final data = await ref.getData();
+      if (data != null) {
+        final jsonString = utf8.decode(data);
+        final List<dynamic> parsed = jsonDecode(jsonString);
+        _templateCache[number] = parsed;
+
+        if (mounted) {
+          setState(() {
+            _template = parsed;
+          });
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint("Cloud Storage fetch failed for $number, using asset fallback: $e");
+    }
+
+    // 3. Asset fallback if cloud download fails or is unavailable
+    try {
+      String jsonString = await rootBundle.loadString('assets/numbers/$number.json');
+      final List<dynamic> parsed = jsonDecode(jsonString);
+      _templateCache[number] = parsed;
+
+      if (mounted) {
+        setState(() {
+          _template = parsed;
         });
       }
     } catch (e) {
@@ -379,7 +417,6 @@ class _NumbersPracticeState extends State<NumbersPractice> {
       ),
       body: Stack(
         children: [
-          // Theme-aligned ambient background element 1 (Top-right)
           Positioned(
             top: -20, right: -20,
             child: Opacity(
@@ -390,8 +427,6 @@ class _NumbersPracticeState extends State<NumbersPractice> {
               ),
             ),
           ),
-
-          // Theme-aligned ambient background element 2 (Bottom-left)
           Positioned(
             bottom: 40, left: -30,
             child: Opacity(
@@ -454,7 +489,6 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Front Camera Preview Container
                     SizedBox(
                       width: screenWidth * 0.60,
                       child: AspectRatio(
@@ -555,7 +589,6 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Feedback Section
                     if (_isSuccessAchieved) ...[
                       Column(
                         children: [

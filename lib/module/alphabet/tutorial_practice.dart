@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:camera/camera.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
@@ -70,6 +71,8 @@ class TutorialPractice extends StatefulWidget {
 }
 
 class _TutorialPracticeState extends State<TutorialPractice> {
+  static final Map<String, List<dynamic>> _templateCache = {};
+
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _handSub;
@@ -102,23 +105,13 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   double _holdProgress = 0.0;
   DateTime? _startHoldTime;
 
+  // Reduced accuracy target to 70.0% for both static and dynamic signs to improve user experience
   double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
   final int xpReward = 25;
 
   static const double minMotionThreshold = 0.05;
   static const double _referenceHandScale = 0.20;
-  // Recording used to stop after a fixed 4.0s wall-clock window regardless
-  // of how many real hand-detection frames were actually captured in that
-  // time. On slower devices (weak/older GPU running the landmarker's GPU
-  // delegate, or a camera-graph hiccup mid-capture) that produced as few as
-  // 6-9 real frames, which predictFromRecording then nearest-neighbor
-  // upsamples to the model's expected _targetSequenceLength (30) —
-  // producing a blocky, aliased trajectory that looks nothing like the
-  // ~30-real-frame sequences the model was trained on, even when the user
-  // performed the gesture correctly. Gate completion on ACTUAL frame count
-  // instead, with a time floor (don't end on a rushed burst) and a time
-  // ceiling (safety timeout so a lost hand doesn't hang forever).
   static const double _minCaptureDurationSeconds = 1.0;
   static const double _maxCaptureDurationSeconds = 8.0;
 
@@ -143,6 +136,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   Future<void> _initializePipeline() async {
     try {
       if (_isDynamicLetter) {
+        successThreshold = 70.0;
         await _fetchCloudGestureData();
 
         debugPrint("[DBG] docId=alphabet_${widget.targetLetter.toLowerCase()} "
@@ -227,11 +221,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
           _targetSequenceLength = (data['sequenceLength'] as num).toInt();
         }
 
-        // Fetch threshold directly or map from toleranceBounds. Guard
-        // against 0/negative values — same fix applied in
-        // phrase_tutorial_practice.dart: a trained threshold should never
-        // be <= 0, so treat that as "not actually configured" and keep the
-        // 70.0 default rather than accepting a bogus 0.
         final num? rawThreshold = data['accuracyThreshold'] as num?;
         final num? rawDistance = data['toleranceBounds'] != null
             ? data['toleranceBounds']['distance'] as num?
@@ -277,12 +266,37 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   }
 
   Future<void> _loadGestureLibrary() async {
+    final letter = widget.targetLetter.toUpperCase();
+
+    if (_templateCache.containsKey(letter)) {
+      if (mounted) {
+        setState(() {
+          _template = _templateCache[letter];
+        });
+      }
+      debugPrint("Loaded cached gesture template for $letter");
+      return;
+    }
+
     try {
-      String jsonString = await rootBundle
-          .loadString('assets/alphabet/${widget.targetLetter}.json');
-      _template = jsonDecode(jsonString);
+      final ref = FirebaseStorage.instance.ref('alphabet/$letter.json');
+      final bytes = await ref.getData();
+
+      if (bytes != null) {
+        final jsonString = utf8.decode(bytes);
+        final decodedJson = jsonDecode(jsonString) as List<dynamic>;
+
+        _templateCache[letter] = decodedJson;
+
+        if (mounted) {
+          setState(() {
+            _template = decodedJson;
+          });
+        }
+        debugPrint("Successfully loaded cloud gesture template for $letter");
+      }
     } catch (e) {
-      debugPrint("Gesture resource profile issue: ${widget.targetLetter}");
+      debugPrint("Error loading cloud gesture template for $letter: $e");
     }
   }
 
@@ -372,7 +386,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     return frames;
   }
 
-bool _isValidGestureShape(
+  bool _isValidGestureShape(
       List<Float32List> frames, String letter, double scaleFactor) {
     if (frames.length < 5) return false;
 
@@ -381,25 +395,21 @@ bool _isValidGestureShape(
     final int yIdx = targetLm * 3 + 1;
 
     if (letter == 'J') {
-      // FIX 1: Dynamically find the true highest (minY) and lowest (maxY) points
       double minY = frames.first[yIdx];
       double maxY = frames.first[yIdx];
       int maxIndex = 0;
 
       for (int i = 0; i < frames.length; i++) {
         if (frames[i][yIdx] < minY) {
-          minY = frames[i][yIdx]; // Highest physical point
+          minY = frames[i][yIdx];
         }
         if (frames[i][yIdx] > maxY) {
-          maxY = frames[i][yIdx]; // Lowest physical point
+          maxY = frames[i][yIdx];
           maxIndex = i;
         }
       }
 
-      // Calculate distance using the true top and bottom of the stroke
       double downwardDistance = (maxY - minY) * scaleFactor;
-      // Relaxed from 0.04 — was rejecting normal-sized downward strokes,
-      // especially from users who draw a smaller/tighter J.
       const double minDownwardDistance = 0.025;
       debugPrint("[DBG][shape][J] downwardDistance=$downwardDistance "
           "threshold=$minDownwardDistance");
@@ -418,7 +428,6 @@ bool _isValidGestureShape(
         }
       }
 
-      // Relaxed from 0.015 — was rejecting a shallow-but-real hook.
       const double minHookX = 0.01;
       if (maxHookX < minHookX) {
         double minX = frames.first[xIdx];
@@ -437,14 +446,6 @@ bool _isValidGestureShape(
         return false;
       }
 
-      // NEW: reject zigzag motion (a Z performed on the J screen was
-      // scoring as J because the checks above only ask "was there *some*
-      // vertical spread and *some* horizontal excursion" — a Z's zigzag
-      // easily produces both. A real J's hook is a single, mostly
-      // one-directional curl after the lowest point, not a back-and-forth
-      // sweep. Count x-direction reversals in the hook segment the same
-      // way _isValidGestureShape('Z', ...) counts them for Z, and reject
-      // if it looks like a zigzag instead of a single curl.
       int hookReversals = 0;
       int hookDir = 0;
       double hookLastPeakX = frames[maxIndex][xIdx];
@@ -505,8 +506,6 @@ bool _isValidGestureShape(
       int currentDir = 0;
       double lastPeakX = smoothedX[0];
 
-      // Relaxed from 0.045 back down — that was tuned to kill tracking
-      // jitter but ended up eating real, moderately-paced Z strokes too.
       const double reversalThreshold = 0.03;
 
       for (int i = 1; i < smoothedX.length; i++) {
@@ -576,10 +575,6 @@ bool _isValidGestureShape(
         final double elapsedSeconds =
             now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
 
-        // DEBUG: raw hand-detection throughput. If framesSoFar stays far
-        // below targetFrames well past 2-3 seconds, the camera/landmarker
-        // pipeline itself is the bottleneck (slow delegate, camera-graph
-        // churn, etc.) — not the gesture logic further down.
         debugPrint("[DBG][capture] framesSoFar=${_recordingFrames.length} "
             "targetFrames=$_targetSequenceLength "
             "elapsedSeconds=${elapsedSeconds.toStringAsFixed(2)}");
@@ -601,10 +596,7 @@ bool _isValidGestureShape(
           if (timedOut && _recordingFrames.length < _targetSequenceLength) {
             debugPrint(
                 "[DBG][capture] TIMED OUT with only ${_recordingFrames.length} "
-                "of $_targetSequenceLength frames — hand-detection rate is too "
-                "low on this device to hit the target within "
-                "${_maxCaptureDurationSeconds}s. The resampled sequence fed "
-                "to the model will be a poor match for its training data.");
+                "of $_targetSequenceLength frames");
           }
           _isRecordingMotion = false;
           _showMotionResult = true;
@@ -636,8 +628,6 @@ bool _isValidGestureShape(
                 _isValidGestureShape(activeFrames, letterUpper, scaleFactor);
 
             if (!validShape) {
-              // _isValidGestureShape already printed exactly which measured
-              // value failed and against what threshold (see [DBG][shape]).
               finalScore = 0.0;
             } else if (_dynamicSignRecognizer != null && _dynamicModelReady) {
               try {

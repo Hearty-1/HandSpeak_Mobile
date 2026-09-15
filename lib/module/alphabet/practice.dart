@@ -8,6 +8,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart'; // Added Firebase Cloud Storage
 import 'recognizer.dart';
 
 /// Dynamic theme visual mapping for thematic icons & graphics
@@ -86,6 +87,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   final String _alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   int _currentIdx = 0;
   String get targetLetter => _alphabet[_currentIdx];
+
+  // In-memory template cache across letter cycles
+  static final Map<String, List<dynamic>> _templateCache = {};
 
   // J and Z are moving signs -- a single static template can't represent
   // them, so they're recognized by a small dedicated LSTM/TFLite model
@@ -167,14 +171,53 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     }
   }
 
+  /// Loads template with in-memory caching and Firebase Cloud Storage fallback
   Future<void> _loadGestureLibrary(String letter) async {
+    // 1. Return cached template immediately if present
+    if (_templateCache.containsKey(letter)) {
+      if (mounted) {
+        setState(() {
+          _template = _templateCache[letter];
+        });
+      }
+      return;
+    }
+
+    String? jsonString;
+
+    // 2. Fetch from Firebase Cloud Storage
     try {
-      String jsonString = await rootBundle.loadString('assets/alphabet/$letter.json');
-      setState(() {
-        _template = jsonDecode(jsonString);
-      });
+      final storageRef = FirebaseStorage.instance.ref().child('alphabet/$letter.json');
+      final data = await storageRef.getData();
+      if (data != null) {
+        jsonString = utf8.decode(data);
+      }
     } catch (e) {
-      debugPrint("Could not find gesture resource profile for: $letter");
+      debugPrint("Firebase Storage fetch failed for $letter: $e");
+    }
+
+    // 3. Fallback to local rootBundle asset if Cloud Storage fetch failed
+    if (jsonString == null) {
+      try {
+        jsonString = await rootBundle.loadString('assets/alphabet/$letter.json');
+      } catch (e) {
+        debugPrint("Could not find gesture resource profile for: $letter");
+      }
+    }
+
+    // 4. Decode JSON and store in memory cache
+    if (jsonString != null) {
+      try {
+        final List<dynamic> decodedTemplate = jsonDecode(jsonString);
+        _templateCache[letter] = decodedTemplate;
+        if (mounted) {
+          setState(() {
+            _template = decodedTemplate;
+          });
+        }
+      } catch (e) {
+        debugPrint("Failed to decode JSON template for $letter: $e");
+      }
     }
   }
 

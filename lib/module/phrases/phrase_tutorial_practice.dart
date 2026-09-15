@@ -7,6 +7,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import 'phrase_recognizer.dart';
 
@@ -24,6 +25,11 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _landmarkSubscription;
   final PhraseRecognizer _phraseRecognizer = PhraseRecognizer();
+
+  // In-memory cache for gesture template images downloaded from Firebase Storage
+  static final Map<String, Uint8List> _gestureImageCache = {};
+  Uint8List? _gestureImageBytes;
+  bool _isImageLoading = false;
 
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
@@ -53,21 +59,11 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
   void initState() {
     super.initState();
     _fetchConfigAndInitialize();
+    _loadGestureTemplateImage();
   }
 
   /// Normalizes a gesture name into the same "key" shape the web dashboard
-  /// uses for its Firestore doc ids (see normalizeGestureKey() in
-  /// lib/content-service.ts on the web side — keep both in sync).
-  ///
-  /// THIS IS THE ROOT-CAUSE FIX: the web only lowercased the teacher-typed
-  /// symbol when building the doc id (e.g. "Good Afternoon" ->
-  /// "phrases_good afternoon", space kept), while this screen stripped
-  /// spaces from its own hardcoded PascalCase title ("GoodAfternoon" ->
-  /// "phrases_goodafternoon"). Those two ids never matched, so the doc-id
-  /// read below always missed the real, approved document — the trained
-  /// accuracyThreshold on it never reached this screen, which is why
-  /// successThreshold stayed stuck at its 0.0/default fallback no matter
-  /// what was trained on the web.
+  /// uses for its Firestore doc ids (e.g., "Good Afternoon" or "GoodAfternoon" -> "good_afternoon").
   String _normalizeGestureKey(String key) {
     final camelSplit = key.replaceAllMapped(
       RegExp(r'([a-z0-9])([A-Z])'),
@@ -79,6 +75,52 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         .replaceAll(RegExp(r'^_+|_+$'), '');
   }
 
+  /// Fetches template image from Firebase Storage with in-memory caching fallback.
+  Future<void> _loadGestureTemplateImage() async {
+    final normalizedKey = _normalizeGestureKey(widget.targetPhrase);
+
+    // Check in-memory cache first
+    if (_gestureImageCache.containsKey(normalizedKey)) {
+      if (mounted) {
+        setState(() {
+          _gestureImageBytes = _gestureImageCache[normalizedKey];
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isImageLoading = true);
+    }
+
+    try {
+      // Fetch dynamic template image from Firebase Cloud Storage
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('gesture_templates/$normalizedKey.jpg');
+
+      final Uint8List? data = await ref.getData(5 * 1024 * 1024); // 5MB max
+      if (data != null && data.isNotEmpty) {
+        _gestureImageCache[normalizedKey] = data; // Cache in memory
+        if (mounted) {
+          setState(() {
+            _gestureImageBytes = data;
+            _isImageLoading = false;
+          });
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint(
+        "Firebase Storage template download for '$normalizedKey' failed: $e. Using local image asset.",
+      );
+    }
+
+    if (mounted) {
+      setState(() => _isImageLoading = false);
+    }
+  }
+
   /// Fetches gesture configuration directly from `gesture_training_data` collection in Firestore.
   Future<void> _fetchConfigAndInitialize() async {
     try {
@@ -87,17 +129,28 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       }
 
       final normalizedKey = _normalizeGestureKey(widget.targetPhrase);
-      final formattedDocId = "phrases_$normalizedKey";
 
-      DocumentSnapshot doc = await FirebaseFirestore.instance
-          .collection('gesture_training_data')
-          .doc(formattedDocId)
-          .get();
+      final candidateDocIds = [
+        "phrases_$normalizedKey",
+        normalizedKey,
+        "words_$normalizedKey",
+        "letters_$normalizedKey",
+      ];
 
-      if (!doc.exists) {
-        // Fallback 1: match on the normalized key field the web now stamps
-        // on every approved doc (gestureKeyNormalized) — catches docs whose
-        // id wasn't migrated yet (see scripts/migrate-gesture-doc-ids.js).
+      DocumentSnapshot? doc;
+
+      for (final docId in candidateDocIds) {
+        final snap = await FirebaseFirestore.instance
+            .collection('gesture_training_data')
+            .doc(docId)
+            .get();
+        if (snap.exists) {
+          doc = snap;
+          break;
+        }
+      }
+
+      if (doc == null || !doc.exists) {
         final normalizedQuery = await FirebaseFirestore.instance
             .collection('gesture_training_data')
             .where('gestureKeyNormalized', isEqualTo: normalizedKey)
@@ -107,9 +160,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         if (normalizedQuery.docs.isNotEmpty) {
           doc = normalizedQuery.docs.first;
         } else {
-          // Fallback 2 (legacy): exact, case-sensitive match on the raw
-          // gestureKey field, for docs written before gestureKeyNormalized
-          // existed at all.
           final legacyQuery = await FirebaseFirestore.instance
               .collection('gesture_training_data')
               .where('gestureKey', isEqualTo: widget.targetPhrase)
@@ -122,19 +172,13 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         }
       }
 
-      if (doc.exists && doc.data() != null) {
+      if (doc != null && doc.exists && doc.data() != null) {
         final data = doc.data() as Map<String, dynamic>;
 
-        // Fetch sequenceLength if available
         if (data['sequenceLength'] != null) {
           targetSequenceLength = (data['sequenceLength'] as num).toInt();
         }
 
-        // Fetch threshold directly or map from toleranceBounds. Guard
-        // against 0/negative values — a trained threshold should never be
-        // <= 0, so treat that as "not actually configured" and keep the
-        // class default (70.0) rather than let every attempt trivially
-        // pass (or display a nonsensical 0% requirement).
         final num? rawThreshold = data['accuracyThreshold'] as num?;
         final num? rawDistance = data['toleranceBounds'] != null
             ? data['toleranceBounds']['distance'] as num?
@@ -156,8 +200,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
         );
       } else {
         debugPrint(
-          "No Firestore doc found for '${widget.targetPhrase}' (tried id='$formattedDocId', "
-          "gestureKeyNormalized='$normalizedKey'). Using defaults.",
+          "No Firestore doc found for '${widget.targetPhrase}' (normalizedKey='$normalizedKey'). Using defaults.",
         );
       }
     } catch (e) {
@@ -325,6 +368,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       return;
     }
 
+    final String targetNormalized = _normalizeGestureKey(widget.targetPhrase);
+
     String topLabel = "";
     double topScore = -1.0;
     scores.forEach((label, score) {
@@ -334,15 +379,13 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       }
     });
 
-    String targetClean =
-        widget.targetPhrase.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
-    String predictedClean =
-        topLabel.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
+    final String predictedNormalized = _normalizeGestureKey(topLabel);
 
     double? targetRawScore;
     scores.forEach((label, score) {
-      final labelClean = label.replaceAll(" ", "_").replaceAll("-", "_").toLowerCase().trim();
-      if (labelClean == targetClean) targetRawScore = score;
+      if (_normalizeGestureKey(label) == targetNormalized) {
+        targetRawScore = score;
+      }
     });
 
     if (targetRawScore == null) {
@@ -360,8 +403,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
       _currentScore = finalScore;
       _holdProgress = 0.0;
       _debugStatus =
-          "🤖 Top guess: '$predictedClean' (${(topScore * 100).toStringAsFixed(1)}%)\n"
-          "🎯 Target: '$targetClean' — score: ${finalScore.toStringAsFixed(1)}% (Req: ${successThreshold.toStringAsFixed(0)}%)";
+          "🤖 Top guess: '$predictedNormalized' (${(topScore * 100).toStringAsFixed(1)}%)\n"
+          "🎯 Target: '$targetNormalized' — score: ${finalScore.toStringAsFixed(1)}% (Req: ${successThreshold.toStringAsFixed(0)}%)";
     });
 
     if (_currentScore >= successThreshold) {
@@ -510,7 +553,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
     final isDark = theme.brightness == Brightness.dark;
 
     String phraseDisplay = widget.targetPhrase;
-    String formattedPhrase = widget.targetPhrase.replaceAll(" ", "_").toLowerCase();
+    String formattedPhrase = _normalizeGestureKey(widget.targetPhrase);
 
     bool isPassing = _currentScore >= successThreshold;
     final double screenWidth = MediaQuery.of(context).size.width;
@@ -639,14 +682,21 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice> {
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                              "assets/pictures/$formattedPhrase.jpg",
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: theme.dividerColor.withOpacity(0.1),
-                                child: Icon(Icons.broken_image, color: textColor.withOpacity(0.4), size: 50),
-                              ),
-                            ),
+                            child: _isImageLoading
+                                ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                                : _gestureImageBytes != null
+                                    ? Image.memory(
+                                        _gestureImageBytes!,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Image.asset(
+                                        "assets/pictures/$formattedPhrase.jpg",
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => Container(
+                                          color: theme.dividerColor.withOpacity(0.1),
+                                          child: Icon(Icons.broken_image, color: textColor.withOpacity(0.4), size: 50),
+                                        ),
+                                      ),
                           ),
                         ),
                       ),

@@ -5,14 +5,14 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart'; // Added Provider import
+import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import '/module/alphabet/recognizer.dart';
-// Replace with your actual path to SoundProvider
-import '/providers/sound_provider.dart'; 
+import '/providers/sound_provider.dart';
 
 // ==========================================
 // 1. SOLO CHALLENGE SETUP SCREEN
@@ -81,12 +81,12 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: theme.cardColor.withOpacity(isDark ? 0.6 : 0.9),
+            color: theme.cardColor.withValues(alpha: isDark ? 0.6 : 0.9),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: theme.primaryColor.withOpacity(0.15), width: 1.5),
+            border: Border.all(color: theme.primaryColor.withValues(alpha: 0.15), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: theme.primaryColor.withOpacity(0.05),
+                color: theme.primaryColor.withValues(alpha: 0.05),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               )
@@ -102,13 +102,13 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [theme.primaryColor.withOpacity(0.2), theme.primaryColor.withOpacity(0.05)],
+                          colors: [theme.primaryColor.withValues(alpha: 0.2), theme.primaryColor.withValues(alpha: 0.05)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         shape: BoxShape.circle,
                         boxShadow: [
-                          BoxShadow(color: theme.primaryColor.withOpacity(0.2), blurRadius: 12),
+                          BoxShadow(color: theme.primaryColor.withValues(alpha: 0.2), blurRadius: 12),
                         ],
                       ),
                       child: Icon(Icons.bolt_rounded, size: 40, color: theme.primaryColor),
@@ -122,7 +122,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
                     Text(
                       "Level up your sign language mastery at your own rhythm.",
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: textColor.withOpacity(0.65), fontSize: 13, height: 1.3),
+                      style: TextStyle(color: textColor.withValues(alpha: 0.65), fontSize: 13, height: 1.3),
                     ),
                   ],
                 ),
@@ -134,9 +134,9 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 decoration: BoxDecoration(
-                  color: textColor.withOpacity(0.04),
+                  color: textColor.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: textColor.withOpacity(0.1)),
+                  border: Border.all(color: textColor.withValues(alpha: 0.1)),
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
@@ -168,12 +168,12 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: isSelected ? theme.primaryColor : textColor.withOpacity(0.04),
+                          color: isSelected ? theme.primaryColor : textColor.withValues(alpha: 0.04),
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: isSelected
-                              ? [BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                              ? [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))]
                               : null,
-                          border: Border.all(color: isSelected ? theme.primaryColor : textColor.withOpacity(0.1)),
+                          border: Border.all(color: isSelected ? theme.primaryColor : textColor.withValues(alpha: 0.1)),
                         ),
                         child: Text(
                           "$rounds",
@@ -205,12 +205,12 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFFF34B1B) : textColor.withOpacity(0.04),
+                          color: isSelected ? const Color(0xFFF34B1B) : textColor.withValues(alpha: 0.04),
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: isSelected
-                              ? [BoxShadow(color: const Color(0xFFF34B1B).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                              ? [BoxShadow(color: const Color(0xFFF34B1B).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))]
                               : null,
-                          border: Border.all(color: isSelected ? const Color(0xFFF34B1B) : textColor.withOpacity(0.1)),
+                          border: Border.all(color: isSelected ? const Color(0xFFF34B1B) : textColor.withValues(alpha: 0.1)),
                         ),
                         child: Text(
                           label,
@@ -236,7 +236,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
                     colors: [theme.primaryColor, theme.primaryColor.withBlue(220)],
                   ),
                   boxShadow: [
-                    BoxShadow(color: theme.primaryColor.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 5)),
+                    BoxShadow(color: theme.primaryColor.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 5)),
                   ],
                 ),
                 child: ElevatedButton(
@@ -314,6 +314,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
 
   Map<String, String?> _matchingAnswers = {};
   String? _selectedLeftMatch;
+  List<String> _matchingLeftItems = [];
+  List<String> _matchingRightItems = [];
 
   CameraController? _cameraController;
   HandLandmarkerPlugin? _landmarkerPlugin;
@@ -334,6 +336,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
   PhraseRecognizer? _dynamicSignRecognizer;
   bool _dynamicModelReady = false;
 
+  // In-memory caching for loaded gesture template JSONs
+  static final Map<String, List<dynamic>> _templateCache = {};
   List<dynamic>? _template;
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
@@ -422,12 +426,51 @@ class _GameProperScreenState extends State<GameProperScreen> {
     }
   }
 
+  /// Fetches sign gesture landmarks template JSON from Firebase Storage with in-memory caching and asset fallback.
   Future<void> _loadGestureLibrary(String letter) async {
+    final charKey = letter.trim().toUpperCase();
+    if (charKey.isEmpty) return;
+
+    // 1. Check in-memory cache
+    if (_templateCache.containsKey(charKey)) {
+      if (mounted) {
+        setState(() => _template = _templateCache[charKey]);
+      }
+      return;
+    }
+
+    // 2. Fetch template JSON from Firebase Cloud Storage
     try {
-      String jsonString = await rootBundle.loadString('assets/alphabet/${letter.toUpperCase()}.json');
-      if (mounted) setState(() => _template = jsonDecode(jsonString));
-    } catch (_) {
-      if (mounted) setState(() => _template = null);
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('gesture_templates/$charKey.json');
+      final Uint8List? data = await ref.getData(2 * 1024 * 1024); // 2MB max download
+      if (data != null && data.isNotEmpty) {
+        final jsonString = utf8.decode(data);
+        final List<dynamic> decoded = jsonDecode(jsonString);
+        _templateCache[charKey] = decoded;
+        if (mounted) {
+          setState(() => _template = decoded);
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint("Firebase Storage gesture fetch for '$charKey' failed: $e. Falling back to asset bundle.");
+    }
+
+    // 3. Fallback to local app bundle assets
+    try {
+      String jsonString = await rootBundle.loadString('assets/alphabet/$charKey.json');
+      final List<dynamic> decoded = jsonDecode(jsonString);
+      _templateCache[charKey] = decoded;
+      if (mounted) {
+        setState(() => _template = decoded);
+      }
+    } catch (e) {
+      debugPrint("Local asset fallback for gesture template '$charKey' failed: $e");
+      if (mounted) {
+        setState(() => _template = null);
+      }
     }
   }
 
@@ -591,18 +634,20 @@ class _GameProperScreenState extends State<GameProperScreen> {
         if (filtered.isEmpty) filtered = allQuestions;
         filtered.shuffle();
 
-        setState(() {
-          _questions = filtered.take(_totalRounds).toList();
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _questions = filtered.take(_totalRounds).toList();
+            _isLoading = false;
+          });
+        }
 
         _setupCurrentQuestionState();
         _startTimer();
       } else {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -647,11 +692,23 @@ class _GameProperScreenState extends State<GameProperScreen> {
     } else if (type == 'matching_type') {
       _matchingAnswers = {};
       _selectedLeftMatch = null;
+      _matchingLeftItems = [];
+      _matchingRightItems = [];
+
       for (var opt in options) {
         String optStr = opt.toString();
-        String leftItem = optStr.contains('|||') ? optStr.split('|||')[0] : optStr;
-        _matchingAnswers[leftItem] = null;
+        if (optStr.contains('|||')) {
+          var parts = optStr.split('|||');
+          _matchingLeftItems.add(parts[0]);
+          _matchingRightItems.add(parts[1]);
+          _matchingAnswers[parts[0]] = null;
+        } else {
+          _matchingLeftItems.add(optStr);
+          _matchingRightItems.add(optStr);
+          _matchingAnswers[optStr] = null;
+        }
       }
+      _matchingRightItems.shuffle();
     }
   }
 
@@ -733,7 +790,6 @@ class _GameProperScreenState extends State<GameProperScreen> {
       }
     });
 
-    // 🔊 PLAY SOUND EFFECTS FOR ENGAGING FEEDBACK
     final soundProvider = Provider.of<SoundProvider>(context, listen: false);
     if (isCorrect) {
       soundProvider.playCorrect();
@@ -881,14 +937,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
         final bool isCorrect = opt.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
 
         Color tileBg = theme.cardColor;
-        Color borderCol = theme.primaryColor.withOpacity(0.2);
+        Color borderCol = theme.primaryColor.withValues(alpha: 0.2);
 
         if (_hasAnswered) {
           if (isCorrect) {
-            tileBg = const Color(0xFF2E7D32).withOpacity(0.25);
+            tileBg = const Color(0xFF2E7D32).withValues(alpha: 0.25);
             borderCol = const Color(0xFF4CAF50);
           } else if (isSelected) {
-            tileBg = const Color(0xFFC62828).withOpacity(0.25);
+            tileBg = const Color(0xFFC62828).withValues(alpha: 0.25);
             borderCol = const Color(0xFFEF5350);
           }
         }
@@ -909,7 +965,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: borderCol, width: isSelected ? 2.5 : 1.5),
                 boxShadow: isSelected
-                    ? [BoxShadow(color: borderCol.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]
+                    ? [BoxShadow(color: borderCol.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))]
                     : [],
               ),
               child: isImg
@@ -938,14 +994,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
         final bool isCorrect = optStr.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
 
         Color tileBg = theme.cardColor;
-        Color borderCol = theme.primaryColor.withOpacity(0.3);
+        Color borderCol = theme.primaryColor.withValues(alpha: 0.3);
 
         if (_hasAnswered) {
           if (isCorrect) {
-            tileBg = const Color(0xFF2E7D32).withOpacity(0.25);
+            tileBg = const Color(0xFF2E7D32).withValues(alpha: 0.25);
             borderCol = const Color(0xFF4CAF50);
           } else if (isSelected) {
-            tileBg = const Color(0xFFC62828).withOpacity(0.25);
+            tileBg = const Color(0xFFC62828).withValues(alpha: 0.25);
             borderCol = const Color(0xFFEF5350);
           }
         }
@@ -965,7 +1021,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                   color: tileBg,
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(color: borderCol, width: 2),
-                  boxShadow: isSelected ? [BoxShadow(color: borderCol.withOpacity(0.3), blurRadius: 10)] : [],
+                  boxShadow: isSelected ? [BoxShadow(color: borderCol.withValues(alpha: 0.3), blurRadius: 10)] : [],
                 ),
                 alignment: Alignment.center,
                 padding: const EdgeInsets.all(10),
@@ -1003,7 +1059,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                     color: theme.cardColor,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: theme.primaryColor, width: 2),
-                    boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.1), blurRadius: 6)],
+                    boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.1), blurRadius: 6)],
                   ),
                   alignment: Alignment.center,
                   child: Text(char ?? '', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor)),
@@ -1036,7 +1092,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                     decoration: BoxDecoration(
                       color: theme.cardColor,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: theme.primaryColor.withOpacity(0.4), width: 1.5),
+                      border: Border.all(color: theme.primaryColor.withValues(alpha: 0.4), width: 1.5),
                     ),
                     alignment: Alignment.center,
                     child: isImg ? _buildSafeImage(opt, fit: BoxFit.contain) : Text(opt, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
@@ -1155,20 +1211,6 @@ class _GameProperScreenState extends State<GameProperScreen> {
   }
 
   Widget _buildMatchingLayout(Map<String, dynamic> q, ThemeData theme, Color textColor) {
-    final List<dynamic> options = _extractOptions(q);
-    List<String> leftItems = [];
-    List<String> rightItems = [];
-
-    for (var opt in options) {
-      String str = opt.toString();
-      if (str.contains('|||')) {
-        var parts = str.split('|||');
-        leftItems.add(parts[0]); rightItems.add(parts[1]);
-      } else {
-        leftItems.add(str); rightItems.add(str);
-      }
-    }
-
     return Column(
       children: [
         Expanded(
@@ -1176,7 +1218,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
             children: [
               Expanded(
                 child: Column(
-                  children: leftItems.map((item) {
+                  children: _matchingLeftItems.map((item) {
                     bool isSelected = _selectedLeftMatch == item;
                     bool isMatched = _matchingAnswers[item] != null;
                     final bool isImg = _isImageString(item);
@@ -1187,9 +1229,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
                         height: 58, margin: const EdgeInsets.only(bottom: 10),
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: isMatched ? Colors.green.withOpacity(0.2) : (isSelected ? theme.primaryColor.withOpacity(0.3) : theme.cardColor),
+                          color: isMatched ? Colors.green.withValues(alpha: 0.2) : (isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.primaryColor.withOpacity(0.2)), width: 2),
+                          border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.primaryColor.withValues(alpha: 0.2)), width: 2),
                         ),
                         alignment: Alignment.center,
                         child: isImg ? _buildSafeImage(item, fit: BoxFit.contain) : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
@@ -1201,7 +1243,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  children: rightItems.map((item) {
+                  children: _matchingRightItems.map((item) {
                     bool isMatched = _matchingAnswers.containsValue(item);
                     final bool isImg = _isImageString(item);
                     return InkWell(
@@ -1216,9 +1258,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
                         height: 58, margin: const EdgeInsets.only(bottom: 10),
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: isMatched ? Colors.green.withOpacity(0.2) : theme.cardColor,
+                          color: isMatched ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: isMatched ? Colors.green : textColor.withOpacity(0.2), width: 2),
+                          border: Border.all(color: isMatched ? Colors.green : textColor.withValues(alpha: 0.2), width: 2),
                         ),
                         alignment: Alignment.center,
                         child: isImg ? _buildSafeImage(item, fit: BoxFit.contain) : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
@@ -1248,13 +1290,15 @@ class _GameProperScreenState extends State<GameProperScreen> {
         TextField(
           controller: _identificationController,
           enabled: !_hasAnswered,
+          textInputAction: TextInputAction.done,
+          onSubmitted: _hasAnswered ? null : (val) => _submitAnswer(val.trim()),
           style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
           decoration: InputDecoration(
             hintText: "Type your answer...",
             filled: true,
             fillColor: theme.cardColor,
             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: theme.primaryColor.withOpacity(0.3))),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: theme.primaryColor.withValues(alpha: 0.3))),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: theme.primaryColor, width: 2)),
           ),
         ),
@@ -1288,13 +1332,12 @@ class _GameProperScreenState extends State<GameProperScreen> {
                 child: CameraPreview(_cameraController!),
               ),
             ),
-            // Scanner Overlay Guide Frame
             Container(
               height: 230,
               width: double.infinity,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: _currentScore >= successThreshold ? Colors.green : theme.primaryColor.withOpacity(0.6), width: 3),
+                border: Border.all(color: _currentScore >= successThreshold ? Colors.green : theme.primaryColor.withValues(alpha: 0.6), width: 3),
               ),
             ),
           ],
@@ -1304,7 +1347,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
           borderRadius: BorderRadius.circular(10),
           child: LinearProgressIndicator(
             value: _holdProgress,
-            backgroundColor: textColor.withOpacity(0.1),
+            backgroundColor: textColor.withValues(alpha: 0.1),
             valueColor: AlwaysStoppedAnimation<Color>(_currentScore >= successThreshold ? const Color(0xFF4CAF50) : theme.primaryColor),
             minHeight: 10,
           ),
@@ -1326,7 +1369,6 @@ class _GameProperScreenState extends State<GameProperScreen> {
   }
 
   void _showFinalScoreDialog() {
-    // 🔊 PLAY LEVEL COMPLETE SOUND EFFECT
     Provider.of<SoundProvider>(context, listen: false).playLevelComplete();
 
     FirebaseFirestore.instance.collection('users').doc(_currentUserId).set({
@@ -1346,7 +1388,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: const Color(0xFFFFD700).withOpacity(0.15), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: const Color(0xFFFFD700).withValues(alpha: 0.15), shape: BoxShape.circle),
               child: const Icon(Icons.emoji_events_rounded, size: 70, color: Color(0xFFFFD700)),
             ),
             const SizedBox(height: 16),
@@ -1404,7 +1446,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
               child: Container(
                 margin: const EdgeInsets.only(right: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFF34B1B).withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(color: const Color(0xFFF34B1B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
                 child: Text("🔥 $_streak", style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w900, fontSize: 14)),
               ),
             ),
@@ -1426,7 +1468,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                       borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
                         value: (_timeLeft / _maxTime).clamp(0.0, 1.0),
-                        backgroundColor: textColor.withOpacity(0.1),
+                        backgroundColor: textColor.withValues(alpha: 0.1),
                         valueColor: AlwaysStoppedAnimation<Color>(_timeLeft <= 3 ? const Color(0xFFF34B1B) : theme.primaryColor),
                         minHeight: 8,
                       ),
@@ -1439,9 +1481,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
                     decoration: BoxDecoration(
                       color: theme.cardColor,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: theme.primaryColor.withOpacity(0.1)),
+                      border: Border.all(color: theme.primaryColor.withValues(alpha: 0.1)),
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
                       ],
                     ),
                     child: Column(
@@ -1483,8 +1525,6 @@ class _GameProperScreenState extends State<GameProperScreen> {
               ),
             ),
           ),
-
-          // 3. ANIMATED THEMED FEEDBACK OVERLAY
           if (_hasAnswered)
             Positioned(
               left: 0,
@@ -1560,7 +1600,7 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withValues(alpha: 0.18),
               blurRadius: 24,
               offset: const Offset(0, -6),
             ),
@@ -1576,7 +1616,7 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.2),
+                      color: accentColor.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -1607,7 +1647,7 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               fontFamily: 'Inter',
-                              color: theme.colorScheme.onSurface.withOpacity(0.85),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                             ),
                           ),
                         ],
@@ -1625,7 +1665,7 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: accentColor,
                     elevation: 3,
-                    shadowColor: accentColor.withOpacity(0.4),
+                    shadowColor: accentColor.withValues(alpha: 0.4),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),

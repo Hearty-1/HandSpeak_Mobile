@@ -1,6 +1,8 @@
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 
@@ -25,6 +27,85 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> {
   int _score = 0;
   bool _progressSaved = false;
 
+  // In-memory cache for civic template images downloaded from Firebase Storage
+  static final Map<String, Uint8List> _templateImageCache = {};
+  Uint8List? _templateImageBytes;
+  bool _isImageLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTemplateImage();
+  }
+
+  /// Normalizes keys for Firebase Storage document/file paths.
+  String _normalizeKey(String key) {
+    final camelSplit = key.replaceAllMapped(
+      RegExp(r'([a-z0-9])([A-Z])'),
+      (m) => '${m[1]}_${m[2]}',
+    );
+    return camelSplit
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  /// Fetches template image from Firebase Storage with in-memory caching.
+  Future<void> _loadTemplateImage() async {
+    if (widget.questions.isEmpty || _currentStep >= widget.questions.length) return;
+
+    final questionData = widget.questions[_currentStep];
+    final String rawKey = questionData['imageKey'] ??
+        questionData['id'] ??
+        '${widget.category}_$_currentStep';
+    final normalizedKey = _normalizeKey(rawKey);
+
+    // Check in-memory cache first
+    if (_templateImageCache.containsKey(normalizedKey)) {
+      if (mounted) {
+        setState(() {
+          _templateImageBytes = _templateImageCache[normalizedKey];
+          _isImageLoading = false;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isImageLoading = true);
+    }
+
+    try {
+      // Fetch dynamic template image from Firebase Cloud Storage
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('civic_templates/$normalizedKey.jpg');
+
+      final Uint8List? data = await ref.getData(5 * 1024 * 1024); // 5MB max limit
+      if (data != null && data.isNotEmpty) {
+        _templateImageCache[normalizedKey] = data; // Cache in memory
+        if (mounted) {
+          setState(() {
+            _templateImageBytes = data;
+            _isImageLoading = false;
+          });
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint(
+        "Firebase Storage template download for '$normalizedKey' failed: $e. Falling back to default asset.",
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        _templateImageBytes = null;
+        _isImageLoading = false;
+      });
+    }
+  }
+
   void _playSound(String effect) {
     try {
       final soundProvider = Provider.of<SoundProvider>(context, listen: false) as dynamic;
@@ -45,11 +126,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> {
 
     try {
       dynamic service = ProgressService();
-      final levelKey = 'civic_practice_${widget.category.toLowerCase().replaceAll(' ', '_')}';
+      final levelKey = 'civic_practice_${_normalizeKey(widget.category)}';
       final stars = _score == widget.questions.length ? 3 : 2;
       final xpEarned = _score * 15;
 
-      // Try named parameters first, then fallback to positional parameters if service signature differs
       try {
         await service.updateUserProgress(
           levelKey: levelKey,
@@ -71,6 +151,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> {
         _currentStep++;
         _selectedOption = -1;
         _answered = false;
+        _loadTemplateImage();
       } else {
         _currentStep++;
         _saveUserProgress();
@@ -125,7 +206,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
-              child: widget.questions.isEmpty 
+              child: widget.questions.isEmpty
                   ? _buildNoQuestionsView(theme)
                   : _buildPracticeUI(theme),
             ),
@@ -182,6 +263,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> {
     final List<String> options = List<String>.from(questionData['options'] ?? []);
     final int correctIdx = questionData['correctIndex'] ?? 0;
     final textColor = theme.colorScheme.onSurface;
+    final formattedCategory = _normalizeKey(widget.category);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -194,67 +276,109 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> {
             color: textColor.withOpacity(0.7),
           ),
         ),
+        const SizedBox(height: 12),
+        // Template Image Preview Box with In-Memory Caching and Cloud Storage Loading
+        SizedBox(
+          height: 150,
+          width: double.infinity,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: theme.cardColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: _isImageLoading
+                  ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                  : _templateImageBytes != null
+                      ? Image.memory(
+                          _templateImageBytes!,
+                          fit: BoxFit.cover,
+                        )
+                      : Image.asset(
+                          "assets/pictures/$formattedCategory.jpg",
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            color: theme.dividerColor.withOpacity(0.1),
+                            child: Icon(Icons.school_rounded, color: textColor.withOpacity(0.4), size: 48),
+                          ),
+                        ),
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         Text(
           questionData['question'] ?? 'Question',
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.w800,
             color: textColor,
           ),
         ),
-        const SizedBox(height: 24),
-        ...List.generate(options.length, (index) {
-          Color borderClr = theme.dividerColor.withOpacity(0.2);
-          Color fillClr = theme.cardColor;
+        const SizedBox(height: 16),
+        Expanded(
+          child: ListView.builder(
+            itemCount: options.length,
+            physics: const BouncingScrollPhysics(),
+            itemBuilder: (context, index) {
+              Color borderClr = theme.dividerColor.withOpacity(0.2);
+              Color fillClr = theme.cardColor;
 
-          if (_answered) {
-            if (index == correctIdx) {
-              borderClr = Colors.green;
-              fillClr = Colors.green.withOpacity(0.15);
-            } else if (index == _selectedOption) {
-              borderClr = Colors.red;
-              fillClr = Colors.red.withOpacity(0.15);
-            }
-          }
+              if (_answered) {
+                if (index == correctIdx) {
+                  borderClr = Colors.green;
+                  fillClr = Colors.green.withOpacity(0.15);
+                } else if (index == _selectedOption) {
+                  borderClr = Colors.red;
+                  fillClr = Colors.red.withOpacity(0.15);
+                }
+              }
 
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: GestureDetector(
-              onTap: _answered
-                  ? null
-                  : () {
-                      setState(() {
-                        _selectedOption = index;
-                        _answered = true;
-                        if (index == correctIdx) {
-                          _score++;
-                          _playSound('correct');
-                        } else {
-                          _playSound('wrong');
-                        }
-                      });
-                    },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                decoration: BoxDecoration(
-                  color: fillClr,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: borderClr, width: 2),
-                ),
-                child: Text(
-                  options[index],
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: textColor,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: GestureDetector(
+                  onTap: _answered
+                      ? null
+                      : () {
+                          setState(() {
+                            _selectedOption = index;
+                            _answered = true;
+                            if (index == correctIdx) {
+                              _score++;
+                              _playSound('correct');
+                            } else {
+                              _playSound('wrong');
+                            }
+                          });
+                        },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: fillClr,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: borderClr, width: 2),
+                    ),
+                    child: Text(
+                      options[index],
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          );
-        }),
-        const Spacer(),
+              );
+            },
+          ),
+        ),
         if (_answered)
           ElevatedButton(
             style: ElevatedButton.styleFrom(

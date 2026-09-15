@@ -424,30 +424,52 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         _maxTime = roomData['timerDuration'] ?? 15;
         _totalRounds = roomData['totalRounds'] ?? 10;
         _category = (roomData['category'] ?? 'Alphabet').toString();
+
+        if (roomData.containsKey('questions') && (roomData['questions'] as List).isNotEmpty) {
+          _questions = List<Map<String, dynamic>>.from(
+            (roomData['questions'] as List).map((e) => Map<String, dynamic>.from(e as Map))
+          );
+        } else if (widget.isHost) {
+          final snapshot = await FirebaseFirestore.instance
+              .collection('activity_questions')
+              .get();
+
+          if (snapshot.docs.isNotEmpty) {
+            var allQuestions = snapshot.docs.map((doc) => doc.data()).toList();
+
+            var filteredQuestions = allQuestions.where((q) {
+              final catVal = _getValueCaseInsensitive(q, ['category', 'topic', 'subject', 'group', 'tag']);
+              final cat = (catVal ?? '').toString().trim().toLowerCase();
+              final targetCat = _category.trim().toLowerCase();
+              return cat == targetCat || cat.contains(targetCat) || targetCat.contains(cat);
+            }).toList();
+
+            if (filteredQuestions.isEmpty) {
+              filteredQuestions = allQuestions;
+            }
+
+            filteredQuestions.shuffle();
+            _questions = filteredQuestions
+                .take(_totalRounds)
+                .map((q) => Map<String, dynamic>.from(q))
+                .toList();
+
+            await roomRef.set({'questions': _questions}, SetOptions(merge: true));
+          }
+        } else {
+          final roomSnap = await roomRef.snapshots().firstWhere((snap) {
+            final data = snap.data();
+            return data != null && data.containsKey('questions') && (data['questions'] as List).isNotEmpty;
+          });
+          final data = roomSnap.data() as Map<String, dynamic>;
+          _questions = List<Map<String, dynamic>>.from(
+            (data['questions'] as List).map((e) => Map<String, dynamic>.from(e as Map))
+          );
+        }
       }
 
-      final snapshot = await FirebaseFirestore.instance
-          .collection('activity_questions')
-          .get();
-
-      if (snapshot.docs.isNotEmpty) {
-        var allQuestions = snapshot.docs.map((doc) => doc.data()).toList();
-
-        var filteredQuestions = allQuestions.where((q) {
-          final catVal = _getValueCaseInsensitive(q, ['category', 'topic', 'subject', 'group', 'tag']);
-          final cat = (catVal ?? '').toString().trim().toLowerCase();
-          final targetCat = _category.trim().toLowerCase();
-          return cat == targetCat || cat.contains(targetCat) || targetCat.contains(cat);
-        }).toList();
-
-        if (filteredQuestions.isEmpty) {
-          filteredQuestions = allQuestions;
-        }
-
-        filteredQuestions.shuffle();
-
+      if (_questions.isNotEmpty) {
         setState(() {
-          _questions = filteredQuestions.take(_totalRounds).toList();
           _isLoading = false;
         });
 
@@ -606,8 +628,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       _hasAnswered = true;
       _selectedAnswer = answer;
     });
-
-    _timer?.cancel();
 
     if (isCorrect) {
       int speedBonus = 0;
@@ -877,7 +897,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
           break;
       }
     } else {
-      // Omit image path if the correct answer is an image resource
       feedbackTitle = _isImageRef(correctAnswer) 
           ? "INCORRECT" 
           : "Incorrect! Answer: $correctAnswer";
@@ -2156,7 +2175,8 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                   stream: FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).collection('players').snapshots(),
                   builder: (context, snapshot) {
                     Map<String, int> answerCounts = {};
-                    if (snapshot.hasData) {
+                    // Only display selected answer counts when the timer reaches 0
+                    if (snapshot.hasData && _timeLeft == 0) {
                       for (var doc in snapshot.data!.docs) {
                         final data = doc.data() as Map<String, dynamic>;
                         final int qIndex = data['currentQuestionIndex'] ?? -1;
