@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'phrase_tutorial_practice.dart'; 
-import 'phrase_tutorial_interface.dart'; // Import the model
+import 'phrase_tutorial_interface.dart';
 
 class PhraseTutorialDetail extends StatefulWidget {
   final List<PhraseLesson> phraseList;
@@ -18,7 +18,7 @@ class PhraseTutorialDetail extends StatefulWidget {
   });
 
   @override
-  _PhraseTutorialDetailState createState() => _PhraseTutorialDetailState();
+  State<PhraseTutorialDetail> createState() => _PhraseTutorialDetailState();
 }
 
 class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
@@ -62,7 +62,6 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
     return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
   }
 
-  // --- SAFE IMAGE HANDLER ---
   Widget _buildImageWidget(String pathOrUrl, {BoxFit fit = BoxFit.cover}) {
     if (pathOrUrl.isEmpty) {
       return const Icon(Icons.image_not_supported, size: 50, color: Colors.grey);
@@ -82,14 +81,26 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
       return Image.network(
         pathOrUrl,
         fit: fit,
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: CircularProgressIndicator(
+              value: loadingProgress.expectedTotalBytes != null
+                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                  : null,
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
       );
     }
 
     return Image.asset(
       pathOrUrl,
       fit: fit,
-      errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+      errorBuilder: (context, error, stackTrace) =>
+          const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
     );
   }
 
@@ -156,7 +167,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
               int totalXp = 0;
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
-                totalXp = data['phraseXp'] ?? 0; 
+                totalXp = data['phraseXp'] ?? data['xp'] ?? 0; 
               }
               return Padding(
                 padding: const EdgeInsets.only(right: 16.0),
@@ -260,7 +271,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(16 * scale),
-                                child: _buildImageWidget(currentSign.imageUrl), // Swapped AssetImage for safe loader
+                                child: _buildImageWidget(currentSign.imageUrl),
                               ),
                             ),
                           ),

@@ -3,9 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sound_provider.dart';
 import '../../services/progress_service.dart';
-
-// Import phrase_activity.dart where PhrasesActivityInterface is defined
-import 'phrase_activity.dart'; 
+import 'phraseAct.dart'; 
 
 class PhraseDifficultySelectionScreen extends StatefulWidget {
   const PhraseDifficultySelectionScreen({super.key});
@@ -38,7 +36,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
-    if (bgColor == 0xFF0F0C29) { // Galaxy
+    if (bgColor == 0xFF0F0C29) {
       return {
         'primary': const Color(0xFFFF2A85), 
         'text': Colors.white,
@@ -46,7 +44,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
         'cardBg': Colors.black54,
       };
     }
-    if (bgColor == 0xFF132A13) { // Enchanted Forest
+    if (bgColor == 0xFF132A13) {
       return {
         'primary': const Color(0xFFFFD700), 
         'text': Colors.white,
@@ -54,7 +52,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
         'cardBg': Colors.black54,
       };
     }
-    if (bgColor == 0xFF001B3A) { // Ocean
+    if (bgColor == 0xFF001B3A) {
       return {
         'primary': const Color(0xFF00E5FF), 
         'text': Colors.white,
@@ -62,7 +60,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
         'cardBg': Colors.black54,
       };
     }
-    if (bgColor == 0xFFE0EAFC) { // Cloudy Sky
+    if (bgColor == 0xFFE0EAFC) {
       return {
         'primary': const Color(0xFF5C7CFA), 
         'text': const Color(0xFF1E1E1E),
@@ -128,7 +126,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('activity_questions')
-                      .where('category', isEqualTo: 'phrases')
+                      .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
                       .snapshots(),
                   builder: (context, questionsSnapshot) {
                     if (userProgressSnapshot.connectionState == ConnectionState.waiting ||
@@ -136,25 +134,24 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                       return Center(child: CircularProgressIndicator(color: themeStyles['primary']));
                     }
 
-                    // 1. Calculate earned stars per difficulty
                     int easyStars = 0;
                     int mediumStars = 0;
                     int hardStars = 0;
 
                     if (userProgressSnapshot.hasData && userProgressSnapshot.data!.exists) {
                       final data = userProgressSnapshot.data!.data() as Map<String, dynamic>?;
-                      if (data != null && data['progress'] != null) {
-                        final progressMap = Map<String, dynamic>.from(data['progress']);
+                      if (data != null) {
+                        final progressMap = Map<String, dynamic>.from(data['progress'] ?? data['activityProgress'] ?? {});
                         
                         progressMap.forEach((key, value) {
-                          if (key.startsWith('phrases_easy_')) easyStars += (value as num).toInt();
-                          if (key.startsWith('phrases_medium_')) mediumStars += (value as num).toInt();
-                          if (key.startsWith('phrases_hard_')) hardStars += (value as num).toInt();
+                          final String keyLower = key.toLowerCase();
+                          if (keyLower.startsWith('phrases_easy_')) easyStars += (value as num).toInt();
+                          if (keyLower.startsWith('phrases_medium_')) mediumStars += (value as num).toInt();
+                          if (keyLower.startsWith('phrases_hard_')) hardStars += (value as num).toInt();
                         });
                       }
                     }
 
-                    // 2. Dynamically calculate total available max stars per difficulty tier
                     final Set<String> easyLevels = {};
                     final Set<String> mediumLevels = {};
                     final Set<String> hardLevels = {};
@@ -164,9 +161,10 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                         final qData = doc.data() as Map<String, dynamic>;
                         final String? levelId = qData['level'];
                         if (levelId != null) {
-                          if (levelId.startsWith('phrases_easy_')) easyLevels.add(levelId);
-                          if (levelId.startsWith('phrases_medium_')) mediumLevels.add(levelId);
-                          if (levelId.startsWith('phrases_hard_')) hardLevels.add(levelId);
+                          final String lvlLower = levelId.toLowerCase();
+                          if (lvlLower.startsWith('phrases_easy_')) easyLevels.add(levelId);
+                          if (lvlLower.startsWith('phrases_medium_')) mediumLevels.add(levelId);
+                          if (lvlLower.startsWith('phrases_hard_')) hardLevels.add(levelId);
                         }
                       }
                     }
@@ -256,9 +254,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
 
     return GestureDetector(
       onTap: isUnlocked
-          ? () {
-              onTap();
-            }
+          ? onTap
           : () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text(lockedMessage ?? "Locked!"), backgroundColor: Colors.redAccent),
@@ -323,7 +319,6 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                       ),
                     ),
                     const SizedBox(height: 12),
-
                     Row(
                       children: [
                         Expanded(

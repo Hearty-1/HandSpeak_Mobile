@@ -140,9 +140,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     }
   }
 
-  // ==========================================
-  // CAMERA & ML PIPELINE INTEGRATION
-  // ==========================================
   Future<void> _initializeCameraPipeline() async {
     if (_isCameraInitialized) return;
     try {
@@ -394,6 +391,17 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     return null;
   }
 
+  bool _isImageRef(String str) {
+    final s = str.trim().toLowerCase();
+    return s.contains('assets/') ||
+        s.startsWith('http') ||
+        s.startsWith('data:image') ||
+        s.endsWith('.jpg') ||
+        s.endsWith('.jpeg') ||
+        s.endsWith('.png') ||
+        s.endsWith('.webp');
+  }
+
   Future<void> _setupGameAndPlayer() async {
     try {
       final roomRef = FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode);
@@ -587,7 +595,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       isCorrect = answer.isNotEmpty && answer.trim().toLowerCase() == correctAnswer;
     }
 
-    // Play Audio Feedback via SoundProvider
     final soundProvider = context.read<SoundProvider>();
     if (isCorrect) {
       soundProvider.playCorrect();
@@ -646,7 +653,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     }
   }
 
-  // Question Property Extractors
   String _extractQuestionText(Map<String, dynamic> q) {
     final val = _getValueCaseInsensitive(q, [
       'question_text', 'questionText', 'question', 'title', 'text', 'prompt', 'item', 'query'
@@ -822,8 +828,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     );
   }
 
-  // --- Dynamic Animated & Theme-Aligned Feedback Components ---
-
   Widget _buildThemedFeedbackBanner(ThemeData theme, Color textColor) {
     if (!_hasAnswered || _questions.isEmpty) return const SizedBox.shrink();
 
@@ -868,12 +872,15 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
           feedbackTitle = "SKY HIGH! +50 pts";
           break;
         case AppThemeMode.defaultWarm:
-        feedbackIcon = Icons.star_rounded;
+          feedbackIcon = Icons.star_rounded;
           feedbackTitle = "SUNNY STRIKE! +50 pts";
           break;
       }
     } else {
-      feedbackTitle = "Incorrect! Answer: $correctAnswer";
+      // Omit image path if the correct answer is an image resource
+      feedbackTitle = _isImageRef(correctAnswer) 
+          ? "INCORRECT" 
+          : "Incorrect! Answer: $correctAnswer";
     }
 
     final glassTheme = theme.extension<GlassThemeExtension>();
@@ -937,8 +944,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       },
     );
   }
-
-  // --- Visual Layout Renderers ---
 
   Widget _buildMultipleChoiceOptions(List<dynamic> options, String correctAnswer, ThemeData theme, Color textColor, Map<String, int> answerCounts) {
     final bool isImageGrid = options.any((opt) {
@@ -1461,7 +1466,9 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
               border: Border.all(color: isCorrect ? theme.colorScheme.primary : theme.colorScheme.error, width: 2),
             ),
             child: Text(
-              isCorrect ? "Correct!" : "Correct Answer: $correctAnswer",
+              isCorrect
+                  ? "Correct!"
+                  : (_isImageRef(correctAnswer) ? "Incorrect!" : "Correct Answer: $correctAnswer"),
               style: TextStyle(
                 color: isCorrect ? theme.colorScheme.primary : theme.colorScheme.error,
                 fontWeight: FontWeight.w900, fontSize: 16,
@@ -1513,7 +1520,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                       ),
               ),
 
-              // Scanning Overlay Viewfinder Corners
               Positioned.fill(
                 child: IgnorePointer(
                   child: Padding(
@@ -2068,7 +2074,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                 const SizedBox(height: 14),
               ],
 
-              // Enhanced Glassmorphic Question Display Card
               Expanded(
                 flex: 4,
                 child: Container(
@@ -2190,7 +2195,6 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   }
 }
 
-// Custom Viewfinder Corner Bracket Painter for Camera Visual Identification
 class ViewfinderCornersPainter extends CustomPainter {
   final Color color;
   final double pulseValue;
@@ -2207,7 +2211,6 @@ class ViewfinderCornersPainter extends CustomPainter {
 
     const cornerLength = 22.0;
 
-    // Top-Left
     canvas.drawPath(
       Path()
         ..moveTo(0, cornerLength)
@@ -2216,7 +2219,6 @@ class ViewfinderCornersPainter extends CustomPainter {
       paint,
     );
 
-    // Top-Right
     canvas.drawPath(
       Path()
         ..moveTo(size.width - cornerLength, 0)
@@ -2225,7 +2227,6 @@ class ViewfinderCornersPainter extends CustomPainter {
       paint,
     );
 
-    // Bottom-Left
     canvas.drawPath(
       Path()
         ..moveTo(0, size.height - cornerLength)
@@ -2234,7 +2235,6 @@ class ViewfinderCornersPainter extends CustomPainter {
       paint,
     );
 
-    // Bottom-Right
     canvas.drawPath(
       Path()
         ..moveTo(size.width - cornerLength, size.height)

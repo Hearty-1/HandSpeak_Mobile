@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:video_player/video_player.dart';
 import 'civic_tutorial_practice.dart'; 
 import 'civic_tutorial_interface.dart'; 
@@ -125,7 +126,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
               int totalXp = 0;
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
-                totalXp = data['civicXp'] ?? 0; 
+                totalXp = data['civicXp'] ?? data['xp'] ?? 0; 
               }
               return Padding(
                 padding: const EdgeInsets.only(right: 16.0),
@@ -380,35 +381,41 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
     _initPlayer();
   }
 
-  void _initPlayer() {
-    if (widget.videoUrl.isEmpty) {
+  Future<void> _initPlayer() async {
+    final rawUrl = widget.videoUrl.trim();
+    if (rawUrl.isEmpty) {
       if (mounted) setState(() => _hasError = true);
       return;
     }
 
     try {
-      if (widget.videoUrl.startsWith('http://') || widget.videoUrl.startsWith('https://')) {
-        _controller = VideoPlayerController.network(widget.videoUrl);
-      } else {
-        _controller = VideoPlayerController.asset(widget.videoUrl);
+      String resolvedUrl = rawUrl;
+
+      // Handle Firebase Storage paths or standard URLs
+      if (!rawUrl.startsWith('http://') &&
+          !rawUrl.startsWith('https://') &&
+          !rawUrl.startsWith('assets/')) {
+        try {
+          resolvedUrl = await FirebaseStorage.instance.ref(rawUrl).getDownloadURL();
+        } catch (e) {
+          debugPrint("Firebase Storage video resolution error: $e");
+        }
       }
 
-      _controller!.initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-          });
-        }
-      }).catchError((error) {
-        debugPrint("Video initialization error: $error");
-        if (mounted) {
-          setState(() {
-            _hasError = true;
-          });
-        }
-      });
-    } catch (e) {
-      debugPrint("Video player setup error: $e");
+      if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
+        _controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
+      } else {
+        _controller = VideoPlayerController.asset(resolvedUrl);
+      }
+
+      await _controller!.initialize();
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (error) {
+      debugPrint("Video initialization error: $error");
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -432,7 +439,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
           children: [
             Icon(Icons.movie_rounded, color: Colors.white54, size: 48),
             SizedBox(height: 8),
-            Text("Video unavailable or invalid URL", style: TextStyle(color: Colors.white70, fontSize: 13)),
+            Text("Video unavailable or invalid path", style: TextStyle(color: Colors.white70, fontSize: 13)),
           ],
         ),
       );

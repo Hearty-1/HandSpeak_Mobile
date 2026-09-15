@@ -181,7 +181,6 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
     final g = bgColor.green;
     final b = bgColor.blue;
 
-    // 1. Cosmic / Galaxy Theme (0x080928)
     if (hex == 0x080928 || (r <= 15 && g <= 15 && b >= 30 && b <= 50)) { 
       return const LinearGradient(
         colors: [Color(0xFF282059), Color(0xFF8750A1)], 
@@ -190,7 +189,6 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
       );
     } 
     
-    // 2. Enchanted Forest Theme (0x1D3D3A)
     if (hex == 0x1D3D3A || ((r >= 20 && r <= 38) && (g >= 50 && g <= 75) && (b >= 45 && b <= 70))) { 
       return const LinearGradient(
         colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)], 
@@ -199,7 +197,6 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
       );
     } 
     
-    // 3. Deep Ocean Theme (0x001B3A)
     if (hex == 0x001B3A || (r <= 5 && (g >= 20 && g <= 35) && (b >= 50 && b <= 65))) { 
       return const LinearGradient(
         colors: [Color(0xFF001B3A), Color(0xFF00305A)], 
@@ -208,7 +205,6 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
       );
     } 
     
-    // 4. Sky / Cloud Theme (0xE0EAFC)
     if (hex == 0xE0EAFC || (r >= 210 && g >= 220 && b >= 240)) { 
       return const LinearGradient(
         colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], 
@@ -217,7 +213,6 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
       );
     }
 
-    // Default Fallback
     return const LinearGradient(
       colors: [Color(0xFF11998E), Color(0xFF38EF7D)], 
       begin: Alignment.topLeft, 
@@ -461,12 +456,22 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     }
   }
 
+  bool _isImageString(String str) {
+    if (str.isEmpty) return false;
+    return str.startsWith('data:image') ||
+        str.startsWith('http://') ||
+        str.startsWith('https://') ||
+        str.startsWith('assets/') ||
+        RegExp(r'\.(png|jpg|jpeg|webp|gif)$', caseSensitive: false).hasMatch(str) ||
+        str.length > 100;
+  }
+
   Widget _buildImageWidget(String pathOrUrl, {BoxFit fit = BoxFit.contain, double size = 24}) {
     if (pathOrUrl.isEmpty) {
       return Icon(Icons.image_not_supported, size: size, color: Colors.grey);
     }
 
-    if (pathOrUrl.startsWith('data:image')) {
+    if (pathOrUrl.startsWith('data:image') || (!pathOrUrl.startsWith('http') && !pathOrUrl.startsWith('assets/') && pathOrUrl.length > 100)) {
       final bytes = _safeBase64Decode(pathOrUrl);
       if (bytes != null) {
         return Image.memory(
@@ -992,7 +997,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     final g = color.green;
     final b = color.blue;
 
-    // 1. Cosmic / Galaxy Theme (0x080928)
     if (hex == 0x080928 || (r <= 15 && g <= 15 && b >= 30 && b <= 50)) { 
       return {
         'icon': feedbackIcon,
@@ -1008,7 +1012,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       };
     }
 
-    // 2. Enchanted Forest Theme (0x1D3D3A)
     if (hex == 0x1D3D3A || ((r >= 20 && r <= 38) && (g >= 50 && g <= 75) && (b >= 45 && b <= 70))) { 
       return {
         'icon': feedbackIcon,
@@ -1024,7 +1027,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       };
     }
 
-    // 3. Deep Ocean Theme (0x001B3A)
     if (hex == 0x001B3A || (r <= 5 && (g >= 20 && g <= 35) && (b >= 50 && b <= 65))) { 
       return {
         'icon': feedbackIcon,
@@ -1040,7 +1042,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       };
     }
 
-    // 4. Sky / Cloud Theme (0xE0EAFC)
     if (hex == 0xE0EAFC || (r >= 210 && g >= 220 && b >= 240)) { 
       return {
         'icon': feedbackIcon,
@@ -1056,7 +1057,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       };
     }
 
-    // Default Fallback
     return {
       'icon': feedbackIcon,
       'title': isCorrect ? "Awesome Job! 🎉" : "Not Quite! 💡",
@@ -1290,9 +1290,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  _isCorrect 
-                                      ? (feedbackData['subtitle'] as String)
-                                      : "${feedbackData['subtitle']} Correct Answer: ${currentQuestion.correctAnswer}",
+                                  feedbackData['subtitle'] as String,
                                   style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
                                 ),
                               ],
@@ -1508,7 +1506,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.dividerColor), width: 2),
                   ),
                   alignment: Alignment.center,
-                  child: item.startsWith('data:image') 
+                  child: _isImageString(item) 
                       ? _buildImageWidget(item, fit: BoxFit.contain, size: 40)
                       : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                 ),
@@ -1533,7 +1531,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     border: Border.all(color: isMatched ? Colors.green : theme.dividerColor, width: 2),
                   ),
                   alignment: Alignment.center,
-                  child: item.startsWith('data:image') 
+                  child: _isImageString(item) 
                       ? _buildImageWidget(item, fit: BoxFit.contain, size: 40)
                       : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                 ),
@@ -1643,10 +1641,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   Widget _buildMultipleChoiceLayout(QuizQuestion currentQuestion, ThemeData theme) {
     final isImageOption = currentQuestion.options.isNotEmpty && 
-                          (currentQuestion.options[0].startsWith('data:image') ||
-                           currentQuestion.options[0].contains('.png') || 
-                           currentQuestion.options[0].contains('.jpg') ||
-                           currentQuestion.options[0].startsWith('http'));
+                          currentQuestion.options.any((opt) => _isImageString(opt));
 
     return GridView.count(
       shrinkWrap: true,
@@ -1666,7 +1661,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
               border: Border.all(color: _getButtonBorderColor(option, currentQuestion.correctAnswer, theme), width: 2),
             ),
             alignment: Alignment.center,
-            child: isImageOption
+            child: _isImageString(option)
                 ? Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: _buildImageWidget(option, fit: BoxFit.contain, size: 24),
@@ -1738,9 +1733,9 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   opacity: isUsed ? 0.3 : 1.0,
                   child: Padding(
                     padding: const EdgeInsets.all(6.0), 
-                    child: optionValue.startsWith('data:image') || optionValue.contains('/') || optionValue.contains('.')
+                    child: _isImageString(optionValue)
                         ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24)
-                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.contain, size: 30),
+                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.png', fit: BoxFit.contain, size: 30),
                   ),
                 ),
               ),

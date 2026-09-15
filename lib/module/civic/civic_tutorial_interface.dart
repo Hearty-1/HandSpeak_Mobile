@@ -29,7 +29,7 @@ class CivicLesson {
       title: json['displayTitle'] ?? json['title'] ?? json['symbol'] ?? json['label'] ?? 'Civic Video Lesson',
       videoUrl: json['videoUrl'] ?? json['video_url'] ?? json['mediaUrl'] ?? '',
       description: json['description'] ?? '',
-      order: json['order'] ?? 0,
+      order: json['order'] ?? json['index'] ?? 0,
       isLocked: json['status'] == 'locked' || json['isLocked'] == true,
       questions: json['questions'] != null
           ? List<Map<String, dynamic>>.from(json['questions'])
@@ -316,24 +316,29 @@ class CivicCard extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.video_library_rounded, color: isLocked ? textColor.withOpacity(0.3) : theme.primaryColor, size: 22),
-                        const SizedBox(width: 12),
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 18, 
-                            fontWeight: FontWeight.w800,
-                            fontFamily: 'Inter',
-                            color: isLocked ? textColor.withOpacity(0.4) : textColor,
-                            letterSpacing: -0.5,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(Icons.video_library_rounded, color: isLocked ? textColor.withOpacity(0.3) : theme.primaryColor, size: 22),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: 18, 
+                                fontWeight: FontWeight.w800,
+                                fontFamily: 'Inter',
+                                color: isLocked ? textColor.withOpacity(0.4) : textColor,
+                                letterSpacing: -0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                           ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 12),
                     isLocked
                         ? Container(
                             padding: const EdgeInsets.all(6),

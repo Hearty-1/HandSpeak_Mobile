@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_application_1/module/alphabet/alphabet_interface.dart'; 
 import 'package:flutter_application_1/module/numbers/numbers_interface.dart'; 
 import '../services/progress_service.dart'; 
+import '../database/database_seeder.dart'; // Database Seeder Import
 import '../module/module.dart'; 
 import '../module/phrases/phrase_interface.dart';
 import '../profile/profile.dart'; 
@@ -182,6 +183,14 @@ class SnedInterafce1 extends StatelessWidget {
                     onTap: () {
                       Navigator.pop(context); 
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                    }, 
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.cloud_upload_rounded, color: theme.primaryColor), 
+                    title: Text('Seed Database', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                    onTap: () {
+                      Navigator.pop(context); 
+                      DatabaseSeeder.seedActivities(context);
                     }, 
                   ),
                   ListTile(
@@ -362,7 +371,6 @@ class SnedInterafce1 extends StatelessWidget {
                         .toList();
                   }
 
-                  // Always backfill missing modules so all 3 categories remain available on Home
                   const defaultCategories = ['alphabet', 'numbers', 'common words'];
                   recentModules = [
                     ...userLoggedModules,

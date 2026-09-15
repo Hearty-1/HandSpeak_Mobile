@@ -1,9 +1,10 @@
-import 'dart:convert'; // Required to decode Base64 images
-import 'dart:ui'; // Required for ImageFilter (Glassmorphism)
+import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'tutorial_practice.dart';
 
 class TutorialSign {
@@ -14,34 +15,33 @@ class TutorialSign {
 }
 
 class TutorialInterface3 extends StatefulWidget {
-  final int initialIndex; 
-  final List<Map<String, dynamic>> dynamicLessons; // Accepts dynamic data from Firestore
-  
+  final int initialIndex;
+  final List<Map<String, dynamic>> dynamicLessons;
+
   const TutorialInterface3({
-    super.key, 
+    super.key,
     this.initialIndex = 0,
     required this.dynamicLessons,
   });
 
   @override
-  _TutorialInterface3State createState() => _TutorialInterface3State();
+  State<TutorialInterface3> createState() => _TutorialInterface3State();
 }
 
 class _TutorialInterface3State extends State<TutorialInterface3> {
   late List<TutorialSign> _alphabetList;
   int _currentIndex = 0;
-  final int _currentStars = 3; 
+  final int _currentStars = 3;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
-    
-    // Map the incoming dynamic lessons into our strongly-typed list
+
     _alphabetList = widget.dynamicLessons.map((lesson) => TutorialSign(
       label: lesson['title'] ?? '',
       gestureKey: lesson['gestureKey'] ?? '',
-      imageUrl: lesson['imageUrl'] ?? '', 
+      imageUrl: lesson['imageUrl'] ?? lesson['imagePath'] ?? '',
     )).toList();
   }
 
@@ -55,7 +55,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Earn 3 stars in Practice mode to unlock the next letter!'),
-            backgroundColor: Theme.of(context).primaryColor, 
+            backgroundColor: Theme.of(context).primaryColor,
           ),
         );
       }
@@ -76,25 +76,87 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
     return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
   }
 
-  // Helper method to handle Base64 images, Network images, or local Assets
-  ImageProvider _getImageProvider(String url) {
-    if (url.startsWith('data:image')) {
-      // Extract the base64 part by splitting at the comma
-      final base64String = url.split(',').last;
-      return MemoryImage(base64Decode(base64String));
-    } else if (url.startsWith('http')) {
-      return NetworkImage(url);
-    } else if (url.isNotEmpty) {
-      return AssetImage(url);
-    } else {
-      // Fallback in case there is no image url provided
-      return const AssetImage('assets/pictures/A.jpg'); // Update with a real placeholder if you have one
+  Future<String> _resolveImageUrl(String path) async {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) return '';
+
+    if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('data:image') ||
+        trimmed.startsWith('assets/')) {
+      return trimmed;
     }
+
+    try {
+      final ref = trimmed.startsWith('gs://')
+          ? FirebaseStorage.instance.refFromURL(trimmed)
+          : FirebaseStorage.instance.ref(trimmed);
+      return await ref.getDownloadURL();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Widget _buildDynamicImage(String path, double width, double height) {
+    return FutureBuilder<String>(
+      future: _resolveImageUrl(path),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            width: width,
+            height: height,
+            color: Colors.black12,
+            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+
+        final resolvedUrl = snapshot.data ?? '';
+
+        if (resolvedUrl.startsWith('data:image')) {
+          try {
+            final base64String = resolvedUrl.split(',').last;
+            return Image.memory(base64Decode(base64String), width: width, height: height, fit: BoxFit.cover);
+          } catch (_) {}
+        } else if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
+          return Image.network(
+            resolvedUrl,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            errorBuilder: (c, o, s) => _buildFallback(width, height),
+          );
+        } else if (resolvedUrl.startsWith('assets/')) {
+          return Image.asset(
+            resolvedUrl,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            errorBuilder: (c, o, s) => _buildFallback(width, height),
+          );
+        }
+
+        return _buildFallback(width, height);
+      },
+    );
+  }
+
+  Widget _buildFallback(double width, double height) {
+    return Image.asset(
+      'assets/pictures/A.jpg',
+      width: width,
+      height: height,
+      fit: BoxFit.cover,
+      errorBuilder: (c, o, s) => Container(
+        width: width,
+        height: height,
+        color: Colors.grey.shade300,
+        child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 40),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // If the list is empty, handle gracefully to prevent crashes
     if (_alphabetList.isEmpty) {
       return const Scaffold(
         body: Center(child: Text("No tutorials loaded.")),
@@ -104,11 +166,11 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final currentSign = _alphabetList[_currentIndex];
-    
+
     const double baseWidth = 393;
-    const double baseHeight = 693; 
+    const double baseHeight = 693;
     const double maxProgressWidth = 295.0;
-    
+
     double progressPercentage = (_currentIndex + 1) / _alphabetList.length;
 
     SystemChrome.setSystemUIOverlayStyle(
@@ -119,12 +181,10 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
     );
 
     return Scaffold(
-      extendBodyBehindAppBar: true, 
+      extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
-      
-      // --- GLASSMORPHISM APPBAR ---
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4), 
+        backgroundColor: theme.cardColor.withOpacity(0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -137,11 +197,11 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
         title: Text(
           'Tutorial',
           style: TextStyle(
-            color: theme.colorScheme.onSurface, 
-            fontSize: 22, 
-            fontFamily: 'Inter', 
-            fontWeight: FontWeight.w800, 
-            letterSpacing: -0.96
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
           ),
         ),
         actions: [
@@ -151,7 +211,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
               int totalXp = 0;
               if (snapshot.hasData && snapshot.data!.exists) {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
-                totalXp = data['alphabetXp'] ?? 0; 
+                totalXp = data['alphabetXp'] ?? data['xp'] ?? 0;
               }
               return Padding(
                 padding: const EdgeInsets.only(right: 16.0),
@@ -183,22 +243,36 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                   ),
                 ),
               );
-            }
+            },
           )
         ],
       ),
       body: Stack(
         children: [
-          // Ambient backgrounds
           Positioned(
-            top: -50, left: -50,
-            child: Container(width: 250, height: 250, decoration: BoxDecoration(shape: BoxShape.circle, color: theme.primaryColor.withOpacity(0.2))),
+            top: -50,
+            left: -50,
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.primaryColor.withOpacity(0.2),
+              ),
+            ),
           ),
           Positioned(
-            bottom: 150, right: -100,
-            child: Container(width: 300, height: 300, decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.secondary.withOpacity(0.15))),
+            bottom: 150,
+            right: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.secondary.withOpacity(0.15),
+              ),
+            ),
           ),
-          
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -217,61 +291,74 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                         clipBehavior: Clip.none,
                         children: [
                           Positioned(
-                            left: 0, right: 0, top: 20 * scale,
+                            left: 0,
+                            right: 0,
+                            top: 20 * scale,
                             child: Center(
                               child: Text(
                                 currentSign.label,
                                 style: TextStyle(
-                                  color: theme.colorScheme.onSurface, 
-                                  fontSize: 52 * scale, 
-                                  fontFamily: 'Inter', 
-                                  fontWeight: FontWeight.w800, 
-                                  letterSpacing: -1.5
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 52 * scale,
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -1.5,
                                 ),
                               ),
                             ),
                           ),
-
-                          // Media Card Showcase Envelope
                           Positioned(
-                            left: 47 * scale, top: 105 * scale,
+                            left: 47 * scale,
+                            top: 105 * scale,
                             child: Container(
-                              width: 299 * scale, height: 276 * scale,
-                              decoration: ShapeDecoration(
-                                image: DecorationImage(
-                                  // Use the _getImageProvider here to decode the Base64 image
-                                  image: _getImageProvider(currentSign.imageUrl), 
-                                  fit: BoxFit.cover
-                                ),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16 * scale)),
-                                shadows: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 15, offset: const Offset(0, 8))],
+                              width: 299 * scale,
+                              height: 276 * scale,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.06),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 8),
+                                  )
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                child: _buildDynamicImage(currentSign.imageUrl, 299 * scale, 276 * scale),
                               ),
                             ),
                           ),
-
-                          // Glassmorphism Progress Metric Indicator Track
                           Positioned(
-                            left: 49 * scale, top: 415 * scale,
+                            left: 49 * scale,
+                            top: 415 * scale,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(25 * scale),
                               child: BackdropFilter(
                                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                                 child: Container(
-                                  width: maxProgressWidth * scale, height: 14 * scale,
+                                  width: maxProgressWidth * scale,
+                                  height: 14 * scale,
                                   decoration: BoxDecoration(
-                                    color: theme.cardColor.withOpacity(0.4), 
+                                    color: theme.cardColor.withOpacity(0.4),
                                     borderRadius: BorderRadius.circular(25 * scale),
-                                    border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1.0)
+                                    border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1.0),
                                   ),
                                   child: Stack(
                                     children: [
                                       AnimatedContainer(
                                         duration: const Duration(milliseconds: 250),
-                                        width: calculatedProgressWidth * scale, height: 14 * scale,
+                                        width: calculatedProgressWidth * scale,
+                                        height: 14 * scale,
                                         decoration: BoxDecoration(
-                                          color: theme.colorScheme.secondary, 
+                                          color: theme.colorScheme.secondary,
                                           borderRadius: BorderRadius.circular(25 * scale),
-                                          boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withOpacity(0.4), blurRadius: 4)]
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: theme.colorScheme.secondary.withOpacity(0.4),
+                                              blurRadius: 4,
+                                            )
+                                          ],
                                         ),
                                       ),
                                     ],
@@ -280,9 +367,9 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                               ),
                             ),
                           ),
-
                           Positioned(
-                            left: 36 * scale, top: 455 * scale,
+                            left: 36 * scale,
+                            top: 455 * scale,
                             child: TextButton.icon(
                               onPressed: _goToPrevious,
                               icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface, size: 18 * scale),
@@ -290,7 +377,8 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                             ),
                           ),
                           Positioned(
-                            right: 36 * scale, top: 455 * scale,
+                            right: 36 * scale,
+                            top: 455 * scale,
                             child: TextButton(
                               onPressed: _goToNext,
                               child: Row(
@@ -302,9 +390,9 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                               ),
                             ),
                           ),
-
                           Positioned(
-                            left: 47 * scale, top: 530 * scale,
+                            left: 47 * scale,
+                            top: 530 * scale,
                             child: Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(25 * scale),
@@ -325,10 +413,9 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                                   elevation: 0,
                                 ),
                                 onPressed: () {
-                                  // Pass the exact gestureKey from Firestore to the practice screen
-                                  String letterToPractice = currentSign.gestureKey; 
+                                  String letterToPractice = currentSign.gestureKey;
                                   Navigator.push(
-                                    context, 
+                                    context,
                                     MaterialPageRoute(
                                       builder: (context) => TutorialPractice(
                                         targetLetter: letterToPractice,

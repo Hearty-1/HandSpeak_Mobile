@@ -1,870 +1,397 @@
-import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:provider/provider.dart';
-import '../../providers/sound_provider.dart';
-import '../../services/progress_service.dart';
-import 'phraseAct.dart' as phrase_act;
+import '/providers/sound_provider.dart';
+import '/services/progress_service.dart';
 
-// ==========================================
-// 1. KIDDIE PROCEDURAL BACKGROUND WIDGET
-// ==========================================
-class ThemedBackground extends StatelessWidget {
-  final Color bgColor;
+class PhraseActivityInterface extends StatefulWidget {
+  final String levelId;
+  final String title;
+  final List<Map<String, dynamic>> initialQuestions;
 
-  const ThemedBackground({super.key, required this.bgColor});
+  const PhraseActivityInterface({
+    super.key,
+    required this.levelId,
+    this.title = 'Phrase Activity',
+    this.initialQuestions = const [],
+  });
 
-  Widget _buildGlowingOrb(double size, Color color, double top, double left) {
-    return Positioned(
-      top: top,
-      left: left,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color.withOpacity(0.6), color.withOpacity(0.0)],
-          ),
-        ),
-      ),
-    );
+  @override
+  State<PhraseActivityInterface> createState() => _PhraseActivityInterfaceState();
+}
+
+class _PhraseActivityInterfaceState extends State<PhraseActivityInterface> {
+  int _currentIndex = 0;
+  String? _selectedOption;
+  bool _isAnswered = false;
+  int _score = 0;
+  int _starsEarned = 0;
+  bool _progressSaved = false;
+
+  List<Map<String, dynamic>> _questions = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPhraseQuestions();
   }
 
-  Widget _buildJellyfish(double top, double left, Color color, double scale) {
-    return Positioned(
-      top: top,
-      left: left,
-      child: Transform.scale(
-        scale: scale,
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 26,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.75),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: [
-                  BoxShadow(color: color.withOpacity(0.4), blurRadius: 8, spreadRadius: 2)
-                ],
-              ),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(4, (index) => Container(
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                width: 3,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              )),
-            )
-          ],
-        ),
-      ),
-    );
+  bool _isPhraseCategory(dynamic categoryValue) {
+    if (categoryValue == null) return false;
+    final cat = categoryValue.toString().trim().toLowerCase();
+    return cat == 'phrase' || cat == 'phrases';
   }
 
-  Widget _buildCuteFish(double top, double left, Color color, double scale, bool flip) {
-    return Positioned(
-      top: top,
-      left: left,
-      child: Transform.scale(
-        scaleX: flip ? -scale : scale,
-        scaleY: scale,
-        child: Icon(
-          Icons.set_meal_rounded,
-          color: color.withOpacity(0.8),
-          size: 34,
-        ),
-      ),
-    );
+  Future<void> _loadPhraseQuestions() async {
+    try {
+      ProgressService().trackRecentModule(widget.levelId);
+    } catch (_) {}
+
+    // 1. Process passing initialQuestions with strict alphabet block
+    if (widget.initialQuestions.isNotEmpty) {
+      final sanitized = widget.initialQuestions.where((q) {
+        final cat = (q['category'] ?? '').toString().trim().toLowerCase();
+        final lvl = (q['level'] ?? '').toString().trim().toLowerCase();
+        
+        if (cat.contains('alphabet') || lvl.contains('alphabet')) return false;
+        return _isPhraseCategory(cat);
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _questions = List.from(sanitized);
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    // 2. Direct Firestore fetch enforcing phrase category & level matching
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('activity_questions')
+          .where('level', isEqualTo: widget.levelId)
+          .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
+          .get();
+
+      List<Map<String, dynamic>> loadedQuestions = [];
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final cat = (data['category'] ?? '').toString().trim().toLowerCase();
+        final lvl = (data['level'] ?? '').toString().trim().toLowerCase();
+
+        // Guard against any cross-category alphabet leakage
+        if (cat.contains('alphabet') || lvl.contains('alphabet')) {
+          continue;
+        }
+
+        String? audioUrl;
+        if (data.containsKey('audioStoragePath') && data['audioStoragePath'] != null) {
+          try {
+            audioUrl = await FirebaseStorage.instance
+                .ref(data['audioStoragePath'])
+                .getDownloadURL();
+          } catch (e) {
+            debugPrint("Error fetching Cloud Storage URL: $e");
+          }
+        }
+
+        loadedQuestions.add({
+          'question': data['question'] ?? data['phrase'] ?? data['questionText'] ?? '',
+          'correctAnswer': data['correctAnswer'] ?? data['answer'] ?? '',
+          'options': List<String>.from(data['options'] ?? []),
+          'category': data['category'] ?? 'phrase',
+          'audioUrl': audioUrl,
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _questions = loadedQuestions;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching phrase questions: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
-  Widget _buildStarfish(double top, double left, Color color, double scale, double angle) {
-    return Positioned(
-      top: top,
-      left: left,
-      child: Transform.rotate(
-        angle: angle,
-        child: Transform.scale(
-          scale: scale,
-          child: Icon(
-            Icons.star_rounded,
-            color: color.withOpacity(0.85),
-            size: 38,
-          ),
-        ),
-      ),
-    );
+  void _playSound(String effect) {
+    try {
+      final soundProvider = Provider.of<SoundProvider>(context, listen: false) as dynamic;
+      if (effect.contains('correct')) {
+        soundProvider.playSound('correct');
+      } else {
+        soundProvider.playSound('wrong');
+      }
+    } catch (_) {
+      try {
+        final soundProvider = Provider.of<SoundProvider>(context, listen: false) as dynamic;
+        soundProvider.playSoundEffect(effect);
+      } catch (_) {}
+    }
   }
 
-  Widget _buildMushroom(double top, double left, double scale) {
-    return Positioned(
-      top: top,
-      left: left,
-      child: Transform.scale(
-        scale: scale,
-        child: Column(
-          children: [
-            Container(
-              width: 32,
-              height: 20,
-              decoration: const BoxDecoration(
-                color: Color(0xFFD7B3A1),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  CircleAvatar(radius: 2, backgroundColor: Colors.white),
-                  CircleAvatar(radius: 3, backgroundColor: Colors.white),
-                  CircleAvatar(radius: 2, backgroundColor: Colors.white),
-                ],
-              ),
-            ),
-            Container(
-              width: 14,
-              height: 12,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF2F5F4),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            )
-          ],
-        ),
-      ),
-    );
+  Future<void> _updateProgress(String levelId) async {
+    if (_progressSaved) return;
+    _progressSaved = true;
+
+    try {
+      dynamic service = ProgressService();
+      try {
+        await service.updateUserProgress(
+          levelKey: levelId,
+          stars: _starsEarned,
+          xpEarned: _score * 10,
+          xpCategoryKey: 'phraseXp',
+        );
+      } catch (_) {
+        await service.updateUserProgress(levelId, _starsEarned, _score * 10);
+      }
+    } catch (e) {
+      debugPrint("Error saving phrase activity progress: $e");
+    }
   }
 
-  Widget _buildCloud(double top, double left, double scale) {
-    return Positioned(
-      top: top, 
-      left: left,
-      child: Transform.scale(
-        scale: scale,
-        child: SizedBox(
-          width: 140,
-          height: 80,
-          child: Stack(
-            children: [
-              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
-              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.8)))),
-              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
-            ],
-          ),
-        ),
-      ),
-    );
+  void _handleAnswer(String selectedOption, String correctAnswer, String levelId, int totalQuestions) {
+    if (_isAnswered) return;
+
+    setState(() {
+      _selectedOption = selectedOption;
+      _isAnswered = true;
+
+      if (selectedOption.trim().toLowerCase() == correctAnswer.trim().toLowerCase()) {
+        _score++;
+        _playSound('correct');
+      } else {
+        _playSound('wrong');
+      }
+
+      final double accuracy = totalQuestions > 0 ? _score / totalQuestions : 0.0;
+      if (accuracy >= 0.9) {
+        _starsEarned = 3;
+      } else if (accuracy >= 0.6) {
+        _starsEarned = 2;
+      } else if (accuracy > 0) {
+        _starsEarned = 1;
+      } else {
+        _starsEarned = 0;
+      }
+    });
+
+    if (_currentIndex == totalQuestions - 1) {
+      _updateProgress(levelId);
+    }
   }
 
-  Widget _buildHotAirBalloon(double top, double left, Color balloonColor, double scale) {
-    return Positioned(
-      top: top,
-      left: left,
-      child: Transform.scale(
-        scale: scale,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 52,
-              decoration: BoxDecoration(
-                color: balloonColor,
-                borderRadius: const BorderRadius.all(Radius.elliptical(44, 52)),
-                boxShadow: [
-                  BoxShadow(color: balloonColor.withOpacity(0.4), blurRadius: 8, spreadRadius: 1)
-                ],
-              ),
-              child: Stack(
-                children: [
-                  Center(
-                    child: Container(
-                      width: 16,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.35),
-                        borderRadius: const BorderRadius.all(Radius.elliptical(16, 52)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              width: 12,
-              height: 8,
-              decoration: const BoxDecoration(
-                border: Border(
-                  left: BorderSide(color: Colors.black26, width: 1.5),
-                  right: BorderSide(color: Colors.black26, width: 1.5),
-                ),
-              ),
-            ),
-            Container(
-              width: 14,
-              height: 10,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFB74D),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _nextQuestion() {
+    setState(() {
+      _currentIndex++;
+      _selectedOption = null;
+      _isAnswered = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (bgColor.value == 0xFF080928) { 
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF080928), Color(0xFF282059), Color(0xFF080928)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Stack(
-          children: [
-            _buildGlowingOrb(300, const Color(0xFF8750A1), -50, -100),
-            _buildGlowingOrb(400, const Color(0xFF293088), 400, 200),
-            _buildGlowingOrb(200, const Color(0xFF9F88D8), 700, -50),
-            Positioned(top: 120, right: 30, child: Transform.rotate(angle: -0.5, child: const Icon(Icons.rocket_launch_rounded, color: Color(0xFF8750A1), size: 48))),
-            Positioned(top: 480, left: 25, child: Transform.rotate(angle: 0.3, child: const Icon(Icons.public_rounded, color: Color(0xFF9F88D8), size: 54))),
-            Positioned(top: 720, right: 40, child: const Icon(Icons.brightness_3_rounded, color: Color(0xFF9F88D8), size: 40)),
-            ...List.generate(20, (index) {
-              final random = Random(index);
-              return Positioned(
-                top: random.nextDouble() * 900,
-                left: random.nextDouble() * 380,
-                child: Icon(
-                  Icons.auto_awesome, 
-                  color: const Color(0xFF9F88D8).withOpacity(random.nextDouble() * 0.5 + 0.2),
-                  size: random.nextDouble() * 18 + 10,
-                ),
-              );
-            }),
-          ],
-        ),
-      );
-    }
-    
-    if (bgColor.value == 0xFF1D3D3A) { 
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73), Color(0xFF1D3D3A)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Stack(
-          children: [
-            _buildGlowingOrb(350, const Color(0xFFD7B3A1), -100, 150), 
-            _buildGlowingOrb(250, const Color(0xFFB8D4CF), 300, -100),
-            _buildMushroom(220, 25, 1.2),
-            _buildMushroom(540, 320, 1.1),
-            _buildMushroom(780, 50, 1.3),
-            Positioned(top: 140, right: 40, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFFD7B3A1).withOpacity(0.8), size: 36)),
-            Positioned(top: 410, left: 30, child: Icon(Icons.eco_rounded, color: const Color(0xFFB8D4CF).withOpacity(0.7), size: 32)),
-            ...List.generate(15, (index) {
-              final random = Random(index + 50);
-              return _buildGlowingOrb(
-                random.nextDouble() * 20 + 10, 
-                const Color(0xFFF2F5F4), 
-                random.nextDouble() * 900, 
-                random.nextDouble() * 380
-              );
-            }),
-          ],
-        ),
-      );
-    }
-    
-    if (bgColor.value == 0xFF001B3A) { 
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF005C97), Color(0xFF001B3A)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Stack(
-          children: [
-            _buildGlowingOrb(400, const Color(0xFF00E5FF), -150, -50),
-            _buildGlowingOrb(300, const Color(0xFF363795), 500, 150),
-            _buildCuteFish(130, 40, const Color(0xFFFFD166), 1.2, false),
-            _buildCuteFish(320, 280, const Color(0xFFFF6B6B), 1.1, true),
-            _buildCuteFish(620, 50, const Color(0xFF00E5FF), 1.3, false),
-            _buildJellyfish(230, 290, const Color(0xFFFF70A6), 1.1),
-            _buildJellyfish(510, 30, const Color(0xFF70D6FF), 1.2),
-            _buildStarfish(180, 310, const Color(0xFFFF9F1C), 1.0, 0.4),
-            _buildStarfish(440, 20, const Color(0xFFFFD166), 1.1, -0.3),
-            _buildStarfish(760, 300, const Color(0xFFFF6B6B), 1.2, 0.2),
-            ...List.generate(18, (index) {
-              final random = Random(index + 100);
-              return Positioned(
-                top: random.nextDouble() * 900,
-                left: random.nextDouble() * 380,
-                child: Icon(
-                  Icons.bubble_chart_rounded,
-                  color: Colors.white.withOpacity(random.nextDouble() * 0.35 + 0.15),
-                  size: random.nextDouble() * 30 + 12,
-                ),
-              );
-            }),
-          ],
-        ),
-      );
-    }
-    
-    if (bgColor.value == 0xFFE0EAFC) { 
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFA8C0FF), Color(0xFFE0EAFC), Color(0xFFFFFFFF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: 40, 
-              right: 30, 
-              child: Icon(Icons.wb_sunny_rounded, color: const Color(0xFFFFD700).withOpacity(0.85), size: 70)
-            ),
-            _buildCloud(80, -30, 1.2),
-            _buildCloud(280, 200, 0.9),
-            _buildCloud(520, -40, 1.4),
-            _buildCloud(720, 160, 1.1),
-            Positioned(top: 190, left: 60, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFF5C7CFA).withOpacity(0.5), size: 30)),
-            Positioned(top: 430, right: 50, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFF5C7CFA).withOpacity(0.5), size: 26)),
-          ],
-        ),
-      );
-    }
-    
-    const confettiColors = [
-      Color(0xFFFF6B8B),
-      Color(0xFFFFB74D),
-      Color(0xFF4DD0E1),
-      Color(0xFFAED581),
-      Color(0xFFBA68C8),
-    ];
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
 
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFFFF5D6), Color(0xFFFFE3E8), Color(0xFFE0F7FA)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6),
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios, color: textColor),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          widget.title,
+          style: TextStyle(
+            color: textColor,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        flexibleSpace: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(color: Colors.transparent),
+          ),
         ),
       ),
-      child: Stack(
+      body: Stack(
         children: [
-          _buildGlowingOrb(350, const Color(0xFFFFCA28).withOpacity(0.5), -100, -80),
-          _buildGlowingOrb(300, const Color(0xFFFF80AB).withOpacity(0.35), 450, 180),
-          _buildGlowingOrb(250, const Color(0xFF4DD0E1).withOpacity(0.35), 700, -60),
-
-          Positioned(
-            top: 45,
-            right: 25,
-            child: Icon(Icons.wb_sunny_rounded, color: const Color(0xFFFFB300).withOpacity(0.9), size: 72),
-          ),
-
-          _buildCloud(70, -30, 1.1),
-          _buildCloud(380, 190, 1.0),
-          _buildCloud(680, -20, 1.2),
-
-          _buildHotAirBalloon(150, 260, const Color(0xFFFF6B8B), 1.2),
-          _buildHotAirBalloon(450, 30, const Color(0xFF4DD0E1), 1.0),
-          _buildHotAirBalloon(720, 270, const Color(0xFFFFB74D), 1.1),
-
-          Positioned(
-            top: 280,
-            left: 45,
-            child: Transform.rotate(
-              angle: -0.2,
-              child: Icon(Icons.extension_rounded, color: const Color(0xFFBA68C8).withOpacity(0.7), size: 36),
-            ),
-          ),
-          Positioned(
-            top: 590,
-            right: 40,
-            child: Transform.rotate(
-              angle: 0.3,
-              child: Icon(Icons.pets_rounded, color: const Color(0xFFFF6B8B).withOpacity(0.65), size: 38),
-            ),
-          ),
-          Positioned(
-            top: 190,
-            left: 170,
-            child: Icon(Icons.music_note_rounded, color: const Color(0xFF4DD0E1).withOpacity(0.7), size: 30),
-          ),
-
-          ...List.generate(24, (index) {
-            final random = Random(index + 200);
-            final color = confettiColors[random.nextInt(confettiColors.length)];
-            return Positioned(
-              top: random.nextDouble() * 900,
-              left: random.nextDouble() * 380,
-              child: Transform.rotate(
-                angle: random.nextDouble() * 3.14,
-                child: Icon(
-                  random.nextBool() ? Icons.star_rounded : Icons.auto_awesome_rounded,
-                  color: color.withOpacity(random.nextDouble() * 0.5 + 0.3),
-                  size: random.nextDouble() * 18 + 10,
-                ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  theme.scaffoldBackgroundColor,
+                  theme.primaryColor.withOpacity(0.08),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
-            );
-          }),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _questions.isEmpty
+                      ? _buildEmptyState(theme)
+                      : (_currentIndex >= _questions.length
+                          ? _buildCompletionView(theme)
+                          : _buildQuestionUI(theme)),
+            ),
+          ),
         ],
       ),
     );
   }
-}
 
-// ==========================================
-// 2. BACKEND-CONNECTED PHRASES ACTIVITY INTERFACE
-// ==========================================
-class PhrasesActivityInterface extends StatefulWidget {
-  final String difficulty;
-
-  const PhrasesActivityInterface({super.key, required this.difficulty});
-
-  @override
-  State<PhrasesActivityInterface> createState() => _PhrasesActivityInterfaceState();
-}
-
-class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
-  late dynamic _soundProvider;
-
-  @override
-  void initState() {
-    super.initState(); 
-    try {
-      Provider.of<SoundProvider>(context, listen: false).playBgm(); 
-    } catch (_) {}
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    try {
-      _soundProvider = Provider.of<SoundProvider>(context, listen: false);
-    } catch (_) {}
-  }
-
-  @override
-  void dispose() {
-    try {
-      _soundProvider.stopBgm();
-    } catch (_) {}
-    super.dispose(); 
-  }
-
-  Map<String, dynamic> _getThemeStyles(BuildContext context) {
-    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
-
-    if (bgColor == 0xFF080928) { // Space Theme
-      const nodeColor = Color(0xFF9F88D8);
-      return {
-        'primary': const Color(0xFF8750A1), 
-        'text': const Color(0xFF9F88D8),
-        'line': nodeColor.withOpacity(0.6),
-        'dividerText': const Color(0xFF9F88D8).withOpacity(0.7),
-        'appBarIcon': const Color(0xFF9F88D8),
-        'cardBg': const Color(0xFF282059),
-        'nodeColor': nodeColor,
-        'nodeLightColor': const Color(0xFFC3B1E1),
-      };
-    }
-    if (bgColor == 0xFF1D3D3A) { // Forest Theme
-      const nodeColor = Color(0xFFB8D4CF);
-      return {
-        'primary': const Color(0xFFD7B3A1), 
-        'text': const Color(0xFFF2F5F4),
-        'line': nodeColor.withOpacity(0.6),
-        'dividerText': const Color(0xFFF2F5F4).withOpacity(0.7),
-        'appBarIcon': const Color(0xFFF2F5F4),
-        'cardBg': const Color(0xFF4D7C73),
-        'nodeColor': nodeColor,
-        'nodeLightColor': const Color(0xFFE2F1ED),
-      };
-    }
-    if (bgColor == 0xFF001B3A) { // Ocean Theme
-      const nodeColor = Color(0xFF00E5FF);
-      return {
-        'primary': const Color(0xFF00E5FF), 
-        'text': Colors.white,
-        'line': nodeColor.withOpacity(0.7),
-        'dividerText': Colors.white70,
-        'appBarIcon': Colors.white,
-        'cardBg': Colors.black54,
-        'nodeColor': nodeColor,
-        'nodeLightColor': const Color(0xFF80F3FF),
-      };
-    }
-    if (bgColor == 0xFFE0EAFC) { // Sky Theme
-      const nodeColor = Color(0xFF5C7CFA);
-      return {
-        'primary': const Color(0xFF5C7CFA), 
-        'text': const Color(0xFF1E1E1E),
-        'line': nodeColor.withOpacity(0.6),
-        'dividerText': Colors.black54,
-        'appBarIcon': const Color(0xFF322144),
-        'cardBg': Colors.white.withOpacity(0.9),
-        'nodeColor': nodeColor,
-        'nodeLightColor': const Color(0xFF91A7FF),
-      };
-    }
-    
-    // Default Theme (Yellow Nodes)
-    const defaultNodeYellow = Color(0xFFFFB300);
-    return {
-      'primary': const Color(0xFFFF6B8B),
-      'text': const Color(0xFF332050),
-      'line': defaultNodeYellow.withOpacity(0.6),
-      'dividerText': const Color(0xFF6E5686),
-      'appBarIcon': const Color(0xFF332050),
-      'cardBg': Colors.white.withOpacity(0.92),
-      'nodeColor': defaultNodeYellow,
-      'nodeLightColor': const Color(0xFFFFE082),
-    };
-  }
-
-  Widget _buildVerticalPathLine(Map<String, dynamic> themeStyles) {
-    final Color nodeColor = themeStyles['nodeColor'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+  Widget _buildEmptyState(ThemeData theme) {
+    final textColor = theme.colorScheme.onSurface;
+    return Center(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(4, (index) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4.0),
-          child: Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: nodeColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(color: nodeColor.withOpacity(0.4), blurRadius: 4, spreadRadius: 1)
-              ],
-            ),
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.assignment_outlined, size: 70, color: textColor.withOpacity(0.4)),
+          const SizedBox(height: 16),
+          Text(
+            'No phrase activity questions available.',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
           ),
-        )),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.primaryColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: Text('Go Back', style: TextStyle(color: theme.colorScheme.onPrimary)),
+          ),
+        ],
       ),
     );
   }
 
-  String get _appBarTitle {
-    if (widget.difficulty.isEmpty) return 'Phrases Activity';
-    return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} Phrases Activity';
+  Widget _buildQuestionUI(ThemeData theme) {
+    final questionData = _questions[_currentIndex];
+    final String question = questionData['question'] ?? '';
+    final List<String> options = List<String>.from(questionData['options'] ?? []);
+    final String correctAnswer = questionData['correctAnswer'] ?? '';
+    final textColor = theme.colorScheme.onSurface;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Question ${_currentIndex + 1}/${_questions.length}',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor.withOpacity(0.7)),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          question,
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: textColor),
+        ),
+        const SizedBox(height: 24),
+        ...options.map((option) {
+          Color borderClr = theme.dividerColor.withOpacity(0.2);
+          Color fillClr = theme.cardColor;
+
+          if (_isAnswered) {
+            if (option.trim().toLowerCase() == correctAnswer.trim().toLowerCase()) {
+              borderClr = Colors.green;
+              fillClr = Colors.green.withOpacity(0.15);
+            } else if (option == _selectedOption) {
+              borderClr = Colors.red;
+              fillClr = Colors.red.withOpacity(0.15);
+            }
+          }
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: GestureDetector(
+              onTap: () => _handleAnswer(option, correctAnswer, widget.levelId, _questions.length),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                decoration: BoxDecoration(
+                  color: fillClr,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderClr, width: 2),
+                ),
+                child: Text(
+                  option,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: textColor),
+                ),
+              ),
+            ),
+          );
+        }),
+        const Spacer(),
+        if (_isAnswered)
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.primaryColor,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            onPressed: _nextQuestion,
+            child: Text(
+              _currentIndex < _questions.length - 1 ? 'Next Question' : 'View Results',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
+            ),
+          ),
+      ],
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final themeStyles = _getThemeStyles(context);
-    final scaffoldBgColor = Theme.of(context).scaffoldBackgroundColor;
-    final String currentDifficulty = widget.difficulty.isNotEmpty ? widget.difficulty.toLowerCase() : 'easy';
-    final Color nodeColor = themeStyles['nodeColor'];
-    final Color nodeLightColor = themeStyles['nodeLightColor'];
+  Widget _buildCompletionView(ThemeData theme) {
+    final textColor = theme.colorScheme.onSurface;
 
-    return Scaffold( 
-      extendBodyBehindAppBar: true, 
-      backgroundColor: scaffoldBgColor, 
-      appBar: AppBar( 
-        backgroundColor: Colors.transparent, 
-        elevation: 0, 
-        leading: IconButton( 
-          icon: Icon(Icons.arrow_back_ios, color: themeStyles['appBarIcon']), 
-          onPressed: () => Navigator.pop(context), 
-        ),
-        title: Text( 
-          _appBarTitle, 
-          style: TextStyle( 
-            color: themeStyles['appBarIcon'], 
-            fontSize: 24, 
-            fontFamily: 'Inter', 
-            fontWeight: FontWeight.w800, 
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.stars_rounded, size: 90, color: Colors.amber),
+          const SizedBox(height: 16),
+          Text(
+            'Activity Completed!',
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: textColor),
           ),
-        ),
-        centerTitle: true, 
-      ),
-      body: Stack( 
-        children: [ 
-          Positioned.fill( 
-            child: ThemedBackground(bgColor: scaffoldBgColor),
+          const SizedBox(height: 12),
+          Text(
+            'Stars Earned: $_starsEarned / 3',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: theme.primaryColor),
           ),
-          SafeArea( 
-            child: StreamBuilder<DocumentSnapshot>( 
-              stream: ProgressService().getUserProgressStream(), 
-              builder: (context, userProgressSnapshot) { 
-                if (userProgressSnapshot.connectionState == ConnectionState.waiting) { 
-                  return Center(child: CircularProgressIndicator(color: nodeColor)); 
-                }
-
-                int totalCategoryStars = 0; 
-                int totalEasyStars = 0;
-                int totalMediumStars = 0;
-                Map<String, dynamic> progressMap = {}; 
-
-                if (userProgressSnapshot.hasData && userProgressSnapshot.data!.exists) { 
-                  final data = userProgressSnapshot.data!.data() as Map<String, dynamic>?; 
-                  if (data != null && data['progress'] != null) { 
-                    progressMap = Map<String, dynamic>.from(data['progress']); 
-                    
-                    final String prefix = 'phrases_${currentDifficulty}_';
-                    progressMap.forEach((key, value) { 
-                      final int stars = (value as num).toInt();
-                      if (key.startsWith(prefix)) totalCategoryStars += stars;
-                      if (key.startsWith('phrases_easy_')) totalEasyStars += stars;
-                      if (key.startsWith('phrases_medium_')) totalMediumStars += stars;
-                    });
-                  }
-                }
-
-                bool isTierUnlocked = true;
-                if (currentDifficulty == 'medium') {
-                  isTierUnlocked = totalEasyStars >= 5;
-                } else if (currentDifficulty == 'hard') {
-                  isTierUnlocked = totalMediumStars >= 5;
-                }
-
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('activity_questions')
-                      .where('category', isEqualTo: 'phrases')
-                      .snapshots(),
-                  builder: (context, questionsSnapshot) {
-                    if (questionsSnapshot.connectionState == ConnectionState.waiting) {
-                      return Center(child: CircularProgressIndicator(color: nodeColor));
-                    }
-
-                    final docs = questionsSnapshot.data?.docs ?? [];
-
-                    final Map<String, Map<String, dynamic>> levelsMap = {};
-                    for (var doc in docs) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final String? levelId = data['level'];
-                      if (levelId != null && levelId.startsWith('phrases_${currentDifficulty}_')) {
-                        if (!levelsMap.containsKey(levelId)) {
-                          levelsMap[levelId] = {
-                            'levelId': levelId,
-                            'type': data['type'] ?? 'fill_in',
-                            'title': 'Level ${levelId.split('_').last}',
-                          };
-                        }
-                      }
-                    }
-
-                    final levelKeys = levelsMap.keys.toList()..sort();
-
-                    if (levelKeys.isEmpty) {
-                      return Center(
-                        child: Text(
-                          "No questions found for $currentDifficulty mode.",
-                          style: TextStyle(color: themeStyles['text'], fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      );
-                    }
-
-                    final alignments = [
-                      Alignment.center,
-                      Alignment.centerRight,
-                      Alignment.center,
-                      Alignment.centerLeft,
-                    ];
-
-                    return Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          child: Align( 
-                            alignment: Alignment.centerRight, 
-                            child: Container( 
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), 
-                              decoration: BoxDecoration( 
-                                color: themeStyles['cardBg'], 
-                                borderRadius: BorderRadius.circular(20), 
-                                border: Border.all(color: nodeColor, width: 2), 
-                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))], 
-                              ),
-                              child: Row( 
-                                mainAxisSize: MainAxisSize.min, 
-                                children: [ 
-                                  Icon(Icons.star_rounded, color: nodeColor, size: 24), 
-                                  const SizedBox(width: 6), 
-                                  Text( 
-                                    "$totalCategoryStars / ${levelKeys.length * 3} Stars", 
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: themeStyles['text']), 
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        Expanded(
-                          child: ListView.builder( 
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10), 
-                            physics: const BouncingScrollPhysics(), 
-                            itemCount: levelKeys.length, 
-                            itemBuilder: (context, index) { 
-                              final levelId = levelKeys[index];
-                              final levelData = levelsMap[levelId]!;
-                              final String title = levelData['title'];
-
-                              final int earnedStars = progressMap[levelId] ?? 0; 
-                              final String prevLevelId = index > 0 ? levelKeys[index - 1] : '';
-                              final int prevLevelStars = prevLevelId.isNotEmpty ? (progressMap[prevLevelId] ?? 0) : 0;
-
-                              final bool isUnlocked = isTierUnlocked && (index == 0 || prevLevelStars >= 2);
-
-                              final unlockMsg = !isTierUnlocked
-                                  ? 'Earn at least 5 ⭐ in the previous difficulty to unlock!'
-                                  : 'Earn 2 ⭐ in Level $index to unlock!';
-
-                              return Column(
-                                children: [
-                                  Align( 
-                                    alignment: alignments[index % alignments.length], 
-                                    child: Column( 
-                                      mainAxisSize: MainAxisSize.min, 
-                                      children: [ 
-                                        if (isUnlocked) 
-                                          Row( 
-                                            mainAxisSize: MainAxisSize.min, 
-                                            children: List.generate(3, (starIdx) { 
-                                              return Icon( 
-                                                starIdx < earnedStars ? Icons.star_rounded : Icons.star_border_rounded, 
-                                                color: nodeColor, 
-                                                size: 20, 
-                                              );
-                                            }),
-                                          )
-                                        else
-                                          Text( 
-                                            "🔒 Locked", 
-                                            style: TextStyle(color: themeStyles['dividerText'], fontSize: 12, fontWeight: FontWeight.bold), 
-                                          ),
-                                        const SizedBox(height: 8), 
-
-                                        GestureDetector( 
-                                          onTap: isUnlocked 
-                                              ? () {
-                                                  try {
-                                                    _soundProvider.stopBgm();
-                                                  } catch (_) {}
-                                                  Navigator.push(
-                                                    context, 
-                                                    MaterialPageRoute(
-                                                      builder: (context) => phrase_act.PhraseActivityInterface(
-                                                        levelId: levelId,
-                                                        title: title,
-                                                      ),
-                                                    ),
-                                                  ).then((_) {
-                                                    try {
-                                                      _soundProvider.playBgm();
-                                                    } catch (_) {}
-                                                  });
-                                                }
-                                              : () { 
-                                                  ScaffoldMessenger.of(context).showSnackBar( 
-                                                    SnackBar( 
-                                                      content: Text(unlockMsg), 
-                                                      backgroundColor: Colors.redAccent, 
-                                                    ),
-                                                  );
-                                                },
-                                          child: Stack(
-                                            alignment: Alignment.center,
-                                            children: [
-                                              Container(
-                                                width: 104,
-                                                height: 104,
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  color: isUnlocked ? nodeColor.withOpacity(0.3) : Colors.black12,
-                                                ),
-                                              ),
-                                              Container( 
-                                                width: 86, 
-                                                height: 86, 
-                                                decoration: BoxDecoration( 
-                                                  shape: BoxShape.circle, 
-                                                  gradient: LinearGradient(
-                                                    colors: isUnlocked 
-                                                      ? [nodeLightColor, nodeColor]
-                                                      : [Colors.grey.shade400, Colors.grey.shade700],
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                  ),
-                                                  boxShadow: [ 
-                                                    BoxShadow( 
-                                                      color: (isUnlocked ? nodeColor : Colors.black).withOpacity(0.5), 
-                                                      blurRadius: 10, 
-                                                      offset: const Offset(0, 6), 
-                                                    )
-                                                  ],
-                                                  border: Border.all(
-                                                    color: isUnlocked ? Colors.white : Colors.grey.shade400, 
-                                                    width: 4,
-                                                  ), 
-                                                ),
-                                                child: Center(
-                                                  child: Icon( 
-                                                    isUnlocked ? Icons.play_arrow_rounded : Icons.lock_rounded, 
-                                                    color: Colors.white, 
-                                                    size: 46, 
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 10), 
-
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: themeStyles['cardBg'],
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text( 
-                                            title, 
-                                            style: TextStyle( 
-                                              color: isUnlocked ? themeStyles['text'] : themeStyles['dividerText'], 
-                                              fontWeight: FontWeight.w800, 
-                                              fontSize: 14, 
-                                            ),
-                                          ),
-                                        )
-                                      ],
-                                    ),
-                                  ),
-
-                                  if (index < levelKeys.length - 1)
-                                    _buildVerticalPathLine(themeStyles),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
+          const SizedBox(height: 8),
+          Text(
+            'Score: $_score / ${_questions.length}',
+            style: TextStyle(fontSize: 16, color: textColor.withOpacity(0.8)),
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.primaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Finish',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
             ),
           ),
         ],

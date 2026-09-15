@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart'; 
 import 'package:image_picker/image_picker.dart'; 
 
 import '../services/progress_service.dart'; 
@@ -23,6 +24,7 @@ class ProfileScreen extends StatelessWidget {
       return Icon(Icons.person_rounded, size: size * 0.55 * scale, color: theme.primaryColor);
     }
     
+    // Legacy support for Base64 avatars already saved in Firestore
     if (avatarData.startsWith('data:image')) {
       try {
         final String base64String = avatarData.split(',').last;
@@ -32,11 +34,25 @@ class ProfileScreen extends StatelessWidget {
         return Icon(Icons.broken_image_rounded, size: size * 0.55 * scale, color: theme.disabledColor);
       }
     } else {
+      // Cloud Storage Network URL Rendering
       return Image.network(
         avatarData,
         width: size * scale,
         height: size * scale,
         fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: SizedBox(
+              width: size * 0.3 * scale,
+              height: size * 0.3 * scale,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+              ),
+            ),
+          );
+        },
         errorBuilder: (_, __, ___) => Icon(Icons.person_rounded, size: size * 0.55 * scale, color: theme.primaryColor),
       );
     }
@@ -714,7 +730,9 @@ class ProfileScreen extends StatelessWidget {
 
   void _showEditAvatarDialog(BuildContext context, User user, {String? currentAvatar, required double scale}) {
     final ImagePicker picker = ImagePicker();
-    String selectedAvatarData = currentAvatar ?? ""; 
+    Uint8List? pickedImageBytes;
+    String? pickedMimeType;
+    String existingAvatarUrl = currentAvatar ?? ""; 
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
 
@@ -747,16 +765,15 @@ class ProfileScreen extends StatelessWidget {
                   GestureDetector(
                     onTap: () async {
                       try {
-                        final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40);
+                        final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
                         if (image != null) {
                           final bytes = await image.readAsBytes();
-                          final String base64Image = base64Encode(bytes);
-                          
                           String mimeType = 'image/jpeg';
                           if (image.name.toLowerCase().endsWith('.png')) mimeType = 'image/png';
-                          
+
                           setState(() {
-                            selectedAvatarData = 'data:$mimeType;base64,$base64Image';
+                            pickedImageBytes = bytes;
+                            pickedMimeType = mimeType;
                           });
                         }
                       } catch (e) {
@@ -772,9 +789,11 @@ class ProfileScreen extends StatelessWidget {
                         border: Border.all(color: theme.primaryColor, width: 2),
                       ),
                       child: ClipOval(
-                        child: selectedAvatarData.isNotEmpty
-                            ? _buildAvatarImage(context, selectedAvatarData, scale, size: 80)
-                            : Icon(Icons.add_a_photo_rounded, color: textColor.withOpacity(0.4), size: 30 * scale),
+                        child: pickedImageBytes != null
+                            ? Image.memory(pickedImageBytes!, width: 80 * scale, height: 80 * scale, fit: BoxFit.cover)
+                            : existingAvatarUrl.isNotEmpty
+                                ? _buildAvatarImage(context, existingAvatarUrl, scale, size: 80)
+                                : Icon(Icons.add_a_photo_rounded, color: textColor.withOpacity(0.4), size: 30 * scale),
                       ),
                     ),
                   ),
@@ -791,13 +810,33 @@ class ProfileScreen extends StatelessWidget {
                   onPressed: isSaving 
                     ? null 
                     : () async {
+                        if (pickedImageBytes == null) {
+                          Navigator.pop(context);
+                          return;
+                        }
+
                         setState(() => isSaving = true);
                         try {
+                          // 1. Upload picked image binary to Firebase Storage
+                          final storageRef = FirebaseStorage.instance
+                              .ref()
+                              .child('user_avatars')
+                              .child('${user.uid}.jpg');
+
+                          final uploadTask = await storageRef.putData(
+                            pickedImageBytes!,
+                            SettableMetadata(contentType: pickedMimeType ?? 'image/jpeg'),
+                          );
+
+                          // 2. Obtain download URL from Cloud Storage
+                          final String downloadUrl = await uploadTask.ref.getDownloadURL();
+
+                          // 3. Save download URL in Firestore user document
                           await FirebaseFirestore.instance
                               .collection('users')
                               .doc(user.uid)
                               .set({
-                                'avatar': selectedAvatarData, 
+                                'avatar': downloadUrl, 
                               }, SetOptions(merge: true));
 
                           if (context.mounted) {
@@ -807,7 +846,7 @@ class ProfileScreen extends StatelessWidget {
                         } catch (e) {
                           setState(() => isSaving = false);
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error updating avatar: $e"), backgroundColor: Colors.red));
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error uploading avatar: $e"), backgroundColor: Colors.red));
                           }
                         }
                       },

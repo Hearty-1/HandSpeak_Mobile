@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'tutorial_interface_3.dart'; 
+import 'tutorial_interface_3.dart';
 
 class TutorialInterface extends StatefulWidget {
   const TutorialInterface({super.key});
@@ -12,9 +12,8 @@ class TutorialInterface extends StatefulWidget {
 }
 
 class _TutorialInterfaceState extends State<TutorialInterface> {
-  String _searchQuery = ""; 
+  String _searchQuery = "";
 
-  // 1. Define the default local fallback list
   final List<Map<String, dynamic>> _defaultLessons = [
     {'title': 'Aa', 'gestureKey': 'A', 'imageUrl': 'assets/pictures/A.jpg'},
     {'title': 'Bb', 'gestureKey': 'B', 'imageUrl': 'assets/pictures/B.jpg'},
@@ -57,12 +56,10 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
     );
 
     return Scaffold(
-      extendBodyBehindAppBar: true, 
+      extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
-      
-      // --- GLASSMORPHISM APP BAR ---
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4), 
+        backgroundColor: theme.cardColor.withOpacity(0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -75,18 +72,16 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
         title: Text(
           'Tutorial List',
           style: TextStyle(
-            color: theme.colorScheme.onSurface, 
-            fontSize: 22, 
-            fontFamily: 'Inter', 
-            fontWeight: FontWeight.w800, 
-            letterSpacing: -0.96
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
           ),
         ),
       ),
-      
       body: Stack(
         children: [
-          // Ambient Color Blobs
           Positioned(
             top: -50,
             left: -50,
@@ -111,12 +106,9 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
               ),
             ),
           ),
-
-          // Main View Content
           SafeArea(
             child: Column(
               children: [
-                // Glassmorphism Search Bar Container
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 10.0),
                   child: ClipRRect(
@@ -131,14 +123,14 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                           border: Border.all(color: theme.colorScheme.surface.withOpacity(0.7), width: 1.5),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.03), 
-                              blurRadius: 8, 
-                              offset: const Offset(0, 3)
+                              color: Colors.black.withOpacity(0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
                             )
                           ],
                         ),
                         child: TextField(
-                          onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()), 
+                          onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
                           style: TextStyle(color: theme.colorScheme.onSurface),
                           decoration: InputDecoration(
                             hintText: 'Search letter...',
@@ -152,8 +144,6 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                     ),
                   ),
                 ),
-                
-                // Hybrid StreamBuilder
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
@@ -161,10 +151,8 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                         .where('category', isEqualTo: 'alphabet')
                         .snapshots(),
                     builder: (context, snapshot) {
-                      // 2. Start with a clone of the local data
                       List<Map<String, dynamic>> mergedLessons = List.from(_defaultLessons);
 
-                      // 3. If Firestore has data, merge it into our local list
                       if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
                         final firestoreLessons = snapshot.data!.docs.map((doc) {
                           final data = doc.data() as Map<String, dynamic>;
@@ -172,45 +160,45 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                             'id': doc.id,
                             'title': data['displayTitle']?.toString() ?? data['gestureKey']?.toString() ?? '',
                             'gestureKey': data['gestureKey']?.toString() ?? '',
-                            'imageUrl': data['imageUrl']?.toString() ?? '',
+                            'imageUrl': data['imageUrl']?.toString() ?? data['imagePath']?.toString() ?? '',
                           };
                         }).toList();
 
                         for (var fsLesson in firestoreLessons) {
-                          // Check if this letter already exists in our default list
-                          int existingIndex = mergedLessons.indexWhere((loc) => 
-                              loc['gestureKey'].toString().toUpperCase() == fsLesson['gestureKey'].toString().toUpperCase()
-                          );
-                          
+                          int existingIndex = mergedLessons.indexWhere((loc) =>
+                              loc['gestureKey'].toString().toUpperCase() == fsLesson['gestureKey'].toString().toUpperCase());
+
                           if (existingIndex != -1) {
-                            // Replace local version with the cloud version
                             mergedLessons[existingIndex] = fsLesson;
                           } else {
-                            // Add completely new letter to the list
                             mergedLessons.add(fsLesson);
                           }
                         }
                       }
 
-                      // Sort the final merged list alphabetically by gestureKey
                       mergedLessons.sort((a, b) => (a['gestureKey'] as String).compareTo(b['gestureKey'] as String));
 
-                      // 4. Apply local search filter to the merged list
-                      final filteredLessons = mergedLessons.where((lesson) =>
-                          lesson['title']!.toLowerCase().contains(_searchQuery)).toList();
+                      final filteredLessons = mergedLessons
+                          .where((lesson) => lesson['title']!.toLowerCase().contains(_searchQuery))
+                          .toList();
 
                       if (filteredLessons.isEmpty) {
-                         return Center(child: Text("No letters found.", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7))));
+                        return Center(
+                          child: Text(
+                            "No letters found.",
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                          ),
+                        );
                       }
 
                       return ListView.builder(
                         physics: const BouncingScrollPhysics(),
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        itemCount: filteredLessons.length, 
+                        itemCount: filteredLessons.length,
                         itemBuilder: (context, index) {
                           final lesson = filteredLessons[index];
-                          final bool isLocked = false; 
-                          
+                          const bool isLocked = false;
+
                           return LessonCard(
                             title: lesson['title']!,
                             isLocked: isLocked,
@@ -220,7 +208,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                                 MaterialPageRoute(
                                   builder: (context) => TutorialInterface3(
                                     initialIndex: index,
-                                    dynamicLessons: filteredLessons, 
+                                    dynamicLessons: filteredLessons,
                                   ),
                                 ),
                               );
@@ -228,7 +216,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                           );
                         },
                       );
-                    }
+                    },
                   ),
                 ),
               ],
@@ -270,39 +258,38 @@ class LessonCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
                 decoration: BoxDecoration(
-                  color: isLocked 
-                      ? theme.cardColor.withOpacity(0.2) 
-                      : theme.cardColor.withOpacity(0.7),
+                  color: isLocked ? theme.cardColor.withOpacity(0.2) : theme.cardColor.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isLocked 
-                        ? theme.colorScheme.surface.withOpacity(0.4) 
-                        : theme.primaryColor.withOpacity(0.5), 
-                    width: 1.5
+                    color: isLocked ? theme.colorScheme.surface.withOpacity(0.4) : theme.primaryColor.withOpacity(0.5),
+                    width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04), 
-                      blurRadius: 10, 
-                      offset: const Offset(0, 4)
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     )
                   ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Inter',
-                        color: isLocked 
-                            ? theme.colorScheme.onSurface.withOpacity(0.4) 
-                            : theme.colorScheme.onSurface,
-                        letterSpacing: -1.0,
+                    Expanded(
+                      child: Text(
+                        title,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'Inter',
+                          color: isLocked ? theme.colorScheme.onSurface.withOpacity(0.4) : theme.colorScheme.onSurface,
+                          letterSpacing: -1.0,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 12),
                     isLocked
                         ? Container(
                             padding: const EdgeInsets.all(6),
@@ -326,7 +313,7 @@ class LessonCard extends StatelessWidget {
                               ],
                             ),
                             child: Icon(
-                              Icons.play_arrow_rounded, 
+                              Icons.play_arrow_rounded,
                               color: theme.primaryColor,
                               size: 22,
                             ),

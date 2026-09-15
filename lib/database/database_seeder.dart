@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 class DatabaseSeeder {
-  // Helper function generating unique, deterministic IDs based on content and level
+  // Generates unique, deterministic IDs based on content and level
   static String _generateQuestionId(Map<String, dynamic> question) {
     final String category = question['category'] ?? 'cat';
     final String level = question['level'] ?? 'lvl';
@@ -17,19 +19,90 @@ class DatabaseSeeder {
     return '${category}_${level}_$cleanSlug';
   }
 
+  // Uploads local asset binary to Firebase Storage and returns the HTTP download URL
+  static Future<String> _uploadAssetToStorage(String assetPath, Map<String, String> cache) async {
+    if (!assetPath.startsWith('assets/')) return assetPath;
+    if (cache.containsKey(assetPath)) return cache[assetPath]!;
+
+    try {
+      final byteData = await rootBundle.load(assetPath);
+      final bytes = byteData.buffer.asUint8List();
+      final fileName = assetPath.split('/').last;
+
+      final storageRef = FirebaseStorage.instance.ref().child('activity_images/$fileName');
+
+      String contentType = 'image/jpeg';
+      if (fileName.toLowerCase().endsWith('.png')) contentType = 'image/png';
+
+      await storageRef.putData(bytes, SettableMetadata(contentType: contentType));
+      final downloadUrl = await storageRef.getDownloadURL();
+
+      cache[assetPath] = downloadUrl;
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('Failed to upload asset $assetPath: $e');
+      return assetPath;
+    }
+  }
+
+  // Processes and replaces local asset paths with Firebase Storage URLs across all fields
+  static Future<Map<String, dynamic>> _processQuestionAssets(
+    Map<String, dynamic> q,
+    Map<String, String> cache,
+  ) async {
+    final Map<String, dynamic> updated = Map.from(q);
+
+    if (updated.containsKey('image_url') && updated['image_url'] is String) {
+      updated['image_url'] = await _uploadAssetToStorage(updated['image_url'], cache);
+    }
+
+    if (updated.containsKey('main_image') && updated['main_image'] is String) {
+      updated['main_image'] = await _uploadAssetToStorage(updated['main_image'], cache);
+    }
+
+    if (updated.containsKey('correct_answer') && updated['correct_answer'] is String) {
+      updated['correct_answer'] = await _uploadAssetToStorage(updated['correct_answer'], cache);
+    }
+
+    if (updated.containsKey('options') && updated['options'] is List) {
+      final List<dynamic> opts = updated['options'];
+      final List<String> updatedOpts = [];
+      for (var opt in opts) {
+        if (opt is String && opt.startsWith('assets/')) {
+          updatedOpts.add(await _uploadAssetToStorage(opt, cache));
+        } else {
+          updatedOpts.add(opt.toString());
+        }
+      }
+      updated['options'] = updatedOpts;
+    }
+
+    if (updated.containsKey('given_fsl') && updated['given_fsl'] is List) {
+      final List<dynamic> fslList = updated['given_fsl'];
+      final List<Map<String, dynamic>> updatedFsl = [];
+      for (var item in fslList) {
+        final Map<String, dynamic> itemMap = Map<String, dynamic>.from(item);
+        if (itemMap.containsKey('image_url') && itemMap['image_url'] is String) {
+          itemMap['image_url'] = await _uploadAssetToStorage(itemMap['image_url'], cache);
+        }
+        updatedFsl.add(itemMap);
+      }
+      updated['given_fsl'] = updatedFsl;
+    }
+
+    return updated;
+  }
+
   static Future<void> seedActivities(BuildContext context) async {
     final CollectionReference ref = FirebaseFirestore.instance.collection('activity_questions');
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Migrating and seeding questions...")),
+      const SnackBar(content: Text("Uploading images to Storage and seeding questions...")),
     );
 
     try {
-      final List<Map<String, dynamic>> questionsToUpload = [
-        // ==========================================
-        // ALPHABET EASY (4 LEVELS x MAX 5 QUESTIONS)
-        // ==========================================
-        // --- ALPHABET EASY 1 (5 QUESTIONS) ---
+      final List<Map<String, dynamic>> rawQuestions = [
+        // --- ALPHABET EASY 1 ---
         {
           "category": "alphabet", "level": "alphabet_easy_1", "type": "sign_to_text",
           "image_url": "assets/pictures/D.jpg",
@@ -66,7 +139,7 @@ class DatabaseSeeder {
           "correct_answer": "H"
         },
 
-        // --- ALPHABET EASY 2 (5 QUESTIONS) ---
+        // --- ALPHABET EASY 2 ---
         {
           "category": "alphabet", "level": "alphabet_easy_2", "type": "text_to_sign",
           "image_url": "assets/pictures/letter_P.jpg",
@@ -103,7 +176,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/N.jpg"
         },
 
-        // --- ALPHABET EASY 3 (5 QUESTIONS) ---
+        // --- ALPHABET EASY 3 ---
         {
           "category": "alphabet", "level": "alphabet_easy_3", "type": "sign_to_text",
           "image_url": "assets/pictures/I.jpg",
@@ -140,7 +213,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/R.jpg"
         },
 
-        // --- ALPHABET EASY 4 (CONSOLIDATED EXCESS ITEMS - 5 QUESTIONS) ---
+        // --- ALPHABET EASY 4 ---
         {
           "category": "alphabet", "level": "alphabet_easy_4", "type": "sign_to_text",
           "image_url": "assets/pictures/B.jpg",
@@ -177,10 +250,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/K.jpg"
         },
 
-        // ==========================================
-        // ALPHABET MEDIUM (5 LEVELS x MAX 5 QUESTIONS)
-        // ==========================================
-        // --- ALPHABET MEDIUM 1 (5 QUESTIONS) ---
+        // --- ALPHABET MEDIUM 1 ---
         {
           "category": "alphabet", "level": "alphabet_medium_1", "type": "true_false",
           "image_url": "assets/pictures/tf_H.jpg",
@@ -217,7 +287,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/thumbs down.jpg"
         },
 
-        // --- ALPHABET MEDIUM 2 (5 QUESTIONS) ---
+        // --- ALPHABET MEDIUM 2 ---
         {
           "category": "alphabet", "level": "alphabet_medium_2", "type": "true_false",
           "image_url": "assets/pictures/tf_A.jpg",
@@ -254,7 +324,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/thumbs up.jpg"
         },
 
-        // --- ALPHABET MEDIUM 3 (5 QUESTIONS) ---
+        // --- ALPHABET MEDIUM 3 ---
         {
           "category": "alphabet", "level": "alphabet_medium_3", "type": "fill_in",
           "image_url": "assets/pictures/ate.jpg",
@@ -290,7 +360,6 @@ class DatabaseSeeder {
           "options": ["assets/pictures/Y.jpg", "assets/pictures/N.jpg", "assets/pictures/E.jpg", "assets/pictures/O.jpg"],
           "correct_answer": "assets/pictures/N.jpg"
         },
-
         {
           "category": "alphabet", "level": "alphabet_medium_3", "type": "fill_in",
           "image_url": "assets/pictures/tatay.jpg",
@@ -299,7 +368,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/Y.jpg"
         },
 
-        // --- ALPHABET MEDIUM 4 (5 QUESTIONS) ---
+        // --- ALPHABET MEDIUM 4 ---
         {
           "category": "alphabet", "level": "alphabet_medium_4", "type": "spell",
           "image_url": "assets/pictures/spell(1).jpg",
@@ -336,10 +405,7 @@ class DatabaseSeeder {
           "correct_answer": "SALAMAT"
         },
 
-        // ==========================================
-        // ALPHABET HARD (2 LEVELS)
-        // ==========================================
-        // --- ALPHABET HARD 1 (4 QUESTIONS) ---
+        // --- ALPHABET HARD 1 ---
         {
           "category": "alphabet", "level": "alphabet_hard_1", "type": "typing",
           "question_text": "I-type ang mga kulang na letra upang mabuo ang salita:",
@@ -386,7 +452,7 @@ class DatabaseSeeder {
           "options": ["W", "I", "N", "D", "O", "W", "S", "E"]
         },
 
-        // --- ALPHABET HARD 2 (5 QUESTIONS) ---
+        // --- ALPHABET HARD 2 ---
         {
           "category": "alphabet", "level": "alphabet_hard_2", "type": "camera_spell",
           "question_text": "Ipakita ang senyas sa FSL para sa titik na ito.",
@@ -418,10 +484,7 @@ class DatabaseSeeder {
           "correct_answer": "R"
         },
 
-        // ==========================================
-        // NUMBERS EASY (3 LEVELS x MAX 5 QUESTIONS)
-        // ==========================================
-        // --- NUMBERS EASY 1 (5 QUESTIONS) ---
+        // --- NUMBERS EASY 1 ---
         {
           "category": "numbers", "level": "numbers_easy_1", "type": "sign_to_text",
           "image_url": "assets/pictures/5.png",
@@ -458,7 +521,7 @@ class DatabaseSeeder {
           "correct_answer": "4"
         },
 
-        // --- NUMBERS EASY 2 (5 QUESTIONS) ---
+        // --- NUMBERS EASY 2 ---
         {
           "category": "numbers", "level": "numbers_easy_2", "type": "text_to_sign",
           "image_url": "assets/pictures/2.9.png",
@@ -495,7 +558,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/7.png"
         },
 
-        // --- NUMBERS EASY 3 (5 QUESTIONS) ---
+        // --- NUMBERS EASY 3 ---
         {
           "category": "numbers", "level": "numbers_easy_3", "type": "text_to_sign",
           "image_url": "assets/pictures/1.2.png",
@@ -532,10 +595,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/8.png"
         },
 
-        // ==========================================
-        // NUMBERS MEDIUM (4 LEVELS x MAX 5 QUESTIONS)
-        // ==========================================
-        // --- NUMBERS MEDIUM 1 (5 QUESTIONS) ---
+        // --- NUMBERS MEDIUM 1 ---
         {
           "category": "numbers", "level": "numbers_medium_1", "type": "addition",
           "image_url": "assets/pictures/add1.jpg",
@@ -572,7 +632,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/8.png"
         },
 
-        // --- NUMBERS MEDIUM 2 (5 QUESTIONS) ---
+        // --- NUMBERS MEDIUM 2 ---
         {
           "category": "numbers", "level": "numbers_medium_2", "type": "subtraction",
           "image_url": "assets/pictures/sub5.jpg",
@@ -609,7 +669,7 @@ class DatabaseSeeder {
           "correct_answer": "assets/pictures/2.png"
         },
 
-        // --- NUMBERS MEDIUM 3 (5 QUESTIONS) ---
+        // --- NUMBERS MEDIUM 3 ---
         {
           "category": "numbers", "level": "numbers_medium_3", "type": "mixed",
           "question_text": "Kwentahin ang kabuuang snail",
@@ -646,7 +706,7 @@ class DatabaseSeeder {
           "options": ["assets/pictures/7.png", "assets/pictures/6.png", "assets/pictures/8.png", "assets/pictures/5.png"]
         },
 
-        // --- NUMBERS MEDIUM 4 (CONSOLIDATED EXCESS ITEMS - 2 QUESTIONS) ---
+        // --- NUMBERS MEDIUM 4 ---
         {
           "category": "numbers", "level": "numbers_medium_4", "type": "addition",
           "image_url": "assets/pictures/add6.jpg",
@@ -661,9 +721,17 @@ class DatabaseSeeder {
           "image_url": "assets/pictures/4.2.png",
           "options": ["assets/pictures/9.png", "assets/pictures/8.png", "assets/pictures/10.png", "assets/pictures/7.png"]
         }
-      ]; 
+      ];
 
-      // Wipe old/scattered documents
+      final Map<String, String> urlCache = {};
+      final List<Map<String, dynamic>> processedQuestions = [];
+
+      for (var q in rawQuestions) {
+        final processed = await _processQuestionAssets(q, urlCache);
+        processedQuestions.add(processed);
+      }
+
+      // Clear existing docs
       final QuerySnapshot existingDocs = await ref.get();
       final WriteBatch deleteBatch = FirebaseFirestore.instance.batch();
       for (var doc in existingDocs.docs) {
@@ -671,9 +739,9 @@ class DatabaseSeeder {
       }
       await deleteBatch.commit();
 
-      // Upload consolidated documents with unique deterministic IDs
+      // Write updated question documents containing Storage URLs
       final WriteBatch writeBatch = FirebaseFirestore.instance.batch();
-      for (var question in questionsToUpload) {
+      for (var question in processedQuestions) {
         final String docId = _generateQuestionId(question);
         writeBatch.set(ref.doc(docId), question);
       }
@@ -682,7 +750,7 @@ class DatabaseSeeder {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("✅ Database Seeded Safely! All levels fixed to max 5 questions."),
+            content: Text("✅ Images uploaded to Cloud Storage & Firestore updated successfully!"),
             backgroundColor: Colors.green,
           ),
         );
@@ -691,7 +759,7 @@ class DatabaseSeeder {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("❌ Upload failed: $e"),
+            content: Text("❌ Migration failed: $e"),
             backgroundColor: Colors.red,
           ),
         );

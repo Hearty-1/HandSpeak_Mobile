@@ -2,9 +2,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'phrase_tutorial_detail.dart';
 
-// --- DATA MODEL ---
 class PhraseLesson {
   final String id;
   final String title;
@@ -19,16 +19,6 @@ class PhraseLesson {
     required this.order,
     this.isLocked = false,
   });
-
-  factory PhraseLesson.fromJson(Map<String, dynamic> json, String docId) {
-    return PhraseLesson(
-      id: docId,
-      title: json['title'] ?? json['label'] ?? 'Unknown Phrase',
-      imageUrl: json['image_url'] ?? json['imagePath'] ?? '',
-      order: json['order'] ?? 0,
-      isLocked: json['status'] == 'locked',
-    );
-  }
 }
 
 class PhraseTutorialInterface extends StatefulWidget {
@@ -43,8 +33,6 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
   List<PhraseLesson> _filteredLessons = [];
   bool _isLoading = true;
 
-  // --- HYBRID FALLBACK DATA ---
-  // If Firestore fails or is empty, the app will load these original local assets.
   final List<PhraseLesson> _localLessons = [
     PhraseLesson(id: 'local_1', title: 'GoodAfternoon', imageUrl: 'assets/pictures/good_afternoon.jpg', order: 1),
     PhraseLesson(id: 'local_2', title: 'GoodEvening', imageUrl: 'assets/pictures/good_evening.jpg', order: 2),
@@ -68,15 +56,47 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('tutorials')
-          .where('category', isEqualTo: 'phrase')
+          .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
           .get();
 
       if (snapshot.docs.isNotEmpty) {
-        List<PhraseLesson> lessons = snapshot.docs
-            .map((doc) => PhraseLesson.fromJson(doc.data(), doc.id))
-            .toList();
+        List<PhraseLesson> lessons = [];
 
-        // Sort by order so they appear sequentially
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          
+          String rawImagePath = (data['image_url'] ?? 
+                                 data['imageUrl'] ?? 
+                                 data['imageStoragePath'] ?? 
+                                 data['imagePath'] ?? 
+                                 '').toString().trim();
+
+          String resolvedUrl = rawImagePath;
+
+          // Resolve Firebase Storage paths dynamically if not a direct URL or local asset
+          if (rawImagePath.isNotEmpty &&
+              !rawImagePath.startsWith('http://') &&
+              !rawImagePath.startsWith('https://') &&
+              !rawImagePath.startsWith('assets/') &&
+              !rawImagePath.startsWith('data:image')) {
+            try {
+              resolvedUrl = await FirebaseStorage.instance
+                  .ref(rawImagePath)
+                  .getDownloadURL();
+            } catch (e) {
+              debugPrint("Cloud Storage resolution error for $rawImagePath: $e");
+            }
+          }
+
+          lessons.add(PhraseLesson(
+            id: doc.id,
+            title: data['title'] ?? data['label'] ?? data['name'] ?? 'Unknown Phrase',
+            imageUrl: resolvedUrl,
+            order: (data['order'] as num?)?.toInt() ?? 0,
+            isLocked: data['isLocked'] ?? (data['status'] == 'locked'),
+          ));
+        }
+
         lessons.sort((a, b) => a.order.compareTo(b.order));
 
         if (mounted) {
@@ -87,12 +107,10 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
           });
         }
       } else {
-        // If the collection exists but is empty, fallback to local
         _loadLocalFallback();
       }
     } catch (e) {
-      // If there's no internet or a Firestore error, fallback to local
-      debugPrint("Firestore fetch failed: $e. Loading local fallback.");
+      debugPrint("Firestore fetch error: $e. Loading local fallback.");
       _loadLocalFallback();
     }
   }
@@ -171,7 +189,6 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
       
       body: Stack(
         children: [
-          // Background Decorations
           Positioned(
             top: -50, left: -50,
             child: Container(
