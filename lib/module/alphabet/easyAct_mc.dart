@@ -13,6 +13,7 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 
 import '/providers/sound_provider.dart';
 import '/module/alphabet/recognizer.dart'; 
+import '/services/progress_service.dart';
 
 // ==========================================
 // 1. DATA MODELS
@@ -329,6 +330,7 @@ class EasyActMc extends StatefulWidget {
 
 class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMixin {
   final AlphabetQuizApiService _apiService = AlphabetQuizApiService();
+  final ProgressService _progressService = ProgressService();
   
   List<QuizQuestion> _questions = [];
   bool _isLoading = true;
@@ -362,21 +364,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   bool _isCameraInitialized = false;
   bool _isProcessingFrame = false;
-
-  static const double _requiredHoldSeconds = 1.0;
-  DateTime? _staticHoldStartTime;
-
-  bool _isRecordingMotion = false;
-  DateTime? _startRecordingTime;
-  final List<Float32List> _recordingFrames = [];
-  static const Duration _dropoutGracePeriod = Duration(milliseconds: 300);
-  DateTime? _lastHandsSeenTime;
-
-  bool get _isCameraLevel {
-    if (widget.questionType == 'camera_spell') return true;
-    if (widget.levelId.contains('hard') && widget.levelId != 'alphabet_hard_1') return true;
-    return false;
-  }
+  List<Hand> _latestDetectedHands = [];
 
   static const List<String> _dynamicLetters = ['J', 'Z'];
   bool get _isDynamicLetter {
@@ -389,16 +377,22 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   List<dynamic>? _template;
   double _currentScore = 0.0;
-  double _holdProgress = 0.0;
   final double successThreshold = 70.0; 
 
   late AnimationController _feedbackAnimController;
   late Animation<double> _scaleAnimation;
   late Animation<Offset> _slideAnimation;
 
+  bool get _isCameraLevel {
+    if (widget.questionType == 'camera_spell') return true;
+    if (widget.levelId.contains('hard') && widget.levelId != 'alphabet_hard_1') return true;
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
+    _progressService.trackRecentModule('alphabet');
     _loadQuestions();
 
     if (_isCameraLevel) {
@@ -578,106 +572,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   void _onHandsDetected(List<Hand> detectedHands) {
     if (_isAnswered) return;
 
-    final now = DateTime.now();
-
-    if (_isDynamicLetter) {
-      if (!_dynamicModelReady || _dynamicSignRecognizer == null) return;
-
-      final bool handsPresent = detectedHands.isNotEmpty;
-      final targetLetter = _questions[_currentIndex].correctAnswer.toUpperCase();
-
-      if (handsPresent) {
-        _lastHandsSeenTime = now;
-        if (!_isRecordingMotion) {
-           _isRecordingMotion = true;
-           _startRecordingTime = now;
-           _recordingFrames.clear();
-        }
-
-        _recordingFrames.add(_dynamicSignRecognizer!.extractFrameFeatures(detectedHands));
-        final double elapsedSeconds = now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
-
-        if (mounted) {
-          setState(() {
-            _holdProgress = (elapsedSeconds / _requiredHoldSeconds).clamp(0.0, 1.0); 
-          });
-        }
-
-        if (elapsedSeconds >= _requiredHoldSeconds) {
-           _isRecordingMotion = false;
-           final result = _dynamicSignRecognizer!.predictFromRecording(_recordingFrames);
-           _recordingFrames.clear();
-
-           double finalScore = 0.0;
-           if (result != null && result.label.toUpperCase() == targetLetter) {
-               double rawConfidence = result.confidence;
-               double normalizedConfidence = rawConfidence > 1.0 ? rawConfidence : rawConfidence * 100.0;
-               finalScore = normalizedConfidence.clamp(0.0, 100.0);
-           }
-           
-           _currentScore = finalScore;
-           _holdProgress = 0.0;
-
-           if (_currentScore >= successThreshold) {
-             _verifyCurrentAnswer();
-           } else {
-             _startRecordingTime = null;
-           }
-        }
-      } else if (_isRecordingMotion) {
-        final lastSeen = _lastHandsSeenTime;
-        final bool withinGrace = lastSeen != null && now.difference(lastSeen) <= _dropoutGracePeriod;
-        if (!withinGrace) {
-          if (mounted) {
-            setState(() {
-                _isRecordingMotion = false;
-                _startRecordingTime = null;
-                _holdProgress = 0.0;
-            });
-          }
-          _recordingFrames.clear();
-        }
-      }
-      return;
-    }
-
-    if (_template == null) return; 
-
-    if (detectedHands.isNotEmpty) {
-      double highestScoreAcrossAllHands = 0.0;
-      for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
-        final double score = _calculateScore(detectedHands[handIdx].landmarks, _template!);
-        if (score > highestScoreAcrossAllHands) highestScoreAcrossAllHands = score;
-      }
-
-      _currentScore = highestScoreAcrossAllHands;
-
-      if (_currentScore >= successThreshold) {
-        _staticHoldStartTime ??= now;
-        final double holdSecs = now.difference(_staticHoldStartTime!).inMilliseconds / 1000.0;
-        _holdProgress = (holdSecs / _requiredHoldSeconds).clamp(0.0, 1.0);
-
-        if (holdSecs >= _requiredHoldSeconds) {
-          _staticHoldStartTime = null;
-          _holdProgress = 1.0;
-          _verifyCurrentAnswer();
-          return;
-        }
-      } else {
-        _staticHoldStartTime = null;
-        _holdProgress = 0.0;
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
-    } else {
-      _staticHoldStartTime = null;
-      _currentScore = 0.0;
-      _holdProgress = 0.0;
-      if (mounted) {
-        setState(() {});
-      }
+    if (mounted) {
+      setState(() {
+        _latestDetectedHands = detectedHands;
+      });
     }
   }
 
@@ -752,6 +650,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     final q = _questions[index];
     _selectedAnswer = null;
     _isAnswered = false;
+    _latestDetectedHands = [];
+    _currentScore = 0.0;
 
     if (q.type == 'typing') {
       final String target = q.correctAnswer.toUpperCase();
@@ -765,10 +665,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       }
       _shuffledOptions = List<String>.from(q.options)..shuffle();
     } else if (_isCameraLevel && q.type != 'sequence_order' && q.type != 'matching_type') {
-      _isRecordingMotion = false;
-      _staticHoldStartTime = null;
-      _currentScore = 0.0;
-      _holdProgress = 0.0;
       _loadGestureLibrary(q.correctAnswer.toUpperCase());
     } else if (q.type == 'sequence_order') {
       _currentSequence = [];
@@ -846,7 +742,33 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     final q = _questions[_currentIndex];
     bool isCorrect = false;
 
-    if (q.type == 'typing') {
+    if (_isCameraLevel) {
+      if (_latestDetectedHands.isNotEmpty) {
+        if (_isDynamicLetter && _dynamicModelReady && _dynamicSignRecognizer != null) {
+          final targetLetter = q.correctAnswer.toUpperCase();
+          final frame = _dynamicSignRecognizer!.extractFrameFeatures(_latestDetectedHands);
+          final result = _dynamicSignRecognizer!.predictFromRecording([frame]);
+          if (result != null && result.label.toUpperCase() == targetLetter) {
+            double rawConf = result.confidence;
+            _currentScore = (rawConf > 1.0 ? rawConf : rawConf * 100.0).clamp(0.0, 100.0);
+          } else {
+            _currentScore = 0.0;
+          }
+        } else if (_template != null) {
+          double highestScoreAcrossAllHands = 0.0;
+          for (int handIdx = 0; handIdx < _latestDetectedHands.length; handIdx++) {
+            final double score = _calculateScore(_latestDetectedHands[handIdx].landmarks, _template!);
+            if (score > highestScoreAcrossAllHands) highestScoreAcrossAllHands = score;
+          }
+          _currentScore = highestScoreAcrossAllHands;
+        }
+      } else {
+        _currentScore = 0.0;
+      }
+
+      isCorrect = _currentScore >= successThreshold;
+      _selectedAnswer = isCorrect ? q.correctAnswer : null;
+    } else if (q.type == 'typing') {
       final userWord = _userAnswerSlots.join('');
       isCorrect = userWord.toUpperCase() == q.correctAnswer.toUpperCase();
     } else if (q.type == 'fill_in_the_blank') {
@@ -877,11 +799,20 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         }
       }
       isCorrect = allMatched;
-    } else if (_isCameraLevel) {
-      isCorrect = _currentScore >= successThreshold;
-      _selectedAnswer = isCorrect ? q.correctAnswer : null; 
     } else {
       isCorrect = _selectedAnswer == q.correctAnswer;
+    }
+
+    if (_isCameraLevel) {
+      _progressService.recordGestureAttempt(
+        sign: q.correctAnswer,
+        levelId: widget.levelId,
+        questionId: q.id,
+        isCorrect: isCorrect,
+        score: _currentScore,
+        category: 'alphabet',
+        isCameraGesture: true,
+      );
     }
 
     setState(() {
@@ -901,6 +832,13 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   void _showGameOverDialog() {
+    _progressService.recordActivityAttempt(
+      levelId: widget.levelId,
+      category: 'alphabet',
+      isCompleted: false,
+      starsEarned: 0,
+    );
+
     Provider.of<SoundProvider>(context, listen: false).playGameOver();
     showDialog(
       context: context,
@@ -943,6 +881,13 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       } else if (_hearts >= 3) {
         starsEarned = 2;
       }
+
+      await _progressService.recordActivityAttempt(
+        levelId: widget.levelId,
+        category: 'alphabet',
+        isCompleted: true,
+        starsEarned: starsEarned,
+      );
       
       try {
         final user = FirebaseAuth.instance.currentUser;
@@ -1097,8 +1042,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     if (q.type == 'typing') return !_userAnswerSlots.contains(null);
     if (q.type == 'sequence_order') return _currentSequence.length == q.options.length;
     if (q.type == 'matching_type') return !_matchingAnswers.values.contains(null);
-    
-    if (_isCameraLevel) return true; 
+    if (_isCameraLevel) return _latestDetectedHands.isNotEmpty;
 
     return _selectedAnswer != null; 
   }
@@ -1302,61 +1246,35 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     const SizedBox(height: 18),
                   ],
 
-                  if (!_isAnswered && currentQuestion.type != 'typing' && _isCameraLevel) ...[
-                    Container(
-                      width: double.infinity,
-                      height: 54,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: theme.primaryColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: _isSaving
+                          ? null
+                          : (_isAnswered
+                              ? _handleNext
+                              : (_isCheckButtonEnabled ? _verifyCurrentAnswer : null)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: !_isAnswered ? theme.primaryColor : Colors.white,
+                        disabledBackgroundColor: theme.dividerColor,
+                        elevation: _isAnswered ? 4 : 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.videocam_rounded, color: theme.primaryColor, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            "Hold sign steadily in front of camera",
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: theme.primaryColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: _isSaving
-                            ? null
-                            : (_isAnswered
-                                ? _handleNext
-                                : (_isCheckButtonEnabled ? _verifyCurrentAnswer : null)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: !_isAnswered ? theme.primaryColor : Colors.white,
-                          disabledBackgroundColor: theme.dividerColor,
-                          elevation: _isAnswered ? 4 : 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        child: _isSaving
-                            ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
-                            : Text(
-                                _isAnswered ? "CONTINUE" : "CHECK",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                  color: !_isAnswered ? theme.colorScheme.onPrimary : (feedbackData['accentColor'] as Color),
-                                ),
+                      child: _isSaving
+                          ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
+                          : Text(
+                              _isAnswered 
+                                  ? "CONTINUE" 
+                                  : (_isCameraLevel ? "CAPTURE & CHECK" : "CHECK"),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: !_isAnswered ? theme.colorScheme.onPrimary : (feedbackData['accentColor'] as Color),
                               ),
-                      ),
+                            ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -1544,8 +1462,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   Widget _buildCameraLayout(QuizQuestion currentQuestion, ThemeData theme) {
-    bool isPassing = _currentScore >= successThreshold;
-    
+    bool handDetected = _latestDetectedHands.isNotEmpty;
+
     return Column(
       children: [
         AspectRatio(
@@ -1557,10 +1475,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 width: 4.0,
-                color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
+                color: handDetected ? theme.primaryColor : theme.dividerColor.withOpacity(0.6),
               ),
               boxShadow: [
-                if (isPassing) BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 25, spreadRadius: 2)
+                if (handDetected) BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 15, spreadRadius: 1)
               ],
             ),
             child: ClipRRect(
@@ -1578,63 +1496,41 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
             ),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
 
-        if (_holdProgress > 0.0) ...[
-          Column(
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: handDetected ? theme.primaryColor.withOpacity(0.12) : theme.cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: handDetected ? theme.primaryColor : theme.dividerColor,
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                _isDynamicLetter ? "Recording motion..." : "Holding sign steady...",
-                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
+              Icon(
+                handDetected ? Icons.pan_tool_rounded : Icons.pan_tool_outlined,
+                color: handDetected ? theme.primaryColor : Colors.grey,
+                size: 20,
               ),
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 220, 
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: theme.dividerColor, 
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      widthFactor: _holdProgress,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.greenAccent,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
+              const SizedBox(width: 8),
+              Text(
+                handDetected 
+                    ? "Hand detected! Tap 'CAPTURE & CHECK' below." 
+                    : "Position your hand in the frame",
+                style: TextStyle(
+                  color: handDetected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
                 ),
               ),
             ],
-          )
-        ] else ...[
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: BoxDecoration(
-              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor,
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(
-                color: isPassing ? Colors.greenAccent.withOpacity(0.6) : theme.dividerColor,
-                width: 2
-              ),
-            ),
-            child: Text(
-              "Sign Match: ${_currentScore.toStringAsFixed(1)}%",
-              style: TextStyle(
-                color: isPassing ? Colors.green : theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
-              ),
-            ),
           ),
-        ],
+        ),
       ],
     );
   }
@@ -1735,7 +1631,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     padding: const EdgeInsets.all(6.0), 
                     child: _isImageString(optionValue)
                         ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24)
-                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.png', fit: BoxFit.contain, size: 30),
+                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.contain, size: 30),
                   ),
                 ),
               ),

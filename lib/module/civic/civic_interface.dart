@@ -83,7 +83,7 @@ class CivicInterface extends StatelessWidget {
               ),
             ),
             title: Text(
-              'Civic', 
+              'Civic Observances', 
               style: TextStyle(
                 color: textColor, 
                 fontSize: 22, 

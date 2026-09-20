@@ -14,6 +14,7 @@ import 'package:provider/provider.dart';
 import '/module/alphabet/recognizer.dart';
 import '/providers/sound_provider.dart';
 import '/providers/theme_provider.dart';
+import '/services/progress_service.dart'; //[cite: 22]
 
 class GameProperScreen extends StatefulWidget {
   final String roomCode;
@@ -32,6 +33,8 @@ class GameProperScreen extends StatefulWidget {
 }
 
 class _GameProperScreenState extends State<GameProperScreen> with SingleTickerProviderStateMixin {
+  final ProgressService _progressService = ProgressService(); //[cite: 22]
+
   late final String _currentUserId;
   late final String _displayName;
 
@@ -43,6 +46,10 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   bool _hasAnswered = false;
   bool _isCleaningUp = false;
   String _selectedAnswer = '';
+
+  // In-Memory Image Caching Pipeline
+  final Map<String, Uint8List> _base64Cache = {};
+  final Map<String, ImageProvider> _imageProviderCache = {};
 
   // Controllers & State variables per question type
   final TextEditingController _identificationController = TextEditingController();
@@ -115,11 +122,15 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
 
   @override
   void dispose() {
+    _base64Cache.clear();
+    _imageProviderCache.clear();
     _pulseController.dispose();
     _timer?.cancel();
     _identificationController.dispose();
     _handSub?.cancel();
-    _cameraController?.stopImageStream();
+    if (_cameraController != null && _cameraController!.value.isStreamingImages) {
+      _cameraController?.stopImageStream();
+    }
     _cameraController?.dispose();
     _landmarkerPlugin?.dispose();
     _dynamicSignRecognizer?.dispose();
@@ -137,6 +148,74 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
           ? _currentUserId.substring(0, 4) 
           : _currentUserId;
       _displayName = 'Guest_$shortUid';
+    }
+  }
+
+  // Caching & Pre-caching Helpers
+  ImageProvider? _getImageProvider(String cleaned) {
+    if (_imageProviderCache.containsKey(cleaned)) {
+      return _imageProviderCache[cleaned];
+    }
+
+    ImageProvider provider;
+    if (cleaned.startsWith('data:image') || _isRawBase64(cleaned)) {
+      try {
+        final base64String = cleaned.contains(',') ? cleaned.split(',').last : cleaned;
+        final bytes = _base64Cache.putIfAbsent(cleaned, () => base64Decode(base64String));
+        provider = MemoryImage(bytes);
+      } catch (_) {
+        return null;
+      }
+    } else if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
+      provider = NetworkImage(cleaned);
+    } else {
+      final assetPath = cleaned.startsWith('assets/') ? cleaned : 'assets/pictures/$cleaned';
+      provider = AssetImage(assetPath);
+    }
+
+    _imageProviderCache[cleaned] = provider;
+    return provider;
+  }
+
+  void _precacheAllImages() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      for (var q in _questions) {
+        final img = _extractQuestionImage(q);
+        if (img != null) _precacheSingleImage(img);
+
+        final options = _extractOptions(q);
+        for (var opt in options) {
+          if (opt is Map) {
+            final imgVal = _getValueCaseInsensitive(
+              Map<String, dynamic>.from(opt),
+              ['image', 'image_url', 'imageUrl', 'img', 'url', 'src', 'photo', 'path'],
+            );
+            if (imgVal != null && imgVal.toString().trim().isNotEmpty) {
+              _precacheSingleImage(imgVal.toString().trim());
+            }
+          } else if (opt is String && _isImageRef(opt)) {
+            _precacheSingleImage(opt);
+          }
+        }
+
+        final givenFsl = _extractGivenFsl(q);
+        for (var fsl in givenFsl) {
+          if (fsl['image'] != null && (fsl['image'] as String).isNotEmpty) {
+            _precacheSingleImage(fsl['image']);
+          }
+        }
+      }
+    });
+  }
+
+  void _precacheSingleImage(String source) {
+    final provider = _getImageProvider(source);
+    if (provider != null && mounted) {
+      precacheImage(provider, context).catchError((e) {
+        debugPrint("Precache error for $source: $e");
+      });
     }
   }
 
@@ -405,10 +484,23 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   Future<void> _setupGameAndPlayer() async {
     try {
       final roomRef = FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode);
+      final user = FirebaseAuth.instance.currentUser;
+      String? avatarUrl = user?.photoURL;
+
+      if (avatarUrl == null || avatarUrl.isEmpty) {
+        try {
+          final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get();
+          if (userDoc.exists) {
+            final userData = userDoc.data();
+            avatarUrl = userData?['avatarUrl'] ?? userData?['photoUrl'] ?? userData?['avatar'];
+          }
+        } catch (_) {}
+      }
 
       await roomRef.collection('players').doc(_currentUserId).set({
         'uid': _currentUserId,
         'name': _displayName,
+        'avatarUrl': avatarUrl,
         'isHost': widget.isHost,
         'score': 0,
         'currentAnswer': '',
@@ -469,18 +561,21 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       }
 
       if (_questions.isNotEmpty) {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
 
+        _precacheAllImages();
         _setupCurrentQuestionState();
         _startTimer();
       } else {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint("Error setting up game: $e");
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -589,6 +684,17 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       if (answer.isEmpty && isCorrect) {
         answer = correctAnswer;
       }
+
+      // Record camera gesture attempt metrics[cite: 22]
+      _progressService.recordGestureAttempt(
+        sign: correctAnswer,
+        levelId: widget.challengeTitle,
+        questionId: currentQ['id']?.toString() ?? 'q_$_currentQuestionIndex',
+        isCorrect: isCorrect,
+        score: _currentScore,
+        category: _category,
+        isCameraGesture: true,
+      );
     } else if (type == 'typing') {
       isCorrect = answer.trim().toLowerCase() == correctAnswer;
     } else if (type == 'sequence_order') {
@@ -624,19 +730,23 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       soundProvider.playIncorrect();
     }
 
-    setState(() {
-      _hasAnswered = true;
-      _selectedAnswer = answer;
-    });
+    if (mounted) {
+      setState(() {
+        _hasAnswered = true;
+        _selectedAnswer = answer;
+      });
+    }
 
     if (isCorrect) {
       int speedBonus = 0;
       if (_maxTime > 0) {
         speedBonus = (100 * (_timeLeft / _maxTime)).round();
       }
-      setState(() {
-        _score += speedBonus + 50;
-      });
+      if (mounted) {
+        setState(() {
+          _score += speedBonus + 50;
+        });
+      }
     }
 
     _syncAnswerToFirestore(answer);
@@ -661,7 +771,28 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     }, SetOptions(merge: true));
   }
 
+  /// Persists player's overall score and progress to Firestore[cite: 22]
+  Future<void> _saveChallengeXP() async {
+    if (_score <= 0) return;
+
+    try {
+      await _progressService.addXp(_score); //[cite: 22]
+      await _progressService.updateLevelXP(_category, _score); //[cite: 22]
+
+      int stars = _score >= 500 ? 3 : (_score >= 250 ? 2 : 1);
+      await _progressService.recordActivityAttempt( //[cite: 22]
+        levelId: widget.challengeTitle,
+        category: _category,
+        isCompleted: true,
+        starsEarned: stars,
+      );
+    } catch (e) {
+      debugPrint("Error saving challenge XP: $e");
+    }
+  }
+
   void _moveToNextQuestion() {
+    if (!mounted) return;
     if (_currentQuestionIndex < _questions.length - 1) {
       setState(() {
         _currentQuestionIndex++;
@@ -669,6 +800,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       _setupCurrentQuestionState();
       _startTimer();
     } else {
+      _saveChallengeXP(); // Record earned XP at game end[cite: 22]
       _showFinalLeaderboard();
     }
   }
@@ -769,53 +901,34 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         .replaceAll('\\', '/')
         .trim();
 
-    if (cleaned.startsWith('data:image') || _isRawBase64(cleaned)) {
-      try {
-        final base64String = cleaned.contains(',') ? cleaned.split(',').last : cleaned;
-        return Image.memory(
-          base64Decode(base64String),
-          height: height,
-          width: width,
-          fit: fit,
-          errorBuilder: (_, __, ___) => _buildErrorBox("Image Error"),
-        );
-      } catch (_) {
-        return _buildErrorBox("Invalid Base64");
-      }
+    final provider = _getImageProvider(cleaned);
+    if (provider == null) {
+      return _buildErrorBox("Invalid Image");
     }
 
-    if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
-      return Image.network(
-        cleaned,
-        height: height,
-        width: width,
-        fit: fit,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return SizedBox(
-            height: height ?? 60,
-            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          );
-        },
-        errorBuilder: (_, __, ___) => _buildErrorBox("Network Error"),
-      );
-    }
-
-    String assetPath = cleaned.startsWith('assets/') ? cleaned : 'assets/pictures/$cleaned';
-
-    return Image.asset(
-      assetPath,
+    return Image(
+      image: provider,
       height: height,
       width: width,
       fit: fit,
-      errorBuilder: (_, __, ___) {
-        return Image.asset(
-          cleaned,
-          height: height,
-          width: width,
-          fit: fit,
-          errorBuilder: (_, __, ___) => _buildErrorBox("Asset Missing"),
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) return child;
+        return SizedBox(
+          height: height ?? 60,
+          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
         );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        if (!cleaned.startsWith('assets/') && !cleaned.startsWith('http') && !_isRawBase64(cleaned)) {
+          return Image.asset(
+            cleaned,
+            height: height,
+            width: width,
+            fit: fit,
+            errorBuilder: (_, __, ___) => _buildErrorBox("Asset Missing"),
+          );
+        }
+        return _buildErrorBox("Image Error");
       },
     );
   }
@@ -844,6 +957,43 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
             style: const TextStyle(fontSize: 8, color: Colors.red, fontWeight: FontWeight.bold),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarCircle({
+    required String? avatarUrl,
+    required String name,
+    double radius = 22,
+    Border? border,
+    List<BoxShadow>? boxShadow,
+  }) {
+    final String initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'P';
+    final theme = Theme.of(context);
+
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: border,
+        boxShadow: boxShadow,
+      ),
+      child: ClipOval(
+        child: (avatarUrl != null && avatarUrl.trim().isNotEmpty)
+            ? _buildSafeImage(avatarUrl, fit: BoxFit.cover)
+            : Container(
+                color: theme.primaryColor.withAlpha(50),
+                alignment: Alignment.center,
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: radius * 0.8,
+                    color: theme.primaryColor,
+                  ),
+                ),
+              ),
       ),
     );
   }
@@ -1658,7 +1808,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         final docs = snapshot.data!.docs;
 
         return SizedBox(
-          height: 52,
+          height: 96,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -1666,59 +1816,110 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
             itemBuilder: (context, index) {
               final player = docs[index].data() as Map<String, dynamic>;
               final bool isMe = player['uid'] == _currentUserId;
+              final bool isLeader = index == 0;
               final String name = player['name'] ?? 'Player';
               final int score = player['score'] ?? 0;
+              final String? avatarUrl = player['avatarUrl'] ?? player['photoUrl'] ?? player['avatar'];
 
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                margin: const EdgeInsets.only(right: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isMe
-                        ? [theme.primaryColor.withAlpha(90), theme.primaryColor.withAlpha(40)]
-                        : [theme.cardColor, theme.cardColor.withAlpha(180)],
+              return Tooltip(
+                message: isMe ? "$name (You)" : name,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  margin: const EdgeInsets.only(right: 12),
+                  width: 64,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          _buildAvatarCircle(
+                            avatarUrl: avatarUrl,
+                            name: name,
+                            radius: 22,
+                            border: Border.all(
+                              color: isLeader
+                                  ? const Color(0xFFFFD700)
+                                  : (isMe ? theme.primaryColor : textColor.withAlpha(40)),
+                              width: isLeader || isMe ? 2.5 : 1.5,
+                            ),
+                            boxShadow: isLeader
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0xFFFFD700).withAlpha(120),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    )
+                                  ]
+                                : (isMe
+                                    ? [
+                                        BoxShadow(
+                                          color: theme.primaryColor.withAlpha(80),
+                                          blurRadius: 6,
+                                        )
+                                      ]
+                                    : null),
+                          ),
+                          Positioned(
+                            top: -4,
+                            left: -4,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: isLeader
+                                    ? const Color(0xFFFFD700)
+                                    : (isMe ? theme.primaryColor : theme.cardColor),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: theme.scaffoldBackgroundColor, width: 1.5),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black26, blurRadius: 3)
+                                ],
+                              ),
+                              child: Text(
+                                "#${index + 1}",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 9,
+                                  color: isLeader ? Colors.black : (isMe ? Colors.white : textColor),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        isMe ? "$name (You)" : name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: isMe ? FontWeight.w900 : FontWeight.bold,
+                          color: isMe ? theme.primaryColor : textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: theme.cardColor.withAlpha(200),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isMe ? theme.primaryColor.withAlpha(100) : textColor.withAlpha(20),
+                          ),
+                        ),
+                        child: Text(
+                          "$score pts",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 9,
+                            color: isMe ? theme.primaryColor : textColor.withAlpha(200),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isMe ? theme.primaryColor : textColor.withAlpha(30),
-                    width: isMe ? 2.0 : 1.0,
-                  ),
-                  boxShadow: isMe
-                      ? [BoxShadow(color: theme.primaryColor.withAlpha(80), blurRadius: 8)]
-                      : null,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: isMe ? theme.primaryColor : textColor.withAlpha(30),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        "#${index + 1}",
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      isMe ? "$name (You)" : name,
-                      style: TextStyle(fontWeight: isMe ? FontWeight.w900 : FontWeight.w600, fontSize: 13, color: textColor),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: theme.primaryColor.withAlpha(40),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        "$score pts",
-                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: theme.primaryColor),
-                      ),
-                    ),
-                  ],
                 ),
               );
             },
@@ -1790,24 +1991,48 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                           itemBuilder: (context, index) {
                             final player = remaining[index];
                             final rank = index + 4;
+                            final String name = player['name'] ?? 'Player';
+                            final String? avatarUrl = player['avatarUrl'] ?? player['photoUrl'] ?? player['avatar'];
+
                             return ListTile(
                               dense: true,
-                              leading: Text(
-                                "#$rank",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: textColor.withAlpha(150),
-                                ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              leading: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 24,
+                                    child: Text(
+                                      "#$rank",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor.withAlpha(150),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  _buildAvatarCircle(
+                                    avatarUrl: avatarUrl,
+                                    name: name,
+                                    radius: 18,
+                                    border: Border.all(
+                                      color: textColor.withAlpha(40),
+                                      width: 1,
+                                    ),
+                                  ),
+                                ],
                               ),
                               title: Text(
-                                player['name'] ?? 'Player',
-                                style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+                                name,
+                                style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
                               ),
                               trailing: Text(
                                 "${player['score']} pts",
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                   color: theme.primaryColor,
+                                  fontSize: 13,
                                 ),
                               ),
                             );
@@ -1914,23 +2139,48 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   }) {
     final String name = player['name'] ?? 'Player';
     final int score = player['score'] ?? 0;
+    final String? avatarUrl = player['avatarUrl'] ?? player['photoUrl'] ?? player['avatar'];
+
+    final double avatarRadius = rank == 1 ? 26 : 22;
 
     return Expanded(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(icon, style: const TextStyle(fontSize: 26)),
-          const SizedBox(height: 2),
+          Text(icon, style: TextStyle(fontSize: rank == 1 ? 28 : 22)),
+          const SizedBox(height: 4),
+
+          _buildAvatarCircle(
+            avatarUrl: avatarUrl,
+            name: name,
+            radius: avatarRadius,
+            border: Border.all(
+              color: badgeGradient.first,
+              width: 2.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: badgeGradient.first.withAlpha(100),
+                blurRadius: 8,
+              )
+            ],
+          ),
+          const SizedBox(height: 6),
+
           Text(
             name,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: rank == 1 ? 14 : 12,
+              fontWeight: FontWeight.w800,
+              fontSize: rank == 1 ? 13 : 11,
               color: textColor,
+              height: 1.1,
             ),
           ),
+          const SizedBox(height: 2),
+
           Text(
             "$score pts",
             style: TextStyle(
@@ -1940,6 +2190,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
             ),
           ),
           const SizedBox(height: 6),
+
           Container(
             height: height,
             decoration: BoxDecoration(
@@ -2175,14 +2426,30 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                   stream: FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).collection('players').snapshots(),
                   builder: (context, snapshot) {
                     Map<String, int> answerCounts = {};
-                    // Only display selected answer counts when the timer reaches 0
-                    if (snapshot.hasData && _timeLeft == 0) {
-                      for (var doc in snapshot.data!.docs) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        final int qIndex = data['currentQuestionIndex'] ?? -1;
-                        final String ans = (data['currentAnswer'] ?? '').toString().trim().toLowerCase();
-                        if (qIndex == _currentQuestionIndex && ans.isNotEmpty) {
-                          answerCounts[ans] = (answerCounts[ans] ?? 0) + 1;
+
+                    if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                      final docs = snapshot.data!.docs;
+
+                      bool showAnswerCounts = false;
+                      if (_maxTime > 0) {
+                        showAnswerCounts = (_timeLeft == 0);
+                      } else {
+                        showAnswerCounts = docs.every((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final int qIndex = data['currentQuestionIndex'] ?? -1;
+                          final String ans = (data['currentAnswer'] ?? '').toString().trim();
+                          return qIndex == _currentQuestionIndex && ans.isNotEmpty;
+                        });
+                      }
+
+                      if (showAnswerCounts) {
+                        for (var doc in docs) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final int qIndex = data['currentQuestionIndex'] ?? -1;
+                          final String ans = (data['currentAnswer'] ?? '').toString().trim().toLowerCase();
+                          if (qIndex == _currentQuestionIndex && ans.isNotEmpty) {
+                            answerCounts[ans] = (answerCounts[ans] ?? 0) + 1;
+                          }
                         }
                       }
                     }

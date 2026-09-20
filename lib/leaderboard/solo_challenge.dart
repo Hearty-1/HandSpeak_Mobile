@@ -297,6 +297,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
   int _currentQuestionIndex = 0;
   int _score = 0;
   int _streak = 0;
+  int _correctCount = 0;
 
   bool _isLoading = true;
   bool _hasAnswered = false;
@@ -638,6 +639,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
           setState(() {
             _questions = filtered.take(_totalRounds).toList();
             _isLoading = false;
+            _score = 0;
+            _streak = 0;
+            _correctCount = 0;
           });
         }
 
@@ -785,6 +789,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
       _isLastAnswerCorrect = isCorrect;
       if (isCorrect) {
         _streak++;
+        _correctCount++;
       } else {
         _streak = 0;
       }
@@ -1368,13 +1373,73 @@ class _GameProperScreenState extends State<GameProperScreen> {
     );
   }
 
+  /// Records comprehensive challenge progress and game session metrics into Firestore.
+  Future<void> _recordProgress() async {
+    if (_currentUserId.isEmpty || _currentUserId.startsWith('guest_')) return;
+
+    final double accuracy = _questions.isEmpty ? 0.0 : (_correctCount / _questions.length) * 100.0;
+
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      final userRef = FirebaseFirestore.instance.collection('users').doc(_currentUserId);
+
+      // 1. Update primary user document metrics
+      batch.set(
+        userRef,
+        {
+          'xp': FieldValue.increment(_score),
+          'dailyXp': FieldValue.increment(_score),
+          'totalGamesPlayed': FieldValue.increment(1),
+          'soloChallengesCompleted': FieldValue.increment(1),
+          'totalQuestionsAnswered': FieldValue.increment(_questions.length),
+          'totalCorrectAnswers': FieldValue.increment(_correctCount),
+          'lastActive': FieldValue.serverTimestamp(),
+          'categoryProgress.$_category.lastScore': _score,
+          'categoryProgress.$_category.completedRounds': FieldValue.increment(1),
+          'categoryProgress.$_category.lastPlayed': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      // 2. Add individual session log entry in user's progress history subcollection
+      final historyRef = userRef.collection('progress_history').doc();
+      batch.set(historyRef, {
+        'category': _category,
+        'score': _score,
+        'correctCount': _correctCount,
+        'totalQuestions': _questions.length,
+        'accuracy': accuracy,
+        'peakStreak': _streak,
+        'completedAt': FieldValue.serverTimestamp(),
+        'mode': 'solo_challenge',
+      });
+
+      // 3. Update category-specific aggregated statistics
+      final catProgressRef = userRef.collection('category_progress').doc(_category.toLowerCase().replaceAll(' ', '_'));
+      batch.set(
+        catProgressRef,
+        {
+          'category': _category,
+          'totalAttempts': FieldValue.increment(1),
+          'totalCorrect': FieldValue.increment(_correctCount),
+          'totalQuestions': FieldValue.increment(_questions.length),
+          'lastScore': _score,
+          'lastPlayed': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint("Failed to record progress to Firestore: $e");
+    }
+  }
+
   void _showFinalScoreDialog() {
     Provider.of<SoundProvider>(context, listen: false).playLevelComplete();
 
-    FirebaseFirestore.instance.collection('users').doc(_currentUserId).set({
-      'xp': FieldValue.increment(_score),
-      'dailyXp': FieldValue.increment(_score),
-    }, SetOptions(merge: true));
+    // Persist session progress and user stats to Firestore
+    _recordProgress();
 
     showDialog(
       context: context,
@@ -1393,6 +1458,11 @@ class _GameProperScreenState extends State<GameProperScreen> {
             ),
             const SizedBox(height: 16),
             Text("Total Score: $_score XP", style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Theme.of(context).primaryColor)),
+            const SizedBox(height: 8),
+            Text(
+              "Accuracy: ${_questions.isNotEmpty ? ((_correctCount / _questions.length) * 100).toStringAsFixed(0) : 0}% ($_correctCount / ${_questions.length})",
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75)),
+            ),
             if (_streak > 1) ...[
               const SizedBox(height: 6),
               Text("🔥 Peak Streak: $_streak", style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFF34B1B))),

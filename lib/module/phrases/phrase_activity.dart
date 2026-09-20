@@ -1,397 +1,454 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:provider/provider.dart';
-import '/providers/sound_provider.dart';
-import '/services/progress_service.dart';
+import '../../providers/sound_provider.dart';
+import '../../services/progress_service.dart';
+import 'phraseAct.dart';
 
-class PhraseActivityInterface extends StatefulWidget {
-  final String levelId;
-  final String title;
-  final List<Map<String, dynamic>> initialQuestions;
+class PhrasesActivityInterface extends StatefulWidget {
+  final String difficulty;
 
-  const PhraseActivityInterface({
+  const PhrasesActivityInterface({
     super.key,
-    required this.levelId,
-    this.title = 'Phrase Activity',
-    this.initialQuestions = const [],
+    required this.difficulty,
   });
 
   @override
-  State<PhraseActivityInterface> createState() => _PhraseActivityInterfaceState();
+  State<PhrasesActivityInterface> createState() => _PhrasesActivityInterfaceState();
 }
 
-class _PhraseActivityInterfaceState extends State<PhraseActivityInterface> {
-  int _currentIndex = 0;
-  String? _selectedOption;
-  bool _isAnswered = false;
-  int _score = 0;
-  int _starsEarned = 0;
-  bool _progressSaved = false;
-
-  List<Map<String, dynamic>> _questions = [];
-  bool _isLoading = true;
+class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
+  late dynamic _soundProvider;
 
   @override
   void initState() {
     super.initState();
-    _loadPhraseQuestions();
-  }
-
-  bool _isPhraseCategory(dynamic categoryValue) {
-    if (categoryValue == null) return false;
-    final cat = categoryValue.toString().trim().toLowerCase();
-    return cat == 'phrase' || cat == 'phrases';
-  }
-
-  Future<void> _loadPhraseQuestions() async {
     try {
-      ProgressService().trackRecentModule(widget.levelId);
+      Provider.of<SoundProvider>(context, listen: false).playBgm();
     } catch (_) {}
+  }
 
-    // 1. Process passing initialQuestions with strict alphabet block
-    if (widget.initialQuestions.isNotEmpty) {
-      final sanitized = widget.initialQuestions.where((q) {
-        final cat = (q['category'] ?? '').toString().trim().toLowerCase();
-        final lvl = (q['level'] ?? '').toString().trim().toLowerCase();
-        
-        if (cat.contains('alphabet') || lvl.contains('alphabet')) return false;
-        return _isPhraseCategory(cat);
-      }).toList();
-
-      if (mounted) {
-        setState(() {
-          _questions = List.from(sanitized);
-          _isLoading = false;
-        });
-      }
-      return;
-    }
-
-    // 2. Direct Firestore fetch enforcing phrase category & level matching
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     try {
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('activity_questions')
-          .where('level', isEqualTo: widget.levelId)
-          .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
-          .get();
-
-      List<Map<String, dynamic>> loadedQuestions = [];
-
-      for (var doc in querySnapshot.docs) {
-        final data = doc.data();
-        final cat = (data['category'] ?? '').toString().trim().toLowerCase();
-        final lvl = (data['level'] ?? '').toString().trim().toLowerCase();
-
-        // Guard against any cross-category alphabet leakage
-        if (cat.contains('alphabet') || lvl.contains('alphabet')) {
-          continue;
-        }
-
-        String? audioUrl;
-        if (data.containsKey('audioStoragePath') && data['audioStoragePath'] != null) {
-          try {
-            audioUrl = await FirebaseStorage.instance
-                .ref(data['audioStoragePath'])
-                .getDownloadURL();
-          } catch (e) {
-            debugPrint("Error fetching Cloud Storage URL: $e");
-          }
-        }
-
-        loadedQuestions.add({
-          'question': data['question'] ?? data['phrase'] ?? data['questionText'] ?? '',
-          'correctAnswer': data['correctAnswer'] ?? data['answer'] ?? '',
-          'options': List<String>.from(data['options'] ?? []),
-          'category': data['category'] ?? 'phrase',
-          'audioUrl': audioUrl,
-        });
-      }
-
-      if (mounted) {
-        setState(() {
-          _questions = loadedQuestions;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error fetching phrase questions: $e");
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
+      _soundProvider = Provider.of<SoundProvider>(context, listen: false);
+    } catch (_) {}
   }
 
-  void _playSound(String effect) {
+  @override
+  void dispose() {
     try {
-      final soundProvider = Provider.of<SoundProvider>(context, listen: false) as dynamic;
-      if (effect.contains('correct')) {
-        soundProvider.playSound('correct');
-      } else {
-        soundProvider.playSound('wrong');
-      }
-    } catch (_) {
-      try {
-        final soundProvider = Provider.of<SoundProvider>(context, listen: false) as dynamic;
-        soundProvider.playSoundEffect(effect);
-      } catch (_) {}
-    }
+      _soundProvider.stopBgm();
+    } catch (_) {}
+    super.dispose();
   }
 
-  Future<void> _updateProgress(String levelId) async {
-    if (_progressSaved) return;
-    _progressSaved = true;
+  Map<String, dynamic> _getThemeStyles(BuildContext context) {
+    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
-    try {
-      dynamic service = ProgressService();
-      try {
-        await service.updateUserProgress(
-          levelKey: levelId,
-          stars: _starsEarned,
-          xpEarned: _score * 10,
-          xpCategoryKey: 'phraseXp',
-        );
-      } catch (_) {
-        await service.updateUserProgress(levelId, _starsEarned, _score * 10);
-      }
-    } catch (e) {
-      debugPrint("Error saving phrase activity progress: $e");
+    if (bgColor == 0xFF080928) { // Galaxy Explorer
+      const nodeColor = Color(0xFF9F88D8);
+      return {
+        'primary': const Color(0xFF8750A1),
+        'text': const Color(0xFF9F88D8),
+        'line': nodeColor.withOpacity(0.6),
+        'dividerText': const Color(0xFF9F88D8).withOpacity(0.7),
+        'appBarIcon': const Color(0xFF9F88D8),
+        'cardBg': const Color(0xFF282059),
+        'nodeColor': nodeColor,
+        'nodeLightColor': const Color(0xFFC3B1E1),
+      };
     }
+    if (bgColor == 0xFF1D3D3A) { // Enchanted Forest
+      const nodeColor = Color(0xFFB8D4CF);
+      return {
+        'primary': const Color(0xFFD7B3A1),
+        'text': const Color(0xFFF2F5F4),
+        'line': nodeColor.withOpacity(0.6),
+        'dividerText': const Color(0xFFF2F5F4).withOpacity(0.7),
+        'appBarIcon': const Color(0xFFF2F5F4),
+        'cardBg': const Color(0xFF4D7C73),
+        'nodeColor': nodeColor,
+        'nodeLightColor': const Color(0xFFE2F1ED),
+      };
+    }
+    if (bgColor == 0xFF001B3A) { // Deep Ocean
+      const nodeColor = Color(0xFF00E5FF);
+      return {
+        'primary': const Color(0xFF00E5FF),
+        'text': Colors.white,
+        'line': nodeColor.withOpacity(0.7),
+        'dividerText': Colors.white70,
+        'appBarIcon': Colors.white,
+        'cardBg': Colors.black54,
+        'nodeColor': nodeColor,
+        'nodeLightColor': const Color(0xFF80F3FF),
+      };
+    }
+    if (bgColor == 0xFFE0EAFC) { // Cloudy Sky
+      const nodeColor = Color(0xFF5C7CFA);
+      return {
+        'primary': const Color(0xFF5C7CFA),
+        'text': const Color(0xFF1E1E1E),
+        'line': nodeColor.withOpacity(0.6),
+        'dividerText': Colors.black54,
+        'appBarIcon': const Color(0xFF322144),
+        'cardBg': Colors.white.withOpacity(0.9),
+        'nodeColor': nodeColor,
+        'nodeLightColor': const Color(0xFF91A7FF),
+      };
+    }
+
+    // Default Theme
+    const defaultNodeYellow = Color(0xFFFFB300);
+    return {
+      'primary': const Color(0xFFFF6B8B),
+      'text': const Color(0xFF332050),
+      'line': defaultNodeYellow.withOpacity(0.6),
+      'dividerText': const Color(0xFF6E5686),
+      'appBarIcon': const Color(0xFF332050),
+      'cardBg': Colors.white.withOpacity(0.92),
+      'nodeColor': defaultNodeYellow,
+      'nodeLightColor': const Color(0xFFFFE082),
+    };
   }
 
-  void _handleAnswer(String selectedOption, String correctAnswer, String levelId, int totalQuestions) {
-    if (_isAnswered) return;
-
-    setState(() {
-      _selectedOption = selectedOption;
-      _isAnswered = true;
-
-      if (selectedOption.trim().toLowerCase() == correctAnswer.trim().toLowerCase()) {
-        _score++;
-        _playSound('correct');
-      } else {
-        _playSound('wrong');
-      }
-
-      final double accuracy = totalQuestions > 0 ? _score / totalQuestions : 0.0;
-      if (accuracy >= 0.9) {
-        _starsEarned = 3;
-      } else if (accuracy >= 0.6) {
-        _starsEarned = 2;
-      } else if (accuracy > 0) {
-        _starsEarned = 1;
-      } else {
-        _starsEarned = 0;
-      }
-    });
-
-    if (_currentIndex == totalQuestions - 1) {
-      _updateProgress(levelId);
-    }
+  Widget _buildVerticalPathLine(Map<String, dynamic> themeStyles) {
+    final Color nodeColor = themeStyles['nodeColor'];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(4, (index) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4.0),
+          child: Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: nodeColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: nodeColor.withOpacity(0.4), blurRadius: 4, spreadRadius: 1)
+              ],
+            ),
+          ),
+        )),
+      ),
+    );
   }
 
-  void _nextQuestion() {
-    setState(() {
-      _currentIndex++;
-      _selectedOption = null;
-      _isAnswered = false;
-    });
+  String get _appBarTitle {
+    if (widget.difficulty.isEmpty) return 'Phrase Activity';
+    return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} Phrases';
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
+    final themeStyles = _getThemeStyles(context);
+    final scaffoldBgColor = Theme.of(context).scaffoldBackgroundColor;
+    final String currentDifficulty = widget.difficulty.isNotEmpty ? widget.difficulty.toLowerCase() : 'easy';
+    final Color nodeColor = themeStyles['nodeColor'];
+    final Color nodeLightColor = themeStyles['nodeLightColor'];
 
     return Scaffold(
       extendBodyBehindAppBar: true,
+      backgroundColor: scaffoldBgColor,
       appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6),
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: textColor),
+          icon: Icon(Icons.arrow_back_ios, color: themeStyles['appBarIcon']),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          widget.title,
+          _appBarTitle,
           style: TextStyle(
-            color: textColor,
-            fontSize: 18,
+            color: themeStyles['appBarIcon'],
+            fontSize: 24,
             fontWeight: FontWeight.w800,
           ),
         ),
-        flexibleSpace: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
+        centerTitle: true,
       ),
       body: Stack(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  theme.scaffoldBackgroundColor,
-                  theme.primaryColor.withOpacity(0.08),
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
+          Positioned.fill(
+            child: ThemedBackground(bgColor: scaffoldBgColor),
           ),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _questions.isEmpty
-                      ? _buildEmptyState(theme)
-                      : (_currentIndex >= _questions.length
-                          ? _buildCompletionView(theme)
-                          : _buildQuestionUI(theme)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+            child: StreamBuilder<DocumentSnapshot>(
+              stream: ProgressService().getUserProgressStream(),
+              builder: (context, userProgressSnapshot) {
+                if (userProgressSnapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator(color: nodeColor));
+                }
 
-  Widget _buildEmptyState(ThemeData theme) {
-    final textColor = theme.colorScheme.onSurface;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.assignment_outlined, size: 70, color: textColor.withOpacity(0.4)),
-          const SizedBox(height: 16),
-          Text(
-            'No phrase activity questions available.',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            onPressed: () => Navigator.pop(context),
-            child: Text('Go Back', style: TextStyle(color: theme.colorScheme.onPrimary)),
-          ),
-        ],
-      ),
-    );
-  }
+                int totalCategoryStars = 0;
+                int totalEasyStars = 0;
+                int totalMediumStars = 0;
+                Map<String, dynamic> progressMap = {};
 
-  Widget _buildQuestionUI(ThemeData theme) {
-    final questionData = _questions[_currentIndex];
-    final String question = questionData['question'] ?? '';
-    final List<String> options = List<String>.from(questionData['options'] ?? []);
-    final String correctAnswer = questionData['correctAnswer'] ?? '';
-    final textColor = theme.colorScheme.onSurface;
+                if (userProgressSnapshot.hasData && userProgressSnapshot.data!.exists) {
+                  final data = userProgressSnapshot.data!.data() as Map<String, dynamic>?;
+                  if (data != null) {
+                    progressMap = Map<String, dynamic>.from(data['progress'] ?? data['activityProgress'] ?? {});
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Question ${_currentIndex + 1}/${_questions.length}',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor.withOpacity(0.7)),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          question,
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: textColor),
-        ),
-        const SizedBox(height: 24),
-        ...options.map((option) {
-          Color borderClr = theme.dividerColor.withOpacity(0.2);
-          Color fillClr = theme.cardColor;
+                    final String prefix = 'phrases_${currentDifficulty}_';
+                    progressMap.forEach((key, value) {
+                      final int stars = (value as num).toInt();
+                      final String keyLower = key.toLowerCase();
+                      if (keyLower.startsWith(prefix)) totalCategoryStars += stars;
+                      if (keyLower.startsWith('phrases_easy_')) totalEasyStars += stars;
+                      if (keyLower.startsWith('phrases_medium_')) totalMediumStars += stars;
+                    });
+                  }
+                }
 
-          if (_isAnswered) {
-            if (option.trim().toLowerCase() == correctAnswer.trim().toLowerCase()) {
-              borderClr = Colors.green;
-              fillClr = Colors.green.withOpacity(0.15);
-            } else if (option == _selectedOption) {
-              borderClr = Colors.red;
-              fillClr = Colors.red.withOpacity(0.15);
-            }
-          }
+                bool isTierUnlocked = true;
+                if (currentDifficulty == 'medium') {
+                  isTierUnlocked = totalEasyStars >= 5;
+                } else if (currentDifficulty == 'hard') {
+                  isTierUnlocked = totalMediumStars >= 5;
+                }
 
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: GestureDetector(
-              onTap: () => _handleAnswer(option, correctAnswer, widget.levelId, _questions.length),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                decoration: BoxDecoration(
-                  color: fillClr,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: borderClr, width: 2),
-                ),
-                child: Text(
-                  option,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: textColor),
-                ),
-              ),
-            ),
-          );
-        }),
-        const Spacer(),
-        if (_isAnswered)
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            onPressed: _nextQuestion,
-            child: Text(
-              _currentIndex < _questions.length - 1 ? 'Next Question' : 'View Results',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
-            ),
-          ),
-      ],
-    );
-  }
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('activity_questions')
+                      .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
+                      .snapshots(),
+                  builder: (context, questionsSnapshot) {
+                    if (questionsSnapshot.connectionState == ConnectionState.waiting) {
+                      return Center(child: CircularProgressIndicator(color: nodeColor));
+                    }
 
-  Widget _buildCompletionView(ThemeData theme) {
-    final textColor = theme.colorScheme.onSurface;
+                    final docs = questionsSnapshot.data?.docs ?? [];
+                    final Map<String, Map<String, dynamic>> levelsMap = {};
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.stars_rounded, size: 90, color: Colors.amber),
-          const SizedBox(height: 16),
-          Text(
-            'Activity Completed!',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: textColor),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Stars Earned: $_starsEarned / 3',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: theme.primaryColor),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Score: $_score / ${_questions.length}',
-            style: TextStyle(fontSize: 16, color: textColor.withOpacity(0.8)),
-          ),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Finish',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
+                    for (var doc in docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final String? levelId = data['level'];
+                      final String cat = (data['category'] ?? '').toString().trim().toLowerCase();
+
+                      // Strict alphabet leakage filter
+                      if (cat.contains('alphabet')) continue;
+
+                      if (levelId != null && levelId.toLowerCase().startsWith('phrases_${currentDifficulty}_')) {
+                        if (!levelsMap.containsKey(levelId)) {
+                          final levelNum = levelId.split('_').last;
+                          levelsMap[levelId] = {
+                            'levelId': levelId,
+                            'type': data['type'] ?? 'Multiple Choice',
+                            'title': 'Level $levelNum',
+                          };
+                        }
+                      }
+                    }
+
+                    final levelKeys = levelsMap.keys.toList();
+                    levelKeys.sort((a, b) {
+                      final int numA = int.tryParse(a.split('_').last) ?? 0;
+                      final int numB = int.tryParse(b.split('_').last) ?? 0;
+                      return numA.compareTo(numB);
+                    });
+
+                    if (levelKeys.isEmpty) {
+                      return Center(
+                        child: Text(
+                          "No questions found for $currentDifficulty mode.",
+                          style: TextStyle(color: themeStyles['text'], fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    }
+
+                    final alignments = [
+                      Alignment.center,
+                      Alignment.centerRight,
+                      Alignment.center,
+                      Alignment.centerLeft,
+                    ];
+
+                    return Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: themeStyles['cardBg'],
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: nodeColor, width: 2),
+                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.star_rounded, color: nodeColor, size: 24),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    "$totalCategoryStars / ${levelKeys.length * 3} Stars",
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: themeStyles['text']),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: levelKeys.length,
+                            itemBuilder: (context, index) {
+                              final levelId = levelKeys[index];
+                              final levelData = levelsMap[levelId]!;
+                              final String title = levelData['title'];
+
+                              final int earnedStars = progressMap[levelId] ?? 0;
+                              final String prevLevelId = index > 0 ? levelKeys[index - 1] : '';
+                              final int prevLevelStars = prevLevelId.isNotEmpty ? (progressMap[prevLevelId] ?? 0) : 0;
+
+                              final bool isUnlocked = isTierUnlocked && (index == 0 || prevLevelStars >= 2);
+
+                              final unlockMsg = !isTierUnlocked
+                                  ? 'Earn at least 5 ⭐ in the previous difficulty to unlock!'
+                                  : 'Earn 2 ⭐ in Level $index to unlock!';
+
+                              return Column(
+                                children: [
+                                  Align(
+                                    alignment: alignments[index % alignments.length],
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (isUnlocked)
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: List.generate(3, (starIdx) {
+                                              return Icon(
+                                                starIdx < earnedStars ? Icons.star_rounded : Icons.star_border_rounded,
+                                                color: nodeColor,
+                                                size: 20,
+                                              );
+                                            }),
+                                          )
+                                        else
+                                          Text(
+                                            "🔒 Locked",
+                                            style: TextStyle(color: themeStyles['dividerText'], fontSize: 12, fontWeight: FontWeight.bold),
+                                          ),
+                                        const SizedBox(height: 8),
+
+                                        GestureDetector(
+                                          onTap: isUnlocked
+                                              ? () {
+                                                  try {
+                                                    _soundProvider.stopBgm();
+                                                  } catch (_) {}
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (context) => PhraseActivityInterface(
+                                                        levelId: levelId,
+                                                        title: title,
+                                                      ),
+                                                    ),
+                                                  ).then((_) {
+                                                    try {
+                                                      _soundProvider.playBgm();
+                                                    } catch (_) {}
+                                                  });
+                                                }
+                                              : () {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(unlockMsg),
+                                                      backgroundColor: Colors.redAccent,
+                                                    ),
+                                                  );
+                                                },
+                                          child: Stack(
+                                            alignment: Alignment.center,
+                                            children: [
+                                              Container(
+                                                width: 104,
+                                                height: 104,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: isUnlocked ? nodeColor.withOpacity(0.3) : Colors.black12,
+                                                ),
+                                              ),
+                                              Container(
+                                                width: 86,
+                                                height: 86,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  gradient: LinearGradient(
+                                                    colors: isUnlocked
+                                                      ? [nodeLightColor, nodeColor]
+                                                      : [Colors.grey.shade400, Colors.grey.shade700],
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                  ),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: (isUnlocked ? nodeColor : Colors.black).withOpacity(0.5),
+                                                      blurRadius: 10,
+                                                      offset: const Offset(0, 6),
+                                                    )
+                                                  ],
+                                                  border: Border.all(
+                                                    color: isUnlocked ? Colors.white : Colors.grey.shade400,
+                                                    width: 4,
+                                                  ),
+                                                ),
+                                                child: Center(
+                                                  child: Icon(
+                                                    isUnlocked ? Icons.play_arrow_rounded : Icons.lock_rounded,
+                                                    color: Colors.white,
+                                                    size: 46,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: themeStyles['cardBg'],
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            title,
+                                            style: TextStyle(
+                                              color: isUnlocked ? themeStyles['text'] : themeStyles['dividerText'],
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        )
+                                      ],
+                                    ),
+                                  ),
+
+                                  if (index < levelKeys.length - 1)
+                                    _buildVerticalPathLine(themeStyles),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
             ),
           ),
         ],

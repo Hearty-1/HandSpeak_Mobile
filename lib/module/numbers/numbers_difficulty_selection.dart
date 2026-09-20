@@ -109,7 +109,7 @@ class _NumbersDifficultySelectionScreenState
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Numbers Difficulty',
+          'Select Difficulty',
           style: TextStyle(
             color: themeStyles['appBarIcon'],
             fontSize: 24,

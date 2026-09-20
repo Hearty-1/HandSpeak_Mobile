@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_application_1/module/phrases/phraseAct.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sound_provider.dart';
 import '../../services/progress_service.dart';
-import 'phraseAct.dart'; 
+import 'phrase_activity.dart'; 
 
 class PhraseDifficultySelectionScreen extends StatefulWidget {
   const PhraseDifficultySelectionScreen({super.key});
@@ -13,46 +14,52 @@ class PhraseDifficultySelectionScreen extends StatefulWidget {
 }
 
 class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelectionScreen> {
-  late SoundProvider _soundProvider;
+  late dynamic _soundProvider;
 
   @override
   void initState() {
     super.initState(); 
-    Provider.of<SoundProvider>(context, listen: false).playBgm(); 
+    try {
+      Provider.of<SoundProvider>(context, listen: false).playBgm(); 
+    } catch (_) {}
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _soundProvider = Provider.of<SoundProvider>(context, listen: false);
+    try {
+      _soundProvider = Provider.of<SoundProvider>(context, listen: false);
+    } catch (_) {}
   }
 
   @override
   void dispose() {
-    _soundProvider.stopBgm();
+    try {
+      _soundProvider.stopBgm();
+    } catch (_) {}
     super.dispose(); 
   }
 
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
-    if (bgColor == 0xFF0F0C29) {
+    if (bgColor == 0xFF080928) { // Galaxy Explorer
       return {
-        'primary': const Color(0xFFFF2A85), 
-        'text': Colors.white,
-        'appBarIcon': Colors.white,
-        'cardBg': Colors.black54,
+        'primary': const Color(0xFF8750A1), 
+        'text': const Color(0xFF9F88D8),
+        'appBarIcon': const Color(0xFF9F88D8),
+        'cardBg': const Color(0xFF282059),
       };
     }
-    if (bgColor == 0xFF132A13) {
+    if (bgColor == 0xFF1D3D3A) { // Enchanted Forest
       return {
-        'primary': const Color(0xFFFFD700), 
-        'text': Colors.white,
-        'appBarIcon': Colors.white,
-        'cardBg': Colors.black54,
+        'primary': const Color(0xFFD7B3A1), 
+        'text': const Color(0xFFF2F5F4),
+        'appBarIcon': const Color(0xFFF2F5F4),
+        'cardBg': const Color(0xFF4D7C73),
       };
     }
-    if (bgColor == 0xFF001B3A) {
+    if (bgColor == 0xFF001B3A) { // Deep Ocean
       return {
         'primary': const Color(0xFF00E5FF), 
         'text': Colors.white,
@@ -60,7 +67,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
         'cardBg': Colors.black54,
       };
     }
-    if (bgColor == 0xFFE0EAFC) {
+    if (bgColor == 0xFFE0EAFC) { // Cloudy Sky
       return {
         'primary': const Color(0xFF5C7CFA), 
         'text': const Color(0xFF1E1E1E),
@@ -69,23 +76,29 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
       };
     }
     
+    // Default Theme
     return {
-      'primary': const Color(0xFFFFB800),
-      'text': const Color(0xFF322144),
-      'appBarIcon': const Color(0xFF322144),
-      'cardBg': Colors.white.withOpacity(0.9),
+      'primary': const Color(0xFFFF6B8B),
+      'text': const Color(0xFF332050),
+      'appBarIcon': const Color(0xFF332050),
+      'cardBg': Colors.white.withOpacity(0.92),
     };
   }
 
   void _navigateToActivity(BuildContext context, String difficulty) {
-    _soundProvider.stopBgm();
+    try {
+      _soundProvider.stopBgm();
+    } catch (_) {}
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PhrasesActivityInterface(difficulty: difficulty),
       ),
     ).then((_) {
-      _soundProvider.playBgm();
+      try {
+        _soundProvider.playBgm();
+      } catch (_) {}
     });
   }
 
@@ -105,7 +118,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Phrases Difficulty',
+          'Select Difficulty',
           style: TextStyle(
             color: themeStyles['appBarIcon'], 
             fontSize: 24, 
@@ -160,6 +173,10 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                       for (var doc in questionsSnapshot.data!.docs) {
                         final qData = doc.data() as Map<String, dynamic>;
                         final String? levelId = qData['level'];
+                        final String cat = (qData['category'] ?? '').toString().trim().toLowerCase();
+                        
+                        if (cat.contains('alphabet')) continue;
+
                         if (levelId != null) {
                           final String lvlLower = levelId.toLowerCase();
                           if (lvlLower.startsWith('phrases_easy_')) easyLevels.add(levelId);

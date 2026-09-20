@@ -95,7 +95,7 @@ class NumbersQuizApiService {
 
     List<QuizQuestion> matchingQuestions = levelQuestions.where((q) => q.type == typeFilter).toList();
 
-    List<QuizQuestion> finalQuestions = (matchingQuestions.length >= levelQuestions.length && matchingQuestions.isNotEmpty)
+    List<QuizQuestion> finalQuestions = matchingQuestions.isNotEmpty
         ? matchingQuestions
         : levelQuestions;
 
@@ -173,20 +173,13 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
   }
 
   LinearGradient _getDialogGradient(Color bgColor) {
-    // Galaxy Explorer (0xFF080928)
     if (bgColor.value == 0xFF080928) { 
       return const LinearGradient(colors: [Color(0xFF282059), Color(0xFF8750A1)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } 
-    // Enchanted Forest (0xFF1D3D3A)
-    else if (bgColor.value == 0xFF1D3D3A) { 
+    } else if (bgColor.value == 0xFF1D3D3A) { 
       return const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } 
-    // Deep Ocean (0xFF001B3A)
-    else if (bgColor.value == 0xFF001B3A) { 
+    } else if (bgColor.value == 0xFF001B3A) { 
       return const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } 
-    // Cloudy Sky (0xFFE0EAFC)
-    else if (bgColor.value == 0xFFE0EAFC) { 
+    } else if (bgColor.value == 0xFFE0EAFC) { 
       return const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], begin: Alignment.topLeft, end: Alignment.bottomRight);
     }
     return const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
@@ -431,9 +424,16 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     }
   }
 
-  Widget _buildImageWidget(String pathOrUrl, {BoxFit fit = BoxFit.contain, double size = 24}) {
+  Widget _buildImageWidget(
+    String pathOrUrl, {
+    BoxFit fit = BoxFit.contain,
+    double size = 24,
+    String? fallbackText,
+  }) {
     if (pathOrUrl.isEmpty) {
-      return Icon(Icons.image_not_supported, size: size, color: Colors.grey);
+      return fallbackText != null
+          ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
+          : Icon(Icons.image_not_supported, size: size, color: Colors.grey);
     }
 
     if (pathOrUrl.startsWith('data:image')) {
@@ -442,24 +442,45 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         return Image.memory(
           bytes,
           fit: fit,
-          errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: size, color: Colors.grey),
+          errorBuilder: (context, error, stackTrace) => fallbackText != null
+              ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
+              : Icon(Icons.broken_image, size: size, color: Colors.grey),
         );
       }
-      return Icon(Icons.broken_image, size: size, color: Colors.grey);
     }
 
     if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
       return Image.network(
         pathOrUrl,
         fit: fit,
-        errorBuilder: (context, error, stackTrace) => Icon(Icons.image_not_supported, size: size, color: Colors.grey),
+        errorBuilder: (context, error, stackTrace) => fallbackText != null
+            ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
+            : Icon(Icons.image_not_supported, size: size, color: Colors.grey),
       );
     }
 
+    String assetPath = pathOrUrl;
+    if (!pathOrUrl.startsWith('assets/')) {
+      assetPath = 'assets/numbers/$pathOrUrl';
+    }
+
     return Image.asset(
-      pathOrUrl,
+      assetPath,
       fit: fit,
-      errorBuilder: (context, error, stackTrace) => Icon(Icons.image_not_supported, size: size, color: Colors.grey),
+      errorBuilder: (context, error, stackTrace) {
+        if (!pathOrUrl.startsWith('assets/')) {
+          return Image.asset(
+            'assets/pictures/$pathOrUrl',
+            fit: fit,
+            errorBuilder: (context, error, stackTrace) => fallbackText != null
+                ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
+                : Icon(Icons.image_not_supported, size: size, color: Colors.grey),
+          );
+        }
+        return fallbackText != null
+            ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
+            : Icon(Icons.image_not_supported, size: size, color: Colors.grey);
+      },
     );
   }
 
@@ -474,6 +495,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
 
       final cameras = await availableCameras();
+      if (!mounted) return;
+
       if (cameras.isNotEmpty) {
         final frontCamera = cameras.firstWhere(
           (camera) => camera.lensDirection == CameraLensDirection.front,
@@ -485,6 +508,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
           enableAudio: false,
         );
         await _cameraController!.initialize();
+        if (!mounted) return;
         await _cameraController!.startImageStream(_processCameraFrame);
       }
 
@@ -494,6 +518,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
           labelAssetPath: 'assets/numbers/label_map.json', 
         );
         await _dynamicSignRecognizer!.initialize();
+        if (!mounted) return;
         _dynamicModelReady = true;
       } catch (e) {
         debugPrint("Dynamic-sign model failed to load: $e");
@@ -513,11 +538,13 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   Future<void> _loadGestureLibrary(String letter) async {
     try {
       String jsonString = await rootBundle.loadString('assets/numbers/$letter.json');
+      if (!mounted) return;
       setState(() {
         _template = jsonDecode(jsonString);
       });
     } catch (e) {
       debugPrint("Could not find gesture resource profile for: $letter");
+      if (!mounted) return;
       setState(() {
         _template = null;
       });
@@ -539,7 +566,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   void _onHandsDetected(List<Hand> detectedHands) {
-    if (_isAnswered) return;
+    if (_isAnswered || !mounted) return;
 
     final now = DateTime.now();
 
@@ -809,7 +836,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   void _verifyCurrentAnswer() {
-    if (_isAnswered) return;
+    if (_isAnswered || !mounted) return;
     final q = _questions[_currentIndex];
     bool isCorrect = false;
 
@@ -817,16 +844,20 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       final userWord = _userAnswerSlots.join('');
       isCorrect = userWord.toUpperCase() == q.correctAnswer.toUpperCase();
     } else if (q.type == 'fill_in_the_blank') {
-      isCorrect = _selectedAnswer != null; 
+      isCorrect = _selectedAnswer?.toUpperCase() == q.correctAnswer.toUpperCase();
     } else if (q.type == 'sequence_order') {
-      bool sequenceMatch = true;
-      for (int i = 0; i < q.options.length; i++) {
-        if (_currentSequence[i] != q.options[i]) {
-          sequenceMatch = false;
-          break;
+      if (_currentSequence.length != q.options.length) {
+        isCorrect = false;
+      } else {
+        bool sequenceMatch = true;
+        for (int i = 0; i < q.options.length; i++) {
+          if (_currentSequence[i] != q.options[i]) {
+            sequenceMatch = false;
+            break;
+          }
         }
+        isCorrect = sequenceMatch;
       }
-      isCorrect = sequenceMatch;
     } else if (q.type == 'matching_type') {
       bool allMatched = true;
       for (var opt in q.options) {
@@ -868,6 +899,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   void _showGameOverDialog() {
+    if (!mounted) return;
     Provider.of<SoundProvider>(context, listen: false).playGameOver();
     showDialog(
       context: context,
@@ -893,6 +925,96 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     );
   }
 
+  // ==========================================
+  // PROGRESS TRACKING & DATA SAVING LOGIC
+  // ==========================================
+Future<void> _saveUserProgress(int starsEarned) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    debugPrint("Save failed: No authenticated user found.");
+    return;
+  }
+
+  final db = FirebaseFirestore.instance;
+  final userRef = db.collection('users').doc(user.uid);
+  final attemptRef = db.collection('activity_attempts').doc();
+
+  try {
+    await db.runTransaction((transaction) async {
+      final snapshotDoc = await transaction.get(userRef);
+      final data = snapshotDoc.exists ? (snapshotDoc.data() ?? {}) : <String, dynamic>{};
+
+      // 1. Level Stars Progress Map
+      final Map<String, dynamic> progress = data['progress'] is Map
+          ? Map<String, dynamic>.from(data['progress'] as Map)
+          : {};
+      final int previousStars = (progress[widget.levelId] ?? 0) as int;
+
+      int starsToAdd = 0;
+      if (starsEarned > previousStars) {
+        starsToAdd = starsEarned - previousStars;
+        progress[widget.levelId] = starsEarned;
+      }
+
+      // 2. Global Stars & XP Calculation
+      final int currentStars = (data['stars'] ?? 0) as int;
+      final int currentXp = (data['xp'] ?? 0) as int;
+      final int xpGained = starsEarned * 50;
+
+      // 3. Auto-Unlock Next Sequential Level
+      List<String> unlockedLevels = data['unlockedLevels'] is List
+          ? List<String>.from(data['unlockedLevels'] as List)
+          : ['easy_level_1', 'level_1', 'easy_num_1'];
+
+      if (!unlockedLevels.contains(widget.levelId)) {
+        unlockedLevels.add(widget.levelId);
+      }
+
+      final match = RegExp(r'(\d+)').firstMatch(widget.levelId);
+      if (match != null) {
+        final int currentLevelNum = int.parse(match.group(1)!);
+        final String nextLevelId = widget.levelId.replaceAll(
+          match.group(1)!,
+          '${currentLevelNum + 1}',
+        );
+        if (!unlockedLevels.contains(nextLevelId)) {
+          unlockedLevels.add(nextLevelId);
+        }
+      }
+
+      // 4. Completed Activities Tracking
+      final int completedCount = (data['completedActivitiesCount'] ?? 0) as int;
+
+      // Commit Main User Profile Document Updates (creates doc if missing)
+      transaction.set(
+        userRef,
+        {
+          'stars': currentStars + starsToAdd,
+          'xp': currentXp + (starsToAdd > 0 ? xpGained : 10),
+          'progress': progress,
+          'unlockedLevels': unlockedLevels,
+          'completedActivitiesCount': completedCount + 1,
+          'lastActive': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      // 5. Append Record directly to Top-Level 'activity_attempts' Collection
+      transaction.set(attemptRef, {
+        'category': 'numbers',
+        'isCompleted': true,
+        'levelId': widget.levelId,
+        'starsEarned': starsEarned,
+        'timestamp': FieldValue.serverTimestamp(),
+        'userId': user.uid,
+      });
+    });
+    debugPrint("Saved document successfully to activity_attempts.");
+  } catch (e) {
+    debugPrint("Progress Tracking Transaction Failed: $e");
+  }
+}
+
   Future<void> _handleNext() async {
     _feedbackAnimController.reset();
 
@@ -911,37 +1033,11 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         starsEarned = 2;
       }
       
-      try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-          await FirebaseFirestore.instance.runTransaction((transaction) async {
-            final snapshotDoc = await transaction.get(userRef);
-            if (snapshotDoc.exists) {
-              final data = snapshotDoc.data() as Map<String, dynamic>;
-              final Map<String, dynamic> progress = data['progress'] != null ? Map<String, dynamic>.from(data['progress']) : {};
-              final int previousStars = progress[widget.levelId] ?? 0;
-              
-              int globalStarsToAdd = 0;
-              if (starsEarned > previousStars) {
-                globalStarsToAdd = starsEarned - previousStars;
-                progress[widget.levelId] = starsEarned; 
-              }
+      // Execute progress & stars tracking persistence
+      await _saveUserProgress(starsEarned);
 
-              final int currentGlobalStars = data['stars'] ?? 0;
-              transaction.update(userRef, {
-                'stars': currentGlobalStars + globalStarsToAdd,
-                'progress': progress, 
-              });
-            }
-          });
-        }
-      } catch (e) {
-        debugPrint("Error updating Stars: $e");
-      }
-
-      setState(() => _isSaving = false);
       if (!mounted) return;
+      setState(() => _isSaving = false);
 
       Provider.of<SoundProvider>(context, listen: false).playLevelComplete();
       showDialog(
@@ -959,7 +1055,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
     final IconData feedbackIcon = isCorrect ? Icons.check_rounded : Icons.close_rounded;
 
-    // GALAXY EXPLORER THEME (0xFF080928)
     if (bgColor == 0xFF080928) { 
       return {
         'icon': feedbackIcon,
@@ -973,7 +1068,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       };
     }
     
-    // ENCHANTED FOREST THEME (0xFF1D3D3A)
     if (bgColor == 0xFF1D3D3A) { 
       return {
         'icon': feedbackIcon,
@@ -987,7 +1081,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       };
     }
 
-    // DEEP OCEAN THEME (0xFF001B3A)
     if (bgColor == 0xFF001B3A) { 
       return {
         'icon': feedbackIcon,
@@ -1001,7 +1094,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       };
     }
 
-    // CLOUDY SKY THEME (0xFFE0EAFC)
     if (bgColor == 0xFFE0EAFC) { 
       return {
         'icon': feedbackIcon,
@@ -1015,7 +1107,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       };
     }
 
-    // DEFAULT WARM THEME (0xFFFFF9E5)
     return {
       'icon': feedbackIcon,
       'title': isCorrect ? "Awesome Job! 🎉" : "Not Quite! 💡",
@@ -1524,7 +1615,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: _isCameraInitialized && _cameraController != null
+              child: _isCameraInitialized && _cameraController != null && _cameraController!.value.isInitialized
                   ? FittedBox(
                       fit: BoxFit.cover,
                       child: SizedBox(
@@ -1626,7 +1717,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
             child: isImageOption
                 ? Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: _buildImageWidget(option, fit: BoxFit.contain, size: 24),
+                    child: _buildImageWidget(option, fit: BoxFit.contain, size: 24, fallbackText: option),
                   )
                 : Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme))),
           ),
@@ -1662,7 +1753,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                     ? Padding(
                         padding: const EdgeInsets.all(4.0),
                         child: givenItem.image.isNotEmpty
-                            ? _buildImageWidget(givenItem.image, fit: BoxFit.contain, size: 22)
+                            ? _buildImageWidget(givenItem.image, fit: BoxFit.contain, size: 22, fallbackText: char)
                             : Text(char, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                       )
                     : Text(char ?? '', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
@@ -1696,8 +1787,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                   child: Padding(
                     padding: const EdgeInsets.all(6.0), 
                     child: optionValue.startsWith('data:image') || optionValue.contains('/') || optionValue.contains('.')
-                        ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24)
-                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.contain, size: 30),
+                        ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24, fallbackText: optionValue)
+                        : _buildImageWidget('$optionValue.jpg', fit: BoxFit.contain, size: 30, fallbackText: optionValue),
                   ),
                 ),
               ),

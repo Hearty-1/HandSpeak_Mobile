@@ -1,8 +1,108 @@
 import 'dart:ui';
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:provider/provider.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
+
+class ThemedBackground extends StatelessWidget {
+  final Color bgColor;
+
+  const ThemedBackground({super.key, required this.bgColor});
+
+  Widget _buildGlowingOrb(double size, Color color, double top, double left) {
+    return Positioned(
+      top: top,
+      left: left,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color.withOpacity(0.6), color.withOpacity(0.0)],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCloud(double top, double left, double scale) {
+    return Positioned(
+      top: top, 
+      left: left,
+      child: Transform.scale(
+        scale: scale,
+        child: SizedBox(
+          width: 140,
+          height: 80,
+          child: Stack(
+            children: [
+              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
+              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.8)))),
+              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const confettiColors = [
+      Color(0xFFFF6B8B),
+      Color(0xFFFFB74D),
+      Color(0xFF4DD0E1),
+      Color(0xFFAED581),
+      Color(0xFFBA68C8),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            bgColor,
+            bgColor.withOpacity(0.85),
+            bgColor.withOpacity(0.70),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: Stack(
+        children: [
+          _buildGlowingOrb(350, const Color(0xFFFFCA28).withOpacity(0.4), -100, -80),
+          _buildGlowingOrb(300, const Color(0xFFFF80AB).withOpacity(0.3), 450, 180),
+          _buildGlowingOrb(250, const Color(0xFF4DD0E1).withOpacity(0.3), 700, -60),
+
+          _buildCloud(70, -30, 1.1),
+          _buildCloud(380, 190, 1.0),
+          _buildCloud(680, -20, 1.2),
+
+          ...List.generate(20, (index) {
+            final random = Random(index + 300);
+            final color = confettiColors[random.nextInt(confettiColors.length)];
+            return Positioned(
+              top: random.nextDouble() * 900,
+              left: random.nextDouble() * 380,
+              child: Transform.rotate(
+                angle: random.nextDouble() * 3.14,
+                child: Icon(
+                  random.nextBool() ? Icons.account_balance_rounded : Icons.gavel_rounded,
+                  color: color.withOpacity(random.nextDouble() * 0.35 + 0.15),
+                  size: random.nextDouble() * 18 + 14,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
 
 class CivicActivityInterface extends StatefulWidget {
   final String levelId;
@@ -28,6 +128,94 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
   int _starsEarned = 0;
   bool _progressSaved = false;
 
+  List<Map<String, dynamic>> _questions = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCivicQuestions();
+  }
+
+  bool _isCivicCategory(dynamic categoryValue) {
+    if (categoryValue == null) return false;
+    final cat = categoryValue.toString().trim().toLowerCase();
+    return cat == 'civic' || cat == 'civics';
+  }
+
+  Future<void> _loadCivicQuestions() async {
+    try {
+      ProgressService().trackRecentModule(widget.levelId);
+    } catch (_) {}
+
+    if (widget.questions.isNotEmpty) {
+      final sanitized = widget.questions.asMap().entries.map((entry) {
+        final idx = entry.key;
+        final q = Map<String, dynamic>.from(entry.value);
+        q['id'] ??= 'civic_q_$idx';
+        return q;
+      }).where((q) {
+        final cat = (q['category'] ?? '').toString().trim().toLowerCase();
+        if (cat.isEmpty) return true;
+        return _isCivicCategory(cat);
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _questions = List.from(sanitized);
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('activity_questions')
+          .where('level', isEqualTo: widget.levelId)
+          .where('category', whereIn: ['civic', 'civics', 'Civic', 'Civics'])
+          .get();
+
+      List<Map<String, dynamic>> loadedQuestions = [];
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+
+        String? audioUrl;
+        if (data.containsKey('audioStoragePath') && data['audioStoragePath'] != null) {
+          try {
+            audioUrl = await FirebaseStorage.instance
+                .ref(data['audioStoragePath'])
+                .getDownloadURL();
+          } catch (e) {
+            debugPrint("Error fetching Cloud Storage URL: $e");
+          }
+        }
+
+        loadedQuestions.add({
+          'id': doc.id,
+          'question': data['question'] ?? data['title'] ?? data['questionText'] ?? '',
+          'correctAnswer': data['correctAnswer'] ?? data['answer'] ?? '',
+          'options': List<String>.from(data['options'] ?? []),
+          'category': data['category'] ?? 'civic',
+          'audioUrl': audioUrl,
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _questions = loadedQuestions;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching civic questions: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   void _playSound(String effect) {
     try {
       final soundProvider = Provider.of<SoundProvider>(context, listen: false) as dynamic;
@@ -40,9 +228,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
       try {
         final soundProvider = Provider.of<SoundProvider>(context, listen: false) as dynamic;
         soundProvider.playSoundEffect(effect);
-      } catch (_) {
-        // Silently catch missing audio method exceptions
-      }
+      } catch (_) {}
     }
   }
 
@@ -51,17 +237,18 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
     _progressSaved = true;
 
     try {
-      dynamic service = ProgressService();
-      try {
-        await service.updateUserProgress(
-          levelKey: levelId,
-          stars: _starsEarned,
-          xpEarned: _score * 10,
-          xpCategoryKey: 'civicXp',
-        );
-      } catch (_) {
-        await service.updateUserProgress(levelId, _starsEarned, _score * 10);
-      }
+      final progressService = ProgressService();
+
+      await progressService.recordActivityAttempt(
+        levelId: levelId,
+        category: 'civic',
+        isCompleted: true,
+        starsEarned: _starsEarned,
+      );
+
+      final int xpEarned = _score * 10;
+      await progressService.addXp(xpEarned);
+      await progressService.updateLevelXP(levelId, xpEarned);
     } catch (e) {
       debugPrint("Error saving civic activity progress: $e");
     }
@@ -70,11 +257,13 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
   void _handleAnswer(String selectedOption, String correctAnswer, String levelId, int totalQuestions) {
     if (_isAnswered) return;
 
+    final bool isCorrect = selectedOption.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
+
     setState(() {
       _selectedOption = selectedOption;
       _isAnswered = true;
 
-      if (selectedOption == correctAnswer) {
+      if (isCorrect) {
         _score++;
         _playSound('correct');
       } else {
@@ -82,7 +271,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
       }
 
       final double accuracy = totalQuestions > 0 ? _score / totalQuestions : 0.0;
-      if (accuracy > 0.9) {
+      if (accuracy >= 0.9) {
         _starsEarned = 3;
       } else if (accuracy >= 0.6) {
         _starsEarned = 2;
@@ -109,12 +298,14 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scaffoldBgColor = theme.scaffoldBackgroundColor;
     final textColor = theme.colorScheme.onSurface;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
+      backgroundColor: scaffoldBgColor,
       appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
@@ -138,26 +329,19 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
       ),
       body: Stack(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  theme.scaffoldBackgroundColor,
-                  theme.primaryColor.withOpacity(0.08),
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
+          Positioned.fill(
+            child: ThemedBackground(bgColor: scaffoldBgColor),
           ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
-              child: widget.questions.isEmpty
-                  ? _buildEmptyState(theme)
-                  : (_currentIndex >= widget.questions.length
-                      ? _buildCompletionView(theme)
-                      : _buildQuestionUI(theme)),
+              child: _isLoading
+                  ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                  : _questions.isEmpty
+                      ? _buildEmptyState(theme)
+                      : (_currentIndex >= _questions.length
+                          ? _buildCompletionView(theme)
+                          : _buildQuestionUI(theme)),
             ),
           ),
         ],
@@ -192,7 +376,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
   }
 
   Widget _buildQuestionUI(ThemeData theme) {
-    final questionData = widget.questions[_currentIndex];
+    final questionData = _questions[_currentIndex];
     final String question = questionData['question'] ?? '';
     final List<String> options = List<String>.from(questionData['options'] ?? []);
     final String correctAnswer = questionData['correctAnswer'] ?? '';
@@ -202,7 +386,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Question ${_currentIndex + 1}/${widget.questions.length}',
+          'Question ${_currentIndex + 1}/${_questions.length}',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor.withOpacity(0.7)),
         ),
         const SizedBox(height: 16),
@@ -216,20 +400,21 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
           Color fillClr = theme.cardColor;
 
           if (_isAnswered) {
-            if (option == correctAnswer) {
+            if (option.trim().toLowerCase() == correctAnswer.trim().toLowerCase()) {
               borderClr = Colors.green;
-              fillClr = Colors.green.withOpacity(0.15);
+              fillClr = Colors.green.withOpacity(0.25);
             } else if (option == _selectedOption) {
               borderClr = Colors.red;
-              fillClr = Colors.red.withOpacity(0.15);
+              fillClr = Colors.red.withOpacity(0.25);
             }
           }
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: GestureDetector(
-              onTap: () => _handleAnswer(option, correctAnswer, widget.levelId, widget.questions.length),
-              child: Container(
+              onTap: () => _handleAnswer(option, correctAnswer, widget.levelId, _questions.length),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
                 decoration: BoxDecoration(
                   color: fillClr,
@@ -254,7 +439,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
             ),
             onPressed: _nextQuestion,
             child: Text(
-              _currentIndex < widget.questions.length - 1 ? 'Next Question' : 'View Results',
+              _currentIndex < _questions.length - 1 ? 'Next Question' : 'View Results',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
             ),
           ),
@@ -282,7 +467,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Score: $_score / ${widget.questions.length}',
+            'Score: $_score / ${_questions.length}',
             style: TextStyle(fontSize: 16, color: textColor.withOpacity(0.8)),
           ),
           const SizedBox(height: 32),

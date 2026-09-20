@@ -544,7 +544,7 @@ class _CivicDifficultySelectionScreenState
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Civic Difficulty',
+          'Select Difficulty',
           style: TextStyle(
             color: themeStyles['appBarIcon'],
             fontSize: 24,
