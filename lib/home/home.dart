@@ -7,7 +7,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_application_1/module/alphabet/alphabet_interface.dart'; 
 import 'package:flutter_application_1/module/numbers/numbers_interface.dart'; 
 import '../services/progress_service.dart'; 
-import '../database/database_seeder.dart'; // Database Seeder Import
 import '../module/module.dart'; 
 import '../module/phrases/phrase_interface.dart';
 import '../profile/profile.dart'; 
@@ -119,6 +118,64 @@ class SnedInterafce1 extends StatelessWidget {
     );
   }
 
+  // Daily Treasure Card navigating directly to Challenges (tab index 1) in LeaderboardScreen / arena.dart
+  Widget _buildDailyTreasureCard(BuildContext context, double scale) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LeaderboardScreen(initialTab: 'challenges'),
+          ),
+        );
+      },
+      child: _buildGlassContainer(
+        context: context,
+        scale: scale,
+        color: const Color(0xFFFF8227).withOpacity(0.85), 
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(10 * scale),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.25),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.redeem_rounded, color: Colors.white, size: 36 * scale),
+            ),
+            SizedBox(width: 16 * scale),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Daily Challenges!', 
+                    style: TextStyle(
+                      color: Colors.white, 
+                      fontSize: 18 * scale, 
+                      fontWeight: FontWeight.w900, 
+                      letterSpacing: -0.5,
+                    ), 
+                  ),
+                  SizedBox(height: 4 * scale),
+                  Text(
+                    'Today\'s mini-challenge awaits!', 
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9), 
+                      fontSize: 13 * scale, 
+                      fontWeight: FontWeight.w600,
+                    ), 
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(0.8), size: 20 * scale),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -135,260 +192,283 @@ class SnedInterafce1 extends StatelessWidget {
       ),
     );
 
-    return Scaffold(
-      extendBodyBehindAppBar: true, 
-      extendBody: true, 
-      backgroundColor: theme.scaffoldBackgroundColor, 
-      
-      drawer: Drawer(
-        backgroundColor: theme.cardColor.withOpacity(0.95), 
-        elevation: 0,
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20, right: 20), 
-              decoration: BoxDecoration(
-                color: theme.primaryColor, 
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+    return StreamBuilder<DocumentSnapshot>(
+      stream: ProgressService().getUserProgressStream(), 
+      builder: (context, userSnapshot) {
+        String studentName = userName; 
+        int streak = 0; 
+        int totalXp = 0; 
+        int stars = 0; 
+        String? avatarUrl; 
+        bool hasUnreadNotifications = false;
+        List<String> recentModules = [];
+
+        String normalizeKey(String raw) {
+          final k = raw.toLowerCase().trim();
+          if (k.contains('number')) return 'numbers';
+          if (k.contains('phrase') || k.contains('word') || k.contains('common')) return 'common words';
+          return 'alphabet';
+        }
+
+        if (userSnapshot.hasData && userSnapshot.data!.exists) { 
+          final userData = userSnapshot.data!.data() as Map<String, dynamic>?; 
+          if (userData != null) {
+            studentName = userData['name'] ?? userData['displayName'] ?? userName; 
+            streak = userData['streak'] ?? 0; 
+            totalXp = userData['xp'] ?? 0; 
+            stars = userData['stars'] ?? (totalXp ~/ 1000);  
+            avatarUrl = userData['avatar'] ?? userData['photoURL']; 
+
+            final List<dynamic> rawNotifications = userData['notifications'] ?? [];
+            hasUnreadNotifications = rawNotifications.any(
+              (n) => (n is Map) && (n['isRead'] == false),
+            );
+
+            List<String> userLoggedModules = [];
+
+            if (userData['recentModules'] != null && (userData['recentModules'] as List).isNotEmpty) {
+              userLoggedModules = (userData['recentModules'] as List)
+                  .map((e) => normalizeKey(e.toString()))
+                  .toSet()
+                  .toList();
+            } 
+            else if (userData['progress'] != null && (userData['progress'] as Map).isNotEmpty) {
+              userLoggedModules = (userData['progress'] as Map<String, dynamic>)
+                  .keys
+                  .map((key) => normalizeKey(key))
+                  .toSet()
+                  .toList();
+            }
+
+            const defaultCategories = ['alphabet', 'numbers', 'common words'];
+            recentModules = [
+              ...userLoggedModules,
+              ...defaultCategories.where((cat) => !userLoggedModules.contains(cat)),
+            ].take(2).toList(); // Ensure exactly two items are loaded
+          }
+        }
+
+        if (recentModules.isEmpty) {
+          recentModules = ['alphabet', 'numbers'];
+        }
+
+        int targetXp = 1000; 
+        int currentLevel = (totalXp ~/ targetXp) + 1; 
+        int xpInLevel = totalXp % targetXp; 
+        double progressRatio = xpInLevel / targetXp; 
+
+        return Scaffold(
+          extendBodyBehindAppBar: true, 
+          extendBody: true, 
+          backgroundColor: theme.scaffoldBackgroundColor, 
+          
+          drawer: Drawer(
+            backgroundColor: theme.cardColor.withOpacity(0.95), 
+            elevation: 0,
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20, right: 20), 
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor, 
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Image.asset("assets/pictures/image 1.png", width: 60), 
-                      const SizedBox(width: 10),
-                      Image.asset("assets/pictures/image 66.png", width: 60), 
+                      Row(
+                        children: [
+                          Image.asset("assets/pictures/image 1.png", width: 60), 
+                          const SizedBox(width: 10),
+                          Image.asset("assets/pictures/image 66.png", width: 60), 
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Menu', 
+                        style: TextStyle(
+                          color: theme.colorScheme.onPrimary,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Menu', 
-                    style: TextStyle(
-                      color: theme.colorScheme.onPrimary,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 10), 
-                children: [
-                  ListTile(
-                    leading: Icon(Icons.settings, color: theme.primaryColor), 
-                    title: Text('Settings', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                    onTap: () {
-                      Navigator.pop(context); 
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
-                    }, 
-                  ),
-                  ListTile(
-                    leading: Icon(Icons.cloud_upload_rounded, color: theme.primaryColor), 
-                    title: Text('Seed Database', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                    onTap: () {
-                      Navigator.pop(context); 
-                      DatabaseSeeder.seedActivities(context);
-                    }, 
-                  ),
-                  ListTile(
-                    leading: Icon(Icons.help_outline, color: theme.primaryColor), 
-                    title: Text('Help & Support', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                    onTap: () => Navigator.pop(context), 
-                  ),
-                  ListTile(
-                    leading: Icon(Icons.info_outline, color: theme.primaryColor), 
-                    title: Text('About Us', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                    onTap: () => Navigator.pop(context), 
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-
-      appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: theme.iconTheme.copyWith(color: textColor),
-        flexibleSpace: ClipRRect(
-          clipBehavior: Clip.antiAlias,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
-        title: Text(
-          "Home", 
-          style: TextStyle(color: textColor, fontWeight: FontWeight.w700, letterSpacing: -0.5),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0), 
-            child: Image.asset("assets/pictures/image 66.png", width: 45), 
-          ),
-        ],
-      ),
-      
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          width: double.infinity,
-          height: 74,
-          margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            clipBehavior: Clip.antiAlias,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.cardColor.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.15),
-                    width: 1.0,
-                  ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x08132C4A),
-                      blurRadius: 20,
-                      offset: Offset(0, 8),
-                    )
-                  ],
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(vertical: 10), 
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.settings, color: theme.primaryColor), 
+                        title: Text('Settings', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        onTap: () {
+                          Navigator.pop(context); 
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                        }, 
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.help_outline, color: theme.primaryColor), 
+                        title: Text('Help & Support', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        onTap: () => Navigator.pop(context), 
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.info_outline, color: theme.primaryColor), 
+                        title: Text('About Us', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        onTap: () => Navigator.pop(context), 
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          appBar: AppBar(
+            backgroundColor: theme.cardColor.withOpacity(0.4),
+            elevation: 0,
+            centerTitle: true,
+            iconTheme: theme.iconTheme.copyWith(color: textColor),
+            flexibleSpace: ClipRRect(
+              clipBehavior: Clip.antiAlias,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+            title: Text(
+              "Home", 
+              style: TextStyle(color: textColor, fontWeight: FontWeight.w700, letterSpacing: -0.5),
+            ),
+            actions: [
+              IconButton(
+                icon: Stack(
+                  clipBehavior: Clip.none, 
                   children: [
-                    IconButton(
-                      icon: Icon(Icons.home_rounded, color: theme.primaryColor, size: 28),
-                      onPressed: () {},
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.auto_stories_rounded, color: textColor.withOpacity(0.6), size: 28),
-                      onPressed: () => Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => const SnedInterface2()),
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.sports_esports_rounded, color: textColor.withOpacity(0.6), size: 28), 
-                      onPressed: () => Navigator.push(
-                        context, 
-                        MaterialPageRoute(builder: (context) => const LeaderboardScreen()),
-                      ), 
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.person_rounded, color: textColor.withOpacity(0.6), size: 28),
-                      onPressed: () => Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                      ),
-                    ),
+                    Icon(
+                      Icons.notifications_rounded, 
+                      color: textColor, 
+                      size: 28,
+                    ), 
+                    if (hasUnreadNotifications) 
+                      Positioned(
+                        top: -2, right: -2, 
+                        child: Container(
+                          width: 12, 
+                          height: 12, 
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF3B30), 
+                            shape: BoxShape.circle, 
+                            border: Border.all(color: theme.cardColor, width: 2),
+                          ), 
+                        ),
+                      )
                   ],
+                ),
+                onPressed: () {
+                  Navigator.push( 
+                    context,
+                    MaterialPageRoute(builder: (context) => const NotificationsScreen()), 
+                  );
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 16.0, left: 8.0), 
+                child: Image.asset("assets/pictures/image 66.png", width: 45), 
+              ),
+            ],
+          ),
+          
+          bottomNavigationBar: SafeArea(
+            child: Container(
+              width: double.infinity,
+              height: 74,
+              margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                clipBehavior: Clip.antiAlias,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: theme.cardColor.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.15),
+                        width: 1.0,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x08132C4A),
+                          blurRadius: 20,
+                          offset: Offset(0, 8),
+                        )
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.home_rounded, color: theme.primaryColor, size: 28),
+                          onPressed: () {},
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.auto_stories_rounded, color: textColor.withOpacity(0.6), size: 28),
+                          onPressed: () => Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SnedInterface2()),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.sports_esports_rounded, color: textColor.withOpacity(0.6), size: 28), 
+                          onPressed: () => Navigator.push(
+                            context, 
+                            MaterialPageRoute(builder: (context) => const LeaderboardScreen()),
+                          ), 
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.person_rounded, color: textColor.withOpacity(0.6), size: 28),
+                          onPressed: () => Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
 
-      body: Stack(
-        children: [
-          Positioned(
-            top: -50,
-            left: -50,
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: theme.primaryColor.withOpacity(0.25),
+          body: Stack(
+            children: [
+              Positioned(
+                top: -50,
+                left: -50,
+                child: Container(
+                  width: 250,
+                  height: 250,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: theme.primaryColor.withOpacity(0.25),
+                  ),
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            top: 300,
-            right: -100,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: theme.colorScheme.secondary.withOpacity(0.15),
+              Positioned(
+                top: 300,
+                right: -100,
+                child: Container(
+                  width: 300,
+                  height: 300,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: theme.colorScheme.secondary.withOpacity(0.15),
+                  ),
+                ),
               ),
-            ),
-          ),
 
-          StreamBuilder<DocumentSnapshot>(
-            stream: ProgressService().getUserProgressStream(), 
-            builder: (context, userSnapshot) {
-              String studentName = userName; 
-              int streak = 0; 
-              int totalXp = 0; 
-              int stars = 0; 
-              String? avatarUrl; 
-              bool hasUnreadNotifications = false;
-              List<String> recentModules = [];
-
-              String normalizeKey(String raw) {
-                final k = raw.toLowerCase().trim();
-                if (k.contains('number')) return 'numbers';
-                if (k.contains('phrase') || k.contains('word') || k.contains('common')) return 'common words';
-                return 'alphabet';
-              }
-
-              if (userSnapshot.hasData && userSnapshot.data!.exists) { 
-                final userData = userSnapshot.data!.data() as Map<String, dynamic>?; 
-                if (userData != null) {
-                  studentName = userData['name'] ?? userData['displayName'] ?? userName; 
-                  streak = userData['streak'] ?? 0; 
-                  totalXp = userData['xp'] ?? 0; 
-                  stars = userData['stars'] ?? (totalXp ~/ 1000);  
-                  avatarUrl = userData['avatar'] ?? userData['photoURL']; 
-
-                  final List<dynamic> rawNotifications = userData['notifications'] ?? [];
-                  hasUnreadNotifications = rawNotifications.any(
-                    (n) => (n is Map) && (n['isRead'] == false),
-                  );
-
-                  List<String> userLoggedModules = [];
-
-                  if (userData['recentModules'] != null && (userData['recentModules'] as List).isNotEmpty) {
-                    userLoggedModules = (userData['recentModules'] as List)
-                        .map((e) => normalizeKey(e.toString()))
-                        .toSet()
-                        .toList();
-                  } 
-                  else if (userData['progress'] != null && (userData['progress'] as Map).isNotEmpty) {
-                    userLoggedModules = (userData['progress'] as Map<String, dynamic>)
-                        .keys
-                        .map((key) => normalizeKey(key))
-                        .toSet()
-                        .toList();
-                  }
-
-                  const defaultCategories = ['alphabet', 'numbers', 'common words'];
-                  recentModules = [
-                    ...userLoggedModules,
-                    ...defaultCategories.where((cat) => !userLoggedModules.contains(cat)),
-                  ];
-                }
-              }
-
-              if (recentModules.isEmpty) {
-                recentModules = ['alphabet', 'numbers', 'common words'];
-              }
-
-              int targetXp = 1000; 
-              int currentLevel = (totalXp ~/ targetXp) + 1; 
-              int xpInLevel = totalXp % targetXp; 
-              double progressRatio = xpInLevel / targetXp; 
-
-              return SingleChildScrollView(
+              SingleChildScrollView(
                 physics: const BouncingScrollPhysics(), 
                 padding: EdgeInsets.only(
                   left: 24 * scale, 
@@ -522,57 +602,7 @@ class SnedInterafce1 extends StatelessWidget {
 
                     SizedBox(height: 25 * scale), 
 
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push( 
-                          context,
-                          MaterialPageRoute(builder: (context) => const NotificationsScreen()), 
-                        );
-                      },
-                      child: _buildGlassContainer(
-                        context: context,
-                        scale: scale,
-                        child: Row(
-                          children: [
-                            Stack(
-                              clipBehavior: Clip.none, 
-                              children: [
-                                Icon(
-                                  Icons.notifications_active_rounded, 
-                                  color: theme.primaryColor, 
-                                  size: 36 * scale,
-                                ), 
-                                if (hasUnreadNotifications) 
-                                  Positioned(
-                                    top: -2, right: -2, 
-                                    child: Container(
-                                      width: 12 * scale, 
-                                      height: 12 * scale, 
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFF3B30), 
-                                        shape: BoxShape.circle, 
-                                        border: Border.all(color: theme.cardColor, width: 2),
-                                      ), 
-                                    ),
-                                  )
-                              ],
-                            ),
-                            SizedBox(width: 16 * scale), 
-                            Text(
-                              'Notifications', 
-                              style: TextStyle(
-                                color: textColor, 
-                                fontSize: 18 * scale, 
-                                fontWeight: FontWeight.w800, 
-                                letterSpacing: -0.5,
-                              ), 
-                            ),
-                            const Spacer(), 
-                            Icon(Icons.arrow_forward_ios_rounded, color: textColor.withOpacity(0.6), size: 22 * scale), 
-                          ],
-                        ),
-                      ),
-                    ),
+                    _buildDailyTreasureCard(context, scale),
 
                     SizedBox(height: 32 * scale),  
 
@@ -595,11 +625,11 @@ class SnedInterafce1 extends StatelessWidget {
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

@@ -1,7 +1,7 @@
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '/services/progress_service.dart'; 
 import 'alphabet/alphabet_interface.dart'; 
 import 'numbers/numbers_interface.dart';  
@@ -10,6 +10,8 @@ import 'civic/civic_interface.dart';
 import '../profile/profile.dart';  
 import '../home/home.dart';  
 import '../leaderboard/arena.dart'; 
+import '../home/notification_bell.dart';
+import '../home/settings_screen.dart';
 
 class SnedInterface2 extends StatelessWidget {
   const SnedInterface2({super.key}); 
@@ -85,34 +87,97 @@ class SnedInterface2 extends StatelessWidget {
             final double scale = constraints.maxWidth / baseWidth; 
 
             return Scaffold(
-              extendBodyBehindAppBar: true, 
-              extendBody: true, 
-              backgroundColor: theme.scaffoldBackgroundColor, 
-              
-              appBar: AppBar(
-                backgroundColor: theme.cardColor.withOpacity(0.4), 
-                elevation: 0, 
-                centerTitle: true,  
-                iconTheme: theme.iconTheme.copyWith(color: textColor),
-                flexibleSpace: ClipRRect(
-                  clipBehavior: Clip.antiAlias,
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                    child: Container(color: Colors.transparent),
+          extendBodyBehindAppBar: true, 
+          extendBody: true, 
+          backgroundColor: theme.scaffoldBackgroundColor, 
+          
+          drawer: Drawer(
+            backgroundColor: theme.cardColor.withOpacity(0.95), 
+            elevation: 0,
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20, right: 20), 
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor, 
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Image.asset("assets/pictures/image 1.png", width: 60), 
+                          const SizedBox(width: 10),
+                          Image.asset("assets/pictures/image 66.png", width: 60), 
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Menu', 
+                        style: TextStyle(
+                          color: theme.colorScheme.onPrimary,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                title: Text(
-                  "Modules", 
-                  style: TextStyle(color: textColor, fontWeight: FontWeight.w800, letterSpacing: -0.5), 
-                ),
-                actions: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16.0), 
-                    child: Image.asset("assets/pictures/image 66.png", width: 45), 
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(vertical: 10), 
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.settings, color: theme.primaryColor), 
+                        title: Text('Settings', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        onTap: () {
+                          Navigator.pop(context); 
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                        }, 
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.help_outline, color: theme.primaryColor), 
+                        title: Text('Help & Support', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        onTap: () => Navigator.pop(context), 
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.info_outline, color: theme.primaryColor), 
+                        title: Text('About Us', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        onTap: () => Navigator.pop(context), 
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+
+          appBar: AppBar(
+            backgroundColor: theme.cardColor.withOpacity(0.4),
+            elevation: 0,
+            centerTitle: true,
+            iconTheme: theme.iconTheme.copyWith(color: textColor),
+            flexibleSpace: ClipRRect(
+              clipBehavior: Clip.antiAlias,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Container(color: Colors.transparent),
               ),
-              
+            ),
+            title: Text(
+              "Modules", 
+              style: TextStyle(color: textColor, fontWeight: FontWeight.w700, letterSpacing: -0.5),
+            ),
+            actions: [
+  const NotificationBell(),
+  Padding(
+    padding: const EdgeInsets.only(right: 16.0, left: 4.0), 
+    child: Image.asset("assets/pictures/image 66.png", width: 45), 
+  ),
+],
+                ),
+  
               bottomNavigationBar: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 16, left: 16, right: 16),

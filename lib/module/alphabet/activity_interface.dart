@@ -661,7 +661,15 @@ class _ActivityInterfaceState extends State<ActivityInterface> {
                       }
                     }
 
-                    final levelKeys = levelsMap.keys.toList()..sort();
+                    final levelKeys = levelsMap.keys.toList()
+                      ..sort((a, b) {
+                        // Extract the numerical part at the end of the level ID string
+                        final int numA = int.tryParse(a.split('_').last) ?? 0;
+                        final int numB = int.tryParse(b.split('_').last) ?? 0;
+                        
+                        // Compare them as actual numbers
+                        return numA.compareTo(numB);
+                      });
 
                     if (levelKeys.isEmpty) {
                       return Center(

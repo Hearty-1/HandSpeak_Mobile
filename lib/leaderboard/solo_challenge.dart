@@ -11,8 +11,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
+
 import '/module/alphabet/recognizer.dart';
 import '/providers/sound_provider.dart';
+import '/services/progress_service.dart';
 
 // ==========================================
 // 1. SOLO CHALLENGE SETUP SCREEN
@@ -762,6 +764,20 @@ class _GameProperScreenState extends State<GameProperScreen> {
     bool isCorrect = false;
     if (type == 'camera_spell') {
       isCorrect = _currentScore >= successThreshold || answer.trim().toLowerCase() == correctAnswer;
+
+      // Log camera gesture attempt via ProgressService
+      final questionId = (q['id'] ?? q['docId'] ?? q['questionId'] ?? 'q_$_currentQuestionIndex').toString();
+      final levelId = (q['levelId'] ?? 'solo_$_category').toString();
+
+      ProgressService().recordGestureAttempt(
+        sign: correctAnswer,
+        levelId: levelId,
+        questionId: questionId,
+        isCorrect: isCorrect,
+        score: _currentScore,
+        category: _category,
+        isCameraGesture: true,
+      );
     } else if (type == 'typing') {
       isCorrect = answer.trim().toLowerCase() == correctAnswer;
     } else if (type == 'sequence_order') {
@@ -1380,56 +1396,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
     final double accuracy = _questions.isEmpty ? 0.0 : (_correctCount / _questions.length) * 100.0;
 
     try {
-      final batch = FirebaseFirestore.instance.batch();
-      final userRef = FirebaseFirestore.instance.collection('users').doc(_currentUserId);
-
-      // 1. Update primary user document metrics
-      batch.set(
-        userRef,
-        {
-          'xp': FieldValue.increment(_score),
-          'dailyXp': FieldValue.increment(_score),
-          'totalGamesPlayed': FieldValue.increment(1),
-          'soloChallengesCompleted': FieldValue.increment(1),
-          'totalQuestionsAnswered': FieldValue.increment(_questions.length),
-          'totalCorrectAnswers': FieldValue.increment(_correctCount),
-          'lastActive': FieldValue.serverTimestamp(),
-          'categoryProgress.$_category.lastScore': _score,
-          'categoryProgress.$_category.completedRounds': FieldValue.increment(1),
-          'categoryProgress.$_category.lastPlayed': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
+      await ProgressService().recordSoloChallengeHistory(
+        category: _category,
+        score: _score,
+        correctCount: _correctCount,
+        totalQuestions: _questions.length,
+        accuracy: accuracy,
+        peakStreak: _streak,
       );
-
-      // 2. Add individual session log entry in user's progress history subcollection
-      final historyRef = userRef.collection('progress_history').doc();
-      batch.set(historyRef, {
-        'category': _category,
-        'score': _score,
-        'correctCount': _correctCount,
-        'totalQuestions': _questions.length,
-        'accuracy': accuracy,
-        'peakStreak': _streak,
-        'completedAt': FieldValue.serverTimestamp(),
-        'mode': 'solo_challenge',
-      });
-
-      // 3. Update category-specific aggregated statistics
-      final catProgressRef = userRef.collection('category_progress').doc(_category.toLowerCase().replaceAll(' ', '_'));
-      batch.set(
-        catProgressRef,
-        {
-          'category': _category,
-          'totalAttempts': FieldValue.increment(1),
-          'totalCorrect': FieldValue.increment(_correctCount),
-          'totalQuestions': FieldValue.increment(_questions.length),
-          'lastScore': _score,
-          'lastPlayed': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-
-      await batch.commit();
     } catch (e) {
       debugPrint("Failed to record progress to Firestore: $e");
     }

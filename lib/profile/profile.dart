@@ -6,13 +6,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart'; 
 import 'package:image_picker/image_picker.dart'; 
-
 import '../services/progress_service.dart'; 
 import '../auth/login_screen.dart';        
 import '../home/home.dart'; 
 import '../module/module.dart'; 
 import '../leaderboard/arena.dart';
 import '../home/settings_screen.dart'; 
+import '../home/notification_bell.dart';
 import 'add_friend_screen.dart'; 
 
 class ProfileScreen extends StatelessWidget {
@@ -24,7 +24,6 @@ class ProfileScreen extends StatelessWidget {
       return Icon(Icons.person_rounded, size: size * 0.55 * scale, color: theme.primaryColor);
     }
     
-    // Legacy support for Base64 avatars already saved in Firestore
     if (avatarData.startsWith('data:image')) {
       try {
         final String base64String = avatarData.split(',').last;
@@ -34,7 +33,6 @@ class ProfileScreen extends StatelessWidget {
         return Icon(Icons.broken_image_rounded, size: size * 0.55 * scale, color: theme.disabledColor);
       }
     } else {
-      // Cloud Storage Network URL Rendering
       return Image.network(
         avatarData,
         width: size * scale,
@@ -143,8 +141,9 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         actions: [
+          const NotificationBell(),
           Padding(
-            padding: const EdgeInsets.only(right: 20.0),
+            padding: const EdgeInsets.only(right: 20.0, left: 4.0),
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
@@ -817,7 +816,6 @@ class ProfileScreen extends StatelessWidget {
 
                         setState(() => isSaving = true);
                         try {
-                          // 1. Upload picked image binary to Firebase Storage
                           final storageRef = FirebaseStorage.instance
                               .ref()
                               .child('user_avatars')
@@ -828,10 +826,8 @@ class ProfileScreen extends StatelessWidget {
                             SettableMetadata(contentType: pickedMimeType ?? 'image/jpeg'),
                           );
 
-                          // 2. Obtain download URL from Cloud Storage
                           final String downloadUrl = await uploadTask.ref.getDownloadURL();
 
-                          // 3. Save download URL in Firestore user document
                           await FirebaseFirestore.instance
                               .collection('users')
                               .doc(user.uid)

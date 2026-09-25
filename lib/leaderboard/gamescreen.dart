@@ -14,7 +14,7 @@ import 'package:provider/provider.dart';
 import '/module/alphabet/recognizer.dart';
 import '/providers/sound_provider.dart';
 import '/providers/theme_provider.dart';
-import '/services/progress_service.dart'; //[cite: 22]
+import '/services/progress_service.dart';
 
 class GameProperScreen extends StatefulWidget {
   final String roomCode;
@@ -33,7 +33,7 @@ class GameProperScreen extends StatefulWidget {
 }
 
 class _GameProperScreenState extends State<GameProperScreen> with SingleTickerProviderStateMixin {
-  final ProgressService _progressService = ProgressService(); //[cite: 22]
+  final ProgressService _progressService = ProgressService();
 
   late final String _currentUserId;
   late final String _displayName;
@@ -41,6 +41,11 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   List<Map<String, dynamic>> _questions = [];
   int _currentQuestionIndex = 0;
   int _score = 0;
+
+  // Web dashboard history tracking state variables
+  int _correctAnswersCount = 0;
+  int _mistakesCount = 0;
+  final List<Map<String, dynamic>> _questionLogs = [];
 
   bool _isLoading = true;
   bool _hasAnswered = false;
@@ -685,7 +690,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         answer = correctAnswer;
       }
 
-      // Record camera gesture attempt metrics[cite: 22]
+      // Record camera gesture attempt metrics
       _progressService.recordGestureAttempt(
         sign: correctAnswer,
         levelId: widget.challengeTitle,
@@ -723,6 +728,21 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       isCorrect = answer.isNotEmpty && answer.trim().toLowerCase() == correctAnswer;
     }
 
+    // Capture counts and log itemized question breakdown for web dashboard indexing
+    if (isCorrect) {
+      _correctAnswersCount++;
+    } else {
+      _mistakesCount++;
+    }
+
+    _questionLogs.add({
+      'questionIndex': _currentQuestionIndex + 1,
+      'questionText': _extractQuestionText(currentQ),
+      'userAnswer': answer,
+      'correctAnswer': correctAnswer,
+      'isCorrect': isCorrect,
+    });
+
     final soundProvider = context.read<SoundProvider>();
     if (isCorrect) {
       soundProvider.playCorrect();
@@ -756,6 +776,22 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     });
   }
 
+  void _moveToNextQuestion() {
+    if (!mounted) return;
+
+    if (_currentQuestionIndex + 1 < _questions.length) {
+      setState(() {
+        _currentQuestionIndex++;
+      });
+      _setupCurrentQuestionState();
+      _startTimer();
+    } else {
+      _timer?.cancel();
+      _saveChallengeHistoryAndXP();
+      _showFinalLeaderboard();
+    }
+  }
+
   Future<void> _syncAnswerToFirestore(String answer) async {
     await FirebaseFirestore.instance
         .collection('rooms')
@@ -771,37 +807,72 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     }, SetOptions(merge: true));
   }
 
-  /// Persists player's overall score and progress to Firestore[cite: 22]
-  Future<void> _saveChallengeXP() async {
-    if (_score <= 0) return;
-
+  /// Persists player's overall score, progress, and challenge history to Firestore
+  /// Persists player's overall score, progress, and challenge history to a dedicated top-level 'group_challenges' collection
+  Future<void> _saveChallengeHistoryAndXP() async {
     try {
-      await _progressService.addXp(_score); //[cite: 22]
-      await _progressService.updateLevelXP(_category, _score); //[cite: 22]
+      final playersSnapshot = await FirebaseFirestore.instance
+          .collection('rooms')
+          .doc(widget.roomCode)
+          .collection('players')
+          .orderBy('score', descending: true)
+          .get();
 
-      int stars = _score >= 500 ? 3 : (_score >= 250 ? 2 : 1);
-      await _progressService.recordActivityAttempt( //[cite: 22]
-        levelId: widget.challengeTitle,
-        category: _category,
-        isCompleted: true,
-        starsEarned: stars,
-      );
-    } catch (e) {
-      debugPrint("Error saving challenge XP: $e");
-    }
-  }
+      List<Map<String, dynamic>> standings = [];
+      int userRank = 1;
+      int totalPlayers = playersSnapshot.docs.length;
 
-  void _moveToNextQuestion() {
-    if (!mounted) return;
-    if (_currentQuestionIndex < _questions.length - 1) {
-      setState(() {
-        _currentQuestionIndex++;
+      for (int i = 0; i < playersSnapshot.docs.length; i++) {
+        final doc = playersSnapshot.docs[i];
+        final data = doc.data();
+        final uid = data['uid'] ?? doc.id;
+
+        if (uid == _currentUserId) {
+          userRank = i + 1;
+        }
+
+        standings.add({
+          'uid': uid,
+          'name': data['name'] ?? 'Player',
+          'score': data['score'] ?? 0,
+          'rank': i + 1,
+          'avatarUrl': data['avatarUrl'],
+        });
+      }
+
+      // Update player XP & level progression
+      if (_score > 0) {
+        await _progressService.addXp(_score);
+        await _progressService.updateLevelXP(_category, _score);
+
+        int stars = _score >= 500 ? 3 : (_score >= 250 ? 2 : 1);
+        await _progressService.recordActivityAttempt(
+          levelId: widget.challengeTitle,
+          category: _category,
+          isCompleted: true,
+          starsEarned: stars,
+        );
+      }
+
+      // Store group challenge results directly in the root 'group_challenges' collection
+      await FirebaseFirestore.instance.collection('group_challenges').add({
+        'roomId': widget.roomCode,
+        'userId': _currentUserId,
+        'userName': _displayName,
+        'challengeTitle': widget.challengeTitle,
+        'category': _category,
+        'score': _score,
+        'xpEarned': _score,
+        'rank': userRank,
+        'totalPlayers': totalPlayers > 0 ? totalPlayers : 1,
+        'correctCount': _correctAnswersCount,
+        'mistakesCount': _mistakesCount,
+        'standings': standings,
+        'questionBreakdown': _questionLogs,
+        'completedAt': FieldValue.serverTimestamp(),
       });
-      _setupCurrentQuestionState();
-      _startTimer();
-    } else {
-      _saveChallengeXP(); // Record earned XP at game end[cite: 22]
-      _showFinalLeaderboard();
+    } catch (e) {
+      debugPrint("Error saving group challenge history: $e");
     }
   }
 

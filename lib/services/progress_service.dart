@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 class ProgressService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -48,7 +49,119 @@ class ProgressService {
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error recording camera gesture attempt: $e');
+      debugPrint('Error recording camera gesture attempt: $e');
+    }
+  }
+
+  /// Records group challenge performance data to Firestore for web dashboard tracking
+  Future<void> recordGroupChallengeHistory({
+    required String roomId,
+    required String challengeTitle,
+    required String category,
+    required int score,
+    required int xpEarned,
+    required int rank,
+    required int totalPlayers,
+    required int correctCount,
+    required int mistakesCount,
+    required List<Map<String, dynamic>> standings,
+    required List<Map<String, dynamic>> questionBreakdown,
+  }) async {
+    User? currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      await _db
+          .collection('users')
+          .doc(currentUser.uid)
+          .collection('group_challenge_history')
+          .add({
+        'roomId': roomId,
+        'challengeTitle': challengeTitle,
+        'category': _normalizeCategory(category),
+        'score': score,
+        'xpEarned': xpEarned,
+        'rank': rank,
+        'totalPlayers': totalPlayers,
+        'correctCount': correctCount,
+        'mistakesCount': mistakesCount,
+        'standings': standings,
+        'questionBreakdown': questionBreakdown,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error recording group challenge history: $e');
+    }
+  }
+
+  /// Records solo challenge performance data to Firestore for progress history and user stats tracking
+ /// Records solo challenge performance data to Firestore for progress history and user stats tracking
+  Future<void> recordSoloChallengeHistory({
+    required String category,
+    required int score,
+    required int correctCount,
+    required int totalQuestions,
+    required double accuracy,
+    required int peakStreak,
+  }) async {
+    User? currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    final normalizedCat = _normalizeCategory(category);
+    final batch = _db.batch();
+    final userRef = _db.collection('users').doc(currentUser.uid);
+
+    // 1. Update primary user document metrics (without adding categoryProgress map fields)
+    batch.set(
+      userRef,
+      {
+        'xp': FieldValue.increment(score),
+        'dailyXp': FieldValue.increment(score),
+        'totalGamesPlayed': FieldValue.increment(1),
+        'soloChallengesCompleted': FieldValue.increment(1),
+        'totalQuestionsAnswered': FieldValue.increment(totalQuestions),
+        'totalCorrectAnswers': FieldValue.increment(correctCount),
+        'lastActive': FieldValue.serverTimestamp(),
+        'recentModules': FieldValue.arrayUnion([normalizedCat]),
+      },
+      SetOptions(merge: true),
+    );
+
+    // 2. Add session entry to progress history subcollection
+    final historyRef = userRef.collection('progress_history').doc();
+    batch.set(historyRef, {
+      'category': normalizedCat,
+      'score': score,
+      'correctCount': correctCount,
+      'totalQuestions': totalQuestions,
+      'accuracy': accuracy,
+      'peakStreak': peakStreak,
+      'completedAt': FieldValue.serverTimestamp(),
+      'mode': 'solo_challenge',
+    });
+
+    // 3. Update category progress aggregate inside the `category_progress` subcollection
+    final catProgressRef = userRef
+        .collection('category_progress')
+        .doc(normalizedCat.replaceAll(' ', '_'));
+    batch.set(
+      catProgressRef,
+      {
+        'category': normalizedCat,
+        'totalAttempts': FieldValue.increment(1),
+        'completedRounds': FieldValue.increment(1),
+        'totalCorrect': FieldValue.increment(correctCount),
+        'totalQuestions': FieldValue.increment(totalQuestions),
+        'lastScore': score,
+        'lastPlayed': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+
+    try {
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Error recording solo challenge history: $e');
     }
   }
 
@@ -72,7 +185,7 @@ class ProgressService {
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error recording activity attempt: $e');
+      debugPrint('Error recording activity attempt: $e');
     }
   }
 
@@ -89,7 +202,7 @@ class ProgressService {
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
-      print('Error tracking recent module: $e');
+      debugPrint('Error tracking recent module: $e');
     }
   }
 
@@ -109,7 +222,7 @@ class ProgressService {
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
-      print('Error updating XP: $e');
+      debugPrint('Error updating XP: $e');
     }
   }
 
@@ -126,7 +239,7 @@ class ProgressService {
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
-      print('Error adding overall XP: $e');
+      debugPrint('Error adding overall XP: $e');
     }
   }
 

@@ -11,13 +11,16 @@ import '../profile/profile.dart';
 import '../profile/add_friend_screen.dart';
 import 'gamescreen.dart';
 import 'solo_challenge.dart' hide GameProperScreen;
+import '../home/notification_bell.dart'; // Import NotificationBell widget
 
 class LeaderboardScreen extends StatefulWidget {
   final String initialTab;
+  final int initialTabIndex; // <--- ADD THIS LINE
 
   const LeaderboardScreen({
     super.key,
     this.initialTab = 'rankings',
+    this.initialTabIndex = 0, // <--- NOW THIS WORKS
   });
 
   @override
@@ -179,7 +182,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     const double baseWidth = 393;
     final double scale = screenWidth / baseWidth > 1.2 ? 1.2 : screenWidth / baseWidth;
 
-    return Scaffold(
+return Scaffold(
       extendBodyBehindAppBar: true,
       extendBody: true,
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -225,8 +228,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           ),
         ),
         actions: [
+          const NotificationBell(),
           Padding(
-            padding: const EdgeInsets.only(right: 16.0), 
+            padding: const EdgeInsets.only(right: 16.0, left: 4.0), 
             child: Image.asset("assets/pictures/image 66.png", width: 45), 
           ),
         ],
