@@ -118,7 +118,6 @@ class SnedInterafce1 extends StatelessWidget {
     );
   }
 
-  // Daily Treasure Card navigating directly to Challenges (tab index 1) in LeaderboardScreen / arena.dart
   Widget _buildDailyTreasureCard(BuildContext context, double scale) {
     return GestureDetector(
       onTap: () {
@@ -244,7 +243,7 @@ class SnedInterafce1 extends StatelessWidget {
             recentModules = [
               ...userLoggedModules,
               ...defaultCategories.where((cat) => !userLoggedModules.contains(cat)),
-            ].take(2).toList(); // Ensure exactly two items are loaded
+            ].take(2).toList();
           }
         }
 
@@ -278,7 +277,7 @@ class SnedInterafce1 extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Image.asset("assets/pictures/image 1.png", width: 60), 
+                          Image.asset("assets/pictures/logo.png", width: 60), 
                           const SizedBox(width: 10),
                           Image.asset("assets/pictures/image 66.png", width: 60), 
                         ],
@@ -310,12 +309,109 @@ class SnedInterafce1 extends StatelessWidget {
                       ListTile(
                         leading: Icon(Icons.help_outline, color: theme.primaryColor), 
                         title: Text('Help & Support', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                        onTap: () => Navigator.pop(context), 
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const InfoDetailScreen(
+                            title: 'Help & Support',
+                            sections: [
+                              InfoSection(
+                                title: 'The Learning Loop',
+                                body: 'Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.',
+                                icon: Icons.loop_rounded,
+                              ),
+                              InfoSection(
+                                title: 'Camera Combat',
+                                body: 'Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.',
+                                icon: Icons.camera_alt_rounded,
+                              ),
+                              InfoSection(
+                                title: 'Leveling Up & Streaks',
+                                body: 'Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.',
+                                icon: Icons.local_fire_department_rounded,
+                              ),
+                              InfoSection(
+                                title: 'Multiplayer Challenges',
+                                body: 'Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".',
+                                icon: Icons.group_rounded,
+                              ),
+                              InfoSection(
+                                title: 'Customizing Experience',
+                                body: 'Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.',
+                                icon: Icons.palette_rounded,
+                              ),
+                              InfoSection(
+                                title: 'Reporting Bugs',
+                                body: 'Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.',
+                                icon: Icons.bug_report_rounded,
+                              ),
+                            ],
+                          )));
+                        }, 
                       ),
                       ListTile(
                         leading: Icon(Icons.info_outline, color: theme.primaryColor), 
                         title: Text('About Us', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                        onTap: () => Navigator.pop(context), 
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutUsScreen()));
+                        }, 
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.gavel_rounded, color: theme.primaryColor), 
+                        title: Text('Terms & Privacy Policy', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const InfoDetailScreen(
+                            title: 'Terms of Service & Privacy Policy',
+                            sections: [
+                              InfoSection(
+                                title: '1. Acceptance of Terms',
+                                body: 'By downloading, installing, accessing, or using the HandSpeak application, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service. If you do not agree to these terms, you must discontinue use immediately.',
+                                icon: Icons.handshake_rounded,
+                              ),
+                              InfoSection(
+                                title: '2. Eligibility & Access',
+                                body: 'Access to the HandSpeak platform is expressly restricted to authorized personnel, faculty, and enrolled students of Sto. Tomas North Central School (STNCS). All new registrations are subject to administrative review and remain in a "Pending" status until formally verified.',
+                                icon: Icons.admin_panel_settings_rounded,
+                              ),
+                              InfoSection(
+                                title: '3. Account Security',
+                                body: 'Users are solely responsible for maintaining the confidentiality of their account credentials. HandSpeak assumes no liability for any loss, damage, or unauthorized access arising from a user\'s failure to secure their account information.',
+                                icon: Icons.lock_person_rounded,
+                              ),
+                              InfoSection(
+                                title: '4. Device Permissions',
+                                body: 'The application requires access to your device\'s camera to facilitate real-time gesture recognition. By using the app, you grant explicit consent for this hardware access required for core functionality.',
+                                icon: Icons.perm_camera_mic_rounded,
+                              ),
+                              InfoSection(
+                                title: '5. Content & Moderation',
+                                body: 'All user-generated content, instructional materials, and dataset modifications submitted by faculty members are subject to administrative review. We reserve the right to modify, restrict, or remove any content at our sole discretion to maintain educational integrity.',
+                                icon: Icons.rule_rounded,
+                              ),
+                              InfoSection(
+                                title: '6. Limitation of Liability',
+                                body: 'HandSpeak is provided on an "AS IS" and "AS AVAILABLE" basis. The developers disclaim all warranties, express or implied, including accuracy of gesture recognition. In no event shall the developers be liable for direct, indirect, incidental, or consequential damages resulting from app usage.',
+                                icon: Icons.warning_amber_rounded,
+                              ),
+                              InfoSection(
+                                title: '7. Data Collection (Player Profiles)',
+                                body: 'We collect essential details to build your player profile—such as your Full Name, Email, Student ID, Grade Level, and Section. This information is required for account generation and system security.',
+                                icon: Icons.person_rounded,
+                              ),
+                              InfoSection(
+                                title: '8. Privacy & Stats Tracking',
+                                body: 'We track your gameplay stats—including module completion rates, experience points (XP), earned badges, and gesture accuracy scores. This ensures your progress is accurately recorded and saved.',
+                                icon: Icons.analytics_rounded,
+                              ),
+                              InfoSection(
+                                title: '9. Teacher Analytics',
+                                body: 'Your performance data is securely beamed to a cloud database so your teachers can view descriptive and predictive analytics. This aids educators in tailoring your learning interventions while maintaining strict role-based access control (RBAC).',
+                                icon: Icons.school_rounded,
+                              ),
+                            ],
+                          )));
+                        }, 
                       ),
                     ],
                   ),
@@ -479,7 +575,6 @@ class SnedInterafce1 extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start, 
                   children: [
-                    
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                       children: [
@@ -752,6 +847,208 @@ class SnedInterafce1 extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// --- MINIMAL, PROFESSIONAL DOCUMENT INFO SCREENS ---
+
+class InfoSection {
+  final String title;
+  final String body;
+  final IconData icon; 
+
+  const InfoSection({required this.title, required this.body, required this.icon});
+}
+
+class InfoDetailScreen extends StatelessWidget {
+  final String title;
+  final List<InfoSection> sections;
+
+  const InfoDetailScreen({super.key, required this.title, required this.sections});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393;
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor, 
+      appBar: AppBar(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: theme.iconTheme.copyWith(color: textColor),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: textColor, 
+            fontWeight: FontWeight.w700, 
+            fontSize: 18 * scale,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ),
+      body: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 20 * scale),
+        children: [
+          ...sections.map((section) => Padding(
+            padding: EdgeInsets.only(bottom: 28 * scale),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  section.title,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 16 * scale,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8 * scale),
+                Text(
+                  section.body,
+                  style: TextStyle(
+                    color: textColor.withOpacity(0.85),
+                    fontSize: 14 * scale,
+                    height: 1.6, 
+                  ),
+                  textAlign: TextAlign.justify, 
+                ),
+              ],
+            ),
+          )).toList(),
+          SizedBox(height: 40 * scale),
+        ],
+      ),
+    );
+  }
+}
+
+// --- DEDICATED ABOUT US SCREEN ---
+
+class AboutUsScreen extends StatelessWidget {
+  const AboutUsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393;
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: theme.iconTheme.copyWith(color: textColor),
+        title: Text(
+          "About Us",
+          style: TextStyle(
+            color: textColor,
+            fontWeight: FontWeight.w700,
+            fontSize: 18 * scale,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ),
+      body: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 20 * scale),
+        children: [
+          // STNCS Logo Placeholder
+          Center(
+            child: Container(
+              width: 100 * scale,
+              height: 100 * scale,
+              decoration: BoxDecoration(
+                color: textColor.withOpacity(0.05),
+                shape: BoxShape.circle,
+                border: Border.all(color: textColor.withOpacity(0.1)),
+              ),
+              child: Center(
+                // Swap the Icon below with an Image.asset when you have the STNCS logo
+                // Example: Image.asset('assets/pictures/stncs_logo.png', fit: BoxFit.contain),
+                child: Image.asset('assets/pictures/image 66.png', fit: BoxFit.contain), 
+              ),
+            ),
+          ),
+          SizedBox(height: 16 * scale),
+          Center(
+            child: Text(
+              "HandSpeak",
+              style: TextStyle(
+                color: textColor,
+                fontSize: 18 * scale,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(height: 32 * scale),
+
+          Text("Our Mission", style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+          SizedBox(height: 8 * scale),
+          Text(
+            "HandSpeak is a gamified Filipino Sign Language (FSL) learning adventure equipped with real-time gesture recognition. Our goal is to level up foundational literacy and boost school-wide inclusivity at Sto. Tomas North Central School (STNCS).",
+            style: TextStyle(color: textColor.withOpacity(0.85), fontSize: 14 * scale, height: 1.6),
+            textAlign: TextAlign.justify,
+          ),
+          SizedBox(height: 28 * scale),
+
+          Text("The Developers", style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+          SizedBox(height: 8 * scale),
+          Text(
+            "This digital learning world was forged as a Capstone Project by developers from the College of Informatics and Computing Sciences at Batangas State University - JPLPC Malvar Campus.",
+            style: TextStyle(color: textColor.withOpacity(0.85), fontSize: 14 * scale, height: 1.6),
+            textAlign: TextAlign.justify,
+          ),
+          SizedBox(height: 16 * scale),
+
+          _buildDevProfile(context, "Magpantay, Mea Angel S.", scale),
+          SizedBox(height: 12 * scale),
+          _buildDevProfile(context, "Maligalig, Heartdel D.", scale),
+          SizedBox(height: 12 * scale),
+          _buildDevProfile(context, "Serrano, Anthony", scale),
+
+          SizedBox(height: 40 * scale),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDevProfile(BuildContext context, String name, double scale) {
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    return Container(
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: textColor.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(12 * scale),
+        border: Border.all(color: textColor.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              name,
+              style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w600),
+            ),
+          ),
+          // Social media link placeholders for developers
+          Row(
+            children: [
+              Icon(Icons.link_rounded, color: textColor.withOpacity(0.5), size: 20 * scale),
+              SizedBox(width: 12 * scale),
+              Icon(Icons.email_outlined, color: textColor.withOpacity(0.5), size: 20 * scale),
+            ],
+          )
+        ],
       ),
     );
   }

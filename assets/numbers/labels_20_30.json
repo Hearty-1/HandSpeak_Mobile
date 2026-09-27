@@ -1,0 +1,81 @@
+{
+  "numbers": [
+    {
+      "id": 20,
+      "label": "Number 20",
+      "category": "dynamic_tap",
+      "movement_rule": "Index finger and Thumb extended in an 'L' shape, repeatedly tapping/closing tips together.",
+      "min_motion_energy": 0.30
+    },
+    {
+      "id": 21,
+      "label": "Number 21",
+      "category": "compound_transition",
+      "movement_rule": "Begin with 'L' handshape and transition to Index finger upright ('1').",
+      "min_motion_energy": 0.32
+    },
+    {
+      "id": 22,
+      "label": "Number 22",
+      "category": "rhythmic_pulse",
+      "movement_rule": "Hold '2' handshape (Index and Middle upright) and pulse outward twice.",
+      "min_motion_energy": 0.28
+    },
+    {
+      "id": 23,
+      "label": "Number 23",
+      "category": "compound_transition",
+      "movement_rule": "Begin with 'L' / '2' handshape and transition to '3' (Thumb, Index, Middle extended).",
+      "min_motion_energy": 0.30
+    },
+    {
+      "id": 24,
+      "label": "Number 24",
+      "category": "compound_transition",
+      "movement_rule": "Begin with 'L' / '2' handshape and transition to 4 fingers upright with thumb tucked.",
+      "min_motion_energy": 0.30
+    },
+    {
+      "id": 25,
+      "label": "Number 25",
+      "category": "compound_transition",
+      "movement_rule": "Begin with 'L' / '2' handshape and open to 5 fingers spread wide.",
+      "min_motion_energy": 0.30
+    },
+    {
+      "id": 26,
+      "label": "Number 26",
+      "category": "compound_contact",
+      "movement_rule": "Begin with 'L' handshape and transition to Thumb touching Pinky tip.",
+      "min_motion_energy": 0.32
+    },
+    {
+      "id": 27,
+      "label": "Number 27",
+      "category": "compound_contact",
+      "movement_rule": "Begin with 'L' handshape and transition to Thumb touching Ring tip.",
+      "min_motion_energy": 0.32
+    },
+    {
+      "id": 28,
+      "label": "Number 28",
+      "category": "compound_contact",
+      "movement_rule": "Begin with 'L' handshape and transition to Thumb touching Middle tip.",
+      "min_motion_energy": 0.32
+    },
+    {
+      "id": 29,
+      "label": "Number 29",
+      "category": "compound_contact",
+      "movement_rule": "Begin with 'L' handshape and transition to Thumb touching Index tip with wrist twist.",
+      "min_motion_energy": 0.32
+    },
+    {
+      "id": 30,
+      "label": "Number 30",
+      "category": "compound_closure",
+      "movement_rule": "Hold '3' handshape and close fingers into an 'O' shape.",
+      "min_motion_energy": 0.35
+    }
+  ]
+}

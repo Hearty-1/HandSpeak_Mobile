@@ -1,0 +1,155 @@
+{
+  "category": "FSL Numbers 11-20 (Dynamic & Motion-Aware)",
+  "version": "2.0",
+  "numbers": [
+    {
+      "id": 11,
+      "label": "Number 11",
+      "motion_type": "upward_flick",
+      "expected_orientation": "vertical",
+      "active_fingers": ["index"],
+      "instruction": "Tuck all fingers except the index finger. Flick or snap the index finger upward twice.",
+      "min_kinetic_energy": 0.28,
+      "grading_checks": {
+        "index_extended": true,
+        "middle_extended": false,
+        "ring_extended": false,
+        "pinky_extended": false,
+        "is_horizontal": false
+      }
+    },
+    {
+      "id": 12,
+      "label": "Number 12",
+      "motion_type": "upward_flick",
+      "expected_orientation": "vertical",
+      "active_fingers": ["index", "middle"],
+      "instruction": "Extend index and middle fingers upwards with thumb holding down ring and pinky. Flick both fingers outward/upward twice.",
+      "min_kinetic_energy": 0.28,
+      "grading_checks": {
+        "index_extended": true,
+        "middle_extended": true,
+        "ring_extended": false,
+        "pinky_extended": false,
+        "is_horizontal": false
+      }
+    },
+    {
+      "id": 13,
+      "label": "Number 13",
+      "motion_type": "inward_pulse",
+      "expected_orientation": "vertical",
+      "active_fingers": ["thumb", "index", "middle"],
+      "instruction": "Extend thumb, index, and middle fingers upright. Pulse/wave the index and middle fingers toward the thumb twice.",
+      "min_kinetic_energy": 0.28,
+      "grading_checks": {
+        "index_extended": true,
+        "middle_extended": true,
+        "thumb_flared": true,
+        "ring_extended": false,
+        "pinky_extended": false
+      }
+    },
+    {
+      "id": 14,
+      "label": "Number 14",
+      "motion_type": "inward_fold",
+      "expected_orientation": "vertical",
+      "active_fingers": ["index", "middle", "ring", "pinky"],
+      "instruction": "Tuck the thumb flat against the palm. Extend all four fingers straight up and bend/pulse the four fingers downward together twice.",
+      "min_kinetic_energy": 0.28,
+      "grading_checks": {
+        "index_extended": true,
+        "middle_extended": true,
+        "ring_extended": true,
+        "pinky_extended": true,
+        "thumb_tucked": true
+      }
+    },
+    {
+      "id": 15,
+      "label": "Number 15",
+      "motion_type": "inward_fold_open",
+      "expected_orientation": "vertical",
+      "active_fingers": ["thumb", "index", "middle", "ring", "pinky"],
+      "instruction": "Open entire hand with thumb flared wide. Bend all four fingers together repeatedly toward the open thumb.",
+      "min_kinetic_energy": 0.30,
+      "grading_checks": {
+        "all_fingers_open": true,
+        "thumb_flared": true
+      }
+    },
+    {
+      "id": 16,
+      "label": "Number 16",
+      "motion_type": "contact_flick",
+      "expected_orientation": "upright_diagonal",
+      "active_fingers": ["thumb", "pinky", "index", "middle"],
+      "contact_target": "pinky_tip",
+      "instruction": "Touch the tip of the thumb to the tip of the pinky, then flick outward while keeping other fingers upright.",
+      "min_kinetic_energy": 0.30,
+      "grading_checks": {
+        "contact_finger": "pinky",
+        "index_extended": true,
+        "middle_extended": true
+      }
+    },
+    {
+      "id": 17,
+      "label": "Number 17",
+      "motion_type": "contact_flick",
+      "expected_orientation": "upright_diagonal",
+      "active_fingers": ["thumb", "ring", "index", "middle"],
+      "contact_target": "ring_tip",
+      "instruction": "Touch the tip of the thumb to the tip of the ring finger, then twist or flick outward twice.",
+      "min_kinetic_energy": 0.30,
+      "grading_checks": {
+        "contact_finger": "ring",
+        "index_extended": true,
+        "middle_extended": true
+      }
+    },
+    {
+      "id": 18,
+      "label": "Number 18",
+      "motion_type": "contact_flick",
+      "expected_orientation": "upright_diagonal",
+      "active_fingers": ["thumb", "middle", "index"],
+      "contact_target": "middle_tip",
+      "instruction": "Touch the tip of the thumb to the tip of the middle finger, then flick outward with a slight twist.",
+      "min_kinetic_energy": 0.30,
+      "grading_checks": {
+        "contact_finger": "middle",
+        "index_extended": true
+      }
+    },
+    {
+      "id": 19,
+      "label": "Number 19",
+      "motion_type": "contact_twist",
+      "expected_orientation": "upright_diagonal",
+      "active_fingers": ["thumb", "index"],
+      "contact_target": "index_tip",
+      "instruction": "Touch the tip of the thumb to the tip of the index finger and twist the wrist outward twice.",
+      "min_kinetic_energy": 0.30,
+      "grading_checks": {
+        "contact_finger": "index"
+      }
+    },
+    {
+      "id": 20,
+      "label": "Number 20",
+      "motion_type": "horizontal_tap",
+      "expected_orientation": "horizontal",
+      "active_fingers": ["thumb", "index"],
+      "instruction": "Extend index and thumb into an 'L' shape pointing HORIZONTALLY to the side. Tap the index and thumb tips together twice.",
+      "min_kinetic_energy": 0.28,
+      "grading_checks": {
+        "is_horizontal": true,
+        "middle_extended": false,
+        "ring_extended": false,
+        "pinky_extended": false
+      }
+    }
+  ]
+}

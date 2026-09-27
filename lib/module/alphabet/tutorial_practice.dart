@@ -108,7 +108,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   // Reduced accuracy target to 70.0% for both static and dynamic signs to improve user experience
   double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
-  final int xpReward = 25;
+  final int xpReward = 20;
 
   static const double minMotionThreshold = 0.05;
   static const double _referenceHandScale = 0.20;

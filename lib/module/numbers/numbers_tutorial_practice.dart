@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,8 +10,328 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:onnxruntime/onnxruntime.dart';
 
-/// Dynamic theme visual mapping for thematic icons & graphics
+// =============================================================================
+// ONNX INFERENCE SERVICE WITH EXACT 78-FEATURE EXTRACTOR
+// =============================================================================
+
+class StudentEvaluationResult {
+  final int targetNumber;
+  final int? detectedNumber;
+  final bool isCorrect;
+  final double accuracyScore; 
+  final String feedback;
+  final double kineticEnergy;
+
+  StudentEvaluationResult({
+    required this.targetNumber,
+    required this.detectedNumber,
+    required this.isCorrect,
+    required this.accuracyScore,
+    required this.feedback,
+    required this.kineticEnergy,
+  });
+}
+
+class FSLOnnxService {
+  static OrtSession? _session;
+  static int _loadedRangeGroup = -1; // 1: 11-20, 2: 21-30, 3: 31-40
+
+  static Future<void> loadModelForTarget(int targetNumber) async {
+    int group = 1;
+    String assetPath = 'assets/numbers/fsl_numbers_11_20.onnx';
+
+    if (targetNumber >= 21 && targetNumber <= 30) {
+      group = 2;
+      assetPath = 'assets/numbers/fsl_numbers_20_30.onnx';
+    } else if (targetNumber >= 31 && targetNumber <= 40) {
+      group = 3;
+      assetPath = 'assets/numbers/fsl_numbers_31_40.onnx';
+    }
+
+    if (_session != null && _loadedRangeGroup == group) {
+      return;
+    }
+
+    try {
+      _session?.release();
+      OrtEnv.instance.init();
+      final rawAsset = await rootBundle.load(assetPath);
+      final bytes = rawAsset.buffer.asUint8List();
+      _session = OrtSession.fromBuffer(bytes, OrtSessionOptions());
+      _loadedRangeGroup = group;
+      debugPrint("Loaded ONNX Model for Range Group $group: $assetPath");
+    } catch (e) {
+      debugPrint("ONNX Initialization Failed for $assetPath: $e");
+    }
+  }
+
+  static void release() {
+    _session?.release();
+    _session = null;
+    _loadedRangeGroup = -1;
+    OrtEnv.instance.release();
+  }
+
+  // Exact 78-Dimensional Python Feature Vector Extractor
+  static Float32List extract78Features(List<List<double>> window24Frames) {
+    const tips = [4, 8, 12, 16, 20];
+    const mcps = [2, 5, 9, 13, 17];
+    const pips = [3, 6, 10, 14, 18];
+
+    // 1. Palm Scale Normalization (Relative to Wrist)
+    List<List<List<double>>> norm = [];
+    for (int f = 0; f < 24; f++) {
+      final fData = window24Frames[f];
+      final wX = fData[0], wY = fData[1], wZ = fData[2];
+      final mX = fData[9 * 3], mY = fData[9 * 3 + 1], mZ = fData[9 * 3 + 2];
+      final palmScale = math.sqrt(math.pow(mX - wX, 2) + math.pow(mY - wY, 2) + math.pow(mZ - wZ, 2)) + 1e-6;
+
+      List<List<double>> framePts = [];
+      for (int i = 0; i < 21; i++) {
+        framePts.add([
+          (fData[i * 3] - wX) / palmScale,
+          (fData[i * 3 + 1] - wY) / palmScale,
+          (fData[i * 3 + 2] - wZ) / palmScale,
+        ]);
+      }
+      norm.add(framePts);
+    }
+
+    // 2. Deadzoned Kinematics
+    double totalEnergy = 0.0;
+    List<double> speedProfile = [];
+    for (int f = 1; f < 24; f++) {
+      double frameSpeed = 0.0;
+      for (int tip in tips) {
+        final dX = norm[f][tip][0] - norm[f - 1][tip][0];
+        final dY = norm[f][tip][1] - norm[f - 1][tip][1];
+        final dZ = norm[f][tip][2] - norm[f - 1][tip][2];
+        final speed = math.sqrt(dX * dX + dY * dY + dZ * dZ);
+        if (speed > 0.018) {
+          frameSpeed += speed;
+          totalEnergy += speed;
+        }
+      }
+      speedProfile.add(frameSpeed / 5.0);
+    }
+
+    int maxSpeedIdx = 0;
+    double maxSpeedVal = 0.0;
+    for (int i = 0; i < speedProfile.length; i++) {
+      if (speedProfile[i] > maxSpeedVal) {
+        maxSpeedVal = speedProfile[i];
+        maxSpeedIdx = i;
+      }
+    }
+
+    // Contraction Delta: Tip 8 & 12 to Thumb distance change
+    double initialThumbDist = (math.sqrt(math.pow(norm[0][8][0] - norm[0][4][0], 2) + math.pow(norm[0][8][1] - norm[0][4][1], 2)) +
+                               math.sqrt(math.pow(norm[0][12][0] - norm[0][4][0], 2) + math.pow(norm[0][12][1] - norm[0][4][1], 2))) / 2.0;
+    double finalThumbDist = (math.sqrt(math.pow(norm[23][8][0] - norm[23][4][0], 2) + math.pow(norm[23][8][1] - norm[23][4][1], 2)) +
+                             math.sqrt(math.pow(norm[23][12][0] - norm[23][4][0], 2) + math.pow(norm[23][12][1] - norm[23][4][1], 2))) / 2.0;
+    double contractionDelta = finalThumbDist - initialThumbDist;
+
+    // Horizontal Hand Check
+    int horizCount = 0;
+    for (int f = 0; f < 24; f++) {
+      if (norm[f][9][0].abs() > norm[f][9][1].abs()) horizCount++;
+    }
+    double isHorizontal = horizCount / 24.0;
+
+    // 3. Phase Segmentation
+    int splitIdx = (maxSpeedIdx + 1).clamp(6, 18);
+
+    List<double> getPhaseGeometry(int start, int end) {
+      List<List<double>> medPts = [];
+      for (int i = 0; i < 21; i++) {
+        List<double> xs = [], ys = [], zs = [];
+        for (int f = start; f < end; f++) {
+          xs.add(norm[f][i][0]);
+          ys.add(norm[f][i][1]);
+          zs.add(norm[f][i][2]);
+        }
+        xs.sort(); ys.sort(); zs.sort();
+        medPts.add([xs[xs.length ~/ 2], ys[ys.length ~/ 2], zs[zs.length ~/ 2]]);
+      }
+
+      double d3(List<double> a, List<double> b) =>
+          math.sqrt(math.pow(a[0] - b[0], 2) + math.pow(a[1] - b[1], 2) + math.pow(a[2] - b[2], 2));
+
+      const origin = [0.0, 0.0, 0.0];
+      List<double> feats = [];
+
+      for (int i = 0; i < 5; i++) {
+        feats.add(d3(medPts[tips[i]], origin) / (d3(medPts[mcps[i]], origin) + 1e-6));
+      }
+      for (int i = 0; i < 5; i++) {
+        feats.add(medPts[tips[i]][0] - medPts[pips[i]][0]);
+      }
+      for (int i = 0; i < 5; i++) {
+        feats.add(medPts[pips[i]][1] - medPts[tips[i]][1]);
+      }
+      feats.add(d3(medPts[4], medPts[5]));
+      feats.add(d3(medPts[4], medPts[17]));
+      feats.add(d3(medPts[8], medPts[4]));
+      feats.add(d3(medPts[12], medPts[4]));
+      feats.add(d3(medPts[16], medPts[4]));
+      feats.add(d3(medPts[20], medPts[4]));
+      feats.add(d3(medPts[8], medPts[12]));
+      feats.add(d3(medPts[12], medPts[16]));
+      feats.add(d3(medPts[16], medPts[20]));
+
+      return feats;
+    }
+
+    final p1Feats = getPhaseGeometry(0, splitIdx);
+    final p2Feats = getPhaseGeometry(splitIdx, 24);
+
+    double morphSum = 0.0;
+    List<double> deltaPose = [];
+    for (int i = 0; i < p1Feats.length; i++) {
+      double diff = p2Feats[i] - p1Feats[i];
+      deltaPose.add(diff);
+      morphSum += diff * diff;
+    }
+    double postureMorph = math.sqrt(morphSum);
+
+    List<double> full78 = [];
+    full78.addAll(p1Feats);
+    full78.addAll(p2Feats);
+    full78.addAll(deltaPose);
+    full78.addAll([
+      totalEnergy,
+      maxSpeedVal,
+      maxSpeedIdx / 24.0,
+      contractionDelta,
+      postureMorph,
+      isHorizontal,
+    ]);
+
+    return Float32List.fromList(full78);
+  }
+
+  static double computeKineticEnergy(List<List<double>> window24Frames) {
+    const tips = [4, 8, 12, 16, 20];
+    double totalEnergy = 0.0;
+    for (int f = 1; f < window24Frames.length; f++) {
+      for (int tip in tips) {
+        final dx = window24Frames[f][tip * 3] - window24Frames[f - 1][tip * 3];
+        final dy = window24Frames[f][tip * 3 + 1] - window24Frames[f - 1][tip * 3 + 1];
+        final dz = window24Frames[f][tip * 3 + 2] - window24Frames[f - 1][tip * 3 + 2];
+        totalEnergy += math.sqrt(dx * dx + dy * dy + dz * dz);
+      }
+    }
+    return totalEnergy;
+  }
+
+  static StudentEvaluationResult evaluateWithModel({
+    required int targetNumber,
+    required List<List<double>> window24Frames,
+    required double kineticEnergy,
+  }) {
+    if (_session == null) {
+      throw Exception("ONNX Session not initialized for target $targetNumber");
+    }
+
+    final features78 = extract78Features(window24Frames);
+    final shape = [1, 78];
+
+    final inputTensor = OrtValueTensor.createTensorWithDataList(features78, shape);
+    final runOptions = OrtRunOptions();
+    final inputs = {'float_input': inputTensor};
+    final outputs = _session!.run(runOptions, inputs);
+
+    // Safely extract label using generic 'List'
+    final labelTensor = outputs[0]?.value as List;
+    int predictedNumber = int.parse(labelTensor[0].toString());
+
+    // Safely extract probabilities
+    double targetProbability = 0.0;
+    if (outputs.length > 1 && outputs[1]?.value != null) {
+      final probSequence = outputs[1]?.value as List;
+      if (probSequence.isNotEmpty && probSequence[0] is Map) {
+        final probMap = probSequence[0] as Map;
+        dynamic rawProb = probMap[targetNumber] ?? probMap[targetNumber.toInt()] ?? probMap[targetNumber.toString()];
+        targetProbability = (rawProb ?? 0.0).toDouble();
+      }
+    }
+
+    inputTensor.release();
+    runOptions.release();
+    for (var element in outputs) {
+      element?.release();
+    }
+
+    final p1 = window24Frames[4];
+    final p2 = window24Frames[21];
+
+    double dist3D(List<double> f, int p1, int p2) {
+      final dx = f[p1 * 3] - f[p2 * 3];
+      final dy = f[p1 * 3 + 1] - f[p2 * 3 + 1];
+      final dz = f[p1 * 3 + 2] - f[p2 * 3 + 2];
+      return math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    final p2Scale = dist3D(p2, 0, 9) + 1e-6;
+    double ext(List<double> f, int tip, int mcp) => dist3D(f, 0, tip) / (dist3D(f, 0, mcp) + 1e-6);
+
+    final p1Idx = ext(p1, 8, 5);
+    final p1Mid = ext(p1, 12, 9);
+    final p1Ring = ext(p1, 16, 13);
+    final p1Pnk = ext(p1, 20, 17);
+
+    if (targetNumber >= 31 && targetNumber <= 39) {
+      bool isBase3 = p1Idx > 1.20 && p1Mid > 1.20 && p1Ring < 1.15 && p1Pnk < 1.12;
+      if (!isBase3) {
+        return StudentEvaluationResult(
+          targetNumber: targetNumber,
+          detectedNumber: null,
+          isCorrect: false,
+          accuracyScore: 30.0,
+          feedback: "Maling simula! Dapat magsimula sa Base '3' (Ring at Pinky nakatupi).",
+          kineticEnergy: kineticEnergy,
+        );
+      }
+    } else if (targetNumber == 40) {
+      bool isBase4 = p1Idx > 1.20 && p1Mid > 1.20 && p1Ring > 1.20 && p1Pnk > 1.15;
+      final contractionDelta = (dist3D(window24Frames[23], 4, 8) - dist3D(window24Frames[0], 4, 8)) / p2Scale;
+      if (!isBase4 || contractionDelta >= -0.05) {
+        return StudentEvaluationResult(
+          targetNumber: targetNumber,
+          detectedNumber: null,
+          isCorrect: false,
+          accuracyScore: 35.0,
+          feedback: "Maling galaw para sa 40! Kailangang mag-pulse o mag-contract papuntang 'O' shape.",
+          kineticEnergy: kineticEnergy,
+        );
+      }
+    }
+
+    double baseScore = (predictedNumber == targetNumber) ? 70.0 : (targetProbability * 60.0);
+    double motionBonus = (kineticEnergy / 0.40).clamp(0.0, 1.0) * 30.0;
+    double finalAccuracy = (baseScore + motionBonus).clamp(0.0, 100.0);
+
+    bool isCorrect = (predictedNumber == targetNumber) && (finalAccuracy >= 70.0);
+
+    return StudentEvaluationResult(
+      targetNumber: targetNumber,
+      detectedNumber: predictedNumber,
+      isCorrect: isCorrect,
+      accuracyScore: finalAccuracy,
+      feedback: isCorrect
+          ? "Mahusay! Wastong kumpas at porma para sa Number $targetNumber (${finalAccuracy.toStringAsFixed(1)}%)"
+          : "Maling sign ang naisagawa (${finalAccuracy.toStringAsFixed(1)}%). Na-detect: Number $predictedNumber.",
+      kineticEnergy: kineticEnergy,
+    );
+  }
+}
+
+// =============================================================================
+// THEME VISUAL MAPPING
+// =============================================================================
+
 class _ThemeVisuals {
   final IconData mainBadgeIcon;
   final IconData secondaryIcon;
@@ -28,7 +349,6 @@ class _ThemeVisuals {
     final primary = theme.primaryColor;
     final isDark = theme.brightness == Brightness.dark;
 
-    // 1. DEEP OCEAN THEME (Blue Primary)
     if (primary.blue > 160 && primary.red < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.water_drop_rounded,
@@ -36,27 +356,21 @@ class _ThemeVisuals {
         ambientIcon1: Icons.bubble_chart_rounded,
         ambientIcon2: Icons.sailing_rounded,
       );
-    } 
-    // 2. FOREST NATURE THEME (Green Primary)
-    else if (primary.green > 160 && primary.red < 120) {
+    } else if (primary.green > 160 && primary.red < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.eco_rounded,
         secondaryIcon: Icons.forest_rounded,
         ambientIcon1: Icons.park_rounded,
         ambientIcon2: Icons.energy_savings_leaf_rounded,
       );
-    } 
-    // 3. COSMIC SPACE THEME (Dark Theme with High Contrast)
-    else if (isDark) {
+    } else if (isDark) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.auto_awesome_rounded,
         secondaryIcon: Icons.nights_stay_rounded,
         ambientIcon1: Icons.star_border_rounded,
         ambientIcon2: Icons.wb_twilight_rounded,
       );
-    } 
-    // 4. GOLDEN PLAYFUL THEME (Default / Warm Colors)
-    else {
+    } else {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.stars_rounded,
         secondaryIcon: Icons.workspace_premium_rounded,
@@ -67,6 +381,10 @@ class _ThemeVisuals {
   }
 }
 
+// =============================================================================
+// MAIN PRACTICE WIDGET
+// =============================================================================
+
 class NumbersTutorialPractice extends StatefulWidget {
   final String targetNumber;
 
@@ -76,13 +394,16 @@ class NumbersTutorialPractice extends StatefulWidget {
   _NumbersTutorialPracticeState createState() => _NumbersTutorialPracticeState();
 }
 
-class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
+class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with WidgetsBindingObserver {
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _handSub;
 
-  // Static in-memory cache shared across calls
   static final Map<String, List<dynamic>> _templateCache = {};
+
+  bool _isProcessingFrame = false;
+  final List<List<double>> _frameBuffer = [];
+  DateTime _lastSampleTime = DateTime.now();
 
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
@@ -91,21 +412,53 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
   DateTime? _startHoldTime;
+  String _currentFeedback = "Ipuwesto ang kamay sa tapat ng camera";
+
+  int _bufferFrameCount = 0;
+  static const int _requiredBufferFrames = 24;
 
   final double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
-  final int xpReward = 25;
+  final int xpReward = 20;
+
+  bool get _isStaticSign {
+    final num = int.tryParse(widget.targetNumber) ?? 0;
+    return num >= 1 && num <= 10;
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    if (!_isStaticSign) {
+      final target = int.tryParse(widget.targetNumber) ?? 0;
+      FSLOnnxService.loadModelForTarget(target).then((_) {
+        debugPrint("ONNX Model Loaded for Target $target");
+      });
+    }
+
     _initializePipeline();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _controller?.stopImageStream();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_controller != null && !_controller!.value.isStreamingImages) {
+        _controller?.startImageStream(_processCameraFrame);
+      }
+    }
   }
 
   Future<void> _initializePipeline() async {
     try {
       await _loadGestureLibrary();
 
+      // Hand Landmarker tracking up to 2 hands for multi-hand evaluation support
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
         minHandDetectionConfidence: 0.5,
@@ -146,16 +499,12 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
 
     // 1. Check in-memory cache first
     if (_templateCache.containsKey(number)) {
-      if (mounted) {
-        setState(() {
-          _template = _templateCache[number];
-        });
-      }
+      if (mounted) setState(() { _template = _templateCache[number]; });
       return;
     }
 
+    // 2. Fetch from Firebase Cloud Storage
     try {
-      // 2. Fetch from Firebase Cloud Storage
       final ref = FirebaseStorage.instance.ref().child('numbers/$number.json');
       final data = await ref.getData();
       if (data != null) {
@@ -163,35 +512,30 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
         final List<dynamic> parsed = jsonDecode(jsonString);
         _templateCache[number] = parsed;
 
-        if (mounted) {
-          setState(() {
-            _template = parsed;
-          });
-        }
+        if (mounted) setState(() { _template = parsed; });
+        debugPrint("Loaded cloud template for sign $number");
         return;
       }
     } catch (e) {
-      debugPrint("Cloud Storage fetch failed for $number, using asset fallback: $e");
+      debugPrint("Cloud Storage fetch failed for $number, using local asset fallback: $e");
     }
 
-    // 3. Asset fallback if cloud download fails or is unavailable
+    // 3. Asset fallback if cloud download fails
     try {
       String jsonString = await rootBundle.loadString('assets/numbers/$number.json');
       final List<dynamic> parsed = jsonDecode(jsonString);
       _templateCache[number] = parsed;
 
-      if (mounted) {
-        setState(() {
-          _template = parsed;
-        });
-      }
+      if (mounted) setState(() { _template = parsed; });
     } catch (e) {
       debugPrint("Could not find gesture resource profile for: $number");
     }
   }
 
   void _processCameraFrame(CameraImage image) {
-    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved || _template == null) return;
+    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
+    if (_isStaticSign && _template == null) return;
+    if (_isProcessingFrame) return;
 
     try {
       final int sensorOrientation = _controller!.description.sensorOrientation;
@@ -201,34 +545,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
     }
   }
 
-  void _onHandsDetected(List<Hand> detectedHands) {
-    if (_isSuccessAchieved || _template == null) return;
-
-    if (detectedHands.isNotEmpty) {
-      double highestScoreAcrossAllHands = 0.0;
-
-      for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
-        final double score = _calculateScore(
-          detectedHands[handIdx].landmarks,
-          _template!,
-        );
-        if (score > highestScoreAcrossAllHands) {
-          highestScoreAcrossAllHands = score;
-        }
-      }
-
-      _updateGameLogic(highestScoreAcrossAllHands);
-    } else {
-      if (mounted) {
-        setState(() {
-          _currentScore = 0.0;
-          _holdProgress = 0.0;
-          _startHoldTime = null;
-        });
-      }
-    }
-  }
-
+  // Original matrix-orientation score evaluator for static signs
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
 
@@ -298,12 +615,113 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
     return bestScore;
   }
 
-  void _updateGameLogic(double score) {
+  void _onHandsDetected(List<Hand> detectedHands) async {
+    if (_isSuccessAchieved || _isProcessingFrame) return;
+    _isProcessingFrame = true;
+
+    try {
+      if (detectedHands.isNotEmpty) {
+        double score = 0.0;
+        String feedback = "Ipuwesto ang kamay sa tapat ng camera";
+
+        // ==========================================
+        // 1. STATIC SIGN LOGIC (Original Algorithm)
+        // ==========================================
+        if (_isStaticSign) {
+          if (_template != null) {
+            double highestScoreAcrossAllHands = 0.0;
+
+            for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
+              final double handScore = _calculateScore(
+                detectedHands[handIdx].landmarks,
+                _template!,
+              );
+              if (handScore > highestScoreAcrossAllHands) {
+                highestScoreAcrossAllHands = handScore;
+              }
+            }
+
+            score = highestScoreAcrossAllHands;
+            feedback = score >= successThreshold
+                ? "Tama ang posisyon! Hawakan ang kamay."
+                : "I-adjust ang posisyon para sa Sign ${widget.targetNumber}.";
+          }
+        } 
+        
+        // ==========================================
+        // 2. DYNAMIC SIGN LOGIC (ONNX Model Pipeline)
+        // ==========================================
+        else {
+          final hand = detectedHands.first;
+
+          // Front-camera mirror adjustment for ONNX Extractor: Invert X
+          final List<double> flattenedLms = [];
+          for (var lm in hand.landmarks) {
+            flattenedLms.addAll([1.0 - lm.x, lm.y, lm.z]);
+          }
+
+          // Dynamic throttle (~45ms interval for ~22 FPS normalization)
+          final now = DateTime.now();
+          if (now.difference(_lastSampleTime).inMilliseconds >= 45) {
+            _lastSampleTime = now;
+            _frameBuffer.add(flattenedLms);
+            if (_frameBuffer.length > 24) {
+              _frameBuffer.removeAt(0);
+            }
+            _bufferFrameCount = _frameBuffer.length;
+
+            if (_frameBuffer.length == 24) {
+              final currentEnergy = FSLOnnxService.computeKineticEnergy(_frameBuffer);
+
+              if (currentEnergy < 0.26) {
+                score = 15.0;
+                feedback = "Static hand detected! Gawin ang tamang galaw o transition.";
+              } else {
+                try {
+                  final evalResult = FSLOnnxService.evaluateWithModel(
+                    targetNumber: int.tryParse(widget.targetNumber) ?? 0,
+                    window24Frames: _frameBuffer,
+                    kineticEnergy: currentEnergy,
+                  );
+
+                  score = evalResult.accuracyScore;
+                  feedback = evalResult.feedback;
+                } catch (e) {
+                  debugPrint("ONNX Inference Error: $e");
+                  feedback = "Model Inference Error.";
+                }
+              }
+            }
+          } else {
+            return;
+          }
+        }
+
+        _updateGameLogic(score, feedback);
+      } else {
+        _frameBuffer.clear();
+        _bufferFrameCount = 0;
+        if (mounted) {
+          setState(() {
+            _currentScore = 0.0;
+            _holdProgress = 0.0;
+            _startHoldTime = null;
+            _currentFeedback = "Walang kamay na nakikita";
+          });
+        }
+      }
+    } finally {
+      _isProcessingFrame = false;
+    }
+  }
+
+  void _updateGameLogic(double score, String feedback) {
     if (!mounted) return;
     final now = DateTime.now();
 
     setState(() {
       _currentScore = score;
+      _currentFeedback = feedback;
 
       if (_currentScore >= successThreshold) {
         _startHoldTime ??= now;
@@ -487,10 +905,13 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _handSub?.cancel();
     _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();
+
+    FSLOnnxService.release();
     super.dispose();
   }
 
@@ -687,7 +1108,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
                                                 const SizedBox(width: 4),
                                               ],
                                               Text(
-                                                isPassing ? "Hold!" : "Position Hand",
+                                                isPassing ? "Hold!" : "Frame Hand",
                                                 style: TextStyle(
                                                   color: isPassing ? Colors.greenAccent : Colors.white,
                                                   fontSize: 10,
@@ -706,7 +1127,18 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+
+                    Text(
+                      _currentFeedback,
+                      style: TextStyle(
+                        color: isPassing ? Colors.green : theme.colorScheme.primary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
 
                     if (_holdProgress > 0.0) ...[
                       Column(
@@ -746,6 +1178,61 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> {
                                         boxShadow: [
                                           BoxShadow(color: Colors.greenAccent.withOpacity(0.5), blurRadius: 10)
                                         ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    ] else if (!_isStaticSign && _bufferFrameCount > 0 && _bufferFrameCount < _requiredBufferFrames) ...[
+                      Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Analyzing motion... ($_bufferFrameCount/$_requiredBufferFrames)",
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(
+                                width: screenWidth * 0.70,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface.withOpacity(0.4),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FractionallySizedBox(
+                                    widthFactor: _bufferFrameCount / _requiredBufferFrames,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary,
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
                                   ),

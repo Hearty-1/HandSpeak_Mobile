@@ -54,6 +54,7 @@ dependencies:
   video_player: ^2.8.2
   firebase_storage: ^13.5.0
   just_audio: ^0.9.36
+  onnxruntime: ^1.4.1
 
 dev_dependencies:
   flutter_test:
@@ -81,12 +82,16 @@ flutter_launcher_icons:
 flutter:
   assets:
     - assets/hand_landmarker.task
-    - assets/alphabet/
     - assets/numbers/
+    - assets/numbers/fsl_numbers_11_20.onnx
+    - assets/numbers/fsl_numbers_20_30.onnx
+    - assets/numbers/fsl_numbers_31_40.onnx
+    - assets/numbers/labels_11_20.json
+    - assets/numbers/labels_20_30.json
+    - assets/numbers/labels_31_40.json
     - assets/phrases/
     - assets/pictures/
     - assets/sounds/
-    - assets/pictures/background1.jpg
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

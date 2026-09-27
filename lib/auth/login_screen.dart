@@ -205,7 +205,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
               children: [
                 // Logo
                 Image.asset(
-                  "assets/pictures/image 1.png", 
+                  "assets/pictures/logo.png", 
                   width: 75,
                 ),
                 const SizedBox(height: 24),
