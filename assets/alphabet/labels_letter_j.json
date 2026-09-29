@@ -1,0 +1,16 @@
+{
+  "module": "Specialist Letter J",
+  "model_filename": "fsl_letter_j.onnx",
+  "feature_dim": 19,
+  "sample_frames": 32,
+  "classes": [
+    {
+      "index": 0,
+      "label": "Not J / Neutral"
+    },
+    {
+      "index": 1,
+      "label": "Letter J"
+    }
+  ]
+}

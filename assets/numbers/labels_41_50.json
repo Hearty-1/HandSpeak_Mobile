@@ -1,0 +1,76 @@
+{
+  "category": "FSL Numbers 41-50 (Compound Transition & Base-4 Aware)",
+  "version": "2.0",
+  "numbers": [
+    {
+      "id": 41,
+      "label": "Number 41",
+      "orientation": "upright",
+      "instruction": "Begin in '4' base handshape (Index, Middle, Ring, Pinky extended upright with thumb tucked flat against palm), then transition to Index finger upright ('1').",
+      "min_energy": 0.35
+    },
+    {
+      "id": 42,
+      "label": "Number 42",
+      "orientation": "upright",
+      "instruction": "Begin in '4' base handshape, then transition to '2' handshape (Index and Middle upright, Ring and Pinky tucked).",
+      "min_energy": 0.35
+    },
+    {
+      "id": 43,
+      "label": "Number 43",
+      "orientation": "upright",
+      "instruction": "Begin in '4' base handshape, then transition to '3' handshape (Thumb, Index, Middle extended upright with fingers spread).",
+      "min_energy": 0.35
+    },
+    {
+      "id": 44,
+      "label": "Number 44",
+      "orientation": "upright",
+      "instruction": "Hold '4' handshape (4 fingers upright with thumb tucked) and bounce outward or forward twice.",
+      "min_energy": 0.30
+    },
+    {
+      "id": 45,
+      "label": "Number 45",
+      "orientation": "upright",
+      "instruction": "Begin in '4' base handshape, then open and flare all 5 fingers wide with thumb extended outward.",
+      "min_energy": 0.35
+    },
+    {
+      "id": 46,
+      "label": "Number 46",
+      "orientation": "upright",
+      "instruction": "Begin in '4' base handshape, then touch Thumb tip to Pinky tip ('6' handshape) with remaining 3 fingers upright.",
+      "min_energy": 0.35
+    },
+    {
+      "id": 47,
+      "label": "Number 47",
+      "orientation": "upright",
+      "instruction": "Begin in '4' base handshape, then touch Thumb tip to Ring tip ('7' handshape).",
+      "min_energy": 0.35
+    },
+    {
+      "id": 48,
+      "label": "Number 48",
+      "orientation": "upright",
+      "instruction": "Begin in '4' base handshape, then touch Thumb tip to Middle tip ('8' handshape).",
+      "min_energy": 0.35
+    },
+    {
+      "id": 49,
+      "label": "Number 49",
+      "orientation": "upright",
+      "instruction": "Begin in '4' base handshape, then touch Thumb tip to Index tip ('9' handshape) with remaining 3 fingers upright.",
+      "min_energy": 0.35
+    },
+    {
+      "id": 50,
+      "label": "Number 50",
+      "orientation": "upright",
+      "instruction": "Begin in '5' base handshape (all 5 fingers open), then actively close/pulse fingers into an 'O' shape.",
+      "min_energy": 0.38
+    }
+  ]
+}

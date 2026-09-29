@@ -1,0 +1,16 @@
+{
+  "module": "Specialist Letter Z (Anti-Scribble)",
+  "model_filename": "fsl_letter_z.onnx",
+  "feature_dim": 23,
+  "sample_frames": 32,
+  "classes": [
+    {
+      "index": 0,
+      "label": "Not Z"
+    },
+    {
+      "index": 1,
+      "label": "Letter Z"
+    }
+  ]
+}

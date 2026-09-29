@@ -8,10 +8,11 @@ class LocalNotificationService {
 
   static Future<void> initialize() async {
     tz.initializeTimeZones();
+    tz.setLocalLocation(tz.getLocation('Asia/Manila'));
     
-    // Note: 'app_icon' must exist in android/app/src/main/res/drawable/
     const AndroidInitializationSettings androidSettings = 
-        AndroidInitializationSettings('app_icon');
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+        
     const DarwinInitializationSettings iosSettings = 
         DarwinInitializationSettings(requestAlertPermission: true);
         
@@ -23,14 +24,15 @@ class LocalNotificationService {
 
   static Future<void> scheduleStreakReminder() async {
     await _notificationsPlugin.zonedSchedule(
-      1, // Unique ID for Streak Notification
+      1, 
       'Keep your streak alive! 🔥',
       'Play a quick game today to protect your streak.',
       tz.TZDateTime.now(tz.local).add(const Duration(hours: 24)),
       const NotificationDetails(
         android: AndroidNotificationDetails('streak_channel', 'Streaks', importance: Importance.max),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      // FIX: Changed from exactAllowWhileIdle to inexactAllowWhileIdle
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, 
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
     );
   }

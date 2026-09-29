@@ -1,0 +1,76 @@
+{
+  "category": "FSL Numbers 51-60 (Base-5 Morph & Pinch Kinematics)",
+  "version": "2.0",
+  "numbers": [
+    {
+      "id": 51,
+      "label": "Number 51",
+      "orientation": "upright",
+      "instruction": "Ipakita ang '5' base handshape (lahat ng 5 daliri bukas), pagkatapos ay itupi ang hinlalaki, gitna, palasinsingan, at hinliliit upang tanging hintuturo ('1') lamang ang nakatayo.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 52,
+      "label": "Number 52",
+      "orientation": "upright",
+      "instruction": "Simulan sa bukas na '5' base, pagkatapos ay itupi ang palasinsingan, hinliliit, at hinlalaki habang nakatayo ang hintuturo at gitnang daliri ('2').",
+      "min_energy": 0.25
+    },
+    {
+      "id": 53,
+      "label": "Number 53",
+      "orientation": "upright",
+      "instruction": "Simulan sa bukas na '5' base, pagkatapos ay itayo ang hinlalaki, hintuturo, at gitnang daliri ('3') habang nakatupi ang palasinsingan at hinliliit.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 54,
+      "label": "Number 54",
+      "orientation": "upright",
+      "instruction": "Simulan sa bukas na '5' base, pagkatapos ay itupi nang lapat ang hinlalaki sa palad habang nakatayo ang 4 na daliri ('4').",
+      "min_energy": 0.25
+    },
+    {
+      "id": 55,
+      "label": "Number 55",
+      "orientation": "upright",
+      "instruction": "Panatilihing bukas ang lahat ng 5 daliri at magsagawa ng dalawang malinaw na bounce o pulse paharap/pababa.",
+      "min_energy": 0.30
+    },
+    {
+      "id": 56,
+      "label": "Number 56",
+      "orientation": "upright",
+      "instruction": "Simulan sa bukas na '5' base, pagkatapos ay paglapatin ang dulo ng hinlalaki at hinliliit ('6' pinch) habang nakatayo ang 3 natitirang daliri.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 57,
+      "label": "Number 57",
+      "orientation": "upright",
+      "instruction": "Simulan sa bukas na '5' base, pagkatapos ay paglapatin ang dulo ng hinlalaki at palasinsingan ('7' pinch) habang nakatayo ang iba.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 58,
+      "label": "Number 58",
+      "orientation": "upright",
+      "instruction": "Simulan sa bukas na '5' base, pagkatapos ay paglapatin ang dulo ng hinlalaki at gitnang daliri ('8' pinch).",
+      "min_energy": 0.25
+    },
+    {
+      "id": 59,
+      "label": "Number 59",
+      "orientation": "upright",
+      "instruction": "Simulan sa bukas na '5' base, pagkatapos ay paglapatin ang dulo ng hinlalaki at hintuturo ('9' pinch) habang nakatayo ang gitna, palasinsingan, at hinliliit.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 60,
+      "label": "Number 60",
+      "orientation": "upright",
+      "instruction": "Magsimula sa '6' handshape (hinlalaki nakadikit sa hinliliit) at i-contract/i-pulse ang mga daliri papasok upang makabuo ng hugis 'O'.",
+      "min_energy": 0.28
+    }
+  ]
+}

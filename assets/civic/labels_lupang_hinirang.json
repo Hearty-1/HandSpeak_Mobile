@@ -1,0 +1,208 @@
+{
+  "category": "FSL Civic Observances: Lupang Hinirang (National Anthem)",
+  "version": "2.0",
+  "pipeline": "MediaPipe Holistic (Pose + Dual Hand + Face)",
+  "model_filename": "fsl_lupang_hinirang.onnx",
+  "input_tensor_shape": [1, 818],
+  "sample_frames": 32,
+  "phrases": [
+    {
+      "id": 1,
+      "index": 0,
+      "folder_code": "01_Bayang_magiliw",
+      "label": "Bayang magiliw",
+      "orientation": "upper_body",
+      "instruction": "Place your right flat palm against your left chest (heart), then gently open and extend your hand forward with palm facing slightly upward.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 2,
+      "index": 1,
+      "folder_code": "02_Perlas_ng_Silanganan",
+      "label": "Perlas ng Silanganan",
+      "orientation": "upper_body",
+      "instruction": "Pinch thumb and index fingertips together at chest level (pearl), then rise the dominant hand upward from behind the horizontal non-dominant arm (rising sun).",
+      "min_energy": 0.22
+    },
+    {
+      "id": 3,
+      "index": 2,
+      "folder_code": "03_Alab_ng_puso",
+      "label": "Alab ng puso",
+      "orientation": "upper_body",
+      "instruction": "Touch or point lightly toward your chest (heart), then raise both hands upward with rapidly fluttering fingers (blazing fire).",
+      "min_energy": 0.25
+    },
+    {
+      "id": 4,
+      "index": 3,
+      "folder_code": "04_Sa_dibdib_mo_y_buhay",
+      "label": "Sa dibdib mo'y buhay",
+      "orientation": "upper_body",
+      "instruction": "Place your flat palm firmly across the center of your chest and maintain a proud upright posture to signal vitality and life.",
+      "min_energy": 0.18
+    },
+    {
+      "id": 5,
+      "index": 4,
+      "folder_code": "05_Lupang_hinirang",
+      "label": "Lupang hinirang",
+      "orientation": "upper_body",
+      "instruction": "Gesture toward the ground/land with open palms facing downward, then bring the dominant hand forward in a choosing/cherishing motion.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 6,
+      "index": 5,
+      "folder_code": "06_Duyan_ka_ng_magiting",
+      "label": "Duyan ka ng magiting",
+      "orientation": "upper_body",
+      "instruction": "Form a rocking cradle motion with curved forearms, then raise a clenched fist near the shoulder symbolizing bravery.",
+      "min_energy": 0.22
+    },
+    {
+      "id": 7,
+      "index": 6,
+      "folder_code": "07_Sa_manlulupig",
+      "label": "Sa manlulupig",
+      "orientation": "upper_body",
+      "instruction": "Form clawed or grasping hands pushing downward aggressively to depict an invading or oppressing force.",
+      "min_energy": 0.22
+    },
+    {
+      "id": 8,
+      "index": 7,
+      "folder_code": "08_Di_ka_pasisiil",
+      "label": "Di ka pasisiil",
+      "orientation": "upper_body",
+      "instruction": "Cross wrists firmly in front of the chest and shake your head sideways with a resolute facial expression (never yielding).",
+      "min_energy": 0.24
+    },
+    {
+      "id": 9,
+      "index": 8,
+      "folder_code": "09_Sa_dagat_at_bundok",
+      "label": "Sa dagat at bundok",
+      "orientation": "upper_body",
+      "instruction": "Wave an open horizontal hand outward for sea waves, then trace an inverted 'V' peak upward for mountains.",
+      "min_energy": 0.22
+    },
+    {
+      "id": 10,
+      "index": 9,
+      "folder_code": "10_Sa_simoy_at_sa_langit",
+      "label": "Sa simoy at sa langit",
+      "orientation": "upper_body",
+      "instruction": "Sway open fluttered palms softly across the face level (breeze), then sweep both arms upward toward the sky.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 11,
+      "index": 10,
+      "folder_code": "11_May_dilag_ang_tula_at_awit",
+      "label": "May dilag ang tula at awit",
+      "orientation": "upper_body",
+      "instruction": "Trace along your cheek for beauty/radiance, followed by conduct waves from the mouth symbolizing lyrical song.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 12,
+      "index": 11,
+      "folder_code": "12_Sa_paglayang_minamahal",
+      "label": "Sa paglayang minamahal",
+      "orientation": "upper_body",
+      "instruction": "Cross wrists and break them outward to an open release (freedom), then cross open hands over the chest (cherished/beloved).",
+      "min_energy": 0.24
+    },
+    {
+      "id": 13,
+      "index": 12,
+      "folder_code": "13_Ang_kislap_ng_watawat_mo_y",
+      "label": "Ang kislap ng watawat mo'y",
+      "orientation": "upper_body",
+      "instruction": "Pinch and expand fingers outward near the eyes for gleaming light, then hold an upright non-dominant pole and wave the dominant flat hand like a flag.",
+      "min_energy": 0.22
+    },
+    {
+      "id": 14,
+      "index": 13,
+      "folder_code": "14_Tagumpay_na_nagniningning",
+      "label": "Tagumpay na nagniningning",
+      "orientation": "upper_body",
+      "instruction": "Raise both hands into dual 'V' victory formations overhead, expanding fingers outward into shimmering sparkles.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 15,
+      "index": 14,
+      "folder_code": "15_Ang_bituin_at_araw_niya",
+      "label": "Ang bituin at araw niya",
+      "orientation": "upper_body",
+      "instruction": "Flick index finger pinches across upper corners (stars), then form a circle with thumb and index expanding outward with all fingers (radiant sun).",
+      "min_energy": 0.24
+    },
+    {
+      "id": 16,
+      "index": 15,
+      "folder_code": "16_Kailan_pa_ma_y_di_magdidilim",
+      "label": "Kailan pa ma'y 'di magdidilim",
+      "orientation": "upper_body",
+      "instruction": "Extend index finger forward tracing infinite time, shake head firmly 'no', and push hands downward blocking out darkness.",
+      "min_energy": 0.22
+    },
+    {
+      "id": 17,
+      "index": 16,
+      "folder_code": "17_Lupa_ng_araw_ng_luwalhati_t_pagsinta",
+      "label": "Lupa ng araw ng luwalhati't pagsinta",
+      "orientation": "upper_body",
+      "instruction": "Gesture toward land, expand the high sun, lift arms in glorification, and pull both hands onto the chest in deep love.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 18,
+      "index": 17,
+      "folder_code": "18_Buhay_ay_langit_sa_piling_mo",
+      "label": "Buhay ay langit sa piling mo",
+      "orientation": "upper_body",
+      "instruction": "Touch chest upward for life, open palms upward toward the heavens, and bring hands together in a gentle clasp beside the body.",
+      "min_energy": 0.22
+    },
+    {
+      "id": 19,
+      "index": 18,
+      "folder_code": "19_Aming_ligaya",
+      "label": "Aming ligaya",
+      "orientation": "upper_body",
+      "instruction": "Brush flat open palms upward across your chest repeatedly with a cheerful, smiling facial expression (happiness/joy).",
+      "min_energy": 0.20
+    },
+    {
+      "id": 20,
+      "index": 19,
+      "folder_code": "20_na_pag_may_mang-aapi",
+      "label": "Na 'pag may mang-aapi",
+      "orientation": "upper_body",
+      "instruction": "Press down firmly with dominant fist onto the flat palm below with an intense, watchful facial expression.",
+      "min_energy": 0.22
+    },
+    {
+      "id": 21,
+      "index": 20,
+      "folder_code": "21_Ang_mamatay",
+      "label": "Ang mamatay",
+      "orientation": "upper_body",
+      "instruction": "Turn both open hands simultaneously so that the dominant palm flips downward while the non-dominant flips upward (transition of life/death).",
+      "min_energy": 0.22
+    },
+    {
+      "id": 22,
+      "index": 21,
+      "folder_code": "22_nang_dahil_sayo",
+      "label": "Nang dahil sa'yo",
+      "orientation": "upper_body",
+      "instruction": "Point open hand forward outward with reverent eye contact, acknowledging devotion to the nation.",
+      "min_energy": 0.20
+    }
+  ]
+}

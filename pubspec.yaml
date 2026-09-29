@@ -55,6 +55,7 @@ dependencies:
   firebase_storage: ^13.5.0
   just_audio: ^0.9.36
   onnxruntime: ^1.4.1
+  firebase_messaging: ^16.7.0
 
 dev_dependencies:
   flutter_test:
@@ -82,14 +83,38 @@ flutter_launcher_icons:
 flutter:
   assets:
     - assets/hand_landmarker.task
+    - assets/alphabet/
+    - assets/alphabet/fsl_letter_j.onnx
+    - assets/alphabet/fsl_letter_z.onnx
+    - assets/alphabet/labels_letter_j.json
+    - assets/alphabet/labels_letter_z.json
     - assets/numbers/
     - assets/numbers/fsl_numbers_11_20.onnx
     - assets/numbers/fsl_numbers_20_30.onnx
     - assets/numbers/fsl_numbers_31_40.onnx
+    - assets/numbers/fsl_numbers_41_50.onnx
+    - assets/numbers/fsl_numbers_51_60.onnx
+    - assets/numbers/fsl_numbers_61_70.onnx
+    - assets/numbers/fsl_numbers_71_80.onnx
+    - assets/numbers/fsl_numbers_81_90.onnx
+    - assets/numbers/fsl_numbers_91_100.onnx
     - assets/numbers/labels_11_20.json
     - assets/numbers/labels_20_30.json
     - assets/numbers/labels_31_40.json
+    - assets/numbers/labels_41_50.json
+    - assets/numbers/labels_51_60.json
+    - assets/numbers/labels_61_70.json
+    - assets/numbers/labels_71_80.json
+    - assets/numbers/labels_81_90.json
+    - assets/numbers/labels_91_100.json
     - assets/phrases/
+    - assets/civic/
+    - assets/civic/fsl_lupang_hinirang.onnx
+    - assets/civic/fsl_panata.onnx
+    - assets/civic/fsl_panunumpa.onnx
+    - assets/civic/labels_lupang_hinirang.json
+    - assets/civic/labels_panata.json
+    - assets/civic/labels_panunumpa.json
     - assets/pictures/
     - assets/sounds/
   # The following line ensures that the Material Icons font is

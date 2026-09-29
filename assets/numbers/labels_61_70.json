@@ -1,0 +1,76 @@
+{
+  "category": "FSL Numbers 61-70 (Base-6 Morph & Pinch Kinematics)",
+  "version": "2.0",
+  "numbers": [
+    {
+      "id": 61,
+      "label": "Number 61",
+      "orientation": "upright",
+      "instruction": "Ipakita ang '6' base handshape (dulo ng hinlalaki nakadikit sa dulo ng hinliliit habang nakatayo ang 3 daliri), pagkatapos ay lumipat sa nakatayong hintuturo ('1').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 62,
+      "label": "Number 62",
+      "orientation": "upright",
+      "instruction": "Simulan sa '6' base, pagkatapos ay itayo ang hintuturo at gitnang daliri ('2') habang nakatupi ang iba.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 63,
+      "label": "Number 63",
+      "orientation": "upright",
+      "instruction": "Simulan sa '6' base, pagkatapos ay itayo ang hinlalaki, hintuturo, at gitnang daliri ('3').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 64,
+      "label": "Number 64",
+      "orientation": "upright",
+      "instruction": "Simulan sa '6' base, pagkatapos ay itayo ang 4 na daliri ('4') habang nakalapat ang hinlalaki sa palad nang walang contact pinch.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 65,
+      "label": "Number 65",
+      "orientation": "upright",
+      "instruction": "Simulan sa '6' base, pagkatapos ay ibuka ang lahat ng 5 daliri nang maluwag ('5').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 66,
+      "label": "Number 66",
+      "orientation": "upright",
+      "instruction": "Panatilihin ang '6' handshape (hinlalaki nakadikit sa hinliliit) at magsagawa ng dalawang malinaw na bounce o pulse paharap.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 67,
+      "label": "Number 67",
+      "orientation": "upright",
+      "instruction": "Simulan sa '6' base, pagkatapos ay ilipat ang hinlalaki upang dumikit sa dulo ng palasinsingan ('7' pinch).",
+      "min_energy": 0.20
+    },
+    {
+      "id": 68,
+      "label": "Number 68",
+      "orientation": "upright",
+      "instruction": "Simulan sa '6' base, pagkatapos ay ilipat ang hinlalaki upang dumikit sa dulo ng gitnang daliri ('8' pinch).",
+      "min_energy": 0.20
+    },
+    {
+      "id": 69,
+      "label": "Number 69",
+      "orientation": "upright",
+      "instruction": "Simulan sa '6' base, pagkatapos ay ilipat ang hinlalaki upang dumikit sa dulo ng hintuturo ('9' pinch).",
+      "min_energy": 0.20
+    },
+    {
+      "id": 70,
+      "label": "Number 70",
+      "orientation": "upright",
+      "instruction": "Magsimula sa '7' handshape (hinlalaki nakadikit sa palasinsingan) at i-contract/i-pulse ang mga daliri papasok upang makabuo ng hugis 'O'.",
+      "min_energy": 0.25
+    }
+  ]
+}

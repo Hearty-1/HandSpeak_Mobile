@@ -38,18 +38,38 @@ class FSLOnnxService {
   static OrtSession? _session;
   static int _loadedRangeGroup = -1; // 1: 11-20, 2: 21-30, 3: 31-40
 
-  static Future<void> loadModelForTarget(int targetNumber) async {
+static Future<void> loadModelForTarget(int targetNumber) async {
     int group = 1;
     String assetPath = 'assets/numbers/fsl_numbers_11_20.onnx';
 
+    // Map the target number to the correct 10-number range ONNX model
     if (targetNumber >= 21 && targetNumber <= 30) {
       group = 2;
       assetPath = 'assets/numbers/fsl_numbers_20_30.onnx';
     } else if (targetNumber >= 31 && targetNumber <= 40) {
       group = 3;
       assetPath = 'assets/numbers/fsl_numbers_31_40.onnx';
+    } else if (targetNumber >= 41 && targetNumber <= 50) {
+      group = 4;
+      assetPath = 'assets/numbers/fsl_numbers_41_50.onnx';
+    } else if (targetNumber >= 51 && targetNumber <= 60) {
+      group = 5;
+      assetPath = 'assets/numbers/fsl_numbers_51_60.onnx';
+    } else if (targetNumber >= 61 && targetNumber <= 70) {
+      group = 6;
+      assetPath = 'assets/numbers/fsl_numbers_61_70.onnx';
+    } else if (targetNumber >= 71 && targetNumber <= 80) {
+      group = 7;
+      assetPath = 'assets/numbers/fsl_numbers_71_80.onnx';
+    } else if (targetNumber >= 81 && targetNumber <= 90) {
+      group = 8;
+      assetPath = 'assets/numbers/fsl_numbers_81_90.onnx';
+    } else if (targetNumber >= 91 && targetNumber <= 100) {
+      group = 9;
+      assetPath = 'assets/numbers/fsl_numbers_91_100.onnx';
     }
 
+    // Prevent reloading if the correct model group is already active in memory
     if (_session != null && _loadedRangeGroup == group) {
       return;
     }
@@ -71,10 +91,8 @@ class FSLOnnxService {
     _session?.release();
     _session = null;
     _loadedRangeGroup = -1;
-    OrtEnv.instance.release();
   }
 
-  // Exact 78-Dimensional Python Feature Vector Extractor
   static Float32List extract78Features(List<List<double>> window24Frames) {
     const tips = [4, 8, 12, 16, 20];
     const mcps = [2, 5, 9, 13, 17];
@@ -126,14 +144,12 @@ class FSLOnnxService {
       }
     }
 
-    // Contraction Delta: Tip 8 & 12 to Thumb distance change
     double initialThumbDist = (math.sqrt(math.pow(norm[0][8][0] - norm[0][4][0], 2) + math.pow(norm[0][8][1] - norm[0][4][1], 2)) +
                                math.sqrt(math.pow(norm[0][12][0] - norm[0][4][0], 2) + math.pow(norm[0][12][1] - norm[0][4][1], 2))) / 2.0;
     double finalThumbDist = (math.sqrt(math.pow(norm[23][8][0] - norm[23][4][0], 2) + math.pow(norm[23][8][1] - norm[23][4][1], 2)) +
                              math.sqrt(math.pow(norm[23][12][0] - norm[23][4][0], 2) + math.pow(norm[23][12][1] - norm[23][4][1], 2))) / 2.0;
     double contractionDelta = finalThumbDist - initialThumbDist;
 
-    // Horizontal Hand Check
     int horizCount = 0;
     for (int f = 0; f < 24; f++) {
       if (norm[f][9][0].abs() > norm[f][9][1].abs()) horizCount++;
@@ -243,11 +259,9 @@ class FSLOnnxService {
     final inputs = {'float_input': inputTensor};
     final outputs = _session!.run(runOptions, inputs);
 
-    // Safely extract label using generic 'List'
     final labelTensor = outputs[0]?.value as List;
     int predictedNumber = int.parse(labelTensor[0].toString());
 
-    // Safely extract probabilities
     double targetProbability = 0.0;
     if (outputs.length > 1 && outputs[1]?.value != null) {
       final probSequence = outputs[1]?.value as List;
@@ -419,7 +433,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
   final double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
-  final int xpReward = 20;
+  final int xpReward = 10;
 
   bool get _isStaticSign {
     final num = int.tryParse(widget.targetNumber) ?? 0;
@@ -458,7 +472,6 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     try {
       await _loadGestureLibrary();
 
-      // Hand Landmarker tracking up to 2 hands for multi-hand evaluation support
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
         minHandDetectionConfidence: 0.5,
@@ -497,13 +510,11 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   Future<void> _loadGestureLibrary() async {
     final number = widget.targetNumber;
 
-    // 1. Check in-memory cache first
     if (_templateCache.containsKey(number)) {
       if (mounted) setState(() { _template = _templateCache[number]; });
       return;
     }
 
-    // 2. Fetch from Firebase Cloud Storage
     try {
       final ref = FirebaseStorage.instance.ref().child('numbers/$number.json');
       final data = await ref.getData();
@@ -520,7 +531,6 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
       debugPrint("Cloud Storage fetch failed for $number, using local asset fallback: $e");
     }
 
-    // 3. Asset fallback if cloud download fails
     try {
       String jsonString = await rootBundle.loadString('assets/numbers/$number.json');
       final List<dynamic> parsed = jsonDecode(jsonString);
@@ -545,7 +555,6 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     }
   }
 
-  // Original matrix-orientation score evaluator for static signs
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
 
@@ -624,9 +633,6 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
         double score = 0.0;
         String feedback = "Ipuwesto ang kamay sa tapat ng camera";
 
-        // ==========================================
-        // 1. STATIC SIGN LOGIC (Original Algorithm)
-        // ==========================================
         if (_isStaticSign) {
           if (_template != null) {
             double highestScoreAcrossAllHands = 0.0;
@@ -646,21 +652,14 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                 ? "Tama ang posisyon! Hawakan ang kamay."
                 : "I-adjust ang posisyon para sa Sign ${widget.targetNumber}.";
           }
-        } 
-        
-        // ==========================================
-        // 2. DYNAMIC SIGN LOGIC (ONNX Model Pipeline)
-        // ==========================================
-        else {
+        } else {
           final hand = detectedHands.first;
 
-          // Front-camera mirror adjustment for ONNX Extractor: Invert X
           final List<double> flattenedLms = [];
           for (var lm in hand.landmarks) {
             flattenedLms.addAll([1.0 - lm.x, lm.y, lm.z]);
           }
 
-          // Dynamic throttle (~45ms interval for ~22 FPS normalization)
           final now = DateTime.now();
           if (now.difference(_lastSampleTime).inMilliseconds >= 45) {
             _lastSampleTime = now;
@@ -724,11 +723,17 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
       _currentFeedback = feedback;
 
       if (_currentScore >= successThreshold) {
-        _startHoldTime ??= now;
-        final difference = now.difference(_startHoldTime!).inMilliseconds / 1000.0;
-        _holdProgress = (difference / holdDurationSeconds).clamp(0.0, 1.0);
+        if (_isStaticSign) {
+          _startHoldTime ??= now;
+          final difference = now.difference(_startHoldTime!).inMilliseconds / 1000.0;
+          _holdProgress = (difference / holdDurationSeconds).clamp(0.0, 1.0);
 
-        if (difference >= holdDurationSeconds) {
+          if (difference >= holdDurationSeconds) {
+            _onSuccess();
+          }
+        } else {
+          // Dynamic signs completely bypass the hold timer
+          _holdProgress = 1.0;
           _onSuccess();
         }
       } else {
@@ -1108,7 +1113,9 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                                                 const SizedBox(width: 4),
                                               ],
                                               Text(
-                                                isPassing ? "Hold!" : "Frame Hand",
+                                                isPassing 
+                                                  ? (_isStaticSign ? "Hold!" : "Correct!") 
+                                                  : "Frame Hand",
                                                 style: TextStyle(
                                                   color: isPassing ? Colors.greenAccent : Colors.white,
                                                   fontSize: 10,
@@ -1140,7 +1147,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                     ),
                     const SizedBox(height: 12),
 
-                    if (_holdProgress > 0.0) ...[
+                    if (_isStaticSign && _holdProgress > 0.0) ...[
                       Column(
                         children: [
                           Row(

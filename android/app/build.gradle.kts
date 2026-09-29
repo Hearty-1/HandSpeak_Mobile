@@ -19,8 +19,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+    androidResources {
+    noCompress.add("task")
     }
 
     defaultConfig {
@@ -52,4 +58,5 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("androidx.concurrent:concurrent-futures:1.1.0")
     implementation("org.tensorflow:tensorflow-lite-select-tf-ops:+")
+    implementation("com.google.mediapipe:tasks-vision:0.10.14")
 }

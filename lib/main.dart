@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Added for authStateChanges
+import 'package:firebase_auth/firebase_auth.dart'; 
 import 'package:provider/provider.dart'; 
 import 'firebase_options.dart'; 
 import 'auth/login_screen.dart'; 
 import 'providers/theme_provider.dart'; 
 import 'providers/sound_provider.dart'; 
-// Make sure to import the file where SnedInterafce1 is located!
-// Based on your other files, it is likely this:
 import 'home/home.dart'; 
+
+// Import the local notification service
+import 'services/local_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +17,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialize notifications and timezone setup
+  await LocalNotificationService.initialize();
 
   runApp(
     MultiProvider(
@@ -42,11 +46,9 @@ class MyApp extends StatelessWidget {
           navigatorObservers: [
             Provider.of<SoundProvider>(context, listen: false).navigatorObserver,
           ],
-          // We replaced the static home: const MainLogin() with this StreamBuilder
           home: StreamBuilder<User?>(
             stream: FirebaseAuth.instance.authStateChanges(),
             builder: (context, snapshot) {
-              // 1. Check local storage for session
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
                   body: Center(
@@ -55,7 +57,6 @@ class MyApp extends StatelessWidget {
                 );
               }
               
-              // 2. Session found! User is already logged in
               if (snapshot.hasData) {
                 String displayName = snapshot.data!.displayName ?? 
                                      snapshot.data!.email?.split('@')[0] ?? 
@@ -63,7 +64,6 @@ class MyApp extends StatelessWidget {
                 return SnedInterafce1(userName: displayName);
               }
               
-              // 3. No session found. Show your landing page.
               return const MainLogin(); 
             },
           ),
@@ -87,7 +87,6 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    // Creates a gentle continuous floating effect for the mascot
     _floatController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -129,7 +128,6 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // --- LOGO ---
               Padding(
                 padding: const EdgeInsets.only(top: 20.0),
                 child: Image.asset(
@@ -139,7 +137,6 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
                 ),
               ),
 
-              // --- WELCOME TEXT ---
               const Column(
                 children: [
                   Text(
@@ -166,7 +163,6 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
                 ],
               ),
 
-              // --- FLOATING MASCOT ---
               AnimatedBuilder(
                 animation: _floatAnimation,
                 builder: (context, child) {
@@ -183,7 +179,6 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
                 ),
               ),
 
-              // --- ENHANCED BUTTON ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
                 child: Container(
@@ -237,4 +232,11 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
       ),
     );
   }
+}
+
+// Dummy class to prevent compilation errors if it's in another file
+class SnedStudentLogin extends StatelessWidget {
+  const SnedStudentLogin({super.key});
+  @override
+  Widget build(BuildContext context) => const Scaffold();
 }

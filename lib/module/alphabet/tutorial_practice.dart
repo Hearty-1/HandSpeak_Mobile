@@ -3,14 +3,456 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
+import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:hand_landmarker/hand_landmarker.dart';
-import 'recognizer.dart';
+import 'package:onnxruntime/onnxruntime.dart';
+
+// =============================================================================
+// LANDMARK & RESULT MODELS
+// =============================================================================
+
+class LandmarkPoint {
+  final double x;
+  final double y;
+  final double z;
+
+  LandmarkPoint(this.x, this.y, this.z);
+
+  double distanceTo(LandmarkPoint other) {
+    final dx = x - other.x;
+    final dy = y - other.y;
+    final dz = z - other.z;
+    return math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  LandmarkPoint subtract(LandmarkPoint other) {
+    return LandmarkPoint(x - other.x, y - other.y, z - other.z);
+  }
+}
+
+class LetterJResult {
+  final bool isLetterJ;
+  final double confidence;
+  final String message;
+
+  LetterJResult({
+    required this.isLetterJ,
+    required this.confidence,
+    required this.message,
+  });
+}
+
+class LetterZResult {
+  final bool isLetterZ;
+  final double confidence;
+  final String message;
+
+  LetterZResult({
+    required this.isLetterZ,
+    required this.confidence,
+    required this.message,
+  });
+}
+
+// =============================================================================
+// LETTER J CLASSIFIER SERVICE (19 FEATURES - FIXES ONNX DIMENSION MISMATCH)
+// =============================================================================
+
+class LetterJClassifierService {
+  OrtSession? _session;
+  bool _isInitialized = false;
+
+  static const int wrist = 0;
+  static const int indexMcp = 5;
+  static const int indexTip = 8;
+  static const int middleMcp = 9;
+  static const int middleTip = 12;
+  static const int ringTip = 16;
+  static const int pinkyMcp = 17;
+  static const int pinkyTip = 20;
+
+  static const int targetFrames = 32;
+  static const int featureDim = 19;
+
+  bool get isInitialized => _isInitialized;
+
+  Future<void> initialize({String modelAssetPath = 'assets/alphabet/fsl_letter_j.onnx'}) async {
+    try {
+      OrtEnv.instance.init();
+      final rawAsset = await rootBundle.load(modelAssetPath);
+      final bytes = rawAsset.buffer.asUint8List();
+
+      final sessionOptions = OrtSessionOptions();
+      _session = OrtSession.fromBuffer(bytes, sessionOptions);
+      _isInitialized = true;
+      debugPrint("LetterJClassifierService initialized successfully with ONNX model.");
+    } catch (e) {
+      _isInitialized = false;
+      debugPrint("Failed to initialize LetterJClassifierService: $e");
+      rethrow;
+    }
+  }
+
+  List<List<LandmarkPoint>> _resampleSequence(List<List<LandmarkPoint>> rawSeq, int targetLen) {
+    final int currentLen = rawSeq.length;
+    if (currentLen == targetLen) return rawSeq;
+
+    final List<List<LandmarkPoint>> resampled = [];
+    for (int t = 0; t < targetLen; t++) {
+      final double progress = t / (targetLen - 1);
+      final double oldPos = progress * (currentLen - 1);
+      final int idx0 = oldPos.floor();
+      final int idx1 = math.min(idx0 + 1, currentLen - 1);
+      final double alpha = oldPos - idx0;
+
+      final List<LandmarkPoint> frameLms = [];
+      for (int i = 0; i < 21; i++) {
+        final p0 = rawSeq[idx0][i];
+        final p1 = rawSeq[idx1][i];
+        frameLms.add(LandmarkPoint(
+          p0.x + alpha * (p1.x - p0.x),
+          p0.y + alpha * (p1.y - p0.y),
+          p0.z + alpha * (p1.z - p0.z),
+        ));
+      }
+      resampled.add(frameLms);
+    }
+    return resampled;
+  }
+
+  Float32List _extract19Features(List<List<LandmarkPoint>> seq32) {
+    final List<LandmarkPoint> meanFrame = [];
+    for (int i = 0; i < 21; i++) {
+      double mx = 0, my = 0, mz = 0;
+      for (int t = 0; t < targetFrames; t++) {
+        mx += seq32[t][i].x;
+        my += seq32[t][i].y;
+        mz += seq32[t][i].z;
+      }
+      meanFrame.add(LandmarkPoint(mx / targetFrames, my / targetFrames, mz / targetFrames));
+    }
+
+    final double palmScale = meanFrame[middleMcp].distanceTo(meanFrame[wrist]) + 1e-6;
+    final LandmarkPoint wristPos = meanFrame[wrist];
+
+    final double pkyExt = meanFrame[pinkyTip].distanceTo(wristPos) / palmScale;
+    final double idxExt = meanFrame[indexTip].distanceTo(wristPos) / palmScale;
+    final double midExt = meanFrame[middleTip].distanceTo(wristPos) / palmScale;
+    final double ringExt = meanFrame[ringTip].distanceTo(wristPos) / palmScale;
+    final double pkyFold = meanFrame[pinkyTip].distanceTo(meanFrame[pinkyMcp]) / palmScale;
+    final double pkyIdxRatio = pkyExt / (idxExt + 1e-6);
+
+    final LandmarkPoint startPt = seq32[0][pinkyTip];
+    final List<LandmarkPoint> normTraj = [];
+    for (int t = 0; t < targetFrames; t++) {
+      final p = seq32[t][pinkyTip];
+      normTraj.add(LandmarkPoint(
+        (p.x - startPt.x) / palmScale,
+        (p.y - startPt.y) / palmScale,
+        (p.z - startPt.z) / palmScale,
+      ));
+    }
+
+    double dispTotal = 0.0;
+    final List<LandmarkPoint> velocities = [];
+    for (int t = 0; t < targetFrames - 1; t++) {
+      final diff = normTraj[t + 1].subtract(normTraj[t]);
+      velocities.add(diff);
+      dispTotal += math.sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+    }
+
+    double yMinDown = normTraj[0].y;
+    double minX = normTraj[0].x;
+    double maxX = normTraj[0].x;
+
+    for (var p in normTraj) {
+      if (p.y > yMinDown) yMinDown = p.y;
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+    }
+
+    final double hookUp = yMinDown - normTraj.last.y;
+    final double xSpread = maxX - minX;
+
+    double sumX = 0, sumY = 0, sumZ = 0;
+    for (var p in normTraj) {
+      sumX += p.x; sumY += p.y; sumZ += p.z;
+    }
+    final double avgX = sumX / targetFrames;
+    final double avgY = sumY / targetFrames;
+    final double avgZ = sumZ / targetFrames;
+
+    double varX = 0, varY = 0, varZ = 0;
+    for (var p in normTraj) {
+      varX += (p.x - avgX) * (p.x - avgX);
+      varY += (p.y - avgY) * (p.y - avgY);
+      varZ += (p.z - avgZ) * (p.z - avgZ);
+    }
+    final double stdTrajX = math.sqrt(varX / targetFrames);
+    final double stdTrajY = math.sqrt(varY / targetFrames);
+    final double stdTrajZ = math.sqrt(varZ / targetFrames);
+
+    double vSumX = 0, vSumY = 0, vSumZ = 0;
+    for (var v in velocities) {
+      vSumX += v.x; vSumY += v.y; vSumZ += v.z;
+    }
+    final int vCount = velocities.length;
+    final double meanVelX = vSumX / vCount;
+    final double meanVelY = vSumY / vCount;
+    final double meanVelZ = vSumZ / vCount;
+
+    double vVarX = 0, vVarY = 0, vVarZ = 0;
+    for (var v in velocities) {
+      vVarX += (v.x - meanVelX) * (v.x - meanVelX);
+      vVarY += (v.y - meanVelY) * (v.y - meanVelY);
+      vVarZ += (v.z - meanVelZ) * (v.z - meanVelZ);
+    }
+    final double stdVelX = math.sqrt(vVarX / vCount);
+    final double stdVelY = math.sqrt(vVarY / vCount);
+    final double stdVelZ = math.sqrt(vVarZ / vCount);
+
+    final Float32List features = Float32List(featureDim);
+    features[0] = pkyExt;
+    features[1] = idxExt;
+    features[2] = midExt;
+    features[3] = ringExt;
+    features[4] = pkyFold;
+    features[5] = pkyIdxRatio;
+    features[6] = dispTotal;
+    features[7] = yMinDown;
+    features[8] = hookUp;
+    features[9] = xSpread;
+    features[10] = stdTrajX;
+    features[11] = stdTrajY;
+    features[12] = stdTrajZ;
+    features[13] = meanVelX;
+    features[14] = meanVelY;
+    features[15] = meanVelZ;
+    features[16] = stdVelX;
+    features[17] = stdVelY;
+    features[18] = stdVelZ;
+
+    return features;
+  }
+
+  LetterJResult classifyStroke(List<List<LandmarkPoint>> recordedFrames) {
+    if (!_isInitialized || _session == null) {
+      return LetterJResult(isLetterJ: false, confidence: 0.0, message: 'Hindi naka-initialize ang model.');
+    }
+
+    if (recordedFrames.length < 12) {
+      return LetterJResult(isLetterJ: false, confidence: 0.0, message: 'Masyadong maikli ang galaw. Gawin ang buong kumpas ng Letter J.');
+    }
+
+    final seq32 = _resampleSequence(recordedFrames, targetFrames);
+
+    final p0 = seq32[0];
+    final palm0 = p0[middleMcp].distanceTo(p0[wrist]) + 1e-6;
+    final pkyExt0 = p0[pinkyTip].distanceTo(p0[wrist]) / palm0;
+    final idxExt0 = p0[indexTip].distanceTo(p0[wrist]) / palm0;
+
+    if (pkyExt0 < 1.05 || idxExt0 > 1.20) {
+      return LetterJResult(
+        isLetterJ: false,
+        confidence: 0.0,
+        message: 'Maling porma ng kamay! Itaas ang kalingkingan para sa Letter J.',
+      );
+    }
+
+    final Float32List inputFeatures = _extract19Features(seq32);
+
+    final inputShape = [1, featureDim];
+    final inputOrtValue = OrtValueTensor.createTensorWithDataList(inputFeatures, inputShape);
+    final runOptions = OrtRunOptions();
+    
+    final inputName = _session!.inputNames.isNotEmpty ? _session!.inputNames.first : 'float_input';
+    final outputs = _session!.run(runOptions, {inputName: inputOrtValue});
+
+    inputOrtValue.release();
+    runOptions.release();
+
+    final classOutput = outputs[0]?.value as List<dynamic>?;
+    final int predictedClass = classOutput != null ? (classOutput[0] as int) : 0;
+
+    double confidence = 0.85;
+    if (outputs.length > 1 && outputs[1]?.value != null) {
+      final probs = outputs[1]!.value as List<dynamic>;
+      if (probs.isNotEmpty && probs[0] is Map) {
+        final probMap = probs[0] as Map;
+        confidence = (probMap[1] as double? ?? 0.0);
+      }
+    }
+
+    for (var element in outputs) {
+      element?.release();
+    }
+
+    if (predictedClass == 1 && confidence >= 0.55) {
+      return LetterJResult(
+        isLetterJ: true,
+        confidence: confidence,
+        message: 'Mahusay! Wastong kumpas at porma para sa Letter J.',
+      );
+    } else {
+      return LetterJResult(
+        isLetterJ: false,
+        confidence: confidence,
+        message: 'Maling kumpas ang naisagawa para sa Letter J.',
+      );
+    }
+  }
+
+  void dispose() {
+    _session?.release();
+    _session = null;
+    _isInitialized = false;
+  }
+}
+
+// =============================================================================
+// LETTER Z CLASSIFIER SERVICE (TRAJECTORY KINEMATICS)
+// =============================================================================
+
+class LetterZClassifierService {
+  static const int wrist = 0;
+  static const int indexTip = 8;
+  static const int middleMcp = 9;
+  static const int targetFrames = 32;
+
+  bool _isInitialized = false;
+  bool get isInitialized => _isInitialized;
+
+  Future<void> initialize() async {
+    _isInitialized = true;
+  }
+
+  List<List<LandmarkPoint>> _resampleSequence(List<List<LandmarkPoint>> rawSeq, int targetLen) {
+    final int currentLen = rawSeq.length;
+    if (currentLen == targetLen) return rawSeq;
+
+    final List<List<LandmarkPoint>> resampled = [];
+    for (int t = 0; t < targetLen; t++) {
+      final double progress = t / (targetLen - 1);
+      final double oldPos = progress * (currentLen - 1);
+      final int idx0 = oldPos.floor();
+      final int idx1 = math.min(idx0 + 1, currentLen - 1);
+      final double alpha = oldPos - idx0;
+
+      final List<LandmarkPoint> frameLms = [];
+      for (int i = 0; i < 21; i++) {
+        final p0 = rawSeq[idx0][i];
+        final p1 = rawSeq[idx1][i];
+        frameLms.add(LandmarkPoint(
+          p0.x + alpha * (p1.x - p0.x),
+          p0.y + alpha * (p1.y - p0.y),
+          p0.z + alpha * (p1.z - p0.z),
+        ));
+      }
+      resampled.add(frameLms);
+    }
+    return resampled;
+  }
+
+  LetterZResult classifyStroke(List<List<LandmarkPoint>> recordedFrames) {
+    if (recordedFrames.length < 8) {
+      return LetterZResult(
+        isLetterZ: false,
+        confidence: 0.0,
+        message: 'Masyadong maikli ang galaw. Gawin ang buong kumpas ng Letter Z.',
+      );
+    }
+
+    final seq32 = _resampleSequence(recordedFrames, targetFrames);
+
+    double palmSum = 0.0;
+    for (int t = 0; t < targetFrames; t++) {
+      palmSum += seq32[t][middleMcp].distanceTo(seq32[t][wrist]);
+    }
+    final double palmScale = (palmSum / targetFrames) + 1e-6;
+
+    final List<LandmarkPoint> traj = [];
+    for (int t = 0; t < targetFrames; t++) {
+      traj.add(seq32[t][indexTip]);
+    }
+
+    double minX = traj[0].x, maxX = traj[0].x;
+    double minY = traj[0].y, maxY = traj[0].y;
+    for (var p in traj) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+
+    final double xSpan = (maxX - minX) / palmScale;
+    final double ySpan = (maxY - minY) / palmScale;
+
+    if (xSpan < 0.20 || ySpan < 0.20) {
+      return LetterZResult(
+        isLetterZ: false,
+        confidence: 0.0,
+        message: 'Masyadong maliit ang galaw para sa Letter Z.',
+      );
+    }
+
+    int topCornerIdx = 0;
+    double maxTopX = -double.infinity;
+    
+    for (int t = 2; t < (targetFrames * 0.65).toInt(); t++) {
+      if (traj[t].x > maxTopX) {
+        maxTopX = traj[t].x;
+        topCornerIdx = t;
+      }
+    }
+
+    int bottomCornerIdx = topCornerIdx;
+    double minBottomX = double.infinity;
+    
+    for (int t = topCornerIdx + 1; t < targetFrames - 2; t++) {
+      if (traj[t].x < minBottomX) {
+        minBottomX = traj[t].x;
+        bottomCornerIdx = t;
+      }
+    }
+
+    final double stroke1Dx = traj[topCornerIdx].x - traj[0].x;                      
+    final double stroke2Dx = traj[bottomCornerIdx].x - traj[topCornerIdx].x;        
+    final double stroke2Dy = traj[bottomCornerIdx].y - traj[topCornerIdx].y;        
+    final double stroke3Dx = traj[targetFrames - 1].x - traj[bottomCornerIdx].x;   
+
+    final bool isTopRight = (stroke1Dx / palmScale) > 0.04 || (traj[topCornerIdx].x > traj[0].x);
+    final bool isDiagDownLeft = (stroke2Dx / palmScale) < -0.03 && (stroke2Dy / palmScale) > 0.04;
+    final bool isBottomRight = (stroke3Dx / palmScale) > 0.04 || (traj[targetFrames - 1].x > traj[bottomCornerIdx].x);
+
+    if (isTopRight && isDiagDownLeft && isBottomRight) {
+      final double score = math.min(98.0, 80.0 + (xSpan + ySpan) * 10.0);
+      return LetterZResult(
+        isLetterZ: true,
+        confidence: score,
+        message: 'Mahusay! Wastong kumpas at porma para sa Letter Z.',
+      );
+    } else {
+      return LetterZResult(
+        isLetterZ: false,
+        confidence: 0.0,
+        message: 'Maling kumpas! I-trace ang paitaas-pakanan, pahilis pababa-pakaliwa, at pakanan.',
+      );
+    }
+  }
+
+  void dispose() {
+    _isInitialized = false;
+  }
+}
+
+// =============================================================================
+// THEME VISUAL MAPPING
+// =============================================================================
 
 class _ThemeVisuals {
   final IconData mainBadgeIcon;
@@ -61,6 +503,10 @@ class _ThemeVisuals {
   }
 }
 
+// =============================================================================
+// MAIN PRACTICE WIDGET
+// =============================================================================
+
 class TutorialPractice extends StatefulWidget {
   final String targetLetter;
 
@@ -70,106 +516,70 @@ class TutorialPractice extends StatefulWidget {
   _TutorialPracticeState createState() => _TutorialPracticeState();
 }
 
-class _TutorialPracticeState extends State<TutorialPractice> {
-  static final Map<String, List<dynamic>> _templateCache = {};
-
+class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBindingObserver {
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _handSub;
 
+  final LetterJClassifierService _letterJService = LetterJClassifierService();
+  final LetterZClassifierService _letterZService = LetterZClassifierService();
+
+  static final Map<String, List<dynamic>> _templateCache = {};
+
+  bool _isProcessingFrame = false;
+  final List<List<LandmarkPoint>> _frameBuffer = [];
+  DateTime _lastSampleTime = DateTime.now();
+
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
-
-  bool _isRecordingMotion = false;
-  DateTime? _startRecordingTime;
-  bool _showMotionResult = false;
-
-  final List<Float32List> _recordingFrames = [];
-
-  static const Duration _dropoutGracePeriod = Duration(milliseconds: 1000);
-  DateTime? _lastHandsSeenTime;
-
-  static const List<String> _dynamicLetters = ['J', 'Z'];
-  bool get _isDynamicLetter =>
-      _dynamicLetters.contains(widget.targetLetter.toUpperCase());
-
-  PhraseRecognizer? _dynamicSignRecognizer;
-  bool _dynamicModelReady = false;
-
-  int _targetSequenceLength = 30;
-  Uint8List? _cloudModelBytes;
-  List<String>? _cloudModelLabels;
 
   List<dynamic>? _template;
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
   DateTime? _startHoldTime;
+  String _currentFeedback = "Ipuwesto ang kamay sa tapat ng camera";
 
-  // Reduced accuracy target to 70.0% for both static and dynamic signs to improve user experience
-  double successThreshold = 70.0;
+  int _bufferFrameCount = 0;
+  static const int _requiredBufferFrames = 24;
+
+  static const List<String> _dynamicLetters = ['J', 'Z'];
+  bool get _isDynamicLetter => _dynamicLetters.contains(widget.targetLetter.toUpperCase());
+
+  final double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
-  final int xpReward = 20;
-
-  static const double minMotionThreshold = 0.05;
-  static const double _referenceHandScale = 0.20;
-  static const double _minCaptureDurationSeconds = 1.0;
-  static const double _maxCaptureDurationSeconds = 8.0;
-
-  double _handScaleForFrame(Float32List frame) {
-    if (frame.length < 30) return _referenceHandScale;
-    final double wristX = frame[0];
-    final double wristY = frame[1];
-    final double midX = frame[9 * 3];
-    final double midY = frame[9 * 3 + 1];
-    final double dx = midX - wristX;
-    final double dy = midY - wristY;
-    final double scale = math.sqrt(dx * dx + dy * dy);
-    return scale <= 0.0001 ? _referenceHandScale : scale;
-  }
+  final int xpReward = 10;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializePipeline();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _controller?.stopImageStream();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_controller != null && !_controller!.value.isStreamingImages) {
+        _controller?.startImageStream(_processCameraFrame);
+      }
+    }
   }
 
   Future<void> _initializePipeline() async {
     try {
-      if (_isDynamicLetter) {
-        successThreshold = 70.0;
-        await _fetchCloudGestureData();
+      final letter = widget.targetLetter.toUpperCase();
 
-        debugPrint("[DBG] docId=alphabet_${widget.targetLetter.toLowerCase()} "
-            "cloudModelBytes=${_cloudModelBytes?.lengthInBytes} "
-            "cloudModelLabels=$_cloudModelLabels "
-            "targetSequenceLength=$_targetSequenceLength");
-
-        try {
-          _dynamicSignRecognizer = PhraseRecognizer(
-            sequenceLength: _targetSequenceLength,
-          );
-
-          if (_cloudModelBytes != null) {
-            await _dynamicSignRecognizer!.initializeFromBuffer(
-              _cloudModelBytes!,
-              customLabels: _cloudModelLabels,
-            );
-            _dynamicModelReady = true;
-            debugPrint("[DBG] Model loaded from cloud bytes successfully.");
-          } else {
-            await _dynamicSignRecognizer!.initialize();
-            _dynamicModelReady = true;
-            debugPrint("[DBG] Cloud bytes were null — fell back to bundled model.");
-          }
-        } catch (e) {
-          debugPrint("[DBG] J/Z model load failed: $e");
-          _dynamicModelReady = false;
-        }
+      if (letter == 'J') {
+        await _letterJService.initialize();
+      } else if (letter == 'Z') {
+        await _letterZService.initialize();
       } else {
         await _loadGestureLibrary();
       }
-
-      if (!mounted) return;
 
       _landmarkerPlugin = HandLandmarkerPlugin.create(
         numHands: 2,
@@ -206,65 +616,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     }
   }
 
-  Future<void> _fetchCloudGestureData() async {
-    try {
-      final docId = 'alphabet_${widget.targetLetter.toLowerCase()}';
-
-      final docSnapshot = await FirebaseFirestore.instance
-          .collection('gesture_training_data')
-          .doc(docId)
-          .get();
-
-      if (docSnapshot.exists && docSnapshot.data() != null) {
-        final data = docSnapshot.data()!;
-        if (data['sequenceLength'] != null) {
-          _targetSequenceLength = (data['sequenceLength'] as num).toInt();
-        }
-
-        final num? rawThreshold = data['accuracyThreshold'] as num?;
-        final num? rawDistance = data['toleranceBounds'] != null
-            ? data['toleranceBounds']['distance'] as num?
-            : null;
-
-        if (rawThreshold != null && rawThreshold > 0) {
-          successThreshold = rawThreshold.toDouble();
-        } else if (rawDistance != null && rawDistance > 0) {
-          successThreshold = rawDistance.toDouble();
-        } else {
-          debugPrint(
-            "Doc $docId found but accuracyThreshold/toleranceBounds.distance "
-            "was missing or <= 0 — keeping default successThreshold=$successThreshold%.",
-          );
-        }
-
-        debugPrint(
-          "Firestore gesture data loaded: docId=$docId, sequenceLength=$_targetSequenceLength, threshold=$successThreshold%",
-        );
-      } else {
-        debugPrint("No Firestore doc found for '$docId'. Using defaults.");
-      }
-
-      final modelSnapshot = await FirebaseFirestore.instance
-          .collection('deployed_models')
-          .doc(docId)
-          .get();
-
-      if (modelSnapshot.exists && modelSnapshot.data() != null) {
-        final modelData = modelSnapshot.data()!;
-        final String? base64Model = modelData['modelBase64'] as String?;
-        if (base64Model != null && base64Model.isNotEmpty) {
-          _cloudModelBytes = base64Decode(base64Model);
-        }
-        if (modelData['labels'] is List) {
-          _cloudModelLabels =
-              (modelData['labels'] as List).map((e) => e.toString()).toList();
-        }
-      }
-    } catch (e) {
-      debugPrint("Cloud gesture data fetch warning: $e");
-    }
-  }
-
   Future<void> _loadGestureLibrary() async {
     final letter = widget.targetLetter.toUpperCase();
 
@@ -274,7 +625,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
           _template = _templateCache[letter];
         });
       }
-      debugPrint("Loaded cached gesture template for $letter");
       return;
     }
 
@@ -293,7 +643,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
             _template = decodedJson;
           });
         }
-        debugPrint("Successfully loaded cloud gesture template for $letter");
       }
     } catch (e) {
       debugPrint("Error loading cloud gesture template for $letter: $e");
@@ -301,611 +650,185 @@ class _TutorialPracticeState extends State<TutorialPractice> {
   }
 
   void _processCameraFrame(CameraImage image) {
-    if (!_isInitialized ||
-        _landmarkerPlugin == null ||
-        _isSuccessAchieved ||
-        !mounted) return;
+    if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
+    if (!_isDynamicLetter && _template == null) return;
+    if (_isProcessingFrame) return;
 
     try {
       final int sensorOrientation = _controller!.description.sensorOrientation;
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
-      debugPrint("Inference error: $e");
-    }
-  }
-
-  Float32List _fallbackExtractFeatures(List<Hand> detectedHands) {
-    final Float32List features = Float32List(126);
-    if (detectedHands.isNotEmpty) {
-      final landmarks = detectedHands.first.landmarks;
-      for (int i = 0; i < landmarks.length && i < 21; i++) {
-        features[i * 3] = landmarks[i].x;
-        features[i * 3 + 1] = landmarks[i].y;
-        features[i * 3 + 2] = landmarks[i].z;
-      }
-    }
-    return features;
-  }
-
-  double _calculateTotalDisplacement(
-      List<Float32List> frames, double scaleFactor) {
-    if (frames.length < 2) return 0.0;
-
-    final int targetLm = widget.targetLetter.toUpperCase() == 'J' ? 20 : 8;
-    final int xIdx = targetLm * 3;
-    final int yIdx = targetLm * 3 + 1;
-
-    double totalDistance = 0.0;
-
-    for (int i = 0; i < frames.length - 1; i++) {
-      if (frames[i].length <= yIdx || frames[i + 1].length <= yIdx) continue;
-
-      double dx = (frames[i + 1][xIdx] - frames[i][xIdx]) * scaleFactor;
-      double dy = (frames[i + 1][yIdx] - frames[i][yIdx]) * scaleFactor;
-
-      totalDistance += math.sqrt(dx * dx + dy * dy);
-    }
-
-    return totalDistance;
-  }
-
-  List<Float32List> _trimStaticFrames(
-      List<Float32List> frames, String letter, double scaleFactor) {
-    if (frames.length <= 10) return frames;
-
-    final int targetLm = (letter == 'J') ? 20 : 8;
-    final int xIdx = targetLm * 3;
-    final int yIdx = targetLm * 3 + 1;
-
-    int start = 0;
-    int end = frames.length - 1;
-
-    const double motionEpsilon = 0.0015;
-
-    for (int i = 0; i < frames.length - 1; i++) {
-      double dx = (frames[i + 1][xIdx] - frames[i][xIdx]) * scaleFactor;
-      double dy = (frames[i + 1][yIdx] - frames[i][yIdx]) * scaleFactor;
-      if (math.sqrt(dx * dx + dy * dy) > motionEpsilon) {
-        start = math.max(0, i - 2);
-        break;
-      }
-    }
-
-    for (int i = frames.length - 1; i > start; i--) {
-      double dx = (frames[i][xIdx] - frames[i - 1][xIdx]) * scaleFactor;
-      double dy = (frames[i][yIdx] - frames[i - 1][yIdx]) * scaleFactor;
-      if (math.sqrt(dx * dx + dy * dy) > motionEpsilon) {
-        end = math.min(frames.length - 1, i + 2);
-        break;
-      }
-    }
-
-    if (end - start >= 8) {
-      return frames.sublist(start, end + 1);
-    }
-    return frames;
-  }
-
-  bool _isValidGestureShape(
-      List<Float32List> frames, String letter, double scaleFactor) {
-    if (frames.length < 5) return false;
-
-    final int targetLm = (letter == 'J') ? 20 : 8;
-    final int xIdx = targetLm * 3;
-    final int yIdx = targetLm * 3 + 1;
-
-    if (letter == 'J') {
-      double minY = frames.first[yIdx];
-      double maxY = frames.first[yIdx];
-      int maxIndex = 0;
-
-      for (int i = 0; i < frames.length; i++) {
-        if (frames[i][yIdx] < minY) {
-          minY = frames[i][yIdx];
-        }
-        if (frames[i][yIdx] > maxY) {
-          maxY = frames[i][yIdx];
-          maxIndex = i;
-        }
-      }
-
-      double downwardDistance = (maxY - minY) * scaleFactor;
-      const double minDownwardDistance = 0.025;
-      debugPrint("[DBG][shape][J] downwardDistance=$downwardDistance "
-          "threshold=$minDownwardDistance");
-      if (downwardDistance < minDownwardDistance) {
-        debugPrint("[DBG][shape][J] REJECTED: downward stroke too small");
-        return false;
-      }
-
-      double maxHookX = 0.0;
-      double startX = frames[maxIndex][xIdx];
-
-      for (int i = maxIndex; i < frames.length; i++) {
-        double dist = (frames[i][xIdx] - startX).abs() * scaleFactor;
-        if (dist > maxHookX) {
-          maxHookX = dist;
-        }
-      }
-
-      const double minHookX = 0.01;
-      if (maxHookX < minHookX) {
-        double minX = frames.first[xIdx];
-        double maxX = frames.first[xIdx];
-        for (final f in frames) {
-          if (f[xIdx] < minX) minX = f[xIdx];
-          if (f[xIdx] > maxX) maxX = f[xIdx];
-        }
-        maxHookX = (maxX - minX) * scaleFactor;
-      }
-
-      debugPrint(
-          "[DBG][shape][J] maxHookX=$maxHookX threshold=$minHookX");
-      if (maxHookX < minHookX) {
-        debugPrint("[DBG][shape][J] REJECTED: hook too narrow/flat");
-        return false;
-      }
-
-      int hookReversals = 0;
-      int hookDir = 0;
-      double hookLastPeakX = frames[maxIndex][xIdx];
-      const double hookReversalThreshold = 0.03;
-      for (int i = maxIndex + 1; i < frames.length; i++) {
-        double diff = (frames[i][xIdx] - hookLastPeakX) * scaleFactor;
-        if (hookDir == 0) {
-          if (diff.abs() >= hookReversalThreshold) {
-            hookDir = diff > 0 ? 1 : -1;
-            hookLastPeakX = frames[i][xIdx];
-          }
-        } else if (hookDir == 1) {
-          if (diff < -hookReversalThreshold) {
-            hookReversals++;
-            hookDir = -1;
-            hookLastPeakX = frames[i][xIdx];
-          } else if (frames[i][xIdx] > hookLastPeakX) {
-            hookLastPeakX = frames[i][xIdx];
-          }
-        } else {
-          if (diff > hookReversalThreshold) {
-            hookReversals++;
-            hookDir = 1;
-            hookLastPeakX = frames[i][xIdx];
-          } else if (frames[i][xIdx] < hookLastPeakX) {
-            hookLastPeakX = frames[i][xIdx];
-          }
-        }
-      }
-      debugPrint("[DBG][shape][J] hookReversals=$hookReversals (must be <= 1)");
-      if (hookReversals > 1) {
-        debugPrint(
-            "[DBG][shape][J] REJECTED: hook zigzags like a Z, not a single curl");
-        return false;
-      }
-
-      debugPrint("[DBG][shape][J] PASSED");
-      return true;
-    }
-
-    if (letter == 'Z') {
-      List<double> smoothedX = [];
-      for (int i = 0; i < frames.length; i++) {
-        double sum = frames[i][xIdx];
-        int count = 1;
-        if (i > 0) {
-          sum += frames[i - 1][xIdx];
-          count++;
-        }
-        if (i < frames.length - 1) {
-          sum += frames[i + 1][xIdx];
-          count++;
-        }
-        smoothedX.add(sum / count);
-      }
-
-      int xReversals = 0;
-      int currentDir = 0;
-      double lastPeakX = smoothedX[0];
-
-      const double reversalThreshold = 0.03;
-
-      for (int i = 1; i < smoothedX.length; i++) {
-        double diff = (smoothedX[i] - lastPeakX) * scaleFactor;
-
-        if (currentDir == 0) {
-          if (diff.abs() >= reversalThreshold) {
-            currentDir = diff > 0 ? 1 : -1;
-            lastPeakX = smoothedX[i];
-          }
-        } else if (currentDir == 1) {
-          if (diff < -reversalThreshold) {
-            xReversals++;
-            currentDir = -1;
-            lastPeakX = smoothedX[i];
-          } else if (smoothedX[i] > lastPeakX) {
-            lastPeakX = smoothedX[i];
-          }
-        } else if (currentDir == -1) {
-          if (diff > reversalThreshold) {
-            xReversals++;
-            currentDir = 1;
-            lastPeakX = smoothedX[i];
-          } else if (smoothedX[i] < lastPeakX) {
-            lastPeakX = smoothedX[i];
-          }
-        }
-      }
-      debugPrint("[DBG][shape][Z] xReversals=$xReversals (need >= 2) "
-          "reversalThreshold=$reversalThreshold");
-      final bool passed = xReversals >= 2;
-      debugPrint(passed
-          ? "[DBG][shape][Z] PASSED"
-          : "[DBG][shape][Z] REJECTED: not enough direction reversals");
-      return passed;
-    }
-    return true;
-  }
-
-  void _onHandsDetected(List<Hand> detectedHands) {
-    if (_isSuccessAchieved || !mounted) return;
-
-    if (_isDynamicLetter) {
-      if (_showMotionResult) return;
-
-      final bool handsPresent = detectedHands.isNotEmpty;
-      final now = DateTime.now();
-
-      if (handsPresent) {
-        _lastHandsSeenTime = now;
-
-        if (!_isRecordingMotion) {
-          _isRecordingMotion = true;
-          _startRecordingTime = now;
-          _recordingFrames.clear();
-        }
-
-        Float32List frameFeatures;
-        if (_dynamicSignRecognizer != null) {
-          frameFeatures =
-              _dynamicSignRecognizer!.extractRawFrameFeatures(detectedHands);
-        } else {
-          frameFeatures = _fallbackExtractFeatures(detectedHands);
-        }
-        _recordingFrames.add(frameFeatures);
-
-        final double elapsedSeconds =
-            now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
-
-        debugPrint("[DBG][capture] framesSoFar=${_recordingFrames.length} "
-            "targetFrames=$_targetSequenceLength "
-            "elapsedSeconds=${elapsedSeconds.toStringAsFixed(2)}");
-
-        if (mounted) {
-          setState(() {
-            _holdProgress =
-                (_recordingFrames.length / _targetSequenceLength)
-                    .clamp(0.0, 1.0);
-          });
-        }
-
-        final bool haveEnoughFrames =
-            _recordingFrames.length >= _targetSequenceLength &&
-                elapsedSeconds >= _minCaptureDurationSeconds;
-        final bool timedOut = elapsedSeconds >= _maxCaptureDurationSeconds;
-
-        if ((haveEnoughFrames || timedOut) && _recordingFrames.isNotEmpty) {
-          if (timedOut && _recordingFrames.length < _targetSequenceLength) {
-            debugPrint(
-                "[DBG][capture] TIMED OUT with only ${_recordingFrames.length} "
-                "of $_targetSequenceLength frames");
-          }
-          _isRecordingMotion = false;
-          _showMotionResult = true;
-
-          double finalScore = 0.0;
-          String letterUpper = widget.targetLetter.toUpperCase();
-
-          final double gestureScale = _recordingFrames.isNotEmpty
-              ? _handScaleForFrame(_recordingFrames.first)
-              : _referenceHandScale;
-          final double scaleFactor = _referenceHandScale / gestureScale;
-
-          List<Float32List> activeFrames =
-              _trimStaticFrames(_recordingFrames, letterUpper, scaleFactor);
-          double displacement =
-              _calculateTotalDisplacement(activeFrames, scaleFactor);
-
-          debugPrint(
-              "[DBG][motion] frames=${_recordingFrames.length} trimmed=${activeFrames.length} "
-              "gestureScale=$gestureScale scaleFactor=$scaleFactor "
-              "displacement=$displacement threshold=$minMotionThreshold");
-
-          if (displacement < minMotionThreshold) {
-            debugPrint("[DBG][motion] REJECTED: displacement < threshold");
-            finalScore = 0.0;
-          } else {
-            debugPrint("[DBG][motion] PASSED");
-            bool validShape =
-                _isValidGestureShape(activeFrames, letterUpper, scaleFactor);
-
-            if (!validShape) {
-              finalScore = 0.0;
-            } else if (_dynamicSignRecognizer != null && _dynamicModelReady) {
-              try {
-                final result =
-                    _dynamicSignRecognizer!.predictFromRecording(activeFrames);
-
-                final Map<String, double> allScores = _dynamicSignRecognizer!
-                    .rawScoresForRecording(activeFrames);
-                debugPrint("[DBG][confidence] rawScores=$allScores");
-                debugPrint("[DBG][confidence] predicted label='${result?.label}' "
-                    "confidence=${result?.confidence}");
-
-                final String expectedPositiveLabel = 'ALPHABET_$letterUpper';
-                debugPrint(
-                    "[DBG][confidence] comparing predicted='${result?.label.toUpperCase()}' "
-                    "vs expected='$expectedPositiveLabel'");
-
-                if (result != null &&
-                    result.label.toUpperCase() == expectedPositiveLabel) {
-                  double rawConfidence = result.confidence;
-                  double normalizedConfidence = rawConfidence > 1.0
-                      ? rawConfidence
-                      : rawConfidence * 100.0;
-
-                  if (normalizedConfidence >= 30.0) {
-                    finalScore =
-                        (normalizedConfidence * 1.15).clamp(75.0, 98.0);
-                  } else {
-                    finalScore = normalizedConfidence;
-                  }
-                  debugPrint(
-                      "[DBG][confidence] ACCEPTED: finalScore=$finalScore");
-                } else {
-                  debugPrint(
-                      "[DBG][confidence] REJECTED: predicted label != expected");
-                  finalScore = 0.0;
-                }
-              } catch (e) {
-                debugPrint("[DBG][confidence] Prediction error for $letterUpper: $e");
-                finalScore = 0.0;
-              }
-            } else {
-              debugPrint(
-                  "[DBG][confidence] REJECTED: recognizer null=${_dynamicSignRecognizer == null} "
-                  "modelReady=$_dynamicModelReady");
-              finalScore = 0.0;
-            }
-          }
-
-          _recordingFrames.clear();
-
-          if (mounted) {
-            setState(() {
-              _currentScore = finalScore;
-              _holdProgress = 0.0;
-            });
-          }
-
-          if (_currentScore >= successThreshold) {
-            _onSuccess();
-          } else {
-            Future.delayed(const Duration(milliseconds: 1800), () {
-              if (mounted && !_isSuccessAchieved) {
-                setState(() {
-                  _showMotionResult = false;
-                  _currentScore = 0.0;
-                });
-              }
-            });
-          }
-        }
-      } else if (_isRecordingMotion) {
-        final lastSeen = _lastHandsSeenTime;
-        final bool withinGrace = lastSeen != null &&
-            now.difference(lastSeen) <= _dropoutGracePeriod;
-
-        debugPrint("[DBG][dropout] hand lost — "
-            "elapsedSinceLastSeen=${lastSeen != null ? now.difference(lastSeen).inMilliseconds : -1}ms "
-            "gracePeriod=${_dropoutGracePeriod.inMilliseconds}ms withinGrace=$withinGrace");
-
-        if (!withinGrace) {
-          debugPrint("[DBG][dropout] grace period exceeded — recording cancelled");
-          if (mounted) {
-            setState(() {
-              _isRecordingMotion = false;
-              _startRecordingTime = null;
-              _holdProgress = 0.0;
-            });
-          }
-          _recordingFrames.clear();
-        }
-      }
-      return;
-    }
-
-    if (_template == null) return;
-
-    if (detectedHands.isNotEmpty) {
-      double highestScoreAcrossAllHands = 0.0;
-
-      for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
-        final double score = _calculateScore(
-          detectedHands[handIdx].landmarks,
-          _template!,
-        );
-        if (score > highestScoreAcrossAllHands) {
-          highestScoreAcrossAllHands = score;
-        }
-      }
-
-      _updateGameLogic(highestScoreAcrossAllHands);
-    } else {
-      if (mounted) {
-        setState(() {
-          _currentScore = 0.0;
-          _holdProgress = 0.0;
-          _startHoldTime = null;
-        });
-      }
+      debugPrint("Landmark processing error: $e");
     }
   }
 
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
-    if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) {
-      return 0.0;
+    if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
+
+    final Landmark wrist = liveLms[0];
+    final Landmark mBase = liveLms[9];
+
+    double dist = math.sqrt(
+      math.pow(wrist.x - mBase.x, 2) +
+      math.pow(wrist.y - mBase.y, 2) +
+      math.pow(wrist.z - mBase.z, 2)
+    );
+
+    if (dist == 0) dist = 1.0;
+
+    double bestScore = 0.0;
+
+    final orientationMatrices = [
+      [1.0, 0.0, 0.0, 1.0, 1.0],
+      [0.0, -1.0, 1.0, 0.0, 1.0],
+      [-1.0, 0.0, 0.0, -1.0, 1.0],
+      [0.0, 1.0, -1.0, 0.0, 1.0],
+      [1.0, 0.0, 0.0, 1.0, -1.0],
+      [0.0, -1.0, 1.0, 0.0, -1.0],
+      [-1.0, 0.0, 0.0, -1.0, -1.0],
+      [0.0, 1.0, -1.0, 0.0, -1.0],
+    ];
+
+    for (var matrix in orientationMatrices) {
+      double xx = matrix[0];
+      double xy = matrix[1];
+      double yx = matrix[2];
+      double yy = matrix[3];
+      double flipX = matrix[4];
+
+      double totalDifference = 0.0;
+
+      for (int i = 0; i < 21; i++) {
+        double dx = (liveLms[i].x - wrist.x) / dist;
+        double dy = (liveLms[i].y - wrist.y) / dist;
+        double dz = (liveLms[i].z - wrist.z) / dist;
+
+        dx = dx * flipX;
+
+        double rx = dx * xx + dy * xy;
+        double ry = dx * yx + dy * yy;
+
+        double tx = (template[i]['x'] as num).toDouble();
+        double ty = (template[i]['y'] as num).toDouble();
+        double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
+
+        double pointDiff = math.sqrt(
+          math.pow(rx - tx, 2) +
+          math.pow(ry - ty, 2) +
+          math.pow(dz - tz, 2)
+        );
+        totalDifference += pointDiff;
+      }
+
+      double meanDiff = totalDifference / 21.0;
+      double score = (100.0 - (meanDiff * 80.0)).clamp(0.0, 100.0);
+
+      if (score > bestScore) {
+        bestScore = score;
+      }
     }
 
-    final String letter = widget.targetLetter.toUpperCase();
+    return bestScore;
+  }
 
-    if (['G', 'H', 'K', 'P', 'Q'].contains(letter)) {
-      final Landmark wrist = liveLms[0];
-      final Landmark mBase = liveLms[9];
-      final Landmark indexTip = liveLms[8];
+  void _onHandsDetected(List<Hand> detectedHands) async {
+    if (_isSuccessAchieved || _isProcessingFrame) return;
+    _isProcessingFrame = true;
 
-      double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) +
-          math.pow(wrist.y - mBase.y, 2));
+    try {
+      if (detectedHands.isNotEmpty) {
+        double score = 0.0;
+        String feedback = "Ipuwesto ang kamay sa tapat ng camera";
+        final letter = widget.targetLetter.toUpperCase();
 
-      double distIndex = math.sqrt(math.pow(wrist.x - indexTip.x, 2) +
-          math.pow(wrist.y - indexTip.y, 2));
-      dist = math.max(dist, distIndex * 0.55);
+        if (!_isDynamicLetter) {
+          if (_template != null) {
+            double highestScoreAcrossAllHands = 0.0;
 
-      if (dist < 0.05) dist = 0.05;
+            for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
+              final double handScore = _calculateScore(
+                detectedHands[handIdx].landmarks,
+                _template!,
+              );
+              if (handScore > highestScoreAcrossAllHands) {
+                highestScoreAcrossAllHands = handScore;
+              }
+            }
 
-      double bestScore = 0.0;
-      final List<int> highPriorityLandmarks = [4, 8, 12];
+            score = highestScoreAcrossAllHands;
+            feedback = score >= successThreshold
+                ? "Tama ang posisyon! Hawakan ang kamay."
+                : "I-adjust ang posisyon para sa Letter $letter.";
+          }
+        } else {
+          final hand = detectedHands.first;
 
-      final orientationMatrices = [
-        [1.0, 0.0, 0.0, 1.0, 1.0],
-        [0.0, -1.0, 1.0, 0.0, 1.0],
-        [-1.0, 0.0, 0.0, -1.0, 1.0],
-        [0.0, 1.0, -1.0, 0.0, 1.0],
-        [1.0, 0.0, 0.0, 1.0, -1.0],
-        [0.0, -1.0, 1.0, 0.0, -1.0],
-        [-1.0, 0.0, 0.0, -1.0, -1.0],
-        [0.0, 1.0, -1.0, 0.0, -1.0],
-      ];
+          final List<LandmarkPoint> framePoints = hand.landmarks.map((lm) {
+            return LandmarkPoint(1.0 - lm.x, lm.y, lm.z);
+          }).toList();
 
-      for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
-        if (['G', 'H', 'P', 'Q'].contains(letter) &&
-            (mIdx == 0 || mIdx == 2 || mIdx == 4 || mIdx == 6)) {
-          continue;
+          final now = DateTime.now();
+          if (now.difference(_lastSampleTime).inMilliseconds >= 45) {
+            _lastSampleTime = now;
+            _frameBuffer.add(framePoints);
+            if (_frameBuffer.length > 24) {
+              _frameBuffer.removeAt(0);
+            }
+            _bufferFrameCount = _frameBuffer.length;
+
+            if (_frameBuffer.length >= 16) {
+              if (letter == 'J') {
+                final result = _letterJService.classifyStroke(_frameBuffer);
+                score = result.isLetterJ ? (result.confidence * 100.0) : 30.0;
+                feedback = result.message;
+              } else if (letter == 'Z') {
+                final result = _letterZService.classifyStroke(_frameBuffer);
+                score = result.isLetterZ ? result.confidence : 25.0;
+                feedback = result.message;
+              }
+            }
+          } else {
+            return;
+          }
         }
 
-        var matrix = orientationMatrices[mIdx];
-        double xx = matrix[0];
-        double xy = matrix[1];
-        double yx = matrix[2];
-        double yy = matrix[3];
-        double flipX = matrix[4];
-
-        double totalWeightedDifference = 0.0;
-        double totalWeight = 0.0;
-
-        for (int i = 0; i < 21; i++) {
-          double dx = (liveLms[i].x - wrist.x) / dist;
-          double dy = (liveLms[i].y - wrist.y) / dist;
-
-          dx = dx * flipX;
-
-          double rx = dx * xx + dy * xy;
-          double ry = dx * yx + dy * yy;
-
-          double tx = (template[i]['x'] as num).toDouble();
-          double ty = (template[i]['y'] as num).toDouble();
-
-          double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2));
-
-          double weight = highPriorityLandmarks.contains(i) ? 1.5 : 1.0;
-
-          totalWeightedDifference += (pointDiff * weight);
-          totalWeight += weight;
-        }
-
-        double meanDiff = totalWeightedDifference / totalWeight;
-        double score = (100.0 - (meanDiff * 45.0)).clamp(0.0, 100.0);
-
-        if (score > bestScore) {
-          bestScore = score;
-        }
-      }
-      return bestScore;
-    } else {
-      final Landmark wrist = liveLms[0];
-      final Landmark mBase = liveLms[9];
-
-      double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) +
-          math.pow(wrist.y - mBase.y, 2) +
-          math.pow(wrist.z - mBase.z, 2));
-
-      if (dist == 0) dist = 1.0;
-
-      double bestScore = 0.0;
-
-      final orientationMatrices = [
-        [1.0, 0.0, 0.0, 1.0, 1.0],
-        [0.0, -1.0, 1.0, 0.0, 1.0],
-        [-1.0, 0.0, 0.0, -1.0, 1.0],
-        [0.0, 1.0, -1.0, 0.0, 1.0],
-        [1.0, 0.0, 0.0, 1.0, -1.0],
-        [0.0, -1.0, 1.0, 0.0, -1.0],
-        [-1.0, 0.0, 0.0, -1.0, -1.0],
-        [0.0, 1.0, -1.0, 0.0, -1.0],
-      ];
-
-      for (var matrix in orientationMatrices) {
-        double xx = matrix[0];
-        double xy = matrix[1];
-        double yx = matrix[2];
-        double yy = matrix[3];
-        double flipX = matrix[4];
-
-        double totalDifference = 0.0;
-
-        for (int i = 0; i < 21; i++) {
-          double dx = (liveLms[i].x - wrist.x) / dist;
-          double dy = (liveLms[i].y - wrist.y) / dist;
-          double dz = (liveLms[i].z - wrist.z) / dist;
-
-          dx = dx * flipX;
-
-          double rx = dx * xx + dy * xy;
-          double ry = dx * yx + dy * yy;
-
-          double tx = (template[i]['x'] as num).toDouble();
-          double ty = (template[i]['y'] as num).toDouble();
-          double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
-
-          double pointDiff = math.sqrt(math.pow(rx - tx, 2) +
-              math.pow(ry - ty, 2) +
-              math.pow(dz - tz, 2));
-          totalDifference += pointDiff;
-        }
-
-        double meanDiff = totalDifference / 21.0;
-        double score = (100.0 - (meanDiff * 80.0)).clamp(0.0, 100.0);
-
-        if (score > bestScore) {
-          bestScore = score;
+        _updateGameLogic(score, feedback);
+      } else {
+        _frameBuffer.clear();
+        _bufferFrameCount = 0;
+        if (mounted) {
+          setState(() {
+            _currentScore = 0.0;
+            _holdProgress = 0.0;
+            _startHoldTime = null;
+            _currentFeedback = "Walang kamay na nakikita";
+          });
         }
       }
-      return bestScore;
+    } finally {
+      _isProcessingFrame = false;
     }
   }
 
-  void _updateGameLogic(double score) {
+  void _updateGameLogic(double score, String feedback) {
     if (!mounted) return;
     final now = DateTime.now();
 
     setState(() {
       _currentScore = score;
+      _currentFeedback = feedback;
 
       if (_currentScore >= successThreshold) {
-        _startHoldTime ??= now;
-        final difference =
-            now.difference(_startHoldTime!).inMilliseconds / 1000.0;
-        _holdProgress = (difference / holdDurationSeconds).clamp(0.0, 1.0);
+        if (!_isDynamicLetter) {
+          _startHoldTime ??= now;
+          final difference = now.difference(_startHoldTime!).inMilliseconds / 1000.0;
+          _holdProgress = (difference / holdDurationSeconds).clamp(0.0, 1.0);
 
-        if (difference >= holdDurationSeconds) {
+          if (difference >= holdDurationSeconds) {
+            _onSuccess();
+          }
+        } else {
+          _holdProgress = 1.0;
           _onSuccess();
         }
       } else {
@@ -919,8 +842,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final docRef =
-            FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
 
         await docRef.set({
           'alphabetXp': FieldValue.increment(xpReward),
@@ -939,10 +861,6 @@ class _TutorialPracticeState extends State<TutorialPractice> {
     _isSuccessAchieved = true;
     _startHoldTime = null;
     _holdProgress = 0.0;
-
-    _isRecordingMotion = false;
-    _startRecordingTime = null;
-    _showMotionResult = false;
 
     HapticFeedback.heavyImpact();
     await Future.delayed(const Duration(milliseconds: 100));
@@ -978,8 +896,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                    color: theme.primaryColor.withOpacity(0.6), width: 2),
+                border: Border.all(color: theme.primaryColor.withOpacity(0.6), width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: theme.primaryColor.withOpacity(0.35),
@@ -1000,15 +917,11 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                           color: theme.primaryColor.withOpacity(0.15),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(visuals.mainBadgeIcon,
-                            color: theme.primaryColor, size: 64),
+                        child: Icon(visuals.mainBadgeIcon, color: theme.primaryColor, size: 64),
                       ),
                       Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Icon(visuals.secondaryIcon,
-                            color: theme.primaryColor.withOpacity(0.7),
-                            size: 22),
+                        right: 0, top: 0,
+                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withOpacity(0.7), size: 22),
                       ),
                     ],
                   ),
@@ -1025,9 +938,10 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                   Text(
                     "Outstanding job! You have successfully mastered the letter ${widget.targetLetter.toUpperCase()}!",
                     style: TextStyle(
-                        fontSize: 16,
-                        color: theme.colorScheme.onSurface.withOpacity(0.8),
-                        fontWeight: FontWeight.w500),
+                      fontSize: 16,
+                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      fontWeight: FontWeight.w500,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
@@ -1044,26 +958,20 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         decoration: BoxDecoration(
                           color: Colors.green.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: Colors.green.withOpacity(0.4), width: 2),
+                          border: Border.all(color: Colors.green.withOpacity(0.4), width: 2),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(visuals.secondaryIcon,
-                                color: Colors.green, size: 22),
+                            Icon(visuals.secondaryIcon, color: Colors.green, size: 22),
                             const SizedBox(width: 8),
                             Text(
                               "+$xpReward XP Earned!",
-                              style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.green),
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.green),
                             ),
                           ],
                         ),
@@ -1077,17 +985,14 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                       foregroundColor: theme.colorScheme.onPrimary,
                       elevation: 4,
                       shadowColor: theme.primaryColor.withOpacity(0.5),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       minimumSize: const Size(double.infinity, 54),
                     ),
                     onPressed: () {
                       Navigator.pop(context);
                       Navigator.pop(context);
                     },
-                    child: const Text("Continue",
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 18)),
+                    child: const Text("Continue", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                   ),
                 ],
               ),
@@ -1100,15 +1005,14 @@ class _TutorialPracticeState extends State<TutorialPractice> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _handSub?.cancel();
-    if (_controller != null && _controller!.value.isStreamingImages) {
-      _controller?.stopImageStream().catchError((e) {
-        debugPrint("Error stopping image stream: $e");
-      });
-    }
+    _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();
-    _dynamicSignRecognizer?.dispose();
+
+    _letterJService.dispose();
+    _letterZService.dispose();
     super.dispose();
   }
 
@@ -1143,46 +1047,43 @@ class _TutorialPracticeState extends State<TutorialPractice> {
           ),
         ),
         title: Text(
-          'Practice Mode',
+          'Tutorial Practice',
           style: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 22,
-              fontFamily: 'Inter',
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.96),
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
+          ),
         ),
       ),
       body: Stack(
         children: [
           Positioned(
-            top: -20,
-            right: -20,
+            top: -20, right: -20,
             child: Opacity(
               opacity: 0.12,
               child: Transform.rotate(
                 angle: -0.2,
-                child: Icon(visuals.ambientIcon1,
-                    size: 220, color: theme.primaryColor),
+                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
               ),
             ),
           ),
           Positioned(
-            bottom: 40,
-            left: -30,
+            bottom: 40, left: -30,
             child: Opacity(
               opacity: 0.10,
               child: Transform.rotate(
                 angle: 0.3,
-                child: Icon(visuals.ambientIcon2,
-                    size: 240, color: theme.colorScheme.secondary),
+                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
               ),
             ),
           ),
+
           SafeArea(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 20.0, vertical: 10.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
               child: SizedBox(
                 width: double.infinity,
                 child: Column(
@@ -1198,6 +1099,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                       ),
                     ),
                     const SizedBox(height: 12),
+
                     SizedBox(
                       width: screenWidth * 0.60,
                       child: AspectRatio(
@@ -1218,13 +1120,9 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                             child: Image.asset(
                               "assets/pictures/$currentLetter.jpg",
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                color: isDark
-                                    ? Colors.grey.shade800
-                                    : Colors.grey.shade300,
-                                child: const Icon(Icons.broken_image,
-                                    color: Colors.grey, size: 50),
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                                child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
                               ),
                             ),
                           ),
@@ -1232,6 +1130,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                       ),
                     ),
                     const SizedBox(height: 24),
+
                     SizedBox(
                       width: screenWidth * 0.60,
                       child: AspectRatio(
@@ -1247,15 +1146,12 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   width: 4.0,
-                                  color: isPassing
-                                      ? Colors.greenAccent
-                                      : theme.dividerColor.withOpacity(0.6),
+                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
                                 ),
                                 boxShadow: [
                                   if (isPassing)
                                     BoxShadow(
-                                      color:
-                                          Colors.greenAccent.withOpacity(0.6),
+                                      color: Colors.greenAccent.withOpacity(0.6),
                                       blurRadius: 25,
                                       spreadRadius: 2,
                                     )
@@ -1273,21 +1169,17 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                                     ? FittedBox(
                                         fit: BoxFit.cover,
                                         child: SizedBox(
-                                          width: _controller!
-                                                  .value.previewSize?.height ??
-                                              1,
-                                          height: _controller!
-                                                  .value.previewSize?.width ??
-                                              1,
+                                          width: _controller!.value.previewSize?.height ?? 1,
+                                          height: _controller!.value.previewSize?.width ?? 1,
                                           child: CameraPreview(_controller!),
                                         ),
                                       )
                                     : Center(
-                                        child: CircularProgressIndicator(
-                                            color: theme.primaryColor),
+                                        child: CircularProgressIndicator(color: theme.primaryColor),
                                       ),
                               ),
                             ),
+
                             if (_isInitialized && !_isSuccessAchieved)
                               Center(
                                 child: AnimatedContainer(
@@ -1296,9 +1188,7 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                                   height: 110,
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: isPassing
-                                          ? Colors.greenAccent.withOpacity(0.9)
-                                          : Colors.white54,
+                                      color: isPassing ? Colors.greenAccent.withOpacity(0.9) : Colors.white54,
                                       width: isPassing ? 4.0 : 3.0,
                                     ),
                                     shape: BoxShape.circle,
@@ -1307,33 +1197,24 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
                                       child: BackdropFilter(
-                                        filter: ImageFilter.blur(
-                                            sigmaX: 3, sigmaY: 3),
+                                        filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           color: Colors.black45,
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
+                                            mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
                                               if (isPassing) ...[
-                                                Icon(visuals.mainBadgeIcon,
-                                                    color: Colors.greenAccent,
-                                                    size: 12),
+                                                Icon(visuals.mainBadgeIcon, color: Colors.greenAccent, size: 12),
                                                 const SizedBox(width: 4),
                                               ],
                                               Text(
-                                                isPassing
-                                                    ? "Hold!"
-                                                    : (_isDynamicLetter
-                                                        ? "Draw Gesture"
-                                                        : "Position Hand"),
+                                                isPassing 
+                                                  ? (!_isDynamicLetter ? "Hold!" : "Correct!") 
+                                                  : "Frame Hand",
                                                 style: TextStyle(
-                                                  color: isPassing
-                                                      ? Colors.greenAccent
-                                                      : Colors.white,
+                                                  color: isPassing ? Colors.greenAccent : Colors.white,
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.bold,
                                                 ),
@@ -1350,24 +1231,30 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    if (_holdProgress > 0.0) ...[
+                    const SizedBox(height: 16),
+
+                    Text(
+                      _currentFeedback,
+                      style: TextStyle(
+                        color: isPassing ? Colors.green : theme.colorScheme.primary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+
+                    if (!_isDynamicLetter && _holdProgress > 0.0) ...[
                       Column(
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(visuals.secondaryIcon,
-                                  color: Colors.green, size: 20),
+                              Icon(visuals.secondaryIcon, color: Colors.green, size: 20),
                               const SizedBox(width: 6),
-                              Text(
-                                _isDynamicLetter
-                                    ? "Recording motion..."
-                                    : "Hold steady...",
-                                style: const TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 18),
+                              const Text(
+                                "Hold steady...",
+                                style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
                               ),
                             ],
                           ),
@@ -1380,32 +1267,77 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                                 width: screenWidth * 0.70,
                                 height: 20,
                                 decoration: BoxDecoration(
-                                    color: theme.colorScheme.surface
-                                        .withOpacity(0.4),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                        color: theme.colorScheme.surface
-                                            .withOpacity(0.5),
-                                        width: 1)),
+                                  color: theme.colorScheme.surface.withOpacity(0.4),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
+                                ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
                                   child: FractionallySizedBox(
                                     widthFactor: _holdProgress,
                                     child: Container(
                                       decoration: BoxDecoration(
-                                          gradient: const LinearGradient(
-                                              colors: [
-                                                Colors.greenAccent,
-                                                Colors.green
-                                              ]),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          boxShadow: [
-                                            BoxShadow(
-                                                color: Colors.greenAccent
-                                                    .withOpacity(0.5),
-                                                blurRadius: 10)
-                                          ]),
+                                        gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(color: Colors.greenAccent.withOpacity(0.5), blurRadius: 10)
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    ] else if (_isDynamicLetter && _bufferFrameCount > 0 && _bufferFrameCount < _requiredBufferFrames) ...[
+                      Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Analyzing motion... ($_bufferFrameCount/$_requiredBufferFrames)",
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(
+                                width: screenWidth * 0.70,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface.withOpacity(0.4),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FractionallySizedBox(
+                                    widthFactor: _bufferFrameCount / _requiredBufferFrames,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -1421,29 +1353,19 @@ class _TutorialPracticeState extends State<TutorialPractice> {
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 300),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isPassing
-                                  ? Colors.green.withOpacity(0.2)
-                                  : theme.cardColor.withOpacity(0.6),
+                              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.6),
                               borderRadius: BorderRadius.circular(30),
                               border: Border.all(
-                                  color: isPassing
-                                      ? Colors.greenAccent.withOpacity(0.6)
-                                      : theme.colorScheme.surface
-                                          .withOpacity(0.8),
-                                  width: 1.5),
+                                color: isPassing ? Colors.greenAccent.withOpacity(0.6) : theme.colorScheme.surface.withOpacity(0.8),
+                                width: 1.5,
+                              ),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
-                                color: isPassing
-                                    ? (isDark
-                                        ? Colors.greenAccent
-                                        : Colors.green.shade700)
-                                    : theme.colorScheme.onSurface
-                                        .withOpacity(0.7),
+                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withOpacity(0.7),
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16,
                                 fontFamily: 'Inter',

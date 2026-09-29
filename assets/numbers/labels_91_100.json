@@ -1,0 +1,76 @@
+{
+  "category": "FSL Numbers 91-100 (Base-9 Morph & Century Kinematics)",
+  "version": "2.0",
+  "numbers": [
+    {
+      "id": 91,
+      "label": "Number 91",
+      "orientation": "upright",
+      "instruction": "Show the '9' base handshape (tip of the thumb touching the tip of the index finger while middle, ring, and pinky remain upright), then transition to an extended index finger ('1').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 92,
+      "label": "Number 92",
+      "orientation": "upright",
+      "instruction": "Start with the '9' base, then extend the index and middle fingers ('2') while curling the remaining fingers.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 93,
+      "label": "Number 93",
+      "orientation": "upright",
+      "instruction": "Start with the '9' base, then extend the thumb, index, and middle fingers ('3').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 94,
+      "label": "Number 94",
+      "orientation": "upright",
+      "instruction": "Start with the '9' base, then extend 4 upright fingers ('4') with the thumb folded flat against the palm (no active pinch contact).",
+      "min_energy": 0.20
+    },
+    {
+      "id": 95,
+      "label": "Number 95",
+      "orientation": "upright",
+      "instruction": "Start with the '9' base, then open all 5 fingers fully and loosely ('5').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 96,
+      "label": "Number 96",
+      "orientation": "upright",
+      "instruction": "Start with the '9' base, then shift the thumb to contact the tip of the pinky finger ('6' pinch) while index, middle, and ring fingers remain upright.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 97,
+      "label": "Number 97",
+      "orientation": "upright",
+      "instruction": "Start with the '9' base, then shift the thumb to contact the tip of the ring finger ('7' pinch) while index, middle, and pinky remain upright.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 98,
+      "label": "Number 98",
+      "orientation": "upright",
+      "instruction": "Start with the '9' base, then shift the thumb to contact the tip of the middle finger ('8' pinch) while index, ring, and pinky remain upright.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 99,
+      "label": "Number 99",
+      "orientation": "upright",
+      "instruction": "Hold the '9' handshape (thumb touching index finger) and perform two distinct outward/forward pulses or bounces.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 100,
+      "label": "Number 100",
+      "orientation": "upright",
+      "instruction": "Start with an upright extended index finger ('1'), then slide slightly outward and curve your entire hand into an open 'C' shape (Roman numeral C = 100).",
+      "min_energy": 0.20
+    }
+  ]
+}

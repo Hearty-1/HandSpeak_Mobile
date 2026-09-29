@@ -157,8 +157,19 @@ class SettingsScreen extends StatefulWidget {
                 secondary: const Icon(CupertinoIcons.person_2_fill, color: Colors.blue),
                 title: Text("Friend Requests & Activity", style: TextStyle(color: textColor)),
                 value: _friendNotif,
-                onChanged: (val) {
+                onChanged: (val) async {
+                  // 1. Update UI instantly
                   setState(() => _friendNotif = val);
+                  
+                  // 2. Sync preference to GCP/Firestore
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user != null) {
+                    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+                      'preferences': {
+                        'friendNotifications': val,
+                      }
+                    }, SetOptions(merge: true));
+                  }
                 },
               ),
             ],

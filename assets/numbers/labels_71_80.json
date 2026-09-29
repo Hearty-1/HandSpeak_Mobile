@@ -1,0 +1,76 @@
+{
+  "category": "FSL Numbers 71-80 (Base-7 Morph & Pinch Kinematics)",
+  "version": "2.0",
+  "numbers": [
+    {
+      "id": 71,
+      "label": "Number 71",
+      "orientation": "upright",
+      "instruction": "Show the '7' base handshape (tip of the thumb touching the tip of the ring finger while index, middle, and pinky remain upright), then transition to an extended index finger ('1').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 72,
+      "label": "Number 72",
+      "orientation": "upright",
+      "instruction": "Start with the '7' base, then extend the index and middle fingers ('2') while curling the remaining fingers.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 73,
+      "label": "Number 73",
+      "orientation": "upright",
+      "instruction": "Start with the '7' base, then extend the thumb, index, and middle fingers ('3').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 74,
+      "label": "Number 74",
+      "orientation": "upright",
+      "instruction": "Start with the '7' base, then extend 4 upright fingers ('4') with the thumb folded flat against the palm (no pinch contact).",
+      "min_energy": 0.20
+    },
+    {
+      "id": 75,
+      "label": "Number 75",
+      "orientation": "upright",
+      "instruction": "Start with the '7' base, then open all 5 fingers fully and loosely ('5').",
+      "min_energy": 0.20
+    },
+    {
+      "id": 76,
+      "label": "Number 76",
+      "orientation": "upright",
+      "instruction": "Start with the '7' base, then shift the thumb to contact the tip of the pinky finger ('6' pinch) while the index, middle, and ring fingers remain upright.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 77,
+      "label": "Number 77",
+      "orientation": "upright",
+      "instruction": "Hold the '7' handshape (thumb touching ring finger) and perform two distinct outward/forward pulses or bounces.",
+      "min_energy": 0.25
+    },
+    {
+      "id": 78,
+      "label": "Number 78",
+      "orientation": "upright",
+      "instruction": "Start with the '7' base, then shift the thumb to contact the tip of the middle finger ('8' pinch) while index, ring, and pinky remain upright.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 79,
+      "label": "Number 79",
+      "orientation": "upright",
+      "instruction": "Start with the '7' base, then shift the thumb to contact the tip of the index finger ('9' pinch) while the remaining three fingers stay extended.",
+      "min_energy": 0.20
+    },
+    {
+      "id": 80,
+      "label": "Number 80",
+      "orientation": "upright",
+      "instruction": "Start in the '8' handshape (thumb touching middle finger) and contract/pulse all fingers inward to form an 'O' shape.",
+      "min_energy": 0.25
+    }
+  ]
+}
