@@ -11,16 +11,26 @@ import '../profile/profile.dart';
 import '../profile/add_friend_screen.dart';
 import 'gamescreen.dart';
 import 'solo_challenge.dart' hide GameProperScreen;
-import '../home/notification_bell.dart'; // Import NotificationBell widget
+import '../home/notification_bell.dart'; 
+
+Route _fadeRoute(Widget page) {
+  return PageRouteBuilder(
+    pageBuilder: (context, animation, secondaryAnimation) => page,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return FadeTransition(opacity: animation, child: child);
+    },
+    transitionDuration: const Duration(milliseconds: 180),
+  );
+}
 
 class LeaderboardScreen extends StatefulWidget {
   final String initialTab;
-  final int initialTabIndex; // <--- ADD THIS LINE
+  final int initialTabIndex; 
 
   const LeaderboardScreen({
     super.key,
     this.initialTab = 'rankings',
-    this.initialTabIndex = 0, // <--- NOW THIS WORKS
+    this.initialTabIndex = 0, 
   });
 
   @override
@@ -29,7 +39,7 @@ class LeaderboardScreen extends StatefulWidget {
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
   late String _mainHubTab;
-  String _rankTimeframe = 'weekly'; // 'weekly' or 'alltime'
+  String _rankTimeframe = 'weekly'; 
 
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
@@ -40,7 +50,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     _checkAndResetDailyStats();
   }
 
-  /// Helper to safely build avatars, including Base64 database strings
   Widget _buildSafeAvatar({
     required BuildContext context,
     required String? photoUrl,
@@ -178,11 +187,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
     final double screenWidth = MediaQuery.of(context).size.width;
     const double baseWidth = 393;
     final double scale = screenWidth / baseWidth > 1.2 ? 1.2 : screenWidth / baseWidth;
 
-return Scaffold(
+    return Scaffold(
       extendBodyBehindAppBar: true,
       extendBody: true,
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -196,7 +206,7 @@ return Scaffold(
           onPressed: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const AddFriendScreen()),
+              _fadeRoute(const AddFriendScreen()),
             );
           },
         ),
@@ -239,23 +249,24 @@ return Scaffold(
       bottomNavigationBar: SafeArea(
         child: Container(
           width: double.infinity,
-          height: 76,
-          margin: EdgeInsets.only(bottom: 12 * scale, left: 16 * scale, right: 16 * scale),
+          height: 74,
+          margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(30 * scale),
+            borderRadius: BorderRadius.circular(28),
+            clipBehavior: Clip.antiAlias,
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
               child: Container(
                 decoration: BoxDecoration(
                   color: theme.cardColor.withOpacity(0.65),
-                  borderRadius: BorderRadius.circular(30 * scale),
+                  borderRadius: BorderRadius.circular(28),
                   border: Border.all(
-                    color: Colors.white.withOpacity(theme.brightness == Brightness.dark ? 0.15 : 0.4),
+                    color: Colors.white.withOpacity(isDark ? 0.15 : 0.4),
                     width: 1.0,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.08),
+                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -264,10 +275,10 @@ return Scaffold(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildNavIconButton(theme, Icons.home_rounded, false, () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SnedInterafce1(userName: "Student")), (route) => false)),
-                    _buildNavIconButton(theme, Icons.auto_stories_rounded, false, () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SnedInterface2()))),
+                    _buildNavIconButton(theme, Icons.home_rounded, false, () => Navigator.pushAndRemoveUntil(context, _fadeRoute(const SnedInterafce1(userName: "Student")), (route) => false)),
+                    _buildNavIconButton(theme, Icons.auto_stories_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const SnedInterface2()))),
                     _buildNavIconButton(theme, Icons.sports_esports_rounded, true, () {}),
-                    _buildNavIconButton(theme, Icons.person_rounded, false, () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ProfileScreen()))),
+                    _buildNavIconButton(theme, Icons.person_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const ProfileScreen()))),
                   ],
                 ),
               ),
@@ -280,7 +291,6 @@ return Scaffold(
         builder: (context, constraints) {
           return Stack(
             children: [
-              // Dynamic Arena Glowing Orbs
               Positioned(
                 top: 100 * scale, right: -30 * scale,
                 child: Container(
@@ -347,16 +357,23 @@ return Scaffold(
   }
 
   Widget _buildNavIconButton(ThemeData theme, IconData icon, bool isSelected, VoidCallback onPressed) {
-    return Container(
-      decoration: isSelected ? BoxDecoration(
-        color: theme.primaryColor.withOpacity(0.18),
-        shape: BoxShape.circle,
-      ) : null,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: isSelected
+          ? BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(20),
+            )
+          : null,
       child: IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
         icon: Icon(
           icon,
-          color: isSelected ? theme.primaryColor : theme.unselectedWidgetColor,
-          size: isSelected ? 32 : 28,
+          color: isSelected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.5),
+          size: isSelected ? 30 : 28,
         ),
         onPressed: onPressed,
       ),
@@ -638,7 +655,7 @@ return Scaffold(
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const GroupChallengeHubScreen()),
+                _fadeRoute(const GroupChallengeHubScreen()),
               );
             },
           ),
@@ -655,7 +672,7 @@ return Scaffold(
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const SoloChallengeSetupScreen()),
+                _fadeRoute(const SoloChallengeSetupScreen()),
               );
             },
           ),
@@ -1107,7 +1124,6 @@ return Scaffold(
   }
 }
 
-// --- FUNCTIONAL GROUP CHALLENGE HUB SCREEN ---
 class GroupChallengeHubScreen extends StatefulWidget {
   const GroupChallengeHubScreen({super.key});
 
@@ -1123,14 +1139,13 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
 
   final List<String> _invitedFriendUids = [];
 
-  // --- HOST SELECTION STATE ---
   String _selectedCategory = 'Alphabet';
   int _selectedRounds = 10;
-  int _selectedTimer = 15; // In seconds (0 = Untimed)
+  int _selectedTimer = 15; 
 
   final List<String> _categories = ['Alphabet', 'Numbers', 'Common Phrases', 'Civic Observances'];
   final List<int> _roundsOptions = [5, 10, 15, 20];
-  final List<int> _timerOptions = [10, 15, 30, 0]; // 0 = Untimed
+  final List<int> _timerOptions = [10, 15, 30, 0]; 
 
   Widget _buildSafeAvatar({
     required BuildContext context,
@@ -1225,13 +1240,11 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         final data = roomSnapshot.data() as Map<String, dynamic>;
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => RoomLobbyScreen(
-              roomCode: code,
-              challengeTitle: data['title'] ?? "Group Challenge",
-              isHost: data['hostUid'] == _currentUserId,
-            ),
-          ),
+          _fadeRoute(RoomLobbyScreen(
+            roomCode: code,
+            challengeTitle: data['title'] ?? "Group Challenge",
+            isHost: data['hostUid'] == _currentUserId,
+          )),
         );
       }
     } catch (e) {
@@ -1268,16 +1281,35 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
+      if (_invitedFriendUids.isNotEmpty) {
+        final notificationEntry = {
+          'title': 'New Challenge Invite! 🎮',
+          'body': '$hostName invited you to join a $_selectedCategory challenge!',
+          'type': 'challenge_invite',
+          'roomCode': code,
+          'fromUserId': _currentUserId,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'isRead': false,
+        };
+
+        final batch = FirebaseFirestore.instance.batch();
+        for (String friendUid in _invitedFriendUids) {
+          final friendRef = FirebaseFirestore.instance.collection('users').doc(friendUid);
+          batch.update(friendRef, {
+            'notifications': FieldValue.arrayUnion([notificationEntry])
+          });
+        }
+        await batch.commit();
+      }
+
       if (mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => RoomLobbyScreen(
-              roomCode: code,
-              challengeTitle: roomTitle,
-              isHost: true,
-            ),
-          ),
+          _fadeRoute(RoomLobbyScreen(
+            roomCode: code,
+            challengeTitle: roomTitle,
+            isHost: true,
+          )),
         );
       }
     } catch (e) {
@@ -1424,7 +1456,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            // TOP HEADER CARD
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance.collection('users').doc(_currentUserId).snapshots(),
               builder: (context, snapshot) {
@@ -1475,7 +1506,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             ),
             const SizedBox(height: 20),
 
-            // SEGMENT TOGGLE BUTTONS
             Container(
               height: 48,
               padding: const EdgeInsets.all(4),
@@ -1544,7 +1574,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     );
   }
 
-  // --- JOIN VIEW WITH ACTIVE ROOMS ---
   Widget _buildJoinView(ThemeData theme) {
     final textColor = theme.colorScheme.onSurface;
     return Column(
@@ -1590,7 +1619,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         ),
         const SizedBox(height: 24),
 
-        // ACTIVE ROOMS LIST (Displaying All Available Rooms)
         Text("Active Rooms", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: textColor)),
         const SizedBox(height: 12),
 
@@ -1680,7 +1708,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     );
   }
 
-  // --- CREATE VIEW WITH HOST OPTIONS ---
   Widget _buildCreateView(ThemeData theme) {
     final textColor = theme.colorScheme.onSurface;
     return Container(
@@ -1710,7 +1737,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           ),
           const SizedBox(height: 20),
 
-          // CATEGORY SELECTOR
           Text("⚡ Choose Sign Category", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
           const SizedBox(height: 8),
           Container(
@@ -1735,7 +1761,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           ),
           const SizedBox(height: 16),
 
-          // ROUNDS SELECTOR
           Text("🎯 Select Number of Rounds", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
           const SizedBox(height: 8),
           Row(
@@ -1764,7 +1789,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           ),
           const SizedBox(height: 16),
 
-          // TIMER DURATION SELECTOR
           Text("⏱️ Timer Duration per Question", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
           const SizedBox(height: 8),
           Row(
@@ -1794,7 +1818,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           ),
           const SizedBox(height: 20),
 
-          // INVITE FRIENDS
           InkWell(
             onTap: _showInviteFriendsSheet,
             borderRadius: BorderRadius.circular(16),
@@ -1846,7 +1869,6 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
   }
 }
 
-// --- FUNCTIONAL ROOM LOBBY SCREEN ---
 class RoomLobbyScreen extends StatefulWidget {
   final String roomCode;
   final String challengeTitle;
@@ -1887,13 +1909,11 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
           if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(
-                builder: (context) => GameProperScreen(
-                  roomCode: widget.roomCode,
-                  challengeTitle: widget.challengeTitle,
-                  isHost: widget.isHost,
-                ),
-              ),
+              _fadeRoute(GameProperScreen(
+                roomCode: widget.roomCode,
+                challengeTitle: widget.challengeTitle,
+                isHost: widget.isHost,
+              )),
             );
           }
         }

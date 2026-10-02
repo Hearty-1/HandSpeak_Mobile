@@ -32,19 +32,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
   List<PhraseLesson> _allLessons = [];
   List<PhraseLesson> _filteredLessons = [];
   bool _isLoading = true;
-
-  final List<PhraseLesson> _localLessons = [
-    PhraseLesson(id: 'local_1', title: 'GoodAfternoon', imageUrl: 'assets/pictures/good_afternoon.jpg', order: 1),
-    PhraseLesson(id: 'local_2', title: 'GoodEvening', imageUrl: 'assets/pictures/good_evening.jpg', order: 2),
-    PhraseLesson(id: 'local_3', title: 'GoodMorning', imageUrl: 'assets/pictures/good_morning.jpg', order: 3),
-    PhraseLesson(id: 'local_4', title: 'Hello', imageUrl: 'assets/pictures/hello.jpg', order: 4),
-    PhraseLesson(id: 'local_5', title: 'HowAreYou', imageUrl: 'assets/pictures/how_are_you.jpg', order: 5),
-    PhraseLesson(id: 'local_6', title: 'ImFine', imageUrl: 'assets/pictures/im_fine.jpg', order: 6),
-    PhraseLesson(id: 'local_7', title: 'NiceToMeetYou', imageUrl: 'assets/pictures/nice_to_meet_you.jpg', order: 7),
-    PhraseLesson(id: 'local_8', title: 'SeeYouTom', imageUrl: 'assets/pictures/see_you_tom.jpg', order: 8),
-    PhraseLesson(id: 'local_9', title: 'ThankYou', imageUrl: 'assets/pictures/thank_you.jpg', order: 9),
-    PhraseLesson(id: 'local_10', title: 'You\'reWelcome', imageUrl: 'assets/pictures/youre_welcome.jpg', order: 10),
-  ];
+  bool _hasError = false;
 
   @override
   void initState() {
@@ -55,7 +43,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
   Future<void> _fetchLessons() async {
     try {
       final snapshot = await FirebaseFirestore.instance
-          .collection('tutorials')
+          .collection('tutorial_lessons')
           .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
           .get();
 
@@ -90,7 +78,13 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
 
           lessons.add(PhraseLesson(
             id: doc.id,
-            title: data['title'] ?? data['label'] ?? data['name'] ?? 'Unknown Phrase',
+            title: data['displayTitle'] ?? 
+                   data['gestureKey'] ?? 
+                   data['symbol'] ?? 
+                   data['title'] ?? 
+                   data['label'] ?? 
+                   data['name'] ?? 
+                   'Unknown Phrase',
             imageUrl: resolvedUrl,
             order: (data['order'] as num?)?.toInt() ?? 0,
             isLocked: data['isLocked'] ?? (data['status'] == 'locked'),
@@ -104,24 +98,27 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
             _allLessons = lessons;
             _filteredLessons = lessons;
             _isLoading = false;
+            _hasError = false;
           });
         }
       } else {
-        _loadLocalFallback();
+        if (mounted) {
+          setState(() {
+            _allLessons = [];
+            _filteredLessons = [];
+            _isLoading = false;
+            _hasError = false;
+          });
+        }
       }
     } catch (e) {
-      debugPrint("Firestore fetch error: $e. Loading local fallback.");
-      _loadLocalFallback();
-    }
-  }
-
-  void _loadLocalFallback() {
-    if (mounted) {
-      setState(() {
-        _allLessons = _localLessons;
-        _filteredLessons = _localLessons;
-        _isLoading = false;
-      });
+      debugPrint("Firestore fetch error: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
     }
   }
 
@@ -256,6 +253,30 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
   Widget _buildBodyContent(Color textColor) {
     if (_isLoading) {
       return Center(child: CircularProgressIndicator(color: Theme.of(context).primaryColor));
+    }
+
+    if (_hasError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: textColor.withOpacity(0.6)),
+            const SizedBox(height: 16),
+            Text(
+              "Failed to load phrases.", 
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.8)),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                setState(() => _isLoading = true);
+                _fetchLessons();
+              }, 
+              child: const Text("Tap to retry"),
+            )
+          ],
+        ),
+      );
     }
 
     if (_filteredLessons.isEmpty) {

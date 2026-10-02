@@ -22,16 +22,56 @@ class LocalNotificationService {
     await _notificationsPlugin.initialize(settings);
   }
 
-  static Future<void> scheduleStreakReminder() async {
+  // NEW: Instant notification for Friend Challenge Invites
+  static Future<void> showInstantNotification({
+    required int id,
+    required String title,
+    required String body,
+    bool playSound = true,
+    bool enableVibration = true,
+  }) async {
+    // Dynamic channel ID handles Android's immutable notification channel behavior
+    final String channelId = 'challenge_channel_${playSound}_$enableVibration';
+    
+    AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      channelId,
+      'Challenge Invites',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: playSound,
+      enableVibration: enableVibration,
+    );
+    
+    NotificationDetails details = NotificationDetails(android: androidDetails);
+    
+    await _notificationsPlugin.show(
+      id,
+      title,
+      body,
+      details,
+    );
+  }
+
+  static Future<void> scheduleStreakReminder({
+    bool playSound = true,
+    bool enableVibration = true,
+  }) async {
+    final String channelId = 'streak_channel_${playSound}_$enableVibration';
+
+    AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      channelId,
+      'Streaks', 
+      importance: Importance.max,
+      playSound: playSound,
+      enableVibration: enableVibration,
+    );
+
     await _notificationsPlugin.zonedSchedule(
       1, 
       'Keep your streak alive! 🔥',
       'Play a quick game today to protect your streak.',
       tz.TZDateTime.now(tz.local).add(const Duration(hours: 24)),
-      const NotificationDetails(
-        android: AndroidNotificationDetails('streak_channel', 'Streaks', importance: Importance.max),
-      ),
-      // FIX: Changed from exactAllowWhileIdle to inexactAllowWhileIdle
+      NotificationDetails(android: androidDetails),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, 
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
     );

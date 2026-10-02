@@ -51,6 +51,16 @@ class FigmaToCodeApp extends StatelessWidget {
   }
 }
 
+Route _fadeRoute(Widget page) {
+  return PageRouteBuilder(
+    pageBuilder: (context, animation, secondaryAnimation) => page,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return FadeTransition(opacity: animation, child: child);
+    },
+    transitionDuration: const Duration(milliseconds: 180),
+  );
+}
+
 class SnedInterafce1 extends StatelessWidget {
   final String userName; 
 
@@ -112,7 +122,7 @@ class SnedInterafce1 extends StatelessWidget {
         if (!context.mounted) return;
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => targetScreen),
+          _fadeRoute(targetScreen),
         );
       },
     );
@@ -123,9 +133,7 @@ class SnedInterafce1 extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => const LeaderboardScreen(initialTab: 'challenges'),
-          ),
+          _fadeRoute(const LeaderboardScreen(initialTab: 'challenges')),
         );
       },
       child: _buildGlassContainer(
@@ -303,7 +311,7 @@ class SnedInterafce1 extends StatelessWidget {
                         title: Text('Settings', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context); 
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                          Navigator.push(context, _fadeRoute(const SettingsScreen()));
                         }, 
                       ),
                       ListTile(
@@ -311,7 +319,7 @@ class SnedInterafce1 extends StatelessWidget {
                         title: Text('Help & Support', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const InfoDetailScreen(
+                          Navigator.push(context, _fadeRoute(const InfoDetailScreen(
                             title: 'Help & Support',
                             sections: [
                               InfoSection(
@@ -353,7 +361,7 @@ class SnedInterafce1 extends StatelessWidget {
                         title: Text('About Us', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutUsScreen()));
+                          Navigator.push(context, _fadeRoute(const AboutUsScreen()));
                         }, 
                       ),
                       ListTile(
@@ -361,7 +369,7 @@ class SnedInterafce1 extends StatelessWidget {
                         title: Text('Terms & Privacy Policy', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const InfoDetailScreen(
+                          Navigator.push(context, _fadeRoute(const InfoDetailScreen(
                             title: 'Terms of Service & Privacy Policy',
                             sections: [
                               InfoSection(
@@ -464,7 +472,7 @@ class SnedInterafce1 extends StatelessWidget {
                 onPressed: () {
                   Navigator.push( 
                     context,
-                    MaterialPageRoute(builder: (context) => const NotificationsScreen()), 
+                    _fadeRoute(const NotificationsScreen()), 
                   );
                 },
               ),
@@ -487,48 +495,27 @@ class SnedInterafce1 extends StatelessWidget {
                   filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: theme.cardColor.withOpacity(0.6),
+                      color: theme.cardColor.withOpacity(0.65),
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withOpacity(isDark ? 0.15 : 0.4),
                         width: 1.0,
                       ),
-                      boxShadow: const [
+                      boxShadow: [
                         BoxShadow(
-                          color: Color(0x08132C4A),
+                          color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
                           blurRadius: 20,
-                          offset: Offset(0, 8),
+                          offset: const Offset(0, 8),
                         )
                       ],
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        IconButton(
-                          icon: Icon(Icons.home_rounded, color: theme.primaryColor, size: 28),
-                          onPressed: () {},
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.auto_stories_rounded, color: textColor.withOpacity(0.6), size: 28),
-                          onPressed: () => Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => const SnedInterface2()),
-                          ),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.sports_esports_rounded, color: textColor.withOpacity(0.6), size: 28), 
-                          onPressed: () => Navigator.push(
-                            context, 
-                            MaterialPageRoute(builder: (context) => const LeaderboardScreen()),
-                          ), 
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.person_rounded, color: textColor.withOpacity(0.6), size: 28),
-                          onPressed: () => Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                          ),
-                        ),
+                        _buildNavIconButton(theme, Icons.home_rounded, true, () {}),
+                        _buildNavIconButton(theme, Icons.auto_stories_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const SnedInterface2()))),
+                        _buildNavIconButton(theme, Icons.sports_esports_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const LeaderboardScreen()))),
+                        _buildNavIconButton(theme, Icons.person_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const ProfileScreen()))),
                       ],
                     ),
                   ),
@@ -579,7 +566,7 @@ class SnedInterafce1 extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                       children: [
                         GestureDetector(
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen())), 
+                          onTap: () => Navigator.push(context, _fadeRoute(const ProfileScreen())), 
                           child: Container(
                             width: 48 * scale,
                             height: 48 * scale,
@@ -728,6 +715,30 @@ class SnedInterafce1 extends StatelessWidget {
     );
   }
 
+  Widget _buildNavIconButton(ThemeData theme, IconData icon, bool isSelected, VoidCallback onPressed) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: isSelected
+          ? BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(20),
+            )
+          : null,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        icon: Icon(
+          icon,
+          color: isSelected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.5),
+          size: isSelected ? 30 : 28,
+        ),
+        onPressed: onPressed,
+      ),
+    );
+  }
+
   Widget _buildGlassContainer({
     required BuildContext context, 
     required Widget child, 
@@ -852,8 +863,6 @@ class SnedInterafce1 extends StatelessWidget {
   }
 }
 
-// --- MINIMAL, PROFESSIONAL DOCUMENT INFO SCREENS ---
-
 class InfoSection {
   final String title;
   final String body;
@@ -921,15 +930,13 @@ class InfoDetailScreen extends StatelessWidget {
                 ),
               ],
             ),
-          )).toList(),
+          )),
           SizedBox(height: 40 * scale),
         ],
       ),
     );
   }
 }
-
-// --- DEDICATED ABOUT US SCREEN ---
 
 class AboutUsScreen extends StatelessWidget {
   const AboutUsScreen({super.key});
@@ -962,7 +969,6 @@ class AboutUsScreen extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 20 * scale),
         children: [
-          // STNCS Logo Placeholder
           Center(
             child: Container(
               width: 100 * scale,
@@ -973,8 +979,6 @@ class AboutUsScreen extends StatelessWidget {
                 border: Border.all(color: textColor.withOpacity(0.1)),
               ),
               child: Center(
-                // Swap the Icon below with an Image.asset when you have the STNCS logo
-                // Example: Image.asset('assets/pictures/stncs_logo.png', fit: BoxFit.contain),
                 child: Image.asset('assets/pictures/image 66.png', fit: BoxFit.contain), 
               ),
             ),
@@ -1040,7 +1044,6 @@ class AboutUsScreen extends StatelessWidget {
               style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w600),
             ),
           ),
-          // Social media link placeholders for developers
           Row(
             children: [
               Icon(Icons.link_rounded, color: textColor.withOpacity(0.5), size: 20 * scale),

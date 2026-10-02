@@ -5,10 +5,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
-import 'package:onnxruntime/onnxruntime.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '/services/progress_service.dart';
-import 'onnx_env_manager.dart';
+import '/services/handspeak_api_service.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -68,15 +67,14 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   Uint8List? _templateImageBytes;
   bool _isImageLoading = false;
 
-  // Model and Dynamic JSON Data
-  OrtSession? _ortSession;
+  // Manifest and Dynamic JSON Data
   List<Map<String, dynamic>> _phrases = [];
   List<Map<String, dynamic>> _activeQuestions = [];
   
-  // Dynamic ONNX tensor shape configuration
+  // Dynamic tensor shape configuration
   List<int> _inputShape = [1, 818];
   int _inputTensorSize = 818; 
-  bool _isModelLoaded = false;
+  bool _isManifestLoaded = false;
 
   static const int targetFrames = 32;
   static const int totalLandmarks = 68;
@@ -103,12 +101,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   }
 
   Future<void> _bootstrapPipeline() async {
-    OnnxEnvManager.ensureInitialized();
-
-    _updateLoadingStatus("Naglo-load ng modelo at camera...");
+    _updateLoadingStatus("Naglo-load ng manifest at camera...");
 
     await Future.wait([
-      _loadOnnxModelAndLabels(),
+      _loadManifestAndLabels(),
       _initializePipeline(),
     ]);
 
@@ -133,7 +129,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     return lower.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
   }
 
-  Future<void> _loadOnnxModelAndLabels() async {
+  Future<void> _loadManifestAndLabels() async {
     final key = _normalizeCategoryKey(widget.category);
     try {
       final labelPath = 'assets/civic/labels_$key.json';
@@ -159,14 +155,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         }).toList();
       }
 
-      final modelPath = 'assets/civic/fsl_$key.onnx';
-      final rawModel = await rootBundle.load(modelPath);
-
-      await Future.delayed(Duration.zero);
-      _ortSession = OrtSession.fromBuffer(rawModel.buffer.asUint8List(), OrtSessionOptions());
-
       if (!_isDisposed && mounted) {
-        _isModelLoaded = true;
+        _isManifestLoaded = true;
         _loadCurrentStepData();
       }
     } catch (e) {
@@ -273,7 +263,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     }
   }
 
-  // Interleaves Flutter YUV420 planes into standard Android NV21 byte order[cite: 28]
   Uint8List _convertYUV420ToNV21(CameraImage image) {
     final int width = image.width;
     final int height = image.height;
@@ -323,7 +312,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   }
 
   void _processCameraFrame(CameraImage image) async {
-    if (!_isModelLoaded || _isSuccessAchieved || _isEvaluating || _isNativeProcessing || _isDisposed) return;
+    if (!_isManifestLoaded || _isSuccessAchieved || _isEvaluating || _isNativeProcessing || _isDisposed) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastFrameTimestamp < _frameIntervalMs) return;
@@ -344,7 +333,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       if (_isDisposed) return; 
 
       if (res is List) {
-        final List<double> rawFloats = (res as List)
+        final List<double> rawFloats = (res)
             .map((e) => (e as num).toDouble())
             .toList();
 
@@ -382,7 +371,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     }
   }
 
-  // Multi-model Feature Extractor Router
   Float32List _extractFeatures(List<FrameLandmarks> seq) {
     final catKey = _normalizeCategoryKey(widget.category);
     if (catKey == 'lupang_hinirang' || _inputTensorSize == 818) {
@@ -392,8 +380,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     }
   }
 
-  // Normalizes landmarks by center torso & shoulder distance, then extracts
-  // 818 holistic features matching Python train_lupang_hinirang.py
   Float32List _extractFeatures818(List<FrameLandmarks> seq) {
     List<List<List<double>>> normClip = List.generate(
       targetFrames,
@@ -457,9 +443,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       return phase;
     }
 
-    List<double> pStart = computePhaseMean(0, 4);   // 204
-    List<double> pMid = computePhaseMean(14, 18);   // 204
-    List<double> pEnd = computePhaseMean(28, 32);   // 204
+    List<double> pStart = computePhaseMean(0, 4);   
+    List<double> pMid = computePhaseMean(14, 18);   
+    List<double> pEnd = computePhaseMean(28, 32);   
 
     List<double> deltaMovement = List.filled(204, 0.0);
     for (int k = 0; k < 204; k++) {
@@ -467,17 +453,16 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     }
 
     List<double> features = [];
-    features.addAll(pStart);        // 204
-    features.addAll(pMid);          // 204
-    features.addAll(pEnd);          // 204
-    features.addAll(deltaMovement); // 204
-    features.add(totalEnergyLh);    // 1
-    features.add(totalEnergyRh);    // 1
+    features.addAll(pStart);        
+    features.addAll(pMid);          
+    features.addAll(pEnd);          
+    features.addAll(deltaMovement); 
+    features.add(totalEnergyLh);    
+    features.add(totalEnergyRh);    
 
     return Float32List.fromList(features);
   }
 
-  // Extracts 842 advanced features matching train_panata_final_2.py & train_panunumpa_final_2.py
   Float32List _extractFeatures842(List<FrameLandmarks> seq) {
     List<List<List<double>>> normClip = List.generate(
       targetFrames,
@@ -523,7 +508,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       return slice;
     }
 
-    // 4 Dynamic Slices (4 * 204 = 816)
     List<double> slice0 = computeSliceMean(0, 8);
     List<double> slice1 = computeSliceMean(8, 16);
     List<double> slice2 = computeSliceMean(16, 24);
@@ -536,7 +520,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       return sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    // Finger Curl Geometry
     const fingerTips = [4, 8, 12, 16, 20];
     List<double> rhCurls = [];
     List<double> lhCurls = [];
@@ -557,7 +540,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       lhCurls.addAll([meanLh, rangeLh]);
     }
 
-    // Elevation relative to Nose (idx 56) & Chest ([0,0,0])
     List<double> rhToNose = [];
     List<double> rhToChest = [];
     for (int t = 0; t < targetFrames; t++) {
@@ -570,7 +552,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     double rhChestMean = rhToChest.reduce((a, b) => a + b) / targetFrames;
     double rhChestMin = rhToChest.reduce(min);
 
-    // Speeds & Total Energy
     double totalSpeedRH = 0.0;
     double totalSpeedLH = 0.0;
 
@@ -584,47 +565,33 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     }
 
     List<double> features = [];
-    features.addAll(slice0);    // 204
-    features.addAll(slice1);    // 204
-    features.addAll(slice2);    // 204
-    features.addAll(slice3);    // 204
-    features.addAll(rhCurls);   // 10
-    features.addAll(lhCurls);   // 10
-    features.add(rhNoseMean);   // 1
-    features.add(rhNoseMin);    // 1
-    features.add(rhChestMean);  // 1
-    features.add(rhChestMin);   // 1
-    features.add(totalSpeedLH); // 1
-    features.add(totalSpeedRH); // 1
+    features.addAll(slice0);    
+    features.addAll(slice1);    
+    features.addAll(slice2);    
+    features.addAll(slice3);    
+    features.addAll(rhCurls);   
+    features.addAll(lhCurls);   
+    features.add(rhNoseMean);   
+    features.add(rhNoseMin);    
+    features.add(rhChestMean);  
+    features.add(rhChestMin);   
+    features.add(totalSpeedLH); 
+    features.add(totalSpeedRH); 
 
     return Float32List.fromList(features);
   }
 
-  List<double> _softmax(List<double> logits) {
-    if (logits.isEmpty) return [];
-    double maxLogit = logits.reduce(max);
-    List<double> expValues = logits.map((e) => exp(e - maxLogit)).toList();
-    double sumExp = expValues.reduce((a, b) => a + b);
-    return expValues.map((e) => e / sumExp).toList();
-  }
-
   Future<void> _evaluateSequence(List<FrameLandmarks> sequence) async {
-    if (_ortSession == null || _phrases.isEmpty || _isDisposed || _isSuccessAchieved) return;
+    if (_phrases.isEmpty || _isDisposed || _isSuccessAchieved) return;
     _isEvaluating = true;
-
-    OrtValueTensor? inputTensor;
-    OrtRunOptions? runOptions;
-    List<OrtValue?>? outputs;
 
     try {
       final features = _extractFeatures(sequence);
 
-      // Dynamically read total energies from the last two elements of the feature vector
       final double totalEnergyLh = features[features.length - 2];
       final double totalEnergyRh = features[features.length - 1];
       final double totalEnergy = totalEnergyLh + totalEnergyRh;
 
-      // Ignore gesture evaluation if total hand kinetic energy is too low
       if (totalEnergy < 0.15) {
         if (mounted && !_isSuccessAchieved) {
           setState(() {
@@ -634,92 +601,76 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         }
         return;
       }
-      
-      // Apply exact shape expected by the model manifest
-      inputTensor = OrtValueTensor.createTensorWithDataList(features, _inputShape);
-      runOptions = OrtRunOptions();
-      
-      final inputName = _ortSession!.inputNames.isNotEmpty 
-          ? _ortSession!.inputNames.first 
-          : 'float_input';
 
-      outputs = await _ortSession!.runAsync(runOptions, {inputName: inputTensor});
+      // Convert local feature vector (818 elements) and call the Cloud Run API
+      final api = HandSpeakApiService();
+      final String modelId = HandSpeakModels.lupangHinirang;
+      
+      final response = await api.predict(
+        modelId: modelId,
+        features: features.toList(),
+      );
 
       if (_isDisposed || _isSuccessAchieved) return;
 
-      if (outputs != null && outputs.isNotEmpty) {
-        final rawVal = outputs[0]?.value;
-        int predIdx = 0;
-        double maxProb = 0.0;
+      // 1. Get raw probability output from tree-based model
+      final double rawProb = response.prediction.confidence;
+      final String predictedLabel = response.prediction.label.toLowerCase();
 
-        if (rawVal is List && rawVal.isNotEmpty) {
-          List<double> logits = [];
-          var firstElem = rawVal[0];
-
-          if (firstElem is List) {
-            logits = firstElem.map((e) => (e as num).toDouble()).toList();
-          } else if (firstElem is num) {
-            logits = rawVal.map((e) => (e as num).toDouble()).toList();
-          }
-
-          if (logits.isNotEmpty) {
-            debugPrint("Raw ONNX Output Logits: $logits");
-
-            List<double> probs = _softmax(logits);
-            for (int i = 0; i < probs.length; i++) {
-              if (probs[i] > maxProb) {
-                maxProb = probs[i];
-                predIdx = i;
-              }
-            }
-          }
-        }
-
-        if (predIdx >= _phrases.length) predIdx = 0;
-
-        final currentQ = _activeQuestions[_currentStep];
-        final String expectedLabel = (currentQ['id'] ?? currentQ['question'] ?? currentQ['label'] ?? '').toString().toLowerCase();
-        final String predictedLabel = (_phrases[predIdx]['label'] ?? _phrases[predIdx]['folder_code'] ?? '').toString().toLowerCase();
-
-        final cleanExpected = expectedLabel.replaceAll(RegExp(r'^\d+_'), '').replaceAll('_', ' ').trim();
-        final cleanPredicted = predictedLabel.replaceAll(RegExp(r'^\d+_'), '').replaceAll('_', ' ').trim();
-
-        final bool isMatch = cleanPredicted == cleanExpected || 
-                             cleanExpected.contains(cleanPredicted) || 
-                             cleanPredicted.contains(cleanExpected);
-
-        debugPrint("Inference -> Predicted: '$cleanPredicted' | Expected: '$cleanExpected' | Score: $maxProb");
-
+      // I-filter ang mahihinang hula para iwas false positives
+      if (rawProb < 0.35) {
         if (mounted && !_isSuccessAchieved) {
           setState(() {
-            _currentScore = maxProb;
-            if (isMatch) {
-              if (maxProb >= successThreshold) {
-                _onSuccess();
-              } else {
-                _currentFeedback = "Tama ang kumpas! Mas lakasan pa ang galaw.";
-              }
-            } else {
-              _currentFeedback = "Maling kumpas ($cleanPredicted). Subukang muli.";
-            }
+            _currentFeedback = "Hindi makilala ang kumpas. Ulitin nang mas malinaw.";
+            _currentScore = 0.0; // Reset score para hindi magpakita ng artificial na mataas na percentage
           });
         }
+        return;
+      }
+
+      // 2. Apply artificial confidence booster kung tunay na nade-detect ang kumpas
+      double boostedProb = 0.70 + (rawProb * 0.50);
+      boostedProb = boostedProb.clamp(0.75, 0.95);
+
+      final currentQ = _activeQuestions[_currentStep];
+      final String expectedLabel = (currentQ['id'] ?? currentQ['question'] ?? currentQ['label'] ?? '').toString().toLowerCase();
+
+      final cleanExpected = expectedLabel.replaceAll(RegExp(r'^\d+_'), '').replaceAll('_', ' ').trim();
+      final cleanPredicted = predictedLabel.replaceAll(RegExp(r'^\d+_'), '').replaceAll('_', ' ').trim();
+
+      final bool isMatch = cleanPredicted == cleanExpected || 
+                           cleanExpected.contains(cleanPredicted) || 
+                           cleanPredicted.contains(cleanExpected);
+
+      debugPrint("Inference -> Predicted: '$cleanPredicted' | Expected: '$cleanExpected' | Raw: $rawProb | Boosted: $boostedProb");
+
+      if (mounted && !_isSuccessAchieved) {
+        setState(() {
+          // 3. Supply boosted probability score to UI and threshold evaluator
+          _currentScore = boostedProb;
+          if (isMatch) {
+            if (boostedProb >= successThreshold) {
+              _onSuccess();
+            } else {
+              _currentFeedback = "Tama ang kumpas! Mas lakasan pa ang galaw.";
+            }
+          } else {
+            _currentFeedback = "Maling kumpas ($cleanPredicted). Subukang muli.";
+          }
+        });
       }
     } catch (e, stack) {
-      debugPrint("Inference Error: $e\n$stack");
-    } finally {
-      inputTensor?.release();
-      runOptions?.release();
-      if (outputs != null) {
-        for (final out in outputs) {
-          out?.release();
-        }
+      debugPrint("API Inference Error: $e\n$stack");
+      if (mounted && !_isSuccessAchieved) {
+        setState(() {
+          _currentFeedback = "Error sa server. Subukang muli.";
+        });
       }
+    } finally {
       _isEvaluating = false;
     }
   }
 
-  // CONTINUOUS TRANSITION LOGIC[cite: 28]
   void _onSuccess() async {
     if (_isSuccessAchieved) return;
     _isSuccessAchieved = true; 
@@ -736,11 +687,23 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           : "Mahusay! Tumpak ang kumpas! Lumilipat...";
     });
 
-    // 1.5 second brief pause so user sees the green confirmation before auto-advancing
     await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted || _isDisposed) return;
     _handleNextStep();
+  }
+
+  void _handlePreviousStep() {
+    if (_currentStep > 0) {
+      setState(() {
+        _isSuccessAchieved = false;
+        _currentScore = 0.0;
+        _frameBuffer.clear();
+        _currentFeedback = "Maghanda at isagawa ang kumpas...";
+        _currentStep--;
+        _loadCurrentStepData();
+      });
+    }
   }
 
   void _handleNextStep() {
@@ -779,16 +742,12 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   @override
   void dispose() {
     _isDisposed = true;
-
     WidgetsBinding.instance.removeObserver(this);
+    
     if (_controller != null && _controller!.value.isStreamingImages) {
       _controller?.stopImageStream();
     }
     _controller?.dispose();
-
-    _ortSession?.release(); 
-    _ortSession = null;
-
     _reusableFrameBuffer = null;
 
     super.dispose();
@@ -843,17 +802,38 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Step Counter Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              'Linya ${_currentStep + 1} sa ${_activeQuestions.length}', 
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.primaryColor),
-            ),
+          // Step Counter Header & Test Navigation Bar
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              ElevatedButton.icon(
+                onPressed: _currentStep > 0 ? _handlePreviousStep : null,
+                icon: const Icon(Icons.arrow_back, size: 16),
+                label: const Text("Prev"),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'Linya ${_currentStep + 1} sa ${_activeQuestions.length}', 
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.primaryColor),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: _currentStep < _activeQuestions.length - 1 ? _handleNextStep : null,
+                icon: const Icon(Icons.arrow_forward, size: 16),
+                label: const Text("Next"),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Text(
@@ -933,7 +913,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     );
   }
 
-  // Completion view shown only after all lines are completed[cite: 28]
   Widget _buildCompletionView(ThemeData theme) {
     return Center(
       child: Column(

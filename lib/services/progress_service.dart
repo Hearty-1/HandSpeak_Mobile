@@ -18,7 +18,6 @@ class ProgressService {
   }
 
   /// Records an individual gesture attempt for camera gesture recognition in activities across any category.
-  /// Standard multiple-choice or written questions bypass this method via the [isCameraGesture] guard.
   Future<void> recordGestureAttempt({
     required String sign,
     required String levelId,
@@ -28,13 +27,11 @@ class ProgressService {
     String category = 'general',
     bool isCameraGesture = true,
   }) async {
-    // Strictly restrict logging to camera-detected gesture recognition attempts
     if (!isCameraGesture) return;
 
     User? currentUser = _auth.currentUser;
     if (currentUser == null) return;
 
-    // Preserve original string case if sign is a Firebase Storage or HTTP URL
     final formattedSign = sign.toLowerCase().startsWith('http') ? sign : sign.toUpperCase();
 
     try {
@@ -95,7 +92,6 @@ class ProgressService {
   }
 
   /// Records solo challenge performance data to Firestore for progress history and user stats tracking
- /// Records solo challenge performance data to Firestore for progress history and user stats tracking
   Future<void> recordSoloChallengeHistory({
     required String category,
     required int score,
@@ -111,7 +107,7 @@ class ProgressService {
     final batch = _db.batch();
     final userRef = _db.collection('users').doc(currentUser.uid);
 
-    // 1. Update primary user document metrics (without adding categoryProgress map fields)
+    // 1. Update primary user document metrics (Added dynamic challenge XP tracking to progress map)
     batch.set(
       userRef,
       {
@@ -123,6 +119,9 @@ class ProgressService {
         'totalCorrectAnswers': FieldValue.increment(correctCount),
         'lastActive': FieldValue.serverTimestamp(),
         'recentModules': FieldValue.arrayUnion([normalizedCat]),
+        'progress': {
+          '${normalizedCat.replaceAll(' ', '_')}_challenge_xp': FieldValue.increment(score)
+        }
       },
       SetOptions(merge: true),
     );

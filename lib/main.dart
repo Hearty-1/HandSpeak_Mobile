@@ -3,7 +3,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart'; 
 import 'package:provider/provider.dart'; 
 import 'firebase_options.dart'; 
-import 'auth/login_screen.dart'; 
 import 'providers/theme_provider.dart'; 
 import 'providers/sound_provider.dart'; 
 import 'home/home.dart'; 

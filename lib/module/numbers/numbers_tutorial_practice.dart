@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:onnxruntime/onnxruntime.dart';
+import '../civic/onnx_env_manager.dart';
 
 // =============================================================================
 // ONNX INFERENCE SERVICE WITH EXACT 78-FEATURE EXTRACTOR
@@ -36,54 +37,100 @@ class StudentEvaluationResult {
 
 class FSLOnnxService {
   static OrtSession? _session;
-  static int _loadedRangeGroup = -1; // 1: 11-20, 2: 21-30, 3: 31-40
+  static int _loadedRangeGroup = -1;
 
-static Future<void> loadModelForTarget(int targetNumber) async {
-    int group = 1;
-    String assetPath = 'assets/numbers/fsl_numbers_11_20.onnx';
+  // Tracks the load actually in flight, so a second overlapping call to
+  // loadModelForTarget (e.g. triggered by fast navigation between numbers)
+  // waits for the SAME load instead of racing it with a second one.
+  static Future<void>? _loadInFlight;
 
-    // Map the target number to the correct 10-number range ONNX model
-    if (targetNumber >= 21 && targetNumber <= 30) {
-      group = 2;
-      assetPath = 'assets/numbers/fsl_numbers_20_30.onnx';
-    } else if (targetNumber >= 31 && targetNumber <= 40) {
-      group = 3;
-      assetPath = 'assets/numbers/fsl_numbers_31_40.onnx';
-    } else if (targetNumber >= 41 && targetNumber <= 50) {
-      group = 4;
-      assetPath = 'assets/numbers/fsl_numbers_41_50.onnx';
-    } else if (targetNumber >= 51 && targetNumber <= 60) {
-      group = 5;
-      assetPath = 'assets/numbers/fsl_numbers_51_60.onnx';
-    } else if (targetNumber >= 61 && targetNumber <= 70) {
-      group = 6;
-      assetPath = 'assets/numbers/fsl_numbers_61_70.onnx';
-    } else if (targetNumber >= 71 && targetNumber <= 80) {
-      group = 7;
-      assetPath = 'assets/numbers/fsl_numbers_71_80.onnx';
-    } else if (targetNumber >= 81 && targetNumber <= 90) {
-      group = 8;
-      assetPath = 'assets/numbers/fsl_numbers_81_90.onnx';
-    } else if (targetNumber >= 91 && targetNumber <= 100) {
-      group = 9;
-      assetPath = 'assets/numbers/fsl_numbers_91_100.onnx';
-    }
+static int get debugLoadedGroup => _loadedRangeGroup;
 
-    // Prevent reloading if the correct model group is already active in memory
+  /// Single source of truth for which decade-group a number belongs to —
+  /// used by both the loader and (below) the readiness check, so they can
+  /// never drift out of sync with each other.
+  static int groupForNumber(int targetNumber) {
+    if (targetNumber >= 21 && targetNumber <= 30) return 2;
+    if (targetNumber >= 31 && targetNumber <= 40) return 3;
+    if (targetNumber >= 41 && targetNumber <= 50) return 4;
+    if (targetNumber >= 51 && targetNumber <= 60) return 5;
+    if (targetNumber >= 61 && targetNumber <= 70) return 6;
+    if (targetNumber >= 71 && targetNumber <= 80) return 7;
+    if (targetNumber >= 81 && targetNumber <= 90) return 8;
+    if (targetNumber >= 91 && targetNumber <= 100) return 9;
+    return 1; // 11-20
+  }
+
+  static String _assetPathForGroup(int group) {
+    const paths = {
+      1: 'assets/numbers/fsl_numbers_11_20.onnx',
+      2: 'assets/numbers/fsl_numbers_20_30.onnx',
+      3: 'assets/numbers/fsl_numbers_31_40.onnx',
+      4: 'assets/numbers/fsl_numbers_41_50.onnx',
+      5: 'assets/numbers/fsl_numbers_51_60.onnx',
+      6: 'assets/numbers/fsl_numbers_61_70.onnx',
+      7: 'assets/numbers/fsl_numbers_71_80.onnx',
+      8: 'assets/numbers/fsl_numbers_81_90.onnx',
+      9: 'assets/numbers/fsl_numbers_91_100.onnx',
+    };
+    return paths[group]!;
+  }
+
+  /// True only when the model actually loaded (and finished loading) for
+  /// THIS specific number's decade group. The evaluation path below must
+  /// check this before calling evaluateWithModel — this is what closes
+  /// the race that let evaluation run against a stale, wrong-decade model
+  /// (e.g. target 58 being scored by whatever model happened to still be
+  /// loaded from a previous number) if the camera/hand-tracking pipeline
+  /// started producing frames before loadModelForTarget's await chain for
+  /// the NEW target had actually finished.
+  static bool isReadyFor(int targetNumber) {
+    return _session != null && _loadedRangeGroup == groupForNumber(targetNumber);
+  }
+
+  static Future<void> loadModelForTarget(int targetNumber) async {
+    final group = groupForNumber(targetNumber);
+    final assetPath = _assetPathForGroup(group);
+
     if (_session != null && _loadedRangeGroup == group) {
       return;
     }
 
+    // If a load for this same group is already in flight, wait for it
+    // instead of starting a redundant second one.
+    if (_loadInFlight != null) {
+      await _loadInFlight;
+      if (_loadedRangeGroup == group) return;
+    }
+
+    final completer = Completer<void>();
+    _loadInFlight = completer.future;
+
     try {
-      _session?.release();
-      OrtEnv.instance.init();
+      // Deliberately NOT releasing the old session or clearing
+      // _loadedRangeGroup until the NEW one has successfully loaded —
+      // otherwise there is a window where _session is null/stale while a
+      // frame could still be evaluated against it. See isReadyFor() above,
+      // which is the actual gate the UI checks before evaluating.
+      OnnxEnvManager.ensureInitialized();
       final rawAsset = await rootBundle.load(assetPath);
       final bytes = rawAsset.buffer.asUint8List();
-      _session = OrtSession.fromBuffer(bytes, OrtSessionOptions());
+      final newSession = OrtSession.fromBuffer(bytes, OrtSessionOptions());
+
+      _session?.release();
+      _session = newSession;
       _loadedRangeGroup = group;
-      debugPrint("Loaded ONNX Model for Range Group $group: $assetPath");
+      debugPrint("[FSLOnnxService] Loaded model for group $group ($assetPath) — target was $targetNumber");
     } catch (e) {
-      debugPrint("ONNX Initialization Failed for $assetPath: $e");
+      // Loading failed — leave whatever was previously loaded (if
+      // anything) in place, but crucially _loadedRangeGroup was never
+      // updated to this new `group`, so isReadyFor(targetNumber) will
+      // correctly report false rather than silently evaluating this
+      // target against a wrong-decade model.
+      debugPrint("[FSLOnnxService] Load FAILED for $assetPath (group $group, target $targetNumber): $e");
+    } finally {
+      completer.complete();
+      _loadInFlight = null;
     }
   }
 
@@ -98,7 +145,6 @@ static Future<void> loadModelForTarget(int targetNumber) async {
     const mcps = [2, 5, 9, 13, 17];
     const pips = [3, 6, 10, 14, 18];
 
-    // 1. Palm Scale Normalization (Relative to Wrist)
     List<List<List<double>>> norm = [];
     for (int f = 0; f < 24; f++) {
       final fData = window24Frames[f];
@@ -117,7 +163,6 @@ static Future<void> loadModelForTarget(int targetNumber) async {
       norm.add(framePts);
     }
 
-    // 2. Deadzoned Kinematics
     double totalEnergy = 0.0;
     List<double> speedProfile = [];
     for (int f = 1; f < 24; f++) {
@@ -156,7 +201,6 @@ static Future<void> loadModelForTarget(int targetNumber) async {
     }
     double isHorizontal = horizCount / 24.0;
 
-    // 3. Phase Segmentation
     int splitIdx = (maxSpeedIdx + 1).clamp(6, 18);
 
     List<double> getPhaseGeometry(int start, int end) {
@@ -278,6 +322,19 @@ static Future<void> loadModelForTarget(int targetNumber) async {
       element?.release();
     }
 
+    if (targetNumber == 100) {
+      if (predictedNumber != 100 || targetProbability < 0.65) {
+        return StudentEvaluationResult(
+          targetNumber: targetNumber,
+          detectedNumber: predictedNumber,
+          isCorrect: false,
+          accuracyScore: 40.0,
+          feedback: "Maling porma para sa 100 o masyadong mabilis. Ulitin nang malinaw.",
+          kineticEnergy: kineticEnergy,
+        );
+      }
+    }
+
     final p1 = window24Frames[4];
     final p2 = window24Frames[21];
 
@@ -309,9 +366,13 @@ static Future<void> loadModelForTarget(int targetNumber) async {
         );
       }
     } else if (targetNumber == 40) {
+      // 40 keeps its own extra starting-shape requirement (Base '4') ON TOP
+      // of the generalized contraction check below — every other decade
+      // number only needs the contraction, since their starting shapes
+      // aren't independently pinned down the way 40's is.
       bool isBase4 = p1Idx > 1.20 && p1Mid > 1.20 && p1Ring > 1.20 && p1Pnk > 1.15;
       final contractionDelta = (dist3D(window24Frames[23], 4, 8) - dist3D(window24Frames[0], 4, 8)) / p2Scale;
-      if (!isBase4 || contractionDelta >= -0.05) {
+      if (!isBase4 || contractionDelta >= -0.04) {
         return StudentEvaluationResult(
           targetNumber: targetNumber,
           detectedNumber: null,
@@ -321,10 +382,46 @@ static Future<void> loadModelForTarget(int targetNumber) async {
           kineticEnergy: kineticEnergy,
         );
       }
+    } else if (targetNumber % 10 == 0) {
+      // GENERALIZED FIX: every decade number (20, 30, 50, 60, 70, 80, 90,
+      // 100) requires the same hand-closing/contraction motion 40 already
+      // required — thumb-to-index distance must shrink meaningfully from
+      // the start of the window to the end. Previously only 40 enforced
+      // this, so every other decade sign could pass on kinetic energy
+      // alone (e.g. random shaking) with no requirement that the hand
+      // actually closed. -0.04 (rather than a tighter value) is the
+      // balance point: strict enough to reject non-contracting motion,
+      // loose enough that normal human variation in how far/fast someone
+      // closes their hand still passes.
+      final contractionDelta = (dist3D(window24Frames[23], 4, 8) - dist3D(window24Frames[0], 4, 8)) / p2Scale;
+      if (contractionDelta >= -0.04) {
+        return StudentEvaluationResult(
+          targetNumber: targetNumber,
+          detectedNumber: null,
+          isCorrect: false,
+          accuracyScore: 35.0,
+          feedback: "Kailangang mag-pulse o mag-'squeeze' ang kamay papuntang saradong hugis para sa Number $targetNumber.",
+          kineticEnergy: kineticEnergy,
+        );
+      }
     }
 
-    double baseScore = (predictedNumber == targetNumber) ? 70.0 : (targetProbability * 60.0);
-    double motionBonus = (kineticEnergy / 0.40).clamp(0.0, 1.0) * 30.0;
+    double baseScore = (predictedNumber == targetNumber) 
+        ? (65.0 + (targetProbability * 25.0)) 
+        : (targetProbability * 50.0);
+        
+    double motionBonus = (kineticEnergy / 0.40).clamp(0.0, 1.0) * 25.0;
+
+    // PENALTY FIX: motion energy should only ever be a BONUS on top of a
+    // prediction the model already agrees with — it should never be able
+    // to carry a WRONG prediction across the passing threshold by itself.
+    // Without this, a user who shakes their hand with enough energy gets
+    // the full +25 regardless of what the model thinks they signed, which
+    // is exactly the false-positive path reported for the decade numbers.
+    if (predictedNumber != targetNumber) {
+      motionBonus *= 0.2;
+    }
+
     double finalAccuracy = (baseScore + motionBonus).clamp(0.0, 100.0);
 
     bool isCorrect = (predictedNumber == targetNumber) && (finalAccuracy >= 70.0);
@@ -418,6 +515,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   bool _isProcessingFrame = false;
   final List<List<double>> _frameBuffer = [];
   DateTime _lastSampleTime = DateTime.now();
+  DateTime? _lastEvaluationTime;
 
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
@@ -440,6 +538,19 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     return num >= 1 && num <= 10;
   }
 
+  // Tracks whether the CORRECT decade-group model has actually finished
+  // loading for THIS screen's target number. Previously loadModelForTarget
+  // was fired with `.then()` and never awaited by anything — the camera
+  // stream and hand landmarker started immediately in parallel, so if a
+  // hand was already in frame and the 24-frame buffer filled before the
+  // new model's asset load + OrtSession.fromBuffer finished, evaluation
+  // would run against whatever model was PREVIOUSLY loaded (e.g. a
+  // different decade's model, if this screen was reached by quickly
+  // navigating from a different number). That's the direct cause of
+  // results like target 58 scoring against labels "18"/"28" — those
+  // aren't even in the 51-60 model's label space; they're leftovers from
+  // the 11-20/21-30 model that hadn't been replaced yet.
+
   @override
   void initState() {
     super.initState();
@@ -448,7 +559,11 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     if (!_isStaticSign) {
       final target = int.tryParse(widget.targetNumber) ?? 0;
       FSLOnnxService.loadModelForTarget(target).then((_) {
-        debugPrint("ONNX Model Loaded for Target $target");
+        final ready = FSLOnnxService.isReadyFor(target);
+        debugPrint(
+            "[DBG] Model load finished for target $target — ready=$ready");
+        if (mounted) {
+        }
       });
     }
 
@@ -555,67 +670,78 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     }
   }
 
-  double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
+  double _calculateScore(List<Landmark> liveLms, List<dynamic> template, Size imageSize) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
 
-    final Landmark wrist = liveLms[0];
-    final Landmark mBase = liveLms[9];
+    final double w = imageSize.width;
+    final double h = imageSize.height;
 
-    double dist = math.sqrt(
-      math.pow(wrist.x - mBase.x, 2) +
-      math.pow(wrist.y - mBase.y, 2) +
-      math.pow(wrist.z - mBase.z, 2)
-    );
+    List<List<double>> standardizeHand(List<List<double>> rawPts) {
+      double wx = rawPts[0][0], wy = rawPts[0][1], wz = rawPts[0][2];
+      List<List<double>> translated = rawPts.map((p) => [p[0] - wx, p[1] - wy, p[2] - wz]).toList();
 
-    if (dist == 0) dist = 1.0;
+      double mx = translated[9][0], my = translated[9][1], mz = translated[9][2];
+      double scale = math.sqrt(mx * mx + my * my + mz * mz) + 1e-6;
+
+      double angle = math.atan2(my, mx);
+      double targetAngle = math.pi / 2;
+      double theta = targetAngle - angle;
+      
+      double cosT = math.cos(theta);
+      double sinT = math.sin(theta);
+
+      List<List<double>> aligned = [];
+      for (var p in translated) {
+        double sx = p[0] / scale;
+        double sy = p[1] / scale;
+        double sz = p[2] / scale; 
+
+        double rx = (sx * cosT) - (sy * sinT);
+        double ry = (sx * sinT) + (sy * cosT);
+        aligned.add([rx, ry, sz]);
+      }
+      return aligned;
+    }
+
+    List<List<double>> livePts = liveLms.map((lm) => [lm.x * w, lm.y * h, lm.z * w]).toList();
+    List<List<double>> tempPts = template.map((t) {
+      return [
+        (t['x'] as num).toDouble() * w,
+        (t['y'] as num).toDouble() * h,
+        ((t['z'] ?? 0.0) as num).toDouble() * w
+      ];
+    }).toList();
+
+    var normLive = standardizeHand(livePts);
+    var normTemp = standardizeHand(tempPts);
 
     double bestScore = 0.0;
+    bool isFistSign = widget.targetNumber == "10";
+    
+    double zWeight = isFistSign ? 0.2 : 1.0;
+    double meanPenalty = isFistSign ? 65.0 : 90.0;
+    double maxPenalty = isFistSign ? 10.0 : 35.0;
 
-    final orientationMatrices = [
-      [1.0, 0.0, 0.0, 1.0, 1.0],
-      [0.0, -1.0, 1.0, 0.0, 1.0],
-      [-1.0, 0.0, 0.0, -1.0, 1.0],
-      [0.0, 1.0, -1.0, 0.0, 1.0],
-      [1.0, 0.0, 0.0, 1.0, -1.0],
-      [0.0, -1.0, 1.0, 0.0, -1.0],
-      [-1.0, 0.0, 0.0, -1.0, -1.0],
-      [0.0, 1.0, -1.0, 0.0, -1.0],
-    ];
-
-    for (var matrix in orientationMatrices) {
-      double xx = matrix[0];
-      double xy = matrix[1];
-      double yx = matrix[2];
-      double yy = matrix[3];
-      double flipX = matrix[4];
-
-      double totalDifference = 0.0;
+    for (double flipX in [1.0, -1.0]) {
+      double totalDiff = 0.0;
+      double maxDiff = 0.0;
 
       for (int i = 0; i < 21; i++) {
-        double dx = (liveLms[i].x - wrist.x) / dist;
-        double dy = (liveLms[i].y - wrist.y) / dist;
-        double dz = (liveLms[i].z - wrist.z) / dist;
+        double dx = (normLive[i][0] * flipX) - normTemp[i][0];
+        double dy = normLive[i][1] - normTemp[i][1];
+        double dz = (normLive[i][2] - normTemp[i][2]) * zWeight;
 
-        dx = dx * flipX;
-
-        double rx = dx * xx + dy * xy;
-        double ry = dx * yx + dy * yy;
-
-        double tx = (template[i]['x'] as num).toDouble();
-        double ty = (template[i]['y'] as num).toDouble();
-        double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
-
-        double pointDiff = math.sqrt(
-          math.pow(rx - tx, 2) +
-          math.pow(ry - ty, 2) +
-          math.pow(dz - tz, 2)
-        );
-        totalDifference += pointDiff;
+        double pointDiff = math.sqrt(dx * dx + dy * dy + dz * dz);
+        
+        totalDiff += pointDiff;
+        if (pointDiff > maxDiff && i != 0) {
+          maxDiff = pointDiff;
+        }
       }
 
-      double meanDiff = totalDifference / 21.0;
-      double score = (100.0 - (meanDiff * 80.0)).clamp(0.0, 100.0);
-
+      double meanDiff = totalDiff / 21.0;
+      double score = (100.0 - (meanDiff * meanPenalty) - (maxDiff * maxPenalty)).clamp(0.0, 100.0);
+      
       if (score > bestScore) {
         bestScore = score;
       }
@@ -630,17 +756,28 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
     try {
       if (detectedHands.isNotEmpty) {
+        
+        if (!_isStaticSign && _lastEvaluationTime != null) {
+          if (DateTime.now().difference(_lastEvaluationTime!).inMilliseconds < 1500) {
+            return; 
+          } else {
+            _lastEvaluationTime = null; 
+          }
+        }
+
         double score = 0.0;
         String feedback = "Ipuwesto ang kamay sa tapat ng camera";
 
         if (_isStaticSign) {
           if (_template != null) {
             double highestScoreAcrossAllHands = 0.0;
+            Size imageSize = _controller?.value.previewSize ?? const Size(480, 640);
 
             for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
               final double handScore = _calculateScore(
                 detectedHands[handIdx].landmarks,
                 _template!,
+                imageSize,
               );
               if (handScore > highestScoreAcrossAllHands) {
                 highestScoreAcrossAllHands = handScore;
@@ -664,17 +801,31 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
           if (now.difference(_lastSampleTime).inMilliseconds >= 45) {
             _lastSampleTime = now;
             _frameBuffer.add(flattenedLms);
-            if (_frameBuffer.length > 24) {
-              _frameBuffer.removeAt(0);
-            }
+            
             _bufferFrameCount = _frameBuffer.length;
 
-            if (_frameBuffer.length == 24) {
+            if (_frameBuffer.length >= 24) {
               final currentEnergy = FSLOnnxService.computeKineticEnergy(_frameBuffer);
+              final targetInt = int.tryParse(widget.targetNumber) ?? 0;
 
-              if (currentEnergy < 0.26) {
+              if (currentEnergy < 0.15) { 
                 score = 15.0;
                 feedback = "Static hand detected! Gawin ang tamang galaw o transition.";
+              } else if (!FSLOnnxService.isReadyFor(targetInt)) {
+                // THE RACE-CONDITION FIX: do not evaluate against whatever
+                // model happens to currently be loaded — only evaluate
+                // once it's confirmed to be the correct decade-group model
+                // for THIS target. Without this gate, a buffer that fills
+                // before loadModelForTarget finishes (or if it silently
+                // failed to load — see the catch in loadModelForTarget)
+                // would score against a stale, wrong-decade model and
+                // produce a label that isn't even in this target's real
+                // label space (e.g. "18"/"28" while practicing 58).
+                score = 0.0;
+                feedback = "Naglo-load pa ang modelo para sa Number ${widget.targetNumber}...";
+                debugPrint(
+                    "[DBG] Skipped evaluation: model not ready for target $targetInt "
+                    "(loaded group=${FSLOnnxService.debugLoadedGroup}, expected=${FSLOnnxService.groupForNumber(targetInt)})");
               } else {
                 try {
                   final evalResult = FSLOnnxService.evaluateWithModel(
@@ -690,9 +841,13 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                   feedback = "Model Inference Error.";
                 }
               }
+
+              _frameBuffer.clear();
+              _bufferFrameCount = 0; 
+              _lastEvaluationTime = DateTime.now(); 
             }
           } else {
-            return;
+            return; 
           }
         }
 
@@ -700,6 +855,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
       } else {
         _frameBuffer.clear();
         _bufferFrameCount = 0;
+        _lastEvaluationTime = null; 
         if (mounted) {
           setState(() {
             _currentScore = 0.0;
@@ -732,7 +888,6 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
             _onSuccess();
           }
         } else {
-          // Dynamic signs completely bypass the hold timer
           _holdProgress = 1.0;
           _onSuccess();
         }

@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../profile/friend_requests_screen.dart';
 
+// Import your arena screen to access RoomLobbyScreen
+import '../leaderboard/arena.dart'; 
+
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
 
@@ -19,7 +22,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     // 1. Mark as read in Firestore
     if (notification['isRead'] == false) {
       final updatedNotifications = allNotifications.map((n) {
-        if (n['timestamp'] == notification['timestamp'] && n['fromUserId'] == notification['fromUserId']) {
+        if (n['timestamp'] == notification['timestamp']) {
           return {...n as Map<String, dynamic>, 'isRead': true};
         }
         return n;
@@ -36,6 +39,61 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         context,
         MaterialPageRoute(builder: (context) => const FriendRequestsScreen()),
       );
+    } 
+    // Handle Challenge Invite Routing -> Send to Lobby first
+    else if (notification['type'] == 'challenge_invite' && mounted) {
+      final String roomCode = notification['roomCode'] ?? '';
+      
+      if (roomCode.isNotEmpty) {
+        // Show loading indicator while joining room
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()),
+        );
+
+        try {
+          final roomRef = FirebaseFirestore.instance.collection('rooms').doc(roomCode);
+          final roomSnapshot = await roomRef.get();
+
+          if (roomSnapshot.exists) {
+            // Safely add the invited user to the room's player list
+            await roomRef.update({
+              'playerUids': FieldValue.arrayUnion([currentUserId]),
+            });
+
+            final data = roomSnapshot.data() as Map<String, dynamic>;
+
+            if (mounted) {
+              Navigator.pop(context); // Remove loading dialog
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => RoomLobbyScreen(
+                    roomCode: roomCode,
+                    challengeTitle: data['title'] ?? 'Group Challenge',
+                    isHost: false, // Invited user is a guest
+                  ),
+                ),
+              );
+            }
+          } else {
+            if (mounted) {
+              Navigator.pop(context); // Remove loading dialog
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("This challenge room no longer exists.")),
+              );
+            }
+          }
+        } catch (e) {
+          if (mounted) {
+            Navigator.pop(context); // Remove loading dialog
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Failed to join room: $e")),
+            );
+          }
+        }
+      }
     }
   }
 
@@ -109,12 +167,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               // Icons and dynamic colors based on notification type
               IconData iconData = Icons.notifications_rounded;
               Color iconColor = theme.primaryColor;
+              
               if (type == 'new_follower') {
                 iconData = Icons.person_add_alt_1_rounded;
                 iconColor = const Color(0xFF2196F3);
               } else if (type == 'follow_back') {
                 iconData = Icons.people_alt_rounded; 
                 iconColor = const Color(0xFF4CAF50);
+              } else if (type == 'challenge_invite') {
+                iconData = Icons.videogame_asset_rounded;
+                iconColor = const Color(0xFFFF9800); 
               }
 
               return GestureDetector(
