@@ -12,6 +12,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import '../civic/onnx_env_manager.dart';
+import '/services/frame_gate.dart';
+
+import '/services/performance_monitor.dart';
 
 // =============================================================================
 // ONNX INFERENCE SERVICE WITH EXACT 78-FEATURE EXTRACTOR
@@ -803,6 +806,8 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     }
   }
 
+  final FrameGate _frameGate = FrameGate();
+
   void _processCameraFrame(CameraImage image) {
     if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
     if (_isStaticSign && _template == null) return;
@@ -812,6 +817,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
       final int sensorOrientation = _controller!.description.sensorOrientation;
       _imageWidth = image.width;
       _imageHeight = image.height;
+      if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Inference Error: $e");
@@ -1106,6 +1112,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   }
 
   void _onHandsDetected(List<Hand> detectedHands) async {
+    _frameGate.done();
     if (_isSuccessAchieved || _isProcessingFrame) return;
     _isProcessingFrame = true;
 
@@ -1225,7 +1232,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => BackdropFilter(
+      builder: (context) => SmartBlur(
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Dialog(
           backgroundColor: Colors.transparent,
@@ -1388,7 +1395,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
@@ -1543,7 +1550,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                                   child: Center(
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: BackdropFilter(
+                                      child: SmartBlur(
                                         filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1608,7 +1615,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                           const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: BackdropFilter(
+                            child: SmartBlur(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: screenWidth * 0.70,
@@ -1666,7 +1673,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                           const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: BackdropFilter(
+                            child: SmartBlur(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: screenWidth * 0.70,
@@ -1696,7 +1703,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                     ] else ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(30),
-                        child: BackdropFilter(
+                        child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 300),

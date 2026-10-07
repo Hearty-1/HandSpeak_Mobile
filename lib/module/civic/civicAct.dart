@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 
+import '/services/performance_monitor.dart';
+
 class ThemedBackground extends StatelessWidget {
   final Color bgColor;
 
@@ -321,7 +323,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
           ),
         ),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),

@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'numbers_tutorial_detail.dart';
 
+import '/services/performance_monitor.dart';
+
 class NumbersTutorialInterface extends StatefulWidget {
   const NumbersTutorialInterface({super.key});
 
@@ -48,7 +50,7 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
@@ -97,7 +99,7 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                   padding: const EdgeInsets.fromLTRB(20.0, 15.0, 20.0, 10.0),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
-                    child: BackdropFilter(
+                    child: SmartBlur(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         height: 48,
@@ -236,7 +238,7 @@ class LessonCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 15),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
+        child: SmartBlur(
           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
           child: GestureDetector(
             onTap: onTap,

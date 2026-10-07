@@ -16,6 +16,9 @@ import '/providers/theme_provider.dart' show GalaxyPalette;
 import '/module/alphabet/recognizer.dart'; 
 import '/services/progress_service.dart';
 import '/services/gesture_analytics.dart';
+import '/services/frame_gate.dart';
+
+import '/services/performance_monitor.dart';
 
 // ==========================================
 // 1. DATA MODELS
@@ -563,12 +566,15 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     }
   }
 
+  final FrameGate _frameGate = FrameGate();
+
   void _processCameraFrame(CameraImage image) {
     if (!_isCameraInitialized || _landmarkerPlugin == null || _isAnswered || _isProcessingFrame) return;
     _isProcessingFrame = true;
 
     try {
       final int sensorOrientation = _cameraController!.description.sensorOrientation;
+      if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Inference Error: $e");
@@ -578,6 +584,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   void _onHandsDetected(List<Hand> detectedHands) {
+    _frameGate.done();
     if (_isAnswered) return;
 
     if (mounted) {
@@ -1084,7 +1091,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           onPressed: () => Navigator.pop(context),
         ),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), 
             child: Container(color: Colors.transparent),
           ),

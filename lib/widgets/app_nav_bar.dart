@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '/services/performance_monitor.dart';
+
 /// One tab of [AppNavBar].
 class AppNavItem {
   final IconData icon;
@@ -85,7 +87,7 @@ class AppNavBar extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(barHeight / 2),
-                child: BackdropFilter(
+                child: SmartBlur(
                   filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                   child: DecoratedBox(
                     decoration: BoxDecoration(

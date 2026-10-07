@@ -8,6 +8,7 @@ import 'package:camera/camera.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '/services/progress_service.dart';
 import '/services/handspeak_api_service.dart';
+import '/services/performance_monitor.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -322,6 +323,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         'rotation': _controller?.description.sensorOrientation ?? 0,
       });
       if (_isDisposed || res is! Map) return;
+      PerformanceMonitor.instance.reportCameraResult(DateTime.now().millisecondsSinceEpoch - capturedMs);
 
       _imageWidth = (res['imageWidth'] as num?)?.toInt() ?? _imageWidth;
       _imageHeight = (res['imageHeight'] as num?)?.toInt() ?? _imageHeight;
@@ -362,8 +364,14 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       unawaited(_stopAndEvaluate());
       return;
     }
-    setState(() {});
+    // Redraw at most ~4x per second while recording (frame counter / timer):
+    // a rebuild per camera frame competes with MediaPipe for the GPU.
+    if (changed || frame.timeMs - _lastUiMs > 250) {
+      _lastUiMs = frame.timeMs;
+      setState(() {});
+    }
   }
+  int _lastUiMs = 0;
 
   // ---------------------------------------------------------------------------
   // Recording flow

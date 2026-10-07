@@ -7,6 +7,8 @@ import 'civic_tutorial_interface.dart';
 import 'civic_difficulty_selection.dart';
 import '/leaderboard/arena.dart';
 
+import '/services/performance_monitor.dart';
+
 class CivicInterface extends StatelessWidget {
   final int currentXp; 
   final int targetXp; 
@@ -75,7 +77,7 @@ class CivicInterface extends StatelessWidget {
             centerTitle: true, 
             iconTheme: IconThemeData(color: textColor), 
             flexibleSpace: ClipRRect(
-              child: BackdropFilter(
+              child: SmartBlur(
                 filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                 child: Container(color: Colors.transparent),
               ),
@@ -305,7 +307,7 @@ class CivicInterface extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16 * scale), 
-      child: BackdropFilter(
+      child: SmartBlur(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
@@ -364,7 +366,7 @@ class CivicInterface extends StatelessWidget {
     final theme = Theme.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(16 * scale),
-      child: BackdropFilter(
+      child: SmartBlur(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           padding: EdgeInsets.all(12 * scale),

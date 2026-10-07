@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '/services/performance_monitor.dart';
+
 import 'phrase_tutorial_practice.dart'; // Updated import
 
 class TutorialSign {
@@ -173,7 +175,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
@@ -202,7 +204,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                 child: Center(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: BackdropFilter(
+                    child: SmartBlur(
                       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -322,7 +324,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                             top: 415 * scale,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(25 * scale),
-                              child: BackdropFilter(
+                              child: SmartBlur(
                                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                                 child: Container(
                                   width: maxProgressWidth * scale,

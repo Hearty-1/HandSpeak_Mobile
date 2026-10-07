@@ -18,6 +18,9 @@ import '/services/handspeak_api_service.dart';
 import '/services/holistic_capture.dart';
 import 'phrase_recognizer.dart';
 import 'pose_provider.dart';
+import '/services/frame_gate.dart';
+
+import '/services/performance_monitor.dart';
 
 // =============================================================================
 // THEME VISUAL MAPPING (Imported from Numbers UI/UX)
@@ -391,6 +394,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     await c.startImageStream(_onCameraImage);
   }
 
+  final FrameGate _frameGate = FrameGate();
+
   void _onCameraImage(CameraImage image) {
     if (_disposed || !_isInitialized || _isSuccessAchieved) return;
     if (_isCalendar) {
@@ -408,6 +413,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       swap ? image.width : image.height,
     );
     try {
+      if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       landmarker.processFrame(image, rotation);
     } catch (e) {
       debugPrint('Dropped frame: $e');
@@ -420,6 +426,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   // ---------------------------------------------------------------------------
 
   void _onHandsDetected(List<Hand> hands) {
+    _frameGate.done();
     if (_disposed || !mounted || _isSuccessAchieved) return;
 
     final features = _recognizer.extractFrameFeatures(
@@ -1057,7 +1064,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => BackdropFilter(
+      builder: (context) => SmartBlur(
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Dialog(
           backgroundColor: Colors.transparent,
@@ -1251,7 +1258,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
@@ -1413,7 +1420,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                                   child: Center(
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: BackdropFilter(
+                                      child: SmartBlur(
                                         filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1491,7 +1498,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                           const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: BackdropFilter(
+                            child: SmartBlur(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: screenWidth * 0.70,
@@ -1535,7 +1542,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                           const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: BackdropFilter(
+                            child: SmartBlur(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: screenWidth * 0.70,
@@ -1590,7 +1597,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                       const SizedBox(height: 24),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24),
-                        child: BackdropFilter(
+                        child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                           child: Container(
                             width: double.infinity,

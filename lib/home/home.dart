@@ -13,6 +13,8 @@ import '../profile/profile.dart';
 import '../leaderboard/arena.dart'; 
 import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
+import '/services/performance_monitor.dart';
+
 import '../home/notification_bell.dart'; // Added import for the standardized bell
 
 void main() {
@@ -444,7 +446,7 @@ class SnedInterafce1 extends StatelessWidget {
             iconTheme: theme.iconTheme.copyWith(color: textColor),
             flexibleSpace: ClipRRect(
               clipBehavior: Clip.antiAlias,
-              child: BackdropFilter(
+              child: SmartBlur(
                 filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                 child: Container(color: Colors.transparent),
               ),
@@ -696,7 +698,7 @@ class SnedInterafce1 extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24 * scale), 
       clipBehavior: Clip.antiAlias,
-      child: BackdropFilter(
+      child: SmartBlur(
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Container(
           width: double.infinity,
@@ -722,7 +724,7 @@ class SnedInterafce1 extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20 * scale), 
       clipBehavior: Clip.antiAlias,
-      child: BackdropFilter(
+      child: SmartBlur(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 8 * scale), 
@@ -765,7 +767,7 @@ class SnedInterafce1 extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24 * scale), 
         clipBehavior: Clip.antiAlias,
-        child: BackdropFilter(
+        child: SmartBlur(
           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
           child: Container(
             width: 160 * scale, 

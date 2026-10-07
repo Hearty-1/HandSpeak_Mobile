@@ -10,6 +10,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart'; // Added Firebase Cloud Storage
 import 'recognizer.dart';
+import '/services/frame_gate.dart';
+
+import '/services/performance_monitor.dart';
 
 /// Dynamic theme visual mapping for thematic icons & graphics
 class _ThemeVisuals {
@@ -221,6 +224,8 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     }
   }
 
+  final FrameGate _frameGate = FrameGate();
+
   void _processCameraFrame(CameraImage image) {
     // NOTE: no longer gated on `_template == null` -- J/Z have no static
     // template at all, so that check would block the pipeline forever
@@ -229,6 +234,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
     try {
       final int sensorOrientation = _controller!.description.sensorOrientation;
+      if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Inference Error: $e");
@@ -236,6 +242,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   }
 
   void _onHandsDetected(List<Hand> detectedHands) {
+    _frameGate.done();
     if (_isSuccessAchieved) return;
 
     if (_isDynamicLetter) {
@@ -546,7 +553,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
@@ -704,7 +711,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                   child: Center(
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: BackdropFilter(
+                                      child: SmartBlur(
                                         filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -743,7 +750,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                     if (_isSuccessAchieved) ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(20),
-                        child: BackdropFilter(
+                        child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                           child: TweenAnimationBuilder(
                             tween: Tween<double>(begin: 0.8, end: 1.0),
@@ -812,7 +819,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                           const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: BackdropFilter(
+                            child: SmartBlur(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: screenWidth * 0.70, 
@@ -842,7 +849,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                     ] else ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(30),
-                        child: BackdropFilter(
+                        child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 300),

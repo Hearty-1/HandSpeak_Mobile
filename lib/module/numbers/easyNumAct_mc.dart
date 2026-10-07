@@ -14,7 +14,10 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 import '/providers/sound_provider.dart';
 import '/providers/theme_provider.dart' show GalaxyPalette;
 import '/module/alphabet/recognizer.dart';
+import '/services/frame_gate.dart';
 import '/services/gesture_analytics.dart'; 
+
+import '/services/performance_monitor.dart';
 
 // ==========================================
 // 1. DATA MODELS
@@ -565,12 +568,15 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     }
   }
 
+  final FrameGate _frameGate = FrameGate();
+
   void _processCameraFrame(CameraImage image) {
     if (!_isCameraInitialized || _landmarkerPlugin == null || _isAnswered || _isProcessingFrame) return;
     _isProcessingFrame = true;
 
     try {
       final int sensorOrientation = _cameraController!.description.sensorOrientation;
+      if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Inference Error: $e");
@@ -580,6 +586,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   void _onHandsDetected(List<Hand> detectedHands) {
+    _frameGate.done();
     if (_isAnswered || !mounted) return;
 
     final now = DateTime.now();
@@ -1222,7 +1229,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
           onPressed: () => Navigator.pop(context),
         ),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), 
             child: Container(color: Colors.transparent),
           ),

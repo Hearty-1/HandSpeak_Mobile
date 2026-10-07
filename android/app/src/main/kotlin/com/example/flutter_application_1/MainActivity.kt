@@ -52,6 +52,8 @@ class MainActivity : FlutterActivity() {
     private var frameCount = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastTimestampMs = 0L
+    // Reused ARGB buffer for camera-frame conversion (only touched on convertWorker).
+    private var pixelBuffer = IntArray(0)
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -188,11 +190,28 @@ class MainActivity : FlutterActivity() {
         yRowStride: Int, uvRowStride: Int, uvPixelStride: Int, rotation: Int
     ): Bitmap? {
         return try {
-            val argb = IntArray(width * height)
-            var out = 0
+            // Rotation is applied while writing each pixel (no second full-frame
+            // Bitmap + Matrix copy), and the pixel buffer is reused between
+            // frames (convertWorker is single-threaded; createBitmap copies it).
+            // This removed ~1.4 MB of garbage and one 720x480 copy per frame.
+            val rot = ((rotation % 360) + 360) % 360
+            val outW = if (rot == 90 || rot == 270) height else width
+            val outH = if (rot == 90 || rot == 270) width else height
+            val n = width * height
+            if (pixelBuffer.size != n) pixelBuffer = IntArray(n)
+            val argb = pixelBuffer
             for (j in 0 until height) {
                 val yRow = j * yRowStride
                 val uvRow = (j shr 1) * uvRowStride
+                // Destination index of (i = 0, j) and its step per +1 in i.
+                var dst: Int
+                val step: Int
+                when (rot) {
+                    90 -> { dst = (outW - 1 - j); step = outW }              // (x=h-1-j, y=i)
+                    180 -> { dst = (outH - 1 - j) * outW + (outW - 1); step = -1 } // (x=w-1-i, y=h-1-j)
+                    270 -> { dst = (outH - 1) * outW + j; step = -outW }     // (x=j, y=w-1-i)
+                    else -> { dst = j * outW; step = 1 }
+                }
                 for (i in 0 until width) {
                     val uvIndex = uvRow + (i shr 1) * uvPixelStride
                     val y = (yP[yRow + i].toInt() and 0xFF) - 16
@@ -202,17 +221,15 @@ class MainActivity : FlutterActivity() {
                     var r = y1192 + 1634 * v
                     var g = y1192 - 833 * v - 400 * u
                     var b = y1192 + 2066 * u
-                    r = r.coerceIn(0, 262143); g = g.coerceIn(0, 262143); b = b.coerceIn(0, 262143)
-                    argb[out++] = -0x1000000 or
+                    r = if (r < 0) 0 else if (r > 262143) 262143 else r
+                    g = if (g < 0) 0 else if (g > 262143) 262143 else g
+                    b = if (b < 0) 0 else if (b > 262143) 262143 else b
+                    argb[dst] = -0x1000000 or
                         ((r shl 6) and 0xFF0000) or ((g shr 2) and 0xFF00) or ((b shr 10) and 0xFF)
+                    dst += step
                 }
             }
-            val raw = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
-            if (rotation % 360 == 0) return raw
-            val m = Matrix().apply { postRotate(rotation.toFloat()) }
-            val rotated = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
-            if (rotated != raw) raw.recycle()
-            rotated
+            Bitmap.createBitmap(argb, outW, outH, Bitmap.Config.ARGB_8888)
         } catch (e: Exception) {
             null
         }

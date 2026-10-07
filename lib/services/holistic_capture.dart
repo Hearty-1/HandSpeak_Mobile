@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 
+import 'performance_monitor.dart';
+
 /// One captured camera frame in the raw form the v4 server pipeline
 /// (/v1/predict_raw/{model}) expects: pose = 33 x [x, y, visibility],
 /// hands = 21 x [x, y, z] (null = not detected), normalised to the upright,
@@ -69,6 +71,7 @@ class HolisticCapture {
       'rotation': rotation,
     });
     if (res is! Map) return null;
+    PerformanceMonitor.instance.reportCameraResult(DateTime.now().millisecondsSinceEpoch - capturedMs);
     return HolisticResult(
       RawFrame(
         pose: _points(res['pose33']),

@@ -14,6 +14,8 @@ import '../home/notification_bell.dart';
 import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
 
+import '/services/performance_monitor.dart';
+
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
     pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -211,7 +213,7 @@ class SnedInterface2 extends StatelessWidget {
                 iconTheme: theme.iconTheme.copyWith(color: textColor),
                 flexibleSpace: ClipRRect(
                   clipBehavior: Clip.antiAlias,
-                  child: BackdropFilter(
+                  child: SmartBlur(
                     filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Container(color: Colors.transparent),
                   ),
@@ -502,7 +504,7 @@ class SnedInterface2 extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16 * scale),
       clipBehavior: Clip.antiAlias,
-      child: BackdropFilter(
+      child: SmartBlur(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           width: 178 * scale, height: 76 * scale,

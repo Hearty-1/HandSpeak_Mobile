@@ -11,6 +11,7 @@ import 'auth/login_screen.dart';
 
 // Import the local notification service
 import 'services/local_notification_service.dart';
+import 'services/performance_monitor.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,9 @@ void main() async {
 
   // Initialize notifications and timezone setup
   await LocalNotificationService.initialize();
+
+  // Saved Performance Mode (reduced visual effects) before the first frame.
+  await PerformanceSettings.load();
 
   runApp(
     MultiProvider(
@@ -42,6 +46,8 @@ class MyApp extends StatelessWidget {
       builder: (context, themeProvider, child) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
+          // Live lag detection with tips + one-tap Performance Mode, on every screen.
+          builder: (context, child) => PerformanceHintOverlay(child: child ?? const SizedBox.shrink()),
           theme: themeProvider.activeTheme, 
           themeMode: themeProvider.activeThemeMode,
           navigatorObservers: [

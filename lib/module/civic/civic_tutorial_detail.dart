@@ -8,6 +8,8 @@ import 'package:video_player/video_player.dart';
 import 'civic_tutorial_practice.dart'; 
 import 'civic_tutorial_interface.dart'; 
 
+import '/services/performance_monitor.dart';
+
 class CivicTutorialDetail extends StatefulWidget {
   final List<CivicLesson> civicList;
   final int initialIndex; 
@@ -98,7 +100,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
         centerTitle: true,
         iconTheme: IconThemeData(color: textColor),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
               decoration: BoxDecoration(
@@ -133,7 +135,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                 child: Center(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: BackdropFilter(
+                    child: SmartBlur(
                       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -269,7 +271,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                             left: 49 * scale, top: 430 * scale,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(25 * scale),
-                              child: BackdropFilter(
+                              child: SmartBlur(
                                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                                 child: Container(
                                   width: maxProgressWidth * scale, height: 14 * scale,

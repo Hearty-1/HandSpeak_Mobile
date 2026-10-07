@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '/services/performance_monitor.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -99,6 +100,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingsCard(
             context: context,
             children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: PerformanceSettings.reduceEffects,
+                builder: (context, on, _) => SwitchListTile(
+                  activeColor: const Color(0xFFFFB800),
+                  secondary: const Icon(CupertinoIcons.bolt_fill, color: Color(0xFFFFB800)),
+                  title: Text("Performance Mode", style: TextStyle(color: textColor)),
+                  subtitle: Text(
+                    "Turns off blur effects so the camera and app run faster on slower phones.",
+                    style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12),
+                  ),
+                  value: on,
+                  onChanged: (val) => PerformanceSettings.set(val),
+                ),
+              ),
+              Divider(height: 1, color: theme.dividerColor),
               SwitchListTile(
                 activeColor: const Color(0xFFFFB800),
                 secondary: Icon(

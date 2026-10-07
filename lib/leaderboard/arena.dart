@@ -15,6 +15,8 @@ import 'daily_quests_section.dart';
 import '../widgets/app_nav_bar.dart';
 import '../home/notification_bell.dart'; 
 
+import '/services/performance_monitor.dart';
+
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
     pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -195,7 +197,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
         iconTheme: IconThemeData(color: textColor),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               decoration: BoxDecoration(

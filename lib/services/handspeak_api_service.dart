@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'performance_monitor.dart';
 
 /// Feature dimensions batay sa sinanay na ONNX models (legacy /v1/predict).
 class HandSpeakModels {
@@ -638,9 +639,12 @@ class HandSpeakApiService {
           "Accept": "application/json",
           "Content-Type": "application/json",
         });
-    final response = await attempt(false);
-    if (response.statusCode != 401) return response;
-    return attempt(true);
+    // Server round trip time feeds the in-app slow-connection hint.
+    final sw = Stopwatch()..start();
+    var response = await attempt(false);
+    if (response.statusCode == 401) response = await attempt(true);
+    PerformanceMonitor.instance.reportNetwork(sw.elapsedMilliseconds);
+    return response;
   }
 
   static HandSpeakApiException _error(http.Response r) {

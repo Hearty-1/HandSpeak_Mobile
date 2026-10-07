@@ -16,6 +16,8 @@ import '/auth/login_screen.dart';
 import '../widgets/app_nav_bar.dart';
 import '/services/daily_challenge_service.dart';
 
+import '/services/performance_monitor.dart';
+
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
     pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -153,7 +155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         iconTheme: theme.iconTheme.copyWith(color: textColor),
         flexibleSpace: ClipRRect(
           clipBehavior: Clip.antiAlias,
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               decoration: BoxDecoration(
@@ -507,7 +509,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24 * scale),
                         clipBehavior: Clip.antiAlias,
-                        child: BackdropFilter(
+                        child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                           child: Container(
                             padding: EdgeInsets.symmetric(vertical: 16 * scale),
@@ -578,7 +580,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       ClipRRect(
                         borderRadius: BorderRadius.circular(24 * scale),
-                        child: BackdropFilter(
+                        child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                           child: Container(
                             padding: EdgeInsets.all(20 * scale),
@@ -611,7 +613,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(20 * scale),
                         clipBehavior: Clip.antiAlias,
-                        child: BackdropFilter(
+                        child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                           child: Container(
                             decoration: BoxDecoration(

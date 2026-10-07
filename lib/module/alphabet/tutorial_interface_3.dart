@@ -7,6 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'tutorial_practice.dart';
 
+import '/services/performance_monitor.dart';
+
 class TutorialSign {
   final String label;
   final String gestureKey;
@@ -189,7 +191,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
@@ -218,7 +220,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                 child: Center(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: BackdropFilter(
+                    child: SmartBlur(
                       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -334,7 +336,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                             top: 415 * scale,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(25 * scale),
-                              child: BackdropFilter(
+                              child: SmartBlur(
                                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                                 child: Container(
                                   width: maxProgressWidth * scale,

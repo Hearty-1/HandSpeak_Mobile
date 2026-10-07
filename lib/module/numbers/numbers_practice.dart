@@ -11,6 +11,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:onnxruntime/onnxruntime.dart';
+import '/services/frame_gate.dart';
+
+import '/services/performance_monitor.dart';
 
 // =============================================================================
 // ONNX INFERENCE SERVICE WITH 78-FEATURE EXTRACTOR
@@ -535,6 +538,8 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     }
   }
 
+  final FrameGate _frameGate = FrameGate();
+
   void _processCameraFrame(CameraImage image) {
     if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
     if (_isStaticSign && _template == null) return;
@@ -542,6 +547,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
 
     try {
       int sensorOrientation = _controller!.description.sensorOrientation;
+      if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Frame processing error: $e");
@@ -618,6 +624,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   }
 
   void _onHandsDetected(List<Hand> detectedHands) async {
+    _frameGate.done();
     if (!mounted || _isSuccessAchieved || _isProcessingFrame) return;
     _isProcessingFrame = true;
 
@@ -829,7 +836,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         flexibleSpace: ClipRRect(
-          child: BackdropFilter(
+          child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
@@ -984,7 +991,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                                   child: Center(
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: BackdropFilter(
+                                      child: SmartBlur(
                                         filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1080,7 +1087,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                           const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: BackdropFilter(
+                            child: SmartBlur(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: screenWidth * 0.70,
@@ -1138,7 +1145,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                           const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: BackdropFilter(
+                            child: SmartBlur(
                               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: screenWidth * 0.70,
@@ -1168,7 +1175,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                     ] else ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(30),
-                        child: BackdropFilter(
+                        child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 300),

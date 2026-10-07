@@ -15,6 +15,7 @@ import '/module/alphabet/recognizer.dart';
 import '/providers/sound_provider.dart';
 import '/providers/theme_provider.dart';
 import '/services/progress_service.dart';
+import '/services/frame_gate.dart';
 
 class GameProperScreen extends StatefulWidget {
   final String roomCode;
@@ -289,12 +290,15 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     }
   }
 
+  final FrameGate _frameGate = FrameGate();
+
   void _processCameraFrame(CameraImage image) {
     if (!_isCameraInitialized || _landmarkerPlugin == null || _hasAnswered || _isProcessingFrame) return;
     _isProcessingFrame = true;
 
     try {
       final int sensorOrientation = _cameraController!.description.sensorOrientation;
+      if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Inference Error: $e");
@@ -304,6 +308,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   }
 
   void _onHandsDetected(List<Hand> detectedHands) {
+    _frameGate.done();
     if (_hasAnswered || _questions.isEmpty || _currentQuestionIndex >= _questions.length) return;
 
     final currentQ = _questions[_currentQuestionIndex];
