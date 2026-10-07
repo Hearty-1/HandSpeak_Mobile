@@ -12,7 +12,9 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
 import '/providers/sound_provider.dart';
-import '/module/alphabet/recognizer.dart'; 
+import '/providers/theme_provider.dart' show GalaxyPalette;
+import '/module/alphabet/recognizer.dart';
+import '/services/gesture_analytics.dart'; 
 
 // ==========================================
 // 1. DATA MODELS
@@ -174,7 +176,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
 
   LinearGradient _getDialogGradient(Color bgColor) {
     if (bgColor.value == 0xFF080928) { 
-      return const LinearGradient(colors: [Color(0xFF282059), Color(0xFF8750A1)], begin: Alignment.topLeft, end: Alignment.bottomRight);
+      return const LinearGradient(colors: [Color(0xFF1B1A4B), Color(0xFF7C4DFF)], begin: Alignment.topLeft, end: Alignment.bottomRight);
     } else if (bgColor.value == 0xFF1D3D3A) { 
       return const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)], begin: Alignment.topLeft, end: Alignment.bottomRight);
     } else if (bgColor.value == 0xFF001B3A) { 
@@ -305,6 +307,16 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   bool _isSaving = false;
 
   int _hearts = 5;
+
+  // Every camera attempt of this session -> gesture_attempts (hard levels).
+  late final GestureAttemptTracker? _gestureTracker = _isCameraLevel
+      ? GestureAttemptTracker(category: 'numbers', levelId: widget.levelId, threshold: successThreshold)
+      : null;
+  // Model output of the last dynamic-sign recording, for the attempt record.
+  String? _lastPredictedLabel;
+  double? _lastModelConfidence;
+  int? _lastFramesRecorded;
+  String _pendingTrigger = 'check';
   bool _isCorrect = false;
 
   // Typing Game State Variables
@@ -395,6 +407,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    // Left mid-level (no-op if the level was completed / lost: already finished).
+    _gestureTracker?.finish(outcome: 'exited', heartsLeft: _hearts, totalQuestions: _questions.length);
     _handSub?.cancel();
     if (_cameraController?.value.isStreamingImages ?? false) {
       _cameraController?.stopImageStream();
@@ -595,8 +609,12 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
         if (elapsedSeconds >= _requiredHoldSeconds) {
            _isRecordingMotion = false;
+           final framesRecorded = _recordingFrames.length;
            final result = _dynamicSignRecognizer!.predictFromRecording(_recordingFrames);
            _recordingFrames.clear();
+           _lastPredictedLabel = result?.label;
+           _lastModelConfidence = result?.confidence;
+           _lastFramesRecorded = framesRecorded;
 
            double finalScore = 0.0;
            if (result != null && result.label.toUpperCase() == targetLetter) {
@@ -609,8 +627,24 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
            _holdProgress = 0.0;
 
            if (_currentScore >= successThreshold) {
+             _pendingTrigger = 'auto_recording';
              _verifyCurrentAnswer();
            } else {
+             // A finished recording that did not match: a failed attempt.
+             final q = _questions[_currentIndex];
+             _gestureTracker?.recordAttempt(
+               sign: q.correctAnswer,
+               questionId: q.id,
+               questionIndex: _currentIndex,
+               isCorrect: false,
+               score: _currentScore,
+               isDynamic: true,
+               confidence: _lastModelConfidence,
+               predictedLabel: _lastPredictedLabel,
+               handsDetected: true,
+               framesRecorded: framesRecorded,
+               trigger: 'auto_recording',
+             );
              _startRecordingTime = null;
            }
         }
@@ -650,6 +684,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         if (holdSecs >= _requiredHoldSeconds) {
           _staticHoldStartTime = null;
           _holdProgress = 1.0;
+          _pendingTrigger = 'auto_hold';
           _verifyCurrentAnswer();
           return;
         }
@@ -838,6 +873,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   void _verifyCurrentAnswer() {
     if (_isAnswered || !mounted) return;
     final q = _questions[_currentIndex];
+    // How this attempt was triggered: CHECK button unless set by an auto pass.
+    final String triggerForThis = _pendingTrigger;
+    _pendingTrigger = 'check';
     bool isCorrect = false;
 
     if (q.type == 'typing') {
@@ -878,6 +916,20 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     } else if (_isCameraQuestion(q)) {
       isCorrect = _currentScore >= successThreshold;
       _selectedAnswer = isCorrect ? q.correctAnswer : null; 
+      final trigger = triggerForThis;
+      _gestureTracker?.recordAttempt(
+        sign: q.correctAnswer,
+        questionId: q.id,
+        questionIndex: _currentIndex,
+        isCorrect: isCorrect,
+        score: _currentScore,
+        isDynamic: _isDynamicLetter,
+        confidence: _isDynamicLetter ? _lastModelConfidence : null,
+        predictedLabel: _isDynamicLetter ? _lastPredictedLabel : null,
+        handsDetected: _currentScore > 0 || trigger != 'check',
+        framesRecorded: _isDynamicLetter ? _lastFramesRecorded : null,
+        trigger: trigger,
+      );
     } else {
       isCorrect = _selectedAnswer == q.correctAnswer;
     }
@@ -899,6 +951,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   void _showGameOverDialog() {
+    _gestureTracker?.finish(outcome: 'game_over', heartsLeft: 0, starsEarned: 0, totalQuestions: _questions.length);
     if (!mounted) return;
     Provider.of<SoundProvider>(context, listen: false).playGameOver();
     showDialog(
@@ -1035,6 +1088,8 @@ Future<void> _saveUserProgress(int starsEarned) async {
       
       // Execute progress & stars tracking persistence
       await _saveUserProgress(starsEarned);
+      _gestureTracker?.finish(
+          outcome: 'completed', heartsLeft: _hearts, starsEarned: starsEarned, totalQuestions: _questions.length);
 
       if (!mounted) return;
       setState(() => _isSaving = false);
@@ -1060,11 +1115,10 @@ Future<void> _saveUserProgress(int starsEarned) async {
         'icon': feedbackIcon,
         'title': isCorrect ? "Cosmic Victory! 🚀" : "Asteroid Bump! ☄️",
         'subtitle': isCorrect ? "Out of this world accuracy!" : "Recalibrate trajectory and try again.",
-        'gradient': isCorrect 
-            ? const LinearGradient(colors: [Color(0xFF282059), Color(0xFF8750A1)])
-            : const LinearGradient(colors: [Color(0xFF4A0E17), Color(0xFF9B111E)]),
-        'badgeColor': isCorrect ? const Color(0xFF00E676) : const Color(0xFFFF2A85),
-        'accentColor': isCorrect ? const Color(0xFF8750A1) : const Color(0xFFFF2A85),
+        // Aurora green = correct, nebula rose = wrong (instantly distinguishable).
+        'gradient': isCorrect ? GalaxyPalette.correct : GalaxyPalette.wrong,
+        'badgeColor': isCorrect ? GalaxyPalette.success : GalaxyPalette.error,
+        'accentColor': isCorrect ? GalaxyPalette.success : GalaxyPalette.error,
       };
     }
     

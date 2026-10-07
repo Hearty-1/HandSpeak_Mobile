@@ -1,7 +1,7 @@
+import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
@@ -13,14 +13,26 @@ import '/services/handspeak_api_service.dart';
 // DATA MODELS
 // =============================================================================
 
-class LandmarkPoint {
-  final double x, y, z;
-  LandmarkPoint(this.x, this.y, this.z);
-}
+/// One captured camera frame, in the raw form /v1/predict_raw expects:
+/// pose = 33 x [x, y, visibility], hands = 21 x [x, y, z] (null = not
+/// detected), normalised to the upright, UN-mirrored camera image; left =
+/// the signer's own left hand (assigned natively from the pose wrists).
+class CaptureFrame {
+  final List<List<double>>? pose;
+  final List<List<double>>? leftHand;
+  final List<List<double>>? rightHand;
+  final int timeMs;
+  const CaptureFrame({this.pose, this.leftHand, this.rightHand, required this.timeMs});
 
-class FrameLandmarks {
-  final List<LandmarkPoint> points; // Expects 68 points per frame
-  FrameLandmarks(this.points);
+  bool get hasPose => pose != null;
+  bool get hasHands => leftHand != null || rightHand != null;
+
+  Map<String, dynamic> toJson(int t0Ms) => {
+        't': (timeMs - t0Ms) / 1000.0,
+        'pose': pose,
+        'left_hand': leftHand,
+        'right_hand': rightHand,
+      };
 }
 
 // =============================================================================
@@ -43,15 +55,12 @@ class CivicTutorialPractice extends StatefulWidget {
 
 class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with WidgetsBindingObserver {
   static const MethodChannel _platformChannel = MethodChannel('fsl_holistic_channel');
-  
-  // Performance and Frame Rate Throttling
-  bool _isNativeProcessing = false;
-  int _lastFrameTimestamp = 0;
-  static const int _frameIntervalMs = 180; // ~5.5 FPS throttle for peak stability
 
-  // Reused across frames instead of allocating a new Uint8List every callback
-  Uint8List? _reusableFrameBuffer;
-  int? _cachedTotalFrameLength;
+  // Up to 2 frames in flight: native converts the next camera image while
+  // the previous one is still in the pose / hand models (higher capture fps).
+  int _nativeInFlight = 0;
+  static const int _maxInFlight = 2;
+
 
   bool _isDisposed = false;
 
@@ -70,16 +79,34 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   // Manifest and Dynamic JSON Data
   List<Map<String, dynamic>> _phrases = [];
   List<Map<String, dynamic>> _activeQuestions = [];
-  
-  // Dynamic tensor shape configuration
-  List<int> _inputShape = [1, 818];
-  int _inputTensorSize = 818; 
+
   bool _isManifestLoaded = false;
 
-  static const int targetFrames = 32;
-  static const int totalLandmarks = 68;
-  final List<FrameLandmarks> _frameBuffer = [];
+
+  // Live detection state (for on-screen guidance)
+  bool _poseVisible = false;
+  bool _handsVisible = false;
+
+  // Recording: one whole line per clip, like the training videos.
+  bool _isRecording = false;
   bool _isEvaluating = false;
+  int _countdown = 0;
+  Timer? _countdownTimer;
+  Timer? _maxRecordTimer;
+  DateTime? _recordStart;
+  final List<CaptureFrame> _recorded = [];
+  int _imageWidth = 0, _imageHeight = 0; // upright frame size from the native side
+  String _serverDebug = ''; // last server reply, shown in debug builds
+  String _engineInfo = ''; // native pose/hand models + delegate (diagnostics)
+  double _nativeMs = 0; // smoothed native time per frame (conversion + MediaPipe)
+  bool _sawHands = false;
+  int _lastHandMs = 0;
+  static const Duration _maxRecording = Duration(seconds: 10);
+  // Hands must be gone this long before auto-stop. Longer than the server's
+  // hand memory (up to 2 s for a hand that left through the top edge, e.g.
+  // "Ang bituin"), so a hand briefly out of frame does not end the line.
+  static const int _autoStopAfterMs = 2200;
+  static const int _manualStopTrimMs = 600;
 
   CameraController? _controller;
   bool _isInitialized = false;
@@ -87,14 +114,17 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   bool _isSuccessAchieved = false;
   double _currentScore = 0.0;
   String _currentFeedback = "Maghanda at isagawa ang kumpas...";
-  final double successThreshold = 0.70; // 70% passing threshold
+
+  /// INVALID_GESTURE is the last of the v4 model's 23 classes.
+  static const int _invalidIndex = 22;
+  final double successThreshold = 0.70; // UI colour threshold for the score
   final int xpReward = 15;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _bootstrapPipeline();
     });
@@ -102,6 +132,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
   Future<void> _bootstrapPipeline() async {
     _updateLoadingStatus("Naglo-load ng manifest at camera...");
+
 
     await Future.wait([
       _loadManifestAndLabels(),
@@ -137,12 +168,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       final manifest = jsonDecode(jsonStr);
 
       _phrases = List<Map<String, dynamic>>.from(manifest['phrases']);
-      
-      // Parse tensor shape dynamically from manifest
-      if (manifest['input_tensor_shape'] != null && manifest['input_tensor_shape'] is List) {
-        _inputShape = List<int>.from((manifest['input_tensor_shape'] as List).map((e) => (e as num).toInt()));
-        _inputTensorSize = _inputShape.fold<int>(1, (acc, val) => acc * val);
-      }
+      // Class order of the model = sorted training folders = manifest "index".
+      _phrases.sort((a, b) => ((a['index'] as num?) ?? 0).compareTo((b['index'] as num?) ?? 0));
 
       if (widget.questions != null && widget.questions!.isNotEmpty) {
         _activeQuestions = widget.questions!;
@@ -166,10 +193,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
   Future<void> _loadCurrentStepData() async {
     if (_isDisposed || _activeQuestions.isEmpty || _currentStep >= _activeQuestions.length) return;
-    
+
     final categoryKey = _normalizeCategoryKey(widget.category);
     final normalizedKey = '${categoryKey}_line_${_currentStep + 1}';
-    
+
     if (_templateImageCache.containsKey(normalizedKey)) {
       if (mounted) setState(() => _templateImageBytes = _templateImageCache[normalizedKey]);
       return;
@@ -178,7 +205,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     if (mounted) setState(() => _isImageLoading = true);
     try {
       final ref = FirebaseStorage.instance.ref().child('civic_templates/$normalizedKey.jpg');
-      
+
       final Uint8List? data = await ref.getData(1024 * 1024).timeout(
         const Duration(seconds: 2),
         onTimeout: () => null,
@@ -204,17 +231,18 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       if (cameras.isEmpty || _isDisposed) return;
 
       final frontCamera = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front, 
+        (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
-      
+
       _controller = CameraController(
-        frontCamera, 
-        ResolutionPreset.low, 
+        frontCamera,
+        // "low" (320x240) is too small for reliable hand landmarks.
+        ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
-      
+
       await _controller!.initialize();
 
       if (_isDisposed) {
@@ -233,6 +261,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   }
 
   Future<void> _pauseCamera() async {
+    _cancelRecording();
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
     if (controller.value.isStreamingImages) {
@@ -263,417 +292,426 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     }
   }
 
-  Uint8List _convertYUV420ToNV21(CameraImage image) {
-    final int width = image.width;
-    final int height = image.height;
-    final int ySize = width * height;
-    final int uvSize = ySize ~/ 2;
-    
-    if (_cachedTotalFrameLength != ySize + uvSize || _reusableFrameBuffer == null) {
-      _cachedTotalFrameLength = ySize + uvSize;
-      _reusableFrameBuffer = Uint8List(ySize + uvSize);
-    }
-    final Uint8List nv21 = _reusableFrameBuffer!;
+  // ---------------------------------------------------------------------------
+  // Frame capture (native Pose + Hands, raw landmarks for the v4 server)
+  // ---------------------------------------------------------------------------
 
-    final yPlane = image.planes[0];
-    final yBytes = yPlane.bytes;
-    final yRowStride = yPlane.bytesPerRow;
-    
-    if (yRowStride == width) {
-      nv21.setRange(0, ySize, yBytes);
-    } else {
-      for (int r = 0; r < height; r++) {
-        nv21.setRange(r * width, (r + 1) * width, 
-            yBytes.sublist(r * yRowStride, r * yRowStride + width));
-      }
-    }
-
-    final uPlane = image.planes[1];
-    final vPlane = image.planes[2];
-    final uBytes = uPlane.bytes;
-    final vBytes = vPlane.bytes;
-    
-    int nv21Index = ySize;
-    final int halfHeight = height ~/ 2;
-    final int halfWidth = width ~/ 2;
-
-    for (int r = 0; r < halfHeight; r++) {
-      int uIndex = r * uPlane.bytesPerRow;
-      int vIndex = r * vPlane.bytesPerRow;
-      for (int c = 0; c < halfWidth; c++) {
-        nv21[nv21Index++] = vBytes[vIndex];
-        nv21[nv21Index++] = uBytes[uIndex];
-        uIndex += uPlane.bytesPerPixel ?? 1;
-        vIndex += vPlane.bytesPerPixel ?? 1;
-      }
-    }
-    
-    return nv21;
-  }
+  static List<List<double>>? _points(dynamic v) => v is List
+      ? [for (final p in v) [for (final c in p as List) (c as num).toDouble()]]
+      : null;
 
   void _processCameraFrame(CameraImage image) async {
-    if (!_isManifestLoaded || _isSuccessAchieved || _isEvaluating || _isNativeProcessing || _isDisposed) return;
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastFrameTimestamp < _frameIntervalMs) return;
-    
-    _lastFrameTimestamp = now;
-    _isNativeProcessing = true;
+    if (!_isManifestLoaded || _isSuccessAchieved || _isEvaluating || _nativeInFlight >= _maxInFlight || _isDisposed) return;
+    _nativeInFlight++;
+    // Capture time, not result time: results arrive a variable ~100-200 ms later.
+    final capturedMs = DateTime.now().millisecondsSinceEpoch;
 
     try {
-      final Uint8List nv21Bytes = _convertYUV420ToNV21(image);
-
+      // Raw camera planes go straight to native code (converted once there,
+      // instead of a per-pixel NV21 loop in Dart that slows capture down).
+      final planes = image.planes;
       final dynamic res = await _platformChannel.invokeMethod('processFrame', {
-        'yuvBytes': nv21Bytes, 
-        'width': image.width, 
+        'y': planes[0].bytes,
+        'u': planes[1].bytes,
+        'v': planes[2].bytes,
+        'yRowStride': planes[0].bytesPerRow,
+        'uvRowStride': planes[1].bytesPerRow,
+        'uvPixelStride': planes[1].bytesPerPixel ?? 1,
+        'width': image.width,
         'height': image.height,
         'rotation': _controller?.description.sensorOrientation ?? 0,
       });
+      if (_isDisposed || res is! Map) return;
 
-      if (_isDisposed) return; 
-
-      if (res is List) {
-        final List<double> rawFloats = (res)
-            .map((e) => (e as num).toDouble())
-            .toList();
-
-        if (rawFloats.length >= totalLandmarks * 3) {
-          final List<LandmarkPoint> pts = List.generate(
-            totalLandmarks, 
-            (i) => LandmarkPoint(rawFloats[i * 3], rawFloats[i * 3 + 1], rawFloats[i * 3 + 2]),
-          );
-
-          final bool hasLandmarks = pts.any((p) => p.x != 0.0 || p.y != 0.0 || p.z != 0.0);
-          if (hasLandmarks) {
-            _onHolisticLandmarksDetected(FrameLandmarks(pts));
-          } else if (mounted && !_isSuccessAchieved) {
-            setState(() {
-              _currentFeedback = "Ipakita ang kamay sa camera...";
-              _currentScore = 0.0;
-            });
-          }
-        }
-      }
+      _imageWidth = (res['imageWidth'] as num?)?.toInt() ?? _imageWidth;
+      _imageHeight = (res['imageHeight'] as num?)?.toInt() ?? _imageHeight;
+      _engineInfo = (res['engine'] as String?) ?? _engineInfo;
+      final procMs = ((res['processMs'] as num?) ?? 0) + ((res['convertMs'] as num?) ?? 0);
+      _nativeMs = _nativeMs == 0 ? procMs.toDouble() : 0.8 * _nativeMs + 0.2 * procMs;
+      _onHolisticFrame(CaptureFrame(
+        pose: _points(res['pose33']),
+        leftHand: _points(res['leftHand']),
+        rightHand: _points(res['rightHand']),
+        timeMs: capturedMs,
+      ));
     } catch (e) {
       debugPrint("Platform Channel Error: $e");
     } finally {
-      _isNativeProcessing = false;
+      _nativeInFlight--;
     }
   }
 
-  void _onHolisticLandmarksDetected(FrameLandmarks frameData) {
-    if (_isDisposed) return;
-    if (mounted) setState(() => _frameBuffer.add(frameData));
-    if (_frameBuffer.length >= targetFrames) {
-      final sequence = List<FrameLandmarks>.from(_frameBuffer);
-      _frameBuffer.removeAt(0);
-      _evaluateSequence(sequence);
+  void _onHolisticFrame(CaptureFrame frame) {
+    if (_isDisposed || !mounted) return;
+
+    final changed = frame.hasPose != _poseVisible || frame.hasHands != _handsVisible;
+    _poseVisible = frame.hasPose;
+    _handsVisible = frame.hasHands;
+
+    if (!_isRecording) {
+      if (changed) setState(() {});
+      return;
     }
+
+    _recorded.add(frame);
+    if (frame.hasHands) {
+      _sawHands = true;
+      _lastHandMs = frame.timeMs;
+    } else if (_sawHands && frame.timeMs - _lastHandMs > _autoStopAfterMs) {
+      // Hands lowered after signing -> the line is finished.
+      unawaited(_stopAndEvaluate());
+      return;
+    }
+    setState(() {});
   }
 
-  Float32List _extractFeatures(List<FrameLandmarks> seq) {
-    final catKey = _normalizeCategoryKey(widget.category);
-    if (catKey == 'lupang_hinirang' || _inputTensorSize == 818) {
-      return _extractFeatures818(seq);
+  // ---------------------------------------------------------------------------
+  // Recording flow
+  // ---------------------------------------------------------------------------
+
+  void _toggleRecording() {
+    if (!_isInitialized || _isSuccessAchieved || _isEvaluating) return;
+    if (_countdown > 0) {
+      _cancelRecording();
+    } else if (_isRecording) {
+      _stopAndEvaluate(manual: true);
     } else {
-      return _extractFeatures842(seq);
+      _startCountdown();
     }
   }
 
-  Float32List _extractFeatures818(List<FrameLandmarks> seq) {
-    List<List<List<double>>> normClip = List.generate(
-      targetFrames,
-      (_) => List.generate(totalLandmarks, (_) => [0.0, 0.0, 0.0]),
-    );
-
-    for (int t = 0; t < targetFrames; t++) {
-      final pts = seq[t].points;
-      if (pts.length < totalLandmarks) continue;
-
-      double cX = (pts[0].x + pts[1].x) / 2.0;
-      double cY = (pts[0].y + pts[1].y) / 2.0;
-      double cZ = (pts[0].z + pts[1].z) / 2.0;
-
-      double dx = pts[0].x - pts[1].x;
-      double dy = pts[0].y - pts[1].y;
-      double dz = pts[0].z - pts[1].z;
-      double shoulderDist = sqrt(dx * dx + dy * dy + dz * dz) + 1e-6;
-
-      for (int i = 0; i < totalLandmarks; i++) {
-        if (i < pts.length) {
-          normClip[t][i][0] = (pts[i].x - cX) / shoulderDist;
-          normClip[t][i][1] = (pts[i].y - cY) / shoulderDist;
-          normClip[t][i][2] = (pts[i].z - cZ) / shoulderDist;
-        }
+  /// Each training video is one whole line performed from a ready position,
+  /// so give the user time to get into position after tapping the screen.
+  void _startCountdown() {
+    _countdownTimer?.cancel();
+    setState(() {
+      _countdown = 3;
+      _currentScore = 0.0;
+      _currentFeedback = "Ibaba ang mga kamay at pumwesto...";
+    });
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted || _isDisposed) {
+        t.cancel();
+        return;
       }
-    }
-
-    double totalEnergyLh = 0.0;
-    double totalEnergyRh = 0.0;
-
-    for (int t = 0; t < targetFrames - 1; t++) {
-      for (int i = 14; i <= 34; i++) {
-        double dX = normClip[t + 1][i][0] - normClip[t][i][0];
-        double dY = normClip[t + 1][i][1] - normClip[t][i][1];
-        double dZ = normClip[t + 1][i][2] - normClip[t][i][2];
-        totalEnergyLh += sqrt(dX * dX + dY * dY + dZ * dZ);
+      if (_countdown <= 1) {
+        t.cancel();
+        _startRecording();
+      } else {
+        setState(() => _countdown--);
       }
-      for (int i = 35; i <= 55; i++) {
-        double dX = normClip[t + 1][i][0] - normClip[t][i][0];
-        double dY = normClip[t + 1][i][1] - normClip[t][i][1];
-        double dZ = normClip[t + 1][i][2] - normClip[t][i][2];
-        totalEnergyRh += sqrt(dX * dX + dY * dY + dZ * dZ);
-      }
-    }
-
-    List<double> computePhaseMean(int startFrame, int endFrame) {
-      List<double> phase = List.filled(totalLandmarks * 3, 0.0);
-      int count = endFrame - startFrame;
-      for (int t = startFrame; t < endFrame; t++) {
-        int idx = 0;
-        for (int i = 0; i < totalLandmarks; i++) {
-          phase[idx++] += normClip[t][i][0];
-          phase[idx++] += normClip[t][i][1];
-          phase[idx++] += normClip[t][i][2];
-        }
-      }
-      for (int k = 0; k < phase.length; k++) {
-        phase[k] /= count;
-      }
-      return phase;
-    }
-
-    List<double> pStart = computePhaseMean(0, 4);   
-    List<double> pMid = computePhaseMean(14, 18);   
-    List<double> pEnd = computePhaseMean(28, 32);   
-
-    List<double> deltaMovement = List.filled(204, 0.0);
-    for (int k = 0; k < 204; k++) {
-      deltaMovement[k] = pEnd[k] - pStart[k];
-    }
-
-    List<double> features = [];
-    features.addAll(pStart);        
-    features.addAll(pMid);          
-    features.addAll(pEnd);          
-    features.addAll(deltaMovement); 
-    features.add(totalEnergyLh);    
-    features.add(totalEnergyRh);    
-
-    return Float32List.fromList(features);
+    });
   }
 
-  Float32List _extractFeatures842(List<FrameLandmarks> seq) {
-    List<List<List<double>>> normClip = List.generate(
-      targetFrames,
-      (_) => List.generate(totalLandmarks, (_) => [0.0, 0.0, 0.0]),
-    );
-
-    for (int t = 0; t < targetFrames; t++) {
-      final pts = seq[t].points;
-      if (pts.length < totalLandmarks) continue;
-
-      double cX = (pts[0].x + pts[1].x) / 2.0;
-      double cY = (pts[0].y + pts[1].y) / 2.0;
-      double cZ = (pts[0].z + pts[1].z) / 2.0;
-
-      double dx = pts[0].x - pts[1].x;
-      double dy = pts[0].y - pts[1].y;
-      double dz = pts[0].z - pts[1].z;
-      double shoulderDist = sqrt(dx * dx + dy * dy + dz * dz) + 1e-6;
-
-      for (int i = 0; i < totalLandmarks; i++) {
-        if (i < pts.length) {
-          normClip[t][i][0] = (pts[i].x - cX) / shoulderDist;
-          normClip[t][i][1] = (pts[i].y - cY) / shoulderDist;
-          normClip[t][i][2] = (pts[i].z - cZ) / shoulderDist;
-        }
-      }
-    }
-
-    List<double> computeSliceMean(int startFrame, int endFrame) {
-      List<double> slice = List.filled(totalLandmarks * 3, 0.0);
-      int count = endFrame - startFrame;
-      for (int t = startFrame; t < endFrame; t++) {
-        int idx = 0;
-        for (int i = 0; i < totalLandmarks; i++) {
-          slice[idx++] += normClip[t][i][0];
-          slice[idx++] += normClip[t][i][1];
-          slice[idx++] += normClip[t][i][2];
-        }
-      }
-      for (int k = 0; k < slice.length; k++) {
-        slice[k] /= count;
-      }
-      return slice;
-    }
-
-    List<double> slice0 = computeSliceMean(0, 8);
-    List<double> slice1 = computeSliceMean(8, 16);
-    List<double> slice2 = computeSliceMean(16, 24);
-    List<double> slice3 = computeSliceMean(24, 32);
-
-    double dist3d(List<double> p1, List<double> p2) {
-      double dx = p1[0] - p2[0];
-      double dy = p1[1] - p2[1];
-      double dz = p1[2] - p2[2];
-      return sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    const fingerTips = [4, 8, 12, 16, 20];
-    List<double> rhCurls = [];
-    List<double> lhCurls = [];
-
-    for (final tip in fingerTips) {
-      List<double> dRh = [];
-      List<double> dLh = [];
-      for (int t = 0; t < targetFrames; t++) {
-        dRh.add(dist3d(normClip[t][35 + tip], normClip[t][35]));
-        dLh.add(dist3d(normClip[t][14 + tip], normClip[t][14]));
-      }
-      double meanRh = dRh.reduce((a, b) => a + b) / targetFrames;
-      double rangeRh = dRh.reduce(max) - dRh.reduce(min);
-      rhCurls.addAll([meanRh, rangeRh]);
-
-      double meanLh = dLh.reduce((a, b) => a + b) / targetFrames;
-      double rangeLh = dLh.reduce(max) - dLh.reduce(min);
-      lhCurls.addAll([meanLh, rangeLh]);
-    }
-
-    List<double> rhToNose = [];
-    List<double> rhToChest = [];
-    for (int t = 0; t < targetFrames; t++) {
-      rhToNose.add(dist3d(normClip[t][35], normClip[t][56]));
-      rhToChest.add(dist3d(normClip[t][35], [0.0, 0.0, 0.0]));
-    }
-
-    double rhNoseMean = rhToNose.reduce((a, b) => a + b) / targetFrames;
-    double rhNoseMin = rhToNose.reduce(min);
-    double rhChestMean = rhToChest.reduce((a, b) => a + b) / targetFrames;
-    double rhChestMin = rhToChest.reduce(min);
-
-    double totalSpeedRH = 0.0;
-    double totalSpeedLH = 0.0;
-
-    for (int t = 0; t < targetFrames - 1; t++) {
-      for (int k = 35; k <= 55; k++) {
-        totalSpeedRH += dist3d(normClip[t + 1][k], normClip[t][k]);
-      }
-      for (int k = 14; k <= 34; k++) {
-        totalSpeedLH += dist3d(normClip[t + 1][k], normClip[t][k]);
-      }
-    }
-
-    List<double> features = [];
-    features.addAll(slice0);    
-    features.addAll(slice1);    
-    features.addAll(slice2);    
-    features.addAll(slice3);    
-    features.addAll(rhCurls);   
-    features.addAll(lhCurls);   
-    features.add(rhNoseMean);   
-    features.add(rhNoseMin);    
-    features.add(rhChestMean);  
-    features.add(rhChestMin);   
-    features.add(totalSpeedLH); 
-    features.add(totalSpeedRH); 
-
-    return Float32List.fromList(features);
+  void _startRecording() {
+    _recorded.clear();
+    _sawHands = false;
+    _lastHandMs = 0;
+    _maxRecordTimer?.cancel();
+    _maxRecordTimer = Timer(_maxRecording, () => _stopAndEvaluate());
+    setState(() {
+      _countdown = 0;
+      _isRecording = true;
+      _recordStart = DateTime.now();
+      _currentFeedback = "Isagawa ang buong linya, saka ibaba ang mga kamay.";
+    });
   }
 
-  Future<void> _evaluateSequence(List<FrameLandmarks> sequence) async {
-    if (_phrases.isEmpty || _isDisposed || _isSuccessAchieved) return;
-    _isEvaluating = true;
+  void _cancelRecording() {
+    _countdownTimer?.cancel();
+    _maxRecordTimer?.cancel();
+    _recorded.clear();
+    final wasActive = _countdown > 0 || _isRecording;
+    _countdown = 0;
+    _isRecording = false;
+    _recordStart = null;
+    if (wasActive && mounted && !_isDisposed) {
+      setState(() => _currentFeedback = "Kinansela. Pindutin ang RECORD para ulitin.");
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Class resolution
+  // ---------------------------------------------------------------------------
+
+  /// "05_Lupang_hinirang" / "Lupang hinirang" / "Nang dahil sa 'yo" -> compact key
+  static String _compact(String s) => s
+      .toLowerCase()
+      .replaceFirst(RegExp(r'^\s*\d+[_\s-]+'), '')
+      .replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  /// Model class index for a label / folder code, or -1.
+  int _classIndexForName(String? name) {
+    if (name == null || name.trim().isEmpty) return -1;
+    final key = _compact(name);
+    for (int i = 0; i < _phrases.length; i++) {
+      final p = _phrases[i];
+      if (_compact('${p['folder_code'] ?? ''}') == key || _compact('${p['label'] ?? ''}') == key) {
+        return ((p['index'] as num?) ?? i).toInt();
+      }
+    }
+    return -1;
+  }
+
+  /// Class index the current step expects. Questions may come from Firestore
+  /// with their own fields, so try them all, then fall back to step order.
+  int _expectedClassIndex() {
+    final q = _activeQuestions[_currentStep];
+    for (final field in ['folder_code', 'label', 'id', 'question', 'title', 'answer']) {
+      final idx = _classIndexForName(q[field]?.toString());
+      if (idx != -1) return idx;
+    }
+    return _currentStep < _phrases.length ? _currentStep : -1;
+  }
+
+  String _labelForIndex(int idx) {
+    for (final p in _phrases) {
+      if ((p['index'] as num?)?.toInt() == idx) return '${p['label']}';
+    }
+    return 'Linya ${idx + 1}';
+  }
+
+  static bool _isInvalidLabel(Prediction p) =>
+      p.label.toUpperCase().contains('INVALID') || p.index == _invalidIndex;
+
+  /// Server prediction -> class index (-1 = INVALID_GESTURE / unknown).
+  /// Names first (the v4 names differ only in punctuation from labels.json).
+  int _indexOf(Prediction p) {
+    if (_isInvalidLabel(p)) return -1;
+    for (final name in [p.label, p.labelEn, p.code]) {
+      final idx = _classIndexForName(name);
+      if (idx != -1) return idx;
+    }
+    return (p.index >= 0 && p.index < _phrases.length) ? p.index : -1;
+  }
+
+  /// v4 rejection codes (lupang_common.REJECT_TEXT) -> what to do differently.
+  static const Map<String, String> _rejectAdvice = {
+    'NO_HANDS': "Walang nakitang kamay. Ipakita ang katawan at mga kamay sa camera.",
+    'TOO_SHORT': "Masyadong maikli ang kumpas. Isagawa ang buong galaw.",
+    'FRAGMENT_DURATION': "Kulang pa ang haba ng kumpas para sa senyas na ito. Isagawa nang buo at huwag magmadali.",
+    'LOW_MOTION': "Kulang ang galaw. Isagawa nang buo ang kumpas.",
+    'PHASE_IMBALANCE': "Simulan sa unang bahagi ng kumpas; huwag magsimula o tumigil sa huling porma.",
+    'SINGLE_STROKE': "Isang galaw lang ang nakita. Isagawa ang lahat ng bahagi ng linya.",
+    'INVALID_CLASS': "Hindi makilala bilang linya ng Lupang Hinirang. Sundan ang halimbawa.",
+    'LOW_CONFIDENCE': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
+    'SMALL_MARGIN': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
+    'HIGH_ENTROPY': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
+  };
+
+  // ---------------------------------------------------------------------------
+  // Evaluation via Cloud Run (/v1/predict_raw: full v4 pipeline server-side)
+  // ---------------------------------------------------------------------------
+
+  void _showFeedback(String text, {double score = 0.0}) {
+    if (!mounted || _isDisposed) return;
+    setState(() {
+      _currentFeedback = text;
+      _currentScore = score;
+    });
+  }
+
+  // Still-edge trimming = lupang_common._trim_still_edges (training pipeline).
+  static const double _stillSpeed = 0.25; // shoulder spans per second
+  static const double _stillMinS = 0.20; // a still run must last this long to be cut
+  static const double _speedWindowS = 0.3; // speed measured over 0.3 s: tracking jitter averages out
+  static const int _minActiveFrames = 8;
+
+  /// Cuts hands held still before the line starts / after it ends.
+  ///
+  /// The Lupang Hinirang server gate does NOT trim still edges (trim_still is
+  /// off in palm_lupang_best.json), while the training clips are pure
+  /// signing. Replaying the 363 training clips through the model showed what
+  /// a typical phone recording does to it: hands held still 1 s before and
+  /// 1.5 s after the line drop correct + accepted results from 81% to 21%.
+  /// This is the training pipeline's own trim rule (wrist speed below 0.25
+  /// shoulder spans / s for >= 0.2 s at either end), applied here before
+  /// upload; with it the same recordings pass 78% again, and clean
+  /// recordings are unaffected.
+  List<CaptureFrame> _trimStillEdges(List<CaptureFrame> frames) {
+    final first = frames.indexWhere((f) => f.hasHands);
+    final last = frames.lastIndexWhere((f) => f.hasHands);
+    if (first == -1) return frames;
+    final f = frames.sublist(first, last + 1);
+    final n = f.length;
+    if (n < _minActiveFrames) return f;
+    final aspect = (_imageWidth > 0 && _imageHeight > 0) ? _imageWidth / _imageHeight : 1.0;
+
+    // Median shoulder width (aspect-corrected), the speed unit.
+    final spans = <double>[
+      for (final fr in f)
+        if (fr.pose != null && fr.pose!.length > 16)
+          sqrt(pow((fr.pose![11][0] - fr.pose![12][0]) * aspect, 2) + pow(fr.pose![11][1] - fr.pose![12][1], 2))
+    ]..sort();
+    if (spans.length < 2) return f;
+    final span = spans[spans.length ~/ 2] + 1e-6;
+
+    // Wrist per side: the hand's own wrist when tracked, else the pose wrist.
+    List<double>? wrist(CaptureFrame fr, bool left) {
+      final h = left ? fr.leftHand : fr.rightHand;
+      if (h != null && h.isNotEmpty) return [h[0][0] * aspect, h[0][1]];
+      final p = fr.pose;
+      if (p == null || p.length <= 16) return null;
+      final w = p[left ? 15 : 16];
+      return [w[0] * aspect, w[1]];
+    }
+
+    final speed = List<double>.filled(n, 0);
+    for (final left in [true, false]) {
+      int j = 0;
+      for (int i = 1; i < n; i++) {
+        while (j < i - 1 && (f[i].timeMs - f[j + 1].timeMs) / 1000.0 >= _speedWindowS) {
+          j++;
+        }
+        final a = wrist(f[j], left), b = wrist(f[i], left);
+        if (a == null || b == null) continue;
+        final dt = max((f[i].timeMs - f[j].timeMs) / 1000.0, 1e-3);
+        final v = sqrt(pow(b[0] - a[0], 2) + pow(b[1] - a[1], 2)) / dt / span;
+        if (v > speed[i]) speed[i] = v;
+      }
+    }
+
+    final moving = [for (int i = 0; i < n; i++) if (speed[i] >= _stillSpeed) i];
+    if (moving.isEmpty) return f; // all still: leave it to the server's motion gate
+    int a = max(moving.first - 1, 0), b = moving.last;
+    if ((f[a].timeMs - f[0].timeMs) / 1000.0 < _stillMinS) a = 0;
+    if ((f[n - 1].timeMs - f[b].timeMs) / 1000.0 < _stillMinS) b = n - 1;
+    if (b - a + 1 < _minActiveFrames) return f;
+    return f.sublist(a, b + 1);
+  }
+
+  Future<void> _stopAndEvaluate({bool manual = false}) async {
+    if (!_isRecording || _isDisposed) return;
+    _isRecording = false; // stop collecting immediately (no re-entry)
+    _maxRecordTimer?.cancel();
+    var frames = List<CaptureFrame>.of(_recorded)..sort((a, b) => a.timeMs.compareTo(b.timeMs));
+    _recorded.clear();
+    if (mounted) setState(() => _recordStart = null);
+
+    if (_phrases.isEmpty || _isSuccessAchieved) return;
+
+    if (_normalizeCategoryKey(widget.category) != 'lupang_hinirang') {
+      _showFeedback("Wala pang naka-deploy na modelo para sa kategoryang ito.");
+      return;
+    }
+
+    // A manual STOP means the last moment is the reach to the screen, which
+    // is not part of the sign. (Idle edges without hands are trimmed by the
+    // server, exactly as in training.)
+    if (manual && frames.isNotEmpty) {
+      final cutoff = frames.last.timeMs - _manualStopTrimMs;
+      frames = frames.where((f) => f.timeMs <= cutoff).toList();
+    }
+    if (!frames.any((f) => f.hasHands)) {
+      _showFeedback(_rejectAdvice['NO_HANDS']!);
+      return;
+    }
+    final before = frames.length;
+    frames = _trimStillEdges(frames);
+    if (frames.length != before) {
+      debugPrint("Civic v4: trimmed ${before - frames.length} still frame(s) at the edges");
+    }
+
+    final expected = _expectedClassIndex();
+    final t0 = frames.first.timeMs;
+    // Same form as the desktop engine: upright landmarks + hands assigned to
+    // the pose wrists (CaptureFixer, in handspeak_api_service.dart).
+    final fixed = CaptureFixer.fix([for (final f in frames) f.toJson(t0)], _imageWidth, _imageHeight);
+    debugPrint("Civic v4: ${frames.length} frames over ${((frames.last.timeMs - t0) / 1000).toStringAsFixed(2)} s, "
+        "pose ${frames.where((f) => f.hasPose).length}, L ${frames.where((f) => f.leftHand != null).length}, "
+        "R ${frames.where((f) => f.rightHand != null).length}, image ${_imageWidth}x$_imageHeight | ${fixed.report}");
+
+    setState(() {
+      _isEvaluating = true;
+      _currentFeedback = "Sinusuri ang kumpas...";
+    });
 
     try {
-      final features = _extractFeatures(sequence);
-
-      final double totalEnergyLh = features[features.length - 2];
-      final double totalEnergyRh = features[features.length - 1];
-      final double totalEnergy = totalEnergyLh + totalEnergyRh;
-
-      if (totalEnergy < 0.15) {
-        if (mounted && !_isSuccessAchieved) {
-          setState(() {
-            _currentFeedback = "Igalaw ang kamay para isagawa ang kumpas...";
-            _currentScore = 0.0;
-          });
-        }
-        return;
-      }
-
-      // Convert local feature vector (818 elements) and call the Cloud Run API
-      final api = HandSpeakApiService();
-      final String modelId = HandSpeakModels.lupangHinirang;
-      
-      final response = await api.predict(
-        modelId: modelId,
-        features: features.toList(),
+      final result = await HandSpeakApiService().predictRaw(
+        modelId: HandSpeakModels.lupangHinirang,
+        frames: fixed.frames,
+        imageWidth: fixed.imageWidth,
+        imageHeight: fixed.imageHeight,
       );
-
       if (_isDisposed || _isSuccessAchieved) return;
+      final rawText = jsonEncode(result.raw);
+      debugPrint("Civic v4 response: $rawText");
 
-      // 1. Get raw probability output from tree-based model
-      final double rawProb = response.prediction.confidence;
-      final String predictedLabel = response.prediction.label.toLowerCase();
-
-      // I-filter ang mahihinang hula para iwas false positives
-      if (rawProb < 0.35) {
-        if (mounted && !_isSuccessAchieved) {
-          setState(() {
-            _currentFeedback = "Hindi makilala ang kumpas. Ulitin nang mas malinaw.";
-            _currentScore = 0.0; // Reset score para hindi magpakita ng artificial na mataas na percentage
-          });
+      final top = result.prediction;
+      final topIdx = top == null ? -1 : _indexOf(top);
+      double confFor(int idx) {
+        for (final p in [if (top != null) top, ...result.topK]) {
+          if (_indexOf(p) == idx) return p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
         }
+        return 0.0;
+      }
+
+      final targetConf = confFor(expected);
+      // Accepted = the server says so; if the reply has no explicit verdict,
+      // a real (non-INVALID) top-1 with no failed gate counts as accepted.
+      final accepted = result.accepted;
+      if (kDebugMode && mounted) {
+        final checks = result.raw['checks'];
+        final checkLines = checks is List
+            ? [
+                for (final c in checks)
+                  if (c is Map) "${c['passed'] == true ? '✓' : '✗'} ${c['label']}: ${c['text']}"
+              ].join('\n')
+            : '';
+        final secs = (frames.last.timeMs - t0) / 1000.0;
+        setState(() => _serverDebug = 'expected #$expected ${_labelForIndex(expected)} | '
+            'top=#$topIdx (${top?.label} ${top?.confidence.toStringAsFixed(2)}) | failed=${result.failed}\n'
+            'capture: ${frames.length} frames / ${secs.toStringAsFixed(1)} s = '
+            '${(frames.length / (secs > 0 ? secs : 1)).toStringAsFixed(1)} fps | ${fixed.report} | '
+            '${_engineInfo.isEmpty ? 'OLD NATIVE BUILD - stop the app and run "flutter run" again (hot reload does not update Android code)' : '$_engineInfo, ${_nativeMs.toStringAsFixed(0)} ms/frame'}\n'
+            '${checkLines.isNotEmpty ? checkLines : (rawText.length > 600 ? '${rawText.substring(0, 600)}…' : rawText)}');
+      }
+
+      // Pass only when the capture is accepted (all v4 gates passed) and its
+      // top-1 line is the one being practised.
+      if (accepted && topIdx == expected) {
+        if (mounted) setState(() => _currentScore = targetConf > 0 ? targetConf : 0.9);
+        _onSuccess();
         return;
       }
 
-      // 2. Apply artificial confidence booster kung tunay na nade-detect ang kumpas
-      double boostedProb = 0.70 + (rawProb * 0.50);
-      boostedProb = boostedProb.clamp(0.75, 0.95);
-
-      final currentQ = _activeQuestions[_currentStep];
-      final String expectedLabel = (currentQ['id'] ?? currentQ['question'] ?? currentQ['label'] ?? '').toString().toLowerCase();
-
-      final cleanExpected = expectedLabel.replaceAll(RegExp(r'^\d+_'), '').replaceAll('_', ' ').trim();
-      final cleanPredicted = predictedLabel.replaceAll(RegExp(r'^\d+_'), '').replaceAll('_', ' ').trim();
-
-      final bool isMatch = cleanPredicted == cleanExpected || 
-                           cleanExpected.contains(cleanPredicted) || 
-                           cleanPredicted.contains(cleanExpected);
-
-      debugPrint("Inference -> Predicted: '$cleanPredicted' | Expected: '$cleanExpected' | Raw: $rawProb | Boosted: $boostedProb");
-
-      if (mounted && !_isSuccessAchieved) {
-        setState(() {
-          // 3. Supply boosted probability score to UI and threshold evaluator
-          _currentScore = boostedProb;
-          if (isMatch) {
-            if (boostedProb >= successThreshold) {
-              _onSuccess();
-            } else {
-              _currentFeedback = "Tama ang kumpas! Mas lakasan pa ang galaw.";
-            }
-          } else {
-            _currentFeedback = "Maling kumpas ($cleanPredicted). Subukang muli.";
-          }
-        });
+      if (accepted && topIdx != -1) {
+        _showFeedback("Mukhang \"${_labelForIndex(topIdx)}\" ang naisagawa. Subukang muli.", score: targetConf);
+        return;
       }
+
+      final code = result.failed.firstWhere(_rejectAdvice.containsKey, orElse: () => result.failed.isNotEmpty ? result.failed.first : '');
+      var advice = _rejectAdvice[code] ??
+          (result.message != null && result.message!.trim().isNotEmpty
+              ? "Hindi tinanggap: ${result.message}"
+              : "Hindi makilala ang kumpas. Ulitin nang mas malinaw.");
+      if (topIdx != -1 && !const {'NO_HANDS', 'TOO_SHORT', 'LOW_MOTION'}.contains(code)) {
+        advice = topIdx == expected
+            ? "Halos tama! $advice"
+            : "$advice (Pinakamalapit: \"${_labelForIndex(topIdx)}\")";
+      }
+      _showFeedback(advice, score: targetConf);
+    } on ArgumentError catch (e) {
+      // Rejected by the API client before upload (e.g. no pose in most frames).
+      debugPrint("Civic v4 capture rejected client-side: ${e.message}");
+      _showFeedback("${e.message}".contains('Pose')
+          ? "Hindi makita ang katawan. Ipakita ang balikat, katawan at mga kamay sa camera."
+          : "Hindi maipadala ang kumpas. Subukang muli.");
     } catch (e, stack) {
       debugPrint("API Inference Error: $e\n$stack");
-      if (mounted && !_isSuccessAchieved) {
-        setState(() {
-          _currentFeedback = "Error sa server. Subukang muli.";
-        });
-      }
+      _showFeedback("Error sa server. Subukang muli.");
     } finally {
-      _isEvaluating = false;
+      if (mounted) {
+        setState(() => _isEvaluating = false);
+      } else {
+        _isEvaluating = false;
+      }
     }
   }
 
   void _onSuccess() async {
     if (_isSuccessAchieved) return;
-    _isSuccessAchieved = true; 
+    _isSuccessAchieved = true;
     _score++;
     HapticFeedback.heavyImpact();
 
@@ -682,8 +720,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     final isLastStep = _currentStep >= _activeQuestions.length - 1;
 
     setState(() {
-      _currentFeedback = isLastStep 
-          ? "Mahusay! Kumpleto na ang lahat ng linya!" 
+      _currentFeedback = isLastStep
+          ? "Mahusay! Kumpleto na ang lahat ng linya!"
           : "Mahusay! Tumpak ang kumpas! Lumilipat...";
     });
 
@@ -693,13 +731,17 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     _handleNextStep();
   }
 
+  void _resetStepState() {
+    _cancelRecording();
+    _isSuccessAchieved = false;
+    _currentScore = 0.0;
+    _currentFeedback = "Maghanda at isagawa ang kumpas...";
+  }
+
   void _handlePreviousStep() {
     if (_currentStep > 0) {
       setState(() {
-        _isSuccessAchieved = false;
-        _currentScore = 0.0;
-        _frameBuffer.clear();
-        _currentFeedback = "Maghanda at isagawa ang kumpas...";
+        _resetStepState();
         _currentStep--;
         _loadCurrentStepData();
       });
@@ -708,13 +750,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
   void _handleNextStep() {
     setState(() {
-      _isSuccessAchieved = false; 
-      _currentScore = 0.0; 
-      _frameBuffer.clear();
-      _currentFeedback = "Maghanda at isagawa ang kumpas...";
+      _resetStepState();
 
       if (_currentStep < _activeQuestions.length - 1) {
-        _currentStep++; 
+        _currentStep++;
         _loadCurrentStepData();
       } else {
         _currentStep++; // Moves past activeQuestions.length to trigger completion screen
@@ -729,9 +768,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     try {
       dynamic service = ProgressService();
       await service.updateUserProgress(
-        levelKey: 'civic_practice_${_normalizeCategoryKey(widget.category)}', 
-        stars: _score == _activeQuestions.length ? 3 : 2, 
-        xpEarned: _score * xpReward, 
+        levelKey: 'civic_practice_${_normalizeCategoryKey(widget.category)}',
+        stars: _score == _activeQuestions.length ? 3 : 2,
+        xpEarned: _score * xpReward,
         xpCategoryKey: 'civicXp',
       );
     } catch (e) {
@@ -743,12 +782,13 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   void dispose() {
     _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
-    
+    _countdownTimer?.cancel();
+    _maxRecordTimer?.cancel();
+
     if (_controller != null && _controller!.value.isStreamingImages) {
       _controller?.stopImageStream();
     }
     _controller?.dispose();
-    _reusableFrameBuffer = null;
 
     super.dispose();
   }
@@ -756,14 +796,14 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Pagsasanay: ${_normalizeCategoryKey(widget.category).replaceAll('_', ' ').toUpperCase()}', 
+          'Pagsasanay: ${_normalizeCategoryKey(widget.category).replaceAll('_', ' ').toUpperCase()}',
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        centerTitle: true, 
+        centerTitle: true,
         elevation: 0,
       ),
       body: SafeArea(
@@ -777,8 +817,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   Text(
                     _loadingStatus,
                     style: TextStyle(
-                      fontSize: 16, 
-                      fontWeight: FontWeight.w600, 
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                       color: theme.colorScheme.onSurface.withOpacity(0.8)
                     ),
                   ),
@@ -787,8 +827,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             )
           : Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: _currentStep >= _activeQuestions.length 
-                ? _buildCompletionView(theme) 
+              child: _currentStep >= _activeQuestions.length
+                ? _buildCompletionView(theme)
                 : _buildPracticeUI(theme),
             ),
       ),
@@ -798,6 +838,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   Widget _buildPracticeUI(ThemeData theme) {
     bool isPassing = _currentScore >= successThreshold;
     final currentItem = _activeQuestions[_currentStep];
+    final bool busy = _isRecording || _countdown > 0;
+    final double elapsed = (_isRecording && _recordStart != null)
+        ? DateTime.now().difference(_recordStart!).inMilliseconds / 1000.0
+        : 0.0;
 
     return SingleChildScrollView(
       child: Column(
@@ -821,7 +865,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  'Linya ${_currentStep + 1} sa ${_activeQuestions.length}', 
+                  'Linya ${_currentStep + 1} sa ${_activeQuestions.length}',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.primaryColor),
                 ),
               ),
@@ -837,8 +881,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           ),
           const SizedBox(height: 12),
           Text(
-            currentItem['question'] ?? '', 
-            textAlign: TextAlign.center, 
+            currentItem['question'] ?? '',
+            textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
           ),
           if (currentItem['instruction'] != null && currentItem['instruction'].toString().isNotEmpty) ...[
@@ -846,26 +890,26 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Text(
-                currentItem['instruction'], 
-                textAlign: TextAlign.center, 
+                currentItem['instruction'],
+                textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withOpacity(0.8), fontStyle: FontStyle.italic),
               ),
             ),
           ],
           const SizedBox(height: 16),
-          
+
           // Reference Image
           SizedBox(
-            width: 220, 
+            width: 220,
             height: 220,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: _isImageLoading 
-                ? const Center(child: CircularProgressIndicator()) 
-                : _templateImageBytes != null 
-                    ? Image.memory(_templateImageBytes!, fit: BoxFit.cover) 
+              child: _isImageLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _templateImageBytes != null
+                    ? Image.memory(_templateImageBytes!, fit: BoxFit.cover)
                     : Container(
-                        color: Colors.grey.shade300, 
+                        color: Colors.grey.shade300,
                         child: const Icon(Icons.image, size: 50, color: Colors.grey),
                       ),
             ),
@@ -874,38 +918,90 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
           // Camera Preview Box with Dynamic Success Highlight
           SizedBox(
-            width: 220, 
+            width: 220,
             height: 220,
             child: Container(
               decoration: BoxDecoration(
-                border: Border.all(width: 4, color: _isSuccessAchieved ? Colors.green : (isPassing ? Colors.green : theme.dividerColor)), 
+                border: Border.all(
+                  width: 4,
+                  color: _isSuccessAchieved || isPassing
+                      ? Colors.green
+                      : (_isRecording ? Colors.redAccent : theme.dividerColor),
+                ),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: _isInitialized && _controller != null 
-                  ? CameraPreview(_controller!) 
+                child: _isInitialized && _controller != null
+                  ? CameraPreview(_controller!)
                   : const Center(child: CircularProgressIndicator()),
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          if (_countdown > 0)
+            Text(
+              'Ihanda ang sarili… $_countdown',
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+            )
+          else if (_isRecording)
+            Text('Nagre-record… ${_recorded.length} frames • ${elapsed.toStringAsFixed(1)}s'
+                '${elapsed > 0.5 ? ' • ${(_recorded.length / elapsed).toStringAsFixed(1)} fps' : ''}')
+          else
+            Text(
+              !_poseVisible
+                  ? 'Lumayo nang kaunti para makita ang balikat at mga kamay'
+                  : 'Nakikita ang katawan ✓  Pindutin ang RECORD',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _poseVisible ? Colors.green : Colors.orange),
+            ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 64,
+            width: 64,
+            child: FloatingActionButton(
+              heroTag: 'civic_record_button',
+              backgroundColor: busy ? Colors.red : Colors.white,
+              foregroundColor: busy ? Colors.white : Colors.black,
+              onPressed: (_isSuccessAchieved || _isEvaluating || !_isInitialized) ? null : _toggleRecording,
+              child: _isEvaluating
+                  ? const SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 3))
+                  : Icon(
+                      _countdown > 0 ? Icons.close : (_isRecording ? Icons.stop : Icons.fiber_manual_record),
+                      size: 32,
+                    ),
+            ),
+          ),
           const SizedBox(height: 16),
           Text(
-            _currentFeedback, 
+            _currentFeedback,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: _isSuccessAchieved || isPassing ? Colors.green : theme.primaryColor, 
+              color: _isSuccessAchieved || isPassing ? Colors.green : theme.primaryColor,
               fontWeight: FontWeight.bold,
               fontSize: 16,
             ),
           ),
+          if (kDebugMode && _serverDebug.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            SelectableText(
+              _serverDebug,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+            ),
+          ],
           const SizedBox(height: 12),
           LinearProgressIndicator(
-            value: _frameBuffer.length / targetFrames, 
+            value: _isRecording
+                ? (elapsed / _maxRecording.inSeconds).clamp(0.0, 1.0).toDouble()
+                : _currentScore.clamp(0.0, 1.0).toDouble(),
             color: _isSuccessAchieved || isPassing ? Colors.green : theme.primaryColor,
           ),
           const SizedBox(height: 12),
           Text(
-            "Katiyakan: ${(_currentScore * 100).toStringAsFixed(1)}%", 
+            // On a miss this is the model's vote share for the target line.
+            "${_isSuccessAchieved ? 'Katiyakan' : 'Tugma sa linyang ito'}: "
+            "${(_currentScore * 100).toStringAsFixed(1)}%",
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
         ],
@@ -921,7 +1017,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           const Icon(Icons.verified, size: 90, color: Colors.green),
           const SizedBox(height: 20),
           const Text(
-            'Tapos na ang Pagsasanay!', 
+            'Tapos na ang Pagsasanay!',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
@@ -938,7 +1034,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               borderRadius: BorderRadius.circular(30),
             ),
             child: Text(
-              '+${_score * xpReward} Civic XP Earned', 
+              '+${_score * xpReward} Civic XP Earned',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: theme.primaryColor),
             ),
           ),

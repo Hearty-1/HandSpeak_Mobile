@@ -223,19 +223,19 @@ class ThemedBackground extends StatelessWidget {
       return Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF080928), Color(0xFF282059), Color(0xFF080928)],
+            colors: [Color(0xFF080928), Color(0xFF1B1A4B), Color(0xFF080928)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
         child: Stack(
           children: [
-            _buildGlowingOrb(300, const Color(0xFF8750A1), -50, -100),
-            _buildGlowingOrb(400, const Color(0xFF293088), 400, 200),
-            _buildGlowingOrb(200, const Color(0xFF9F88D8), 700, -50),
-            Positioned(top: 120, right: 30, child: Transform.rotate(angle: -0.5, child: const Icon(Icons.rocket_launch_rounded, color: Color(0xFF8750A1), size: 48))),
-            Positioned(top: 480, left: 25, child: Transform.rotate(angle: 0.3, child: const Icon(Icons.public_rounded, color: Color(0xFF9F88D8), size: 54))),
-            Positioned(top: 720, right: 40, child: const Icon(Icons.brightness_3_rounded, color: Color(0xFF9F88D8), size: 40)),
+            _buildGlowingOrb(300, const Color(0xFF7C4DFF), -50, -100),
+            _buildGlowingOrb(400, const Color(0xFF4C5FE6), 400, 200),
+            _buildGlowingOrb(200, const Color(0xFFB9A6FF), 700, -50),
+            Positioned(top: 120, right: 30, child: Transform.rotate(angle: -0.5, child: const Icon(Icons.rocket_launch_rounded, color: Color(0xFF7C4DFF), size: 48))),
+            Positioned(top: 480, left: 25, child: Transform.rotate(angle: 0.3, child: const Icon(Icons.public_rounded, color: Color(0xFFB9A6FF), size: 54))),
+            Positioned(top: 720, right: 40, child: const Icon(Icons.brightness_3_rounded, color: Color(0xFFB9A6FF), size: 40)),
             ...List.generate(20, (index) {
               final random = Random(index);
               return Positioned(
@@ -243,7 +243,7 @@ class ThemedBackground extends StatelessWidget {
                 left: random.nextDouble() * 380,
                 child: Icon(
                   Icons.auto_awesome, 
-                  color: const Color(0xFF9F88D8).withOpacity(random.nextDouble() * 0.5 + 0.2),
+                  color: const Color(0xFFB9A6FF).withOpacity(random.nextDouble() * 0.5 + 0.2),
                   size: random.nextDouble() * 18 + 10,
                 ),
               );

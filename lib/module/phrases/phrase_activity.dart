@@ -48,14 +48,14 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
 
     if (bgColor == 0xFF080928) { // Galaxy Explorer
-      const nodeColor = Color(0xFF9F88D8);
+      const nodeColor = Color(0xFFB9A6FF);
       return {
-        'primary': const Color(0xFF8750A1),
-        'text': const Color(0xFF9F88D8),
+        'primary': const Color(0xFF7C4DFF),
+        'text': const Color(0xFFB9A6FF),
         'line': nodeColor.withOpacity(0.6),
-        'dividerText': const Color(0xFF9F88D8).withOpacity(0.7),
-        'appBarIcon': const Color(0xFF9F88D8),
-        'cardBg': const Color(0xFF282059),
+        'dividerText': const Color(0xFFB9A6FF).withOpacity(0.7),
+        'appBarIcon': const Color(0xFFB9A6FF),
+        'cardBg': const Color(0xFF1B1A4B),
         'nodeColor': nodeColor,
         'nodeLightColor': const Color(0xFFC3B1E1),
       };

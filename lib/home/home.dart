@@ -12,7 +12,8 @@ import '../module/phrases/phrase_interface.dart';
 import '../profile/profile.dart'; 
 import '../leaderboard/arena.dart'; 
 import '../home/settings_screen.dart';
-import '../home/notifications.dart';
+import '../widgets/app_nav_bar.dart';
+import '../home/notification_bell.dart'; // Added import for the standardized bell
 
 void main() {
   runApp(const FigmaToCodeApp()); 
@@ -128,7 +129,7 @@ class SnedInterafce1 extends StatelessWidget {
     );
   }
 
-  Widget _buildDailyTreasureCard(BuildContext context, double scale) {
+  Widget _buildDailyTreasureCard(BuildContext context, double scale, String subtitle) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -166,7 +167,7 @@ class SnedInterafce1 extends StatelessWidget {
                   ),
                   SizedBox(height: 4 * scale),
                   Text(
-                    'Today\'s mini-challenge awaits!', 
+                    subtitle,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.9), 
                       fontSize: 13 * scale, 
@@ -207,8 +208,8 @@ class SnedInterafce1 extends StatelessWidget {
         int totalXp = 0; 
         int stars = 0; 
         String? avatarUrl; 
-        bool hasUnreadNotifications = false;
         List<String> recentModules = [];
+        String questSubtitle = 'Your personalised quests are ready!';
 
         String normalizeKey(String raw) {
           final k = raw.toLowerCase().trim();
@@ -220,16 +221,23 @@ class SnedInterafce1 extends StatelessWidget {
         if (userSnapshot.hasData && userSnapshot.data!.exists) { 
           final userData = userSnapshot.data!.data() as Map<String, dynamic>?; 
           if (userData != null) {
+            final quests = userData['dailyChallenges'];
+            if (quests is List && quests.isNotEmpty) {
+              final done = Set<String>.from(userData['completedDailyChallenges'] ?? const []);
+              final claimedToday = quests.where((q) => q is Map && done.contains(q['id'])).length;
+              final lp = userData['learnerProfile'];
+              final pace = lp is Map
+                  ? const {'starter': 'Getting Started', 'steady': 'Steady Pace', 'balanced': 'Balanced', 'fast': 'Fast Track'}[lp['pace']]
+                  : null;
+              questSubtitle = claimedToday >= quests.length
+                  ? 'All ${quests.length} quests done today. Great work!'
+                  : '$claimedToday of ${quests.length} quests done${pace != null ? ' · $pace' : ''}';
+            }
             studentName = userData['name'] ?? userData['displayName'] ?? userName; 
             streak = userData['streak'] ?? 0; 
             totalXp = userData['xp'] ?? 0; 
             stars = userData['stars'] ?? (totalXp ~/ 1000);  
             avatarUrl = userData['avatar'] ?? userData['photoURL']; 
-
-            final List<dynamic> rawNotifications = userData['notifications'] ?? [];
-            hasUnreadNotifications = rawNotifications.any(
-              (n) => (n is Map) && (n['isRead'] == false),
-            );
 
             List<String> userLoggedModules = [];
 
@@ -429,6 +437,7 @@ class SnedInterafce1 extends StatelessWidget {
           ),
 
           appBar: AppBar(
+            toolbarHeight: 65,
             backgroundColor: theme.cardColor.withOpacity(0.4),
             elevation: 0,
             centerTitle: true,
@@ -445,83 +454,44 @@ class SnedInterafce1 extends StatelessWidget {
               style: TextStyle(color: textColor, fontWeight: FontWeight.w700, letterSpacing: -0.5),
             ),
             actions: [
-              IconButton(
-                icon: Stack(
-                  clipBehavior: Clip.none, 
-                  children: [
-                    Icon(
-                      Icons.notifications_rounded, 
-                      color: textColor, 
-                      size: 28,
-                    ), 
-                    if (hasUnreadNotifications) 
-                      Positioned(
-                        top: -2, right: -2, 
-                        child: Container(
-                          width: 12, 
-                          height: 12, 
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF3B30), 
-                            shape: BoxShape.circle, 
-                            border: Border.all(color: theme.cardColor, width: 2),
-                          ), 
-                        ),
-                      )
-                  ],
-                ),
-                onPressed: () {
-                  Navigator.push( 
-                    context,
-                    _fadeRoute(const NotificationsScreen()), 
-                  );
-                },
-              ),
+              const NotificationBell(),
               Padding(
-                padding: const EdgeInsets.only(right: 16.0, left: 8.0), 
-                child: Image.asset("assets/pictures/image 66.png", width: 45), 
-              ),
-            ],
-          ),
-          
-          bottomNavigationBar: SafeArea(
-            child: Container(
-              width: double.infinity,
-              height: 74,
-              margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                clipBehavior: Clip.antiAlias,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: theme.cardColor.withOpacity(0.65),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(isDark ? 0.15 : 0.4),
-                        width: 1.0,
+                padding: const EdgeInsets.only(right: 16.0, left: 8.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+                  ),
+                  child: ClipOval(
+                    child: Image.asset(
+                      "assets/pictures/image 66.png", 
+                      width: 40, 
+                      height: 40, 
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.account_circle, 
+                        size: 40, 
+                        color: Theme.of(context).disabledColor
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        )
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildNavIconButton(theme, Icons.home_rounded, true, () {}),
-                        _buildNavIconButton(theme, Icons.auto_stories_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const SnedInterface2()))),
-                        _buildNavIconButton(theme, Icons.sports_esports_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const LeaderboardScreen()))),
-                        _buildNavIconButton(theme, Icons.person_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const ProfileScreen()))),
-                      ],
                     ),
                   ),
                 ),
               ),
-            ),
+            ],
+          ),
+          
+          bottomNavigationBar: AppNavBar(
+            currentIndex: 0,
+            onTap: (i) {
+              switch (i) {
+                case 1:
+                  Navigator.pushReplacement(context, _fadeRoute(const SnedInterface2()));
+                case 2:
+                  Navigator.pushReplacement(context, _fadeRoute(const LeaderboardScreen()));
+                case 3:
+                  Navigator.pushReplacement(context, _fadeRoute(const ProfileScreen()));
+              }
+            },
           ),
 
           body: Stack(
@@ -684,7 +654,7 @@ class SnedInterafce1 extends StatelessWidget {
 
                     SizedBox(height: 25 * scale), 
 
-                    _buildDailyTreasureCard(context, scale),
+                    _buildDailyTreasureCard(context, scale, questSubtitle),
 
                     SizedBox(height: 32 * scale),  
 
@@ -715,29 +685,6 @@ class SnedInterafce1 extends StatelessWidget {
     );
   }
 
-  Widget _buildNavIconButton(ThemeData theme, IconData icon, bool isSelected, VoidCallback onPressed) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: isSelected
-          ? BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(20),
-            )
-          : null,
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(),
-        icon: Icon(
-          icon,
-          color: isSelected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.5),
-          size: isSelected ? 30 : 28,
-        ),
-        onPressed: onPressed,
-      ),
-    );
-  }
 
   Widget _buildGlassContainer({
     required BuildContext context, 

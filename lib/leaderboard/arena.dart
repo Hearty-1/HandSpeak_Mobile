@@ -11,6 +11,8 @@ import '../profile/profile.dart';
 import '../profile/add_friend_screen.dart';
 import 'gamescreen.dart';
 import 'solo_challenge.dart' hide GameProperScreen;
+import 'daily_quests_section.dart';
+import '../widgets/app_nav_bar.dart';
 import '../home/notification_bell.dart'; 
 
 Route _fadeRoute(Widget page) {
@@ -109,19 +111,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return ClipOval(child: imageWidget);
   }
 
-  List<Map<String, dynamic>> _generateRandomChallenges() {
-    final List<Map<String, dynamic>> challengePool = [
-      {'id': 'lessons', 'title': 'Complete 3 Lessons', 'target': 3, 'reward': 50},
-      {'id': 'stars', 'title': 'Earn 5 Stars Today', 'target': 5, 'reward': 75},
-      {'id': 'xp', 'title': 'Earn 100 XP Today', 'target': 100, 'reward': 100},
-      {'id': 'perfect', 'title': 'Get 1 Perfect Quiz', 'target': 1, 'reward': 150},
-      {'id': 'lessons', 'title': 'Complete 1 Lesson', 'target': 1, 'reward': 20},
-      {'id': 'stars', 'title': 'Earn 3 Stars Today', 'target': 3, 'reward': 40},
-    ];
-
-    challengePool.shuffle(Random());
-    return challengePool.take(2).toList();
-  }
 
   Future<void> _checkAndResetDailyStats() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -151,7 +140,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               'dailyStars': 0,
               'perfectScores': 0,
               'lastActiveDate': FieldValue.serverTimestamp(),
-              'dailyChallenges': _generateRandomChallenges(),
             };
 
             if (difference == 1) {
@@ -161,10 +149,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             }
 
             await userRef.update(updates);
-          } else if (data['dailyChallenges'] == null) {
-            await userRef.update({
-              'dailyChallenges': _generateRandomChallenges(),
-            });
           }
         } else {
           await userRef.update({
@@ -174,7 +158,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             'completedLessons': 0,
             'dailyStars': 0,
             'perfectScores': 0,
-            'dailyChallenges': _generateRandomChallenges(),
           });
         }
       }
@@ -187,7 +170,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
-    final isDark = theme.brightness == Brightness.dark;
     final double screenWidth = MediaQuery.of(context).size.width;
     const double baseWidth = 393;
     final double scale = screenWidth / baseWidth > 1.2 ? 1.2 : screenWidth / baseWidth;
@@ -197,6 +179,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       extendBody: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
+        toolbarHeight: 65,
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -240,51 +223,42 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         actions: [
           const NotificationBell(),
           Padding(
-            padding: const EdgeInsets.only(right: 16.0, left: 4.0), 
-            child: Image.asset("assets/pictures/image 66.png", width: 45), 
-          ),
-        ],
-      ),
-
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          width: double.infinity,
-          height: 74,
-          margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            clipBehavior: Clip.antiAlias,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.cardColor.withOpacity(0.65),
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(isDark ? 0.15 : 0.4),
-                    width: 1.0,
+            padding: const EdgeInsets.only(right: 16.0, left: 8.0),
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+              ),
+              child: ClipOval(
+                child: Image.asset(
+                  "assets/pictures/image 66.png", 
+                  width: 40, 
+                  height: 40, 
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.account_circle, 
+                    size: 40, 
+                    color: Theme.of(context).disabledColor
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildNavIconButton(theme, Icons.home_rounded, false, () => Navigator.pushAndRemoveUntil(context, _fadeRoute(const SnedInterafce1(userName: "Student")), (route) => false)),
-                    _buildNavIconButton(theme, Icons.auto_stories_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const SnedInterface2()))),
-                    _buildNavIconButton(theme, Icons.sports_esports_rounded, true, () {}),
-                    _buildNavIconButton(theme, Icons.person_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const ProfileScreen()))),
-                  ],
                 ),
               ),
             ),
           ),
-        ),
+        ],
+      ),
+
+      bottomNavigationBar: AppNavBar(
+        currentIndex: 2,
+        onTap: (i) {
+          switch (i) {
+            case 0:
+              Navigator.pushAndRemoveUntil(context, _fadeRoute(const SnedInterafce1(userName: "Student")), (route) => false);
+            case 1:
+              Navigator.pushReplacement(context, _fadeRoute(const SnedInterface2()));
+            case 3:
+              Navigator.pushReplacement(context, _fadeRoute(const ProfileScreen()));
+          }
+        },
       ),
 
       body: LayoutBuilder(
@@ -356,29 +330,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildNavIconButton(ThemeData theme, IconData icon, bool isSelected, VoidCallback onPressed) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: isSelected
-          ? BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(20),
-            )
-          : null,
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(),
-        icon: Icon(
-          icon,
-          color: isSelected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.5),
-          size: isSelected ? 30 : 28,
-        ),
-        onPressed: onPressed,
-      ),
-    );
-  }
 
   Widget _buildMainHubSegmentControl(ThemeData theme, double scale) {
     final textColor = theme.colorScheme.onSurface;
@@ -637,8 +588,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   Widget _buildChallengesView(ThemeData theme, double scale) {
-    final textColor = theme.colorScheme.onSurface;
-
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4 * scale),
       child: Column(
@@ -679,74 +628,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
           SizedBox(height: 28 * scale),
 
-          Row(
-            children: [
-              Text(
-                "Daily Quests",
-                style: TextStyle(
-                  fontSize: 18 * scale,
-                  fontWeight: FontWeight.w900,
-                  fontFamily: 'Inter',
-                  color: textColor,
-                ),
-              ),
-              const Spacer(),
-              Icon(Icons.local_fire_department_rounded, color: const Color(0xFFF34B1B), size: 24 * scale),
-            ],
-          ),
-          SizedBox(height: 14 * scale),
-
-          StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('users').doc(_currentUserId).snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return Padding(
-                  padding: EdgeInsets.all(20 * scale),
-                  child: Center(child: CircularProgressIndicator(color: theme.primaryColor)),
-                );
-              }
-
-              if (!snapshot.hasData || snapshot.data == null || !snapshot.data!.exists) {
-                return Text("No active challenges found.", style: TextStyle(color: textColor));
-              }
-
-              final data = snapshot.data!.data() as Map<String, dynamic>;
-
-              int completedLessons = data['completedLessons'] ?? 0;
-              int dailyXp = data['dailyXp'] ?? 0;
-              int dailyStars = data['dailyStars'] ?? 0;
-              int perfectScores = data['perfectScores'] ?? 0;
-
-              List<dynamic> dailyChallenges = data['dailyChallenges'] ?? [];
-
-              if (dailyChallenges.isEmpty) {
-                return Padding(
-                  padding: EdgeInsets.all(12 * scale),
-                  child: Text(
-                    "Check back tomorrow for new daily quests!",
-                    style: TextStyle(fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
-                  ),
-                );
-              }
-
-              return Column(
-                children: dailyChallenges.map((challenge) {
-                  final String id = challenge['id'] ?? 'lessons';
-                  final String title = challenge['title'] ?? 'Daily Quest';
-                  final int target = challenge['target'] ?? 1;
-                  final int reward = challenge['reward'] ?? 50;
-
-                  int currentProgress = 0;
-                  if (id == 'lessons') currentProgress = completedLessons;
-                  else if (id == 'stars') currentProgress = dailyStars;
-                  else if (id == 'xp') currentProgress = dailyXp;
-                  else if (id == 'perfect') currentProgress = perfectScores;
-
-                  return _buildDailyChallengeCard(theme, title, reward, currentProgress, target, scale);
-                }).toList(),
-              );
-            },
-          ),
+          // Personalised daily quests (pace profile, claim, history):
+          // daily_quests_section.dart + services/daily_challenge_service.dart.
+          DailyQuestsSection(scale: scale),
         ],
       ),
     );
@@ -853,85 +737,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildDailyChallengeCard(ThemeData theme, String title, int xpReward, int currentProgress, int targetProgress, double scale) {
-    final textColor = theme.colorScheme.onSurface;
-    double progressPercent = (currentProgress / targetProgress).clamp(0.0, 1.0);
-    bool isComplete = currentProgress >= targetProgress;
-
-    return Container(
-      margin: EdgeInsets.only(bottom: 12 * scale),
-      padding: EdgeInsets.all(16 * scale),
-      decoration: BoxDecoration(
-        color: theme.cardColor.withOpacity(0.7),
-        borderRadius: BorderRadius.circular(20 * scale),
-        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0 * scale),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44 * scale,
-            height: 44 * scale,
-            decoration: BoxDecoration(
-              color: isComplete ? const Color(0xFF4CAF50).withOpacity(0.15) : textColor.withOpacity(0.05),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isComplete ? Icons.check_circle_rounded : Icons.star_border_rounded,
-              color: isComplete ? const Color(0xFF4CAF50) : textColor.withOpacity(0.4),
-              size: 22 * scale,
-            ),
-          ),
-          SizedBox(width: 14 * scale),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5 * scale, color: textColor)),
-                    Text("+$xpReward XP", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5 * scale, color: theme.primaryColor)),
-                  ],
-                ),
-                SizedBox(height: 8 * scale),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10 * scale),
-                        child: LinearProgressIndicator(
-                          value: progressPercent,
-                          backgroundColor: textColor.withOpacity(0.1),
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            isComplete ? const Color(0xFF4CAF50) : theme.primaryColor,
-                          ),
-                          minHeight: 8 * scale,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 12 * scale),
-                    Text(
-                      "$currentProgress / $targetProgress",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12 * scale, color: textColor.withOpacity(0.6)),
-                    )
-                  ],
-                )
-              ],
-            ),
-          )
-        ],
-      ),
-    );
-  }
 
   Widget _buildEnhancedStatBadge(ThemeData theme, IconData icon, String value, String label, Color color, double scale) {
     final textColor = theme.colorScheme.onSurface;

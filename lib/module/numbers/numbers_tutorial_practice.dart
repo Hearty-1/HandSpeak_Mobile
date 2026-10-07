@@ -35,6 +35,127 @@ class StudentEvaluationResult {
   });
 }
 
+/// Start/end handshape verifiers for dynamic numbers (11-100).
+///
+/// Every number sign goes from a start handshape (its tens "base": L for 2x,
+/// '3' for 3x, ..., the unit shape for 11-19, '1' for 100) to an end
+/// handshape (its units; 'O' for decades, 'C' for 100). Each decade ONNX
+/// model only knows its own 10 numbers, so on its own it maps other-decade
+/// signs onto them (18/28/38 -> "58") and, being trained on few clips, it
+/// also mixes up neighbours (34 -> 40). These two small classifiers, trained
+/// on all 838 clips (assets/numbers/base_shape_verifier.json), are combined
+/// with the decade model's score; see FSLOnnxService.evaluateWithModel.
+class BaseShapeVerifier {
+  static Map<String, dynamic>? _model;
+
+  static Future<void> load() async {
+    if (_model != null) return;
+    try {
+      _model = jsonDecode(await rootBundle.loadString('assets/numbers/base_shape_verifier.json'))
+          as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('[BaseShapeVerifier] unavailable: $e');
+    }
+  }
+
+  static bool get isLoaded => _model != null;
+
+  static double param(String key, double fallback) => ((_model?[key]) as num?)?.toDouble() ?? fallback;
+
+  static List<List<int>> get framings =>
+      ((_model?['framings'] as List?) ?? const [[0, 0]]).map((f) => (f as List).cast<int>()).toList();
+
+  /// Handshape a number starts in (base_shape() in training).
+  static String baseShapeFor(int n) {
+    if (n == 100) return '1';
+    if (n >= 11 && n <= 19) return '${n - 10}';
+    if (n >= 20 && n <= 29) return 'L';
+    return '${n ~/ 10}';
+  }
+
+  /// Handshape a number ends in (end_shape() in training).
+  static String endShapeFor(int n) {
+    if (n == 100) return 'C';
+    if (n >= 11 && n <= 19) return '${n - 10}';
+    if (n == 20) return 'L';
+    if (n % 10 == 0) return 'O';
+    return '${n % 10}';
+  }
+
+  static const Map<String, String> shapeNames = {
+    'L': "'L' (hinlalaki at hintuturo)",
+    '1': "'1' (hintuturo lang)",
+    '2': "'2' (hintuturo at hinlalato)",
+    '3': "'3' (hinlalaki, hintuturo, hinlalato)",
+    '4': "'4' (apat na daliri, nakatupi ang hinlalaki)",
+    '5': "'5' (bukas ang lahat ng daliri)",
+    '6': "'6' (hinlalaki sa dulo ng kalingkingan)",
+    '7': "'7' (hinlalaki sa dulo ng palasingsingan)",
+    '8': "'8' (hinlalaki sa dulo ng hinlalato)",
+    '9': "'9' (hinlalaki sa dulo ng hintuturo)",
+  };
+
+  static double _d(List<double> f, int a, int b) {
+    final dx = f[a * 3] - f[b * 3], dy = f[a * 3 + 1] - f[b * 3 + 1], dz = f[a * 3 + 2] - f[b * 3 + 2];
+    return math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  /// 20 scale/rotation-free handshape features of one frame (handshape.py).
+  static List<double> frameFeatures(List<double> f) {
+    final palm = _d(f, 0, 9) + 1e-6;
+    double r(int a, int b) => _d(f, a, 0) / (_d(f, b, 0) + 1e-6);
+    return [
+      r(8, 6), r(12, 10), r(16, 14), r(20, 18), // fingertip vs middle joint
+      r(4, 2), r(8, 5), r(12, 9), r(16, 13), r(20, 17), // fingertip vs knuckle
+      for (final t in [8, 12, 16, 20]) _d(f, 4, t) / palm, // thumb-tip contacts
+      _d(f, 4, 5) / palm, _d(f, 4, 17) / palm, _d(f, 4, 9) / palm, _d(f, 4, 6) / palm,
+      _d(f, 8, 12) / palm, _d(f, 12, 16) / palm, _d(f, 16, 20) / palm, // spreads
+    ];
+  }
+
+  /// Probability per handshape for the start (or [end]) part of a 24-frame clip.
+  static Map<String, double> probabilities(List<List<double>> clip24, {bool end = false}) {
+    final m = _model![end ? 'end' : 'start'] as Map<String, dynamic>;
+    final range = (m['frames'] as List).cast<int>();
+    final frames = [for (int i = range[0]; i < range[1]; i++) frameFeatures(clip24[i])];
+    final nf = frames.first.length;
+    final x = <double>[];
+    for (int k = 0; k < nf; k++) {
+      x.add(FSLOnnxService._median([for (final f in frames) f[k]]));
+    }
+    for (int k = 0; k < nf; k++) {
+      final mean = frames.map((f) => f[k]).reduce((a, b) => a + b) / frames.length;
+      final varSum = frames.map((f) => (f[k] - mean) * (f[k] - mean)).reduce((a, b) => a + b);
+      x.add(math.sqrt(varSum / frames.length)); // population std, like np.std
+    }
+    final mean = (m['mean'] as List).cast<num>();
+    final scale = (m['scale'] as List).cast<num>();
+    final xs = [for (int k = 0; k < x.length; k++) (x[k] - mean[k]) / scale[k]];
+    final coef = (m['coef'] as List).map((r) => (r as List).cast<num>()).toList();
+    final intercept = (m['intercept'] as List).cast<num>();
+    final logits = [
+      for (int c = 0; c < coef.length; c++)
+        intercept[c] + List.generate(xs.length, (k) => coef[c][k] * xs[k]).reduce((a, b) => a + b)
+    ];
+    final mx = logits.reduce(math.max);
+    final ex = logits.map((v) => math.exp(v - mx)).toList();
+    final sum = ex.reduce((a, b) => a + b);
+    final classes = (m['classes'] as List).cast<String>();
+    return {for (int c = 0; c < classes.length; c++) classes[c]: ex[c] / sum};
+  }
+
+  /// True when the clip plausibly starts in [target]'s base handshape: its
+  /// probability is at least `relative_threshold` x the best shape's.
+  static ({bool ok, String expected, String best, double ratio}) check(int target, List<List<double>> clip24) {
+    final expected = baseShapeFor(target);
+    if (_model == null) return (ok: true, expected: expected, best: expected, ratio: 1.0);
+    final p = probabilities(clip24);
+    final best = p.entries.reduce((a, b) => a.value >= b.value ? a : b);
+    final ratio = (p[expected] ?? 0.0) / (best.value + 1e-9);
+    return (ok: ratio >= param('relative_threshold', 0.2), expected: expected, best: best.key, ratio: ratio);
+  }
+}
+
 class FSLOnnxService {
   static OrtSession? _session;
   static int _loadedRangeGroup = -1;
@@ -140,6 +261,20 @@ static int get debugLoadedGroup => _loadedRangeGroup;
     _loadedRangeGroup = -1;
   }
 
+  /// np.median: the mean of the two middle values for even-sized lists.
+  static double _median(List<double> v) {
+    final s = [...v]..sort();
+    final m = s.length ~/ 2;
+    return s.length.isOdd ? s[m] : (s[m - 1] + s[m]) / 2.0;
+  }
+
+  /// np.linspace(0, n - 1, 24).astype(int): how the training videos were
+  /// reduced to 24 frames (index sampling over the WHOLE sign).
+  static List<List<double>> resampleTo24(List<List<double>> clip) {
+    final n = clip.length;
+    return List.generate(24, (i) => clip[n == 1 ? 0 : (i * (n - 1) / 23).floor()]);
+  }
+
   static Float32List extract78Features(List<List<double>> window24Frames) {
     const tips = [4, 8, 12, 16, 20];
     const mcps = [2, 5, 9, 13, 17];
@@ -172,7 +307,7 @@ static int get debugLoadedGroup => _loadedRangeGroup;
         final dY = norm[f][tip][1] - norm[f - 1][tip][1];
         final dZ = norm[f][tip][2] - norm[f - 1][tip][2];
         final speed = math.sqrt(dX * dX + dY * dY + dZ * dZ);
-        if (speed > 0.018) {
+        if (speed > 0.015) { // train_*.py deadzone
           frameSpeed += speed;
           totalEnergy += speed;
         }
@@ -189,10 +324,12 @@ static int get debugLoadedGroup => _loadedRangeGroup;
       }
     }
 
-    double initialThumbDist = (math.sqrt(math.pow(norm[0][8][0] - norm[0][4][0], 2) + math.pow(norm[0][8][1] - norm[0][4][1], 2)) +
-                               math.sqrt(math.pow(norm[0][12][0] - norm[0][4][0], 2) + math.pow(norm[0][12][1] - norm[0][4][1], 2))) / 2.0;
-    double finalThumbDist = (math.sqrt(math.pow(norm[23][8][0] - norm[23][4][0], 2) + math.pow(norm[23][8][1] - norm[23][4][1], 2)) +
-                             math.sqrt(math.pow(norm[23][12][0] - norm[23][4][0], 2) + math.pow(norm[23][12][1] - norm[23][4][1], 2))) / 2.0;
+    // 3D distances, as in train_*.py (tip_to_thumb uses np.linalg.norm on xyz).
+    double d3n(int f, int a, int b) => math.sqrt(math.pow(norm[f][a][0] - norm[f][b][0], 2) +
+        math.pow(norm[f][a][1] - norm[f][b][1], 2) +
+        math.pow(norm[f][a][2] - norm[f][b][2], 2));
+    double initialThumbDist = (d3n(0, 8, 4) + d3n(0, 12, 4)) / 2.0;
+    double finalThumbDist = (d3n(23, 8, 4) + d3n(23, 12, 4)) / 2.0;
     double contractionDelta = finalThumbDist - initialThumbDist;
 
     int horizCount = 0;
@@ -212,8 +349,7 @@ static int get debugLoadedGroup => _loadedRangeGroup;
           ys.add(norm[f][i][1]);
           zs.add(norm[f][i][2]);
         }
-        xs.sort(); ys.sort(); zs.sort();
-        medPts.add([xs[xs.length ~/ 2], ys[ys.length ~/ 2], zs[zs.length ~/ 2]]);
+        medPts.add([_median(xs), _median(ys), _median(zs)]);
       }
 
       double d3(List<double> a, List<double> b) =>
@@ -286,6 +422,33 @@ static int get debugLoadedGroup => _loadedRangeGroup;
     return totalEnergy;
   }
 
+  /// One ONNX run: probability per number of the loaded decade model.
+  static Map<int, double> _decadeProbabilities(List<List<double>> clip24) {
+    final inputTensor = OrtValueTensor.createTensorWithDataList(extract78Features(clip24), [1, 78]);
+    final runOptions = OrtRunOptions();
+    final outputs = _session!.run(runOptions, {'float_input': inputTensor});
+    final probs = <int, double>{};
+    try {
+      if (outputs.length > 1 && outputs[1]?.value != null) {
+        final seq = outputs[1]!.value as List;
+        if (seq.isNotEmpty && seq[0] is Map) {
+          (seq[0] as Map).forEach((k, v) => probs[int.parse(k.toString())] = (v as num).toDouble());
+        }
+      }
+      if (probs.isEmpty) {
+        final label = int.parse((outputs[0]!.value as List)[0].toString());
+        probs[label] = 1.0;
+      }
+    } finally {
+      inputTensor.release();
+      runOptions.release();
+      for (final o in outputs) {
+        o?.release();
+      }
+    }
+    return probs;
+  }
+
   static StudentEvaluationResult evaluateWithModel({
     required int targetNumber,
     required List<List<double>> window24Frames,
@@ -295,145 +458,92 @@ static int get debugLoadedGroup => _loadedRangeGroup;
       throw Exception("ONNX Session not initialized for target $targetNumber");
     }
 
-    final features78 = extract78Features(window24Frames);
-    final shape = [1, 78];
+    // 1) Decade model, averaged over a few slightly cropped framings of the
+    //    captured sign: it was trained on few clips and is sensitive to how
+    //    the sign is framed in time (+1..4% held-out accuracy).
+    final framings = BaseShapeVerifier.isLoaded ? BaseShapeVerifier.framings : const [[0, 0]];
+    final avg = <int, double>{};
+    for (final f in framings) {
+      final cut = window24Frames.sublist(f[0], 24 - f[1]);
+      _decadeProbabilities(cut.length == 24 ? cut : resampleTo24(cut))
+          .forEach((k, v) => avg[k] = (avg[k] ?? 0) + v / framings.length);
+    }
+    final classes = avg.keys.toList()..sort();
+    final targetProbability = avg[targetNumber] ?? 0.0;
 
-    final inputTensor = OrtValueTensor.createTensorWithDataList(features78, shape);
-    final runOptions = OrtRunOptions();
-    final inputs = {'float_input': inputTensor};
-    final outputs = _session!.run(runOptions, inputs);
-
-    final labelTensor = outputs[0]?.value as List;
-    int predictedNumber = int.parse(labelTensor[0].toString());
-
-    double targetProbability = 0.0;
-    if (outputs.length > 1 && outputs[1]?.value != null) {
-      final probSequence = outputs[1]?.value as List;
-      if (probSequence.isNotEmpty && probSequence[0] is Map) {
-        final probMap = probSequence[0] as Map;
-        dynamic rawProb = probMap[targetNumber] ?? probMap[targetNumber.toInt()] ?? probMap[targetNumber.toString()];
-        targetProbability = (rawProb ?? 0.0).toDouble();
-      }
+    if (!BaseShapeVerifier.isLoaded) {
+      final predicted = classes.reduce((a, b) => avg[a]! >= avg[b]! ? a : b);
+      final ok = predicted == targetNumber;
+      return StudentEvaluationResult(
+        targetNumber: targetNumber,
+        detectedNumber: predicted,
+        isCorrect: ok,
+        accuracyScore: ok ? (72.0 + 27.0 * targetProbability).clamp(72.0, 99.0) : targetProbability * 60.0,
+        feedback: ok
+            ? "Mahusay! Wastong kumpas at porma para sa Number $targetNumber"
+            : "Mukhang Number $predicted ang naisagawa. Subukang muli para sa $targetNumber.",
+        kineticEnergy: kineticEnergy,
+      );
     }
 
-    inputTensor.release();
-    runOptions.release();
-    for (var element in outputs) {
-      element?.release();
+    // 2) Fuse with how well the start and end handshapes fit each number:
+    //    score(m) = log P_decade(m) + ws log P_start(base(m)) + we log P_end(end(m)).
+    //    Held-out: correct signs accepted 55.0% -> 64.3% with no extra
+    //    other-decade false positives (see base_shape_verifier.json).
+    final ps = BaseShapeVerifier.probabilities(window24Frames);
+    final pe = BaseShapeVerifier.probabilities(window24Frames, end: true);
+    final eps = BaseShapeVerifier.param('eps', 0.02);
+    final ws = BaseShapeVerifier.param('start_weight', 0.5);
+    final we = BaseShapeVerifier.param('end_weight', 0.5);
+    double fused(int m) =>
+        math.log(avg[m]! + eps) +
+        ws * math.log((ps[BaseShapeVerifier.baseShapeFor(m)] ?? 0) + eps) +
+        we * math.log((pe[BaseShapeVerifier.endShapeFor(m)] ?? 0) + eps);
+    final scores = {for (final m in classes) m: fused(m)};
+    final best = classes.reduce((a, b) => scores[a]! >= scores[b]! ? a : b);
+    final targetScore = scores[targetNumber] ?? double.negativeInfinity;
+
+    // 3) Accept the target when it is the best fit or a close second (the
+    //    learner already knows which number they are signing)...
+    final closeEnough = targetScore >= scores[best]! - BaseShapeVerifier.param('tolerance', 0.75);
+    // ...and only if the sign plausibly STARTS in the target's tens handshape:
+    // the decade model cannot see other decades (18 vs 58).
+    final base = BaseShapeVerifier.check(targetNumber, window24Frames);
+    debugPrint('[Numbers] target $targetNumber: best $best, '
+        'P_decade(target)=${targetProbability.toStringAsFixed(2)}, '
+        'score gap ${(scores[best]! - targetScore).toStringAsFixed(2)}, '
+        'start ${base.expected}->${base.best} (${base.ratio.toStringAsFixed(2)}), '
+        'end ${BaseShapeVerifier.endShapeFor(targetNumber)}');
+
+    if (!closeEnough) {
+      return StudentEvaluationResult(
+        targetNumber: targetNumber,
+        detectedNumber: best,
+        isCorrect: false,
+        accuracyScore: (targetProbability * 60.0).clamp(0.0, 60.0),
+        feedback: "Mukhang Number $best ang naisagawa. Subukang muli para sa $targetNumber.",
+        kineticEnergy: kineticEnergy,
+      );
+    }
+    if (!base.ok) {
+      return StudentEvaluationResult(
+        targetNumber: targetNumber,
+        detectedNumber: null,
+        isCorrect: false,
+        accuracyScore: 45.0,
+        feedback: "Ang simula ay dapat ${BaseShapeVerifier.shapeNames[base.expected] ?? base.expected}. "
+            "Hawakan muna ito bago gumalaw.",
+        kineticEnergy: kineticEnergy,
+      );
     }
 
-    if (targetNumber == 100) {
-      if (predictedNumber != 100 || targetProbability < 0.65) {
-        return StudentEvaluationResult(
-          targetNumber: targetNumber,
-          detectedNumber: predictedNumber,
-          isCorrect: false,
-          accuracyScore: 40.0,
-          feedback: "Maling porma para sa 100 o masyadong mabilis. Ulitin nang malinaw.",
-          kineticEnergy: kineticEnergy,
-        );
-      }
-    }
-
-    final p1 = window24Frames[4];
-    final p2 = window24Frames[21];
-
-    double dist3D(List<double> f, int p1, int p2) {
-      final dx = f[p1 * 3] - f[p2 * 3];
-      final dy = f[p1 * 3 + 1] - f[p2 * 3 + 1];
-      final dz = f[p1 * 3 + 2] - f[p2 * 3 + 2];
-      return math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    final p2Scale = dist3D(p2, 0, 9) + 1e-6;
-    double ext(List<double> f, int tip, int mcp) => dist3D(f, 0, tip) / (dist3D(f, 0, mcp) + 1e-6);
-
-    final p1Idx = ext(p1, 8, 5);
-    final p1Mid = ext(p1, 12, 9);
-    final p1Ring = ext(p1, 16, 13);
-    final p1Pnk = ext(p1, 20, 17);
-
-    if (targetNumber >= 31 && targetNumber <= 39) {
-      bool isBase3 = p1Idx > 1.20 && p1Mid > 1.20 && p1Ring < 1.15 && p1Pnk < 1.12;
-      if (!isBase3) {
-        return StudentEvaluationResult(
-          targetNumber: targetNumber,
-          detectedNumber: null,
-          isCorrect: false,
-          accuracyScore: 30.0,
-          feedback: "Maling simula! Dapat magsimula sa Base '3' (Ring at Pinky nakatupi).",
-          kineticEnergy: kineticEnergy,
-        );
-      }
-    } else if (targetNumber == 40) {
-      // 40 keeps its own extra starting-shape requirement (Base '4') ON TOP
-      // of the generalized contraction check below — every other decade
-      // number only needs the contraction, since their starting shapes
-      // aren't independently pinned down the way 40's is.
-      bool isBase4 = p1Idx > 1.20 && p1Mid > 1.20 && p1Ring > 1.20 && p1Pnk > 1.15;
-      final contractionDelta = (dist3D(window24Frames[23], 4, 8) - dist3D(window24Frames[0], 4, 8)) / p2Scale;
-      if (!isBase4 || contractionDelta >= -0.04) {
-        return StudentEvaluationResult(
-          targetNumber: targetNumber,
-          detectedNumber: null,
-          isCorrect: false,
-          accuracyScore: 35.0,
-          feedback: "Maling galaw para sa 40! Kailangang mag-pulse o mag-contract papuntang 'O' shape.",
-          kineticEnergy: kineticEnergy,
-        );
-      }
-    } else if (targetNumber % 10 == 0) {
-      // GENERALIZED FIX: every decade number (20, 30, 50, 60, 70, 80, 90,
-      // 100) requires the same hand-closing/contraction motion 40 already
-      // required — thumb-to-index distance must shrink meaningfully from
-      // the start of the window to the end. Previously only 40 enforced
-      // this, so every other decade sign could pass on kinetic energy
-      // alone (e.g. random shaking) with no requirement that the hand
-      // actually closed. -0.04 (rather than a tighter value) is the
-      // balance point: strict enough to reject non-contracting motion,
-      // loose enough that normal human variation in how far/fast someone
-      // closes their hand still passes.
-      final contractionDelta = (dist3D(window24Frames[23], 4, 8) - dist3D(window24Frames[0], 4, 8)) / p2Scale;
-      if (contractionDelta >= -0.04) {
-        return StudentEvaluationResult(
-          targetNumber: targetNumber,
-          detectedNumber: null,
-          isCorrect: false,
-          accuracyScore: 35.0,
-          feedback: "Kailangang mag-pulse o mag-'squeeze' ang kamay papuntang saradong hugis para sa Number $targetNumber.",
-          kineticEnergy: kineticEnergy,
-        );
-      }
-    }
-
-    double baseScore = (predictedNumber == targetNumber) 
-        ? (65.0 + (targetProbability * 25.0)) 
-        : (targetProbability * 50.0);
-        
-    double motionBonus = (kineticEnergy / 0.40).clamp(0.0, 1.0) * 25.0;
-
-    // PENALTY FIX: motion energy should only ever be a BONUS on top of a
-    // prediction the model already agrees with — it should never be able
-    // to carry a WRONG prediction across the passing threshold by itself.
-    // Without this, a user who shakes their hand with enough energy gets
-    // the full +25 regardless of what the model thinks they signed, which
-    // is exactly the false-positive path reported for the decade numbers.
-    if (predictedNumber != targetNumber) {
-      motionBonus *= 0.2;
-    }
-
-    double finalAccuracy = (baseScore + motionBonus).clamp(0.0, 100.0);
-
-    bool isCorrect = (predictedNumber == targetNumber) && (finalAccuracy >= 70.0);
-
+    final double score = (72.0 + 27.0 * targetProbability).clamp(72.0, 99.0);
     return StudentEvaluationResult(
       targetNumber: targetNumber,
-      detectedNumber: predictedNumber,
-      isCorrect: isCorrect,
-      accuracyScore: finalAccuracy,
-      feedback: isCorrect
-          ? "Mahusay! Wastong kumpas at porma para sa Number $targetNumber (${finalAccuracy.toStringAsFixed(1)}%)"
-          : "Maling sign ang naisagawa (${finalAccuracy.toStringAsFixed(1)}%). Na-detect: Number $predictedNumber.",
+      detectedNumber: targetNumber,
+      isCorrect: true,
+      accuracyScore: score,
+      feedback: "Mahusay! Wastong kumpas at porma para sa Number $targetNumber (${score.toStringAsFixed(1)}%)",
       kineticEnergy: kineticEnergy,
     );
   }
@@ -496,6 +606,9 @@ class _ThemeVisuals {
 // MAIN PRACTICE WIDGET
 // =============================================================================
 
+/// Whole-sign capture for dynamic numbers: hold base -> move -> hold end.
+enum _SignPhase { waitBase, baseHeld, moving }
+
 class NumbersTutorialPractice extends StatefulWidget {
   final String targetNumber;
 
@@ -514,8 +627,40 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
   bool _isProcessingFrame = false;
   final List<List<double>> _frameBuffer = [];
-  DateTime _lastSampleTime = DateTime.now();
-  DateTime? _lastEvaluationTime;
+
+  // ---- Dynamic numbers (11-100): whole-sign capture -------------------------
+  // The models were trained on WHOLE sign videos (all frames, resampled to 24)
+  // that start in the base handshape and end in the final one. The old fixed
+  // ~1.1 s window usually caught only the end of the sign, whose shape is the
+  // START of the next decade number: on the training clips that alone turns
+  // 34 -> 40, 89 -> 90, 23 -> 30, 74/78 -> 80, exactly the reported errors.
+  final List<int> _frameTimesMs = [];
+  _SignPhase _phase = _SignPhase.waitBase;
+  int _stillSinceMs = 0; // start of the current still stretch (0 = moving)
+  int _baseStillStartMs = 0; // when the held base handshape began
+  int _moveStartMs = 0;
+  int _fastFrames = 0;
+  double _motion = 0.0; // smoothed fingertip speed, palm lengths / second
+  List<double>? _prevFrame;
+  int _prevFrameMs = 0;
+  int _cooldownUntilMs = 0;
+  static const double _moveSpeed = 1.6;
+  static const double _stillSpeed = 0.7;
+  static const int _baseHoldMs = 500;
+  static const int _endHoldMs = 600;
+  static const int _preMotionMs = 1500; // base hold kept before the movement
+  static const int _maxSignMs = 4500;
+  static const int _maxBufferMs = 7000;
+
+  // Landmark orientation and aspect (see _toTrainingSpace).
+  int _imageWidth = 0, _imageHeight = 0;
+  final Map<int, double> _uprightVotes = {0: 0, 90: 0, 180: 0, 270: 0};
+  int _orientationFrames = 0;
+  int? _lockedRotation;
+
+  /// Width / height of the training videos, inferred from the training data
+  /// (palm proportions stay most constant at ~1.5-1.8, i.e. landscape).
+  static const double _trainingAspect = 1.6;
 
   bool _isInitialized = false;
   bool _isSuccessAchieved = false;
@@ -558,6 +703,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
     if (!_isStaticSign) {
       final target = int.tryParse(widget.targetNumber) ?? 0;
+      BaseShapeVerifier.load();
       FSLOnnxService.loadModelForTarget(target).then((_) {
         final ready = FSLOnnxService.isReadyFor(target);
         debugPrint(
@@ -664,10 +810,219 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
     try {
       final int sensorOrientation = _controller!.description.sensorOrientation;
+      _imageWidth = image.width;
+      _imageHeight = image.height;
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
       debugPrint("Inference Error: $e");
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dynamic numbers: coordinates
+  // ---------------------------------------------------------------------------
+
+  static List<double> _rotateUpright(double u, double v, int degrees) {
+    switch (((degrees % 360) + 360) % 360) {
+      case 90:
+        return [1.0 - v, u];
+      case 180:
+        return [1.0 - u, 1.0 - v];
+      case 270:
+        return [v, 1.0 - u];
+      default:
+        return [u, v];
+    }
+  }
+
+  int get _handRotation => _lockedRotation ?? (_controller?.description.sensorOrientation ?? 0);
+
+  /// hand_landmarker may report landmarks in the raw (sideways) sensor frame;
+  /// 95% of training frames have the hand pointing up, so the rotation that
+  /// makes the wrist -> middle knuckle vector point up is the right one.
+  void _voteOrientation(Hand hand) {
+    if (_lockedRotation != null) return;
+    final dx = hand.landmarks[9].x - hand.landmarks[0].x;
+    final dy = hand.landmarks[9].y - hand.landmarks[0].y;
+    final len = math.sqrt(dx * dx + dy * dy);
+    if (len < 1e-6) return;
+    _uprightVotes[0] = _uprightVotes[0]! + dy / len;
+    _uprightVotes[90] = _uprightVotes[90]! + dx / len;
+    _uprightVotes[180] = _uprightVotes[180]! - dy / len;
+    _uprightVotes[270] = _uprightVotes[270]! - dx / len;
+    if (++_orientationFrames < 12) return;
+    final best = _uprightVotes.entries.reduce((a, b) => a.value <= b.value ? a : b);
+    if (best.value / _orientationFrames < -0.5) {
+      _lockedRotation = best.key;
+      debugPrint('[Numbers] hand rotation locked at ${best.key}°');
+    }
+  }
+
+  /// Puts landmarks in the same space as the training videos: upright,
+  /// NOT mirrored (training clips are raw camera video; 76% show the thumb on
+  /// the image's right = a right hand palm-out, un-flipped), and with x/z
+  /// rescaled from the portrait phone frame to the landscape training frame.
+  /// The old code mirrored sideways sensor coordinates instead.
+  List<double> _toTrainingSpace(Hand hand) {
+    final rotation = _handRotation;
+    final bool swap = rotation == 90 || rotation == 270;
+    final double w = (swap ? _imageHeight : _imageWidth).toDouble();
+    final double h = (swap ? _imageWidth : _imageHeight).toDouble();
+    final double s = (w > 0 && h > 0) ? (w / h) / _trainingAspect : 1.0;
+    final out = <double>[];
+    for (final lm in hand.landmarks) {
+      final up = _rotateUpright(lm.x, lm.y, rotation);
+      out.addAll([0.5 + (up[0] - 0.5) * s, up[1], lm.z * s]);
+    }
+    return out;
+  }
+
+  static double _palmLen(List<double> f) => math.sqrt(math.pow(f[27] - f[0], 2) + math.pow(f[28] - f[1], 2)) + 1e-6;
+
+  // ---------------------------------------------------------------------------
+  // Dynamic numbers: whole-sign segmentation
+  // ---------------------------------------------------------------------------
+
+  void _resetSign({bool keepCooldown = true}) {
+    _frameBuffer.clear();
+    _frameTimesMs.clear();
+    _phase = _SignPhase.waitBase;
+    _stillSinceMs = 0;
+    _baseStillStartMs = 0;
+    _fastFrames = 0;
+    _bufferFrameCount = 0;
+    if (!keepCooldown) _cooldownUntilMs = 0;
+  }
+
+  void _setStatus(String text) {
+    if (mounted && _currentFeedback != text && _currentScore < successThreshold) {
+      setState(() => _currentFeedback = text);
+    }
+  }
+
+  /// Hold the first handshape, move, hold the final handshape: then the whole
+  /// sign is evaluated once.
+  void _trackDynamicSign(List<Hand> hands) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final usable = hands.where((h) => h.landmarks.length == 21).toList();
+    if (usable.isEmpty) {
+      _prevFrame = null;
+      _resetSign();
+      if (mounted && _currentFeedback != "Walang kamay na nakikita") {
+        setState(() {
+          _currentScore = 0.0;
+          _holdProgress = 0.0;
+          _currentFeedback = "Walang kamay na nakikita";
+        });
+      }
+      return;
+    }
+    if (now < _cooldownUntilMs) return;
+    if (_phase == _SignPhase.waitBase) _voteOrientation(usable.first);
+
+    final frame = _toTrainingSpace(usable.first);
+    // Fingertip speed in palm lengths per second (includes whole-hand bounces,
+    // which is the movement of doubles like 44 / 99).
+    if (_prevFrame != null && now > _prevFrameMs) {
+      final palm = _palmLen(frame);
+      double sp = 0;
+      for (final t in const [4, 8, 12, 16, 20]) {
+        sp += math.sqrt(math.pow(frame[t * 3] - _prevFrame![t * 3], 2) + math.pow(frame[t * 3 + 1] - _prevFrame![t * 3 + 1], 2));
+      }
+      final raw = sp / 5 / palm / ((now - _prevFrameMs) / 1000.0);
+      _motion = 0.5 * _motion + 0.5 * raw;
+    }
+    _prevFrame = frame;
+    _prevFrameMs = now;
+
+    _frameBuffer.add(frame);
+    _frameTimesMs.add(now);
+    while (_frameTimesMs.isNotEmpty && now - _frameTimesMs.first > _maxBufferMs) {
+      _frameTimesMs.removeAt(0);
+      _frameBuffer.removeAt(0);
+    }
+
+    final bool still = _motion < _stillSpeed;
+    if (still) {
+      if (_stillSinceMs == 0) _stillSinceMs = now;
+    } else {
+      _stillSinceMs = 0;
+    }
+    _fastFrames = _motion > _moveSpeed ? _fastFrames + 1 : 0;
+
+    switch (_phase) {
+      case _SignPhase.waitBase:
+        if (still && now - _stillSinceMs >= _baseHoldMs) {
+          _phase = _SignPhase.baseHeld;
+          _baseStillStartMs = _stillSinceMs;
+        }
+        _setStatus("Ipakita at hawakan ang unang porma ng ${widget.targetNumber}...");
+        break;
+      case _SignPhase.baseHeld:
+        if (_fastFrames >= 2) {
+          _phase = _SignPhase.moving;
+          _moveStartMs = now;
+          _setStatus("Ginagawa ang galaw...");
+        } else {
+          _setStatus("Handa na ✓ Gawin ang galaw ng ${widget.targetNumber}, saka hawakan ang huling porma.");
+        }
+        break;
+      case _SignPhase.moving:
+        final settled = still && now - _stillSinceMs >= _endHoldMs;
+        if (settled || now - _moveStartMs >= _maxSignMs) {
+          _evaluateSign(now);
+          return;
+        }
+        break;
+    }
+    if (mounted) {
+      final progress = _phase == _SignPhase.moving
+          ? math.min(_requiredBufferFrames - 1, 6 + ((now - _moveStartMs) / 120).round())
+          : 0;
+      if (progress != _bufferFrameCount) setState(() => _bufferFrameCount = progress);
+    }
+  }
+
+  void _evaluateSign(int now) {
+    // The sign: the held base just before the movement, the movement, and
+    // the final hold.
+    final startMs = math.max(_baseStillStartMs, _moveStartMs - _preMotionMs);
+    final clip = [
+      for (int i = 0; i < _frameBuffer.length; i++)
+        if (_frameTimesMs[i] >= startMs) _frameBuffer[i]
+    ];
+    _resetSign();
+    _cooldownUntilMs = now + 1200;
+
+    final targetInt = int.tryParse(widget.targetNumber) ?? 0;
+    double score = 0.0;
+    String feedback;
+    if (clip.length < 12) {
+      // extract_*_landmarks.py discards clips with fewer than 12 frames.
+      feedback = "Masyadong mabilis. Hawakan ang unang porma, gumalaw, saka hawakan ang huling porma.";
+    } else if (!FSLOnnxService.isReadyFor(targetInt)) {
+      // Never score against a stale model from another decade.
+      feedback = "Naglo-load pa ang modelo para sa Number ${widget.targetNumber}...";
+      debugPrint("[DBG] Skipped evaluation: model not ready for target $targetInt "
+          "(loaded group=${FSLOnnxService.debugLoadedGroup}, expected=${FSLOnnxService.groupForNumber(targetInt)})");
+    } else {
+      try {
+        final clip24 = FSLOnnxService.resampleTo24(clip);
+        final evalResult = FSLOnnxService.evaluateWithModel(
+          targetNumber: targetInt,
+          window24Frames: clip24,
+          kineticEnergy: FSLOnnxService.computeKineticEnergy(clip24),
+        );
+        score = evalResult.accuracyScore;
+        feedback = evalResult.feedback;
+        debugPrint('[Numbers] clip ${clip.length} frames, rotation $_handRotation -> '
+            '${evalResult.isCorrect ? 'PASS' : 'fail'} (${evalResult.detectedNumber})');
+      } catch (e) {
+        debugPrint("ONNX Inference Error: $e");
+        feedback = "Model Inference Error.";
+      }
+    }
+    _updateGameLogic(score, feedback);
   }
 
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template, Size imageSize) {
@@ -755,16 +1110,11 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     _isProcessingFrame = true;
 
     try {
+      if (!_isStaticSign) {
+        _trackDynamicSign(detectedHands);
+        return;
+      }
       if (detectedHands.isNotEmpty) {
-        
-        if (!_isStaticSign && _lastEvaluationTime != null) {
-          if (DateTime.now().difference(_lastEvaluationTime!).inMilliseconds < 1500) {
-            return; 
-          } else {
-            _lastEvaluationTime = null; 
-          }
-        }
-
         double score = 0.0;
         String feedback = "Ipuwesto ang kamay sa tapat ng camera";
 
@@ -789,73 +1139,12 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                 ? "Tama ang posisyon! Hawakan ang kamay."
                 : "I-adjust ang posisyon para sa Sign ${widget.targetNumber}.";
           }
-        } else {
-          final hand = detectedHands.first;
-
-          final List<double> flattenedLms = [];
-          for (var lm in hand.landmarks) {
-            flattenedLms.addAll([1.0 - lm.x, lm.y, lm.z]);
-          }
-
-          final now = DateTime.now();
-          if (now.difference(_lastSampleTime).inMilliseconds >= 45) {
-            _lastSampleTime = now;
-            _frameBuffer.add(flattenedLms);
-            
-            _bufferFrameCount = _frameBuffer.length;
-
-            if (_frameBuffer.length >= 24) {
-              final currentEnergy = FSLOnnxService.computeKineticEnergy(_frameBuffer);
-              final targetInt = int.tryParse(widget.targetNumber) ?? 0;
-
-              if (currentEnergy < 0.15) { 
-                score = 15.0;
-                feedback = "Static hand detected! Gawin ang tamang galaw o transition.";
-              } else if (!FSLOnnxService.isReadyFor(targetInt)) {
-                // THE RACE-CONDITION FIX: do not evaluate against whatever
-                // model happens to currently be loaded — only evaluate
-                // once it's confirmed to be the correct decade-group model
-                // for THIS target. Without this gate, a buffer that fills
-                // before loadModelForTarget finishes (or if it silently
-                // failed to load — see the catch in loadModelForTarget)
-                // would score against a stale, wrong-decade model and
-                // produce a label that isn't even in this target's real
-                // label space (e.g. "18"/"28" while practicing 58).
-                score = 0.0;
-                feedback = "Naglo-load pa ang modelo para sa Number ${widget.targetNumber}...";
-                debugPrint(
-                    "[DBG] Skipped evaluation: model not ready for target $targetInt "
-                    "(loaded group=${FSLOnnxService.debugLoadedGroup}, expected=${FSLOnnxService.groupForNumber(targetInt)})");
-              } else {
-                try {
-                  final evalResult = FSLOnnxService.evaluateWithModel(
-                    targetNumber: int.tryParse(widget.targetNumber) ?? 0,
-                    window24Frames: _frameBuffer,
-                    kineticEnergy: currentEnergy,
-                  );
-
-                  score = evalResult.accuracyScore;
-                  feedback = evalResult.feedback;
-                } catch (e) {
-                  debugPrint("ONNX Inference Error: $e");
-                  feedback = "Model Inference Error.";
-                }
-              }
-
-              _frameBuffer.clear();
-              _bufferFrameCount = 0; 
-              _lastEvaluationTime = DateTime.now(); 
-            }
-          } else {
-            return; 
-          }
         }
 
         _updateGameLogic(score, feedback);
       } else {
         _frameBuffer.clear();
         _bufferFrameCount = 0;
-        _lastEvaluationTime = null; 
         if (mounted) {
           setState(() {
             _currentScore = 0.0;

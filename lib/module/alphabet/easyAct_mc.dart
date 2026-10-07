@@ -12,8 +12,10 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
 import '/providers/sound_provider.dart';
+import '/providers/theme_provider.dart' show GalaxyPalette;
 import '/module/alphabet/recognizer.dart'; 
 import '/services/progress_service.dart';
+import '/services/gesture_analytics.dart';
 
 // ==========================================
 // 1. DATA MODELS
@@ -184,7 +186,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
 
     if (hex == 0x080928 || (r <= 15 && g <= 15 && b >= 30 && b <= 50)) { 
       return const LinearGradient(
-        colors: [Color(0xFF282059), Color(0xFF8750A1)], 
+        colors: [Color(0xFF1B1A4B), Color(0xFF7C4DFF)], 
         begin: Alignment.topLeft, 
         end: Alignment.bottomRight,
       );
@@ -331,6 +333,10 @@ class EasyActMc extends StatefulWidget {
 class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMixin {
   final AlphabetQuizApiService _apiService = AlphabetQuizApiService();
   final ProgressService _progressService = ProgressService();
+  // Every camera attempt of this session -> gesture_attempts (hard levels).
+  late final GestureAttemptTracker? _gestureTracker = _isCameraLevel
+      ? GestureAttemptTracker(category: 'alphabet', levelId: widget.levelId, threshold: successThreshold)
+      : null;
   
   List<QuizQuestion> _questions = [];
   bool _isLoading = true;
@@ -420,6 +426,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   @override
   void dispose() {
+    // Left mid-level (no-op if the level was completed / lost: already finished).
+    _gestureTracker?.finish(outcome: 'exited', heartsLeft: _hearts, totalQuestions: _questions.length);
     _handSub?.cancel();
     _cameraController?.stopImageStream();
     _cameraController?.dispose();
@@ -741,6 +749,11 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     if (_isAnswered) return;
     final q = _questions[_currentIndex];
     bool isCorrect = false;
+    // Analytics for this attempt (gesture_attempts).
+    String? predictedLabel;
+    double? modelConfidence;
+    final bool handsInView = _latestDetectedHands.isNotEmpty;
+    final bool usedDynamicModel = _isCameraLevel && _isDynamicLetter && _dynamicModelReady && _dynamicSignRecognizer != null;
 
     if (_isCameraLevel) {
       if (_latestDetectedHands.isNotEmpty) {
@@ -748,6 +761,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           final targetLetter = q.correctAnswer.toUpperCase();
           final frame = _dynamicSignRecognizer!.extractFrameFeatures(_latestDetectedHands);
           final result = _dynamicSignRecognizer!.predictFromRecording([frame]);
+          predictedLabel = result?.label;
+          modelConfidence = result?.confidence;
           if (result != null && result.label.toUpperCase() == targetLetter) {
             double rawConf = result.confidence;
             _currentScore = (rawConf > 1.0 ? rawConf : rawConf * 100.0).clamp(0.0, 100.0);
@@ -804,14 +819,17 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     }
 
     if (_isCameraLevel) {
-      _progressService.recordGestureAttempt(
+      _gestureTracker?.recordAttempt(
         sign: q.correctAnswer,
-        levelId: widget.levelId,
         questionId: q.id,
+        questionIndex: _currentIndex,
         isCorrect: isCorrect,
         score: _currentScore,
-        category: 'alphabet',
-        isCameraGesture: true,
+        isDynamic: usedDynamicModel,
+        confidence: modelConfidence,
+        predictedLabel: predictedLabel,
+        handsDetected: handsInView,
+        trigger: 'check',
       );
     }
 
@@ -832,6 +850,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   void _showGameOverDialog() {
+    _gestureTracker?.finish(outcome: 'game_over', heartsLeft: 0, starsEarned: 0, totalQuestions: _questions.length);
     _progressService.recordActivityAttempt(
       levelId: widget.levelId,
       category: 'alphabet',
@@ -888,6 +907,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         isCompleted: true,
         starsEarned: starsEarned,
       );
+      _gestureTracker?.finish(
+          outcome: 'completed', heartsLeft: _hearts, starsEarned: starsEarned, totalQuestions: _questions.length);
       
       try {
         final user = FirebaseAuth.instance.currentUser;
@@ -949,11 +970,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         'subtitle': isCorrect 
             ? "Out of this world accuracy!" 
             : "Trajectory off course!",
-        'gradient': isCorrect 
-            ? const LinearGradient(colors: [Color(0xFF282059), Color(0xFF8750A1)])
-            : const LinearGradient(colors: [Color(0xFF080928), Color(0xFF4A1828)]),
-        'badgeColor': isCorrect ? const Color(0xFF8750A1) : const Color(0xFFEA2B2B),
-        'accentColor': const Color(0xFF9F88D8),
+        // Aurora green = correct, nebula rose = wrong (instantly distinguishable).
+        'gradient': isCorrect ? GalaxyPalette.correct : GalaxyPalette.wrong,
+        'badgeColor': isCorrect ? GalaxyPalette.success : GalaxyPalette.error,
+        'accentColor': isCorrect ? GalaxyPalette.success : GalaxyPalette.error,
       };
     }
 

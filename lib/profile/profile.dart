@@ -13,6 +13,8 @@ import '../home/notification_bell.dart';
 import '../home/settings_screen.dart';
 import 'add_friend_screen.dart';
 import '/auth/login_screen.dart';
+import '../widgets/app_nav_bar.dart';
+import '/services/daily_challenge_service.dart';
 
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
@@ -97,7 +99,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
-    final isDark = theme.brightness == Brightness.dark;
 
     final User? currentUser = FirebaseAuth.instance.currentUser;
     final double screenWidth = MediaQuery.of(context).size.width;
@@ -135,6 +136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       
       appBar: AppBar(
+        toolbarHeight: 65,
         backgroundColor: theme.cardColor.withOpacity(0.4),
         elevation: 0,
         centerTitle: true,
@@ -179,20 +181,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           const NotificationBell(),
           Padding(
-            padding: const EdgeInsets.only(right: 20.0, left: 4.0),
+            padding: const EdgeInsets.only(right: 16.0, left: 8.0),
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(25),
+              child: ClipOval(
                 child: Image.asset(
                   "assets/pictures/image 66.png", 
-                  width: 40,
-                  height: 40,
+                  width: 40, 
+                  height: 40, 
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Icon(Icons.account_circle, size: 40, color: theme.disabledColor),
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.account_circle, 
+                    size: 40, 
+                    color: Theme.of(context).disabledColor
+                  ),
                 ),
               ),
             ),
@@ -200,45 +205,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
 
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          width: double.infinity,
-          height: 74,
-          margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            clipBehavior: Clip.antiAlias,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.cardColor.withOpacity(0.65),
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(isDark ? 0.15 : 0.4),
-                    width: 1.0,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    )
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildNavIconButton(theme, Icons.home_rounded, false, () => Navigator.pushAndRemoveUntil(context, _fadeRoute(const SnedInterafce1(userName: "Student")), (route) => false)),
-                    _buildNavIconButton(theme, Icons.auto_stories_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const SnedInterface2()))),
-                    _buildNavIconButton(theme, Icons.sports_esports_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const LeaderboardScreen()))),
-                    _buildNavIconButton(theme, Icons.person_rounded, true, () {}),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+      bottomNavigationBar: AppNavBar(
+        currentIndex: 3,
+        onTap: (i) {
+          switch (i) {
+            case 0:
+              Navigator.pushAndRemoveUntil(context, _fadeRoute(const SnedInterafce1(userName: "Student")), (route) => false);
+            case 1:
+              Navigator.pushReplacement(context, _fadeRoute(const SnedInterface2()));
+            case 2:
+              Navigator.pushReplacement(context, _fadeRoute(const LeaderboardScreen()));
+          }
+        },
       ),
       
       body: Stack(
@@ -283,6 +261,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 List<dynamic> followingList = [];
                 Map<String, dynamic> progressMap = {};
                 Map<String, dynamic> storedBadgesMap = {};
+                List<String> completedQuests = [];
+                List<String>? unexploredCategories;
 
                 if (snapshot.hasData && snapshot.data!.exists) {
                   final userData = snapshot.data!.data() as Map<String, dynamic>?;
@@ -303,6 +283,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     // Pull existing synced badges
                     storedBadgesMap = userData['badges'] as Map<String, dynamic>? ?? {};
+                    completedQuests = List<String>.from(userData['completedDailyChallenges'] ?? const []);
+                    final lp = userData['learnerProfile'];
+                    if (lp is Map && lp['unexplored'] is List) {
+                      unexploredCategories = List<String>.from(lp['unexplored']);
+                    }
                     
                     if (userData.containsKey('progress') && userData['progress'] is Map) {
                       progressMap = Map<String, dynamic>.from(userData['progress']);
@@ -368,6 +353,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     currentProgress: followersCount,
                     targetProgress: 10,
                     themeColor: Colors.teal,
+                  ),
+                  // Daily quest badges: finish every quest of a track.
+                  for (final entry in DailyChallengeService.trackProgress(completedQuests, unexplored: unexploredCategories).entries)
+                    BadgeData(
+                      title: questTracks[entry.key]!.badgeTitle,
+                      description: questTracks[entry.key]!.badgeDescription,
+                      imagePath: questTracks[entry.key]!.badgeImage,
+                      currentProgress: entry.value.$1,
+                      targetProgress: entry.value.$2,
+                      themeColor: questTracks[entry.key]!.color,
+                    ),
+                  BadgeData(
+                    title: "Quest Master",
+                    description: "Complete 25 daily quests.",
+                    imagePath: "assets/pictures/Crown.png",
+                    currentProgress: completedQuests.length,
+                    targetProgress: 25,
+                    themeColor: const Color(0xFFFFC107),
                   ),
                 ];
 
@@ -657,29 +660,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildNavIconButton(ThemeData theme, IconData icon, bool isSelected, VoidCallback onPressed) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: isSelected
-          ? BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(20),
-            )
-          : null,
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(),
-        icon: Icon(
-          icon,
-          color: isSelected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.5),
-          size: isSelected ? 30 : 28,
-        ),
-        onPressed: onPressed,
-      ),
-    );
-  }
 
   Widget _buildInteractiveBadge(BuildContext context, BadgeData badge, double scale) {
     final theme = Theme.of(context);

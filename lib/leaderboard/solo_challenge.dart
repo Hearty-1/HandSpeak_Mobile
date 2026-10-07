@@ -1683,18 +1683,7 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
                             color: accentColor,
                           ),
                         ),
-                        if (!isCorrect) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            "Correct answer: $correctAnswer",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'Inter',
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                            ),
-                          ),
-                        ],
+                        // Removed the incorrect correct answer display block here
                       ],
                     ),
                   ),

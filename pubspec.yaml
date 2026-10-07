@@ -110,13 +110,8 @@ flutter:
     - assets/numbers/labels_81_90.json
     - assets/numbers/labels_91_100.json
     - assets/phrases/
-    - assets/civic/
-    - assets/civic/fsl_lupang_hinirang.onnx
-    - assets/civic/fsl_panata.onnx
-    - assets/civic/fsl_panunumpa.onnx
+    # Civic line lists (the models run on the server, so only the labels ship).
     - assets/civic/labels_lupang_hinirang.json
-    - assets/civic/labels_panata.json
-    - assets/civic/labels_panunumpa.json
     - assets/pictures/
     - assets/sounds/
   # The following line ensures that the Material Icons font is

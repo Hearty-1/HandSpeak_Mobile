@@ -12,6 +12,7 @@ import '../home/home.dart';
 import '../leaderboard/arena.dart'; 
 import '../home/notification_bell.dart';
 import '../home/settings_screen.dart';
+import '../widgets/app_nav_bar.dart';
 
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
@@ -203,6 +204,7 @@ class SnedInterface2 extends StatelessWidget {
               ),
 
               appBar: AppBar(
+                toolbarHeight: 65,
                 backgroundColor: theme.cardColor.withOpacity(0.4),
                 elevation: 0,
                 centerTitle: true,
@@ -221,53 +223,42 @@ class SnedInterface2 extends StatelessWidget {
                 actions: [
                   const NotificationBell(),
                   Padding(
-                    padding: const EdgeInsets.only(right: 16.0, left: 4.0),
-                    child: ClipOval(
-                      child: Image.asset("assets/pictures/image 66.png", width: 40, height: 40, fit: BoxFit.cover),
-                    ), 
-                  ),
-                ],
-              ),
-      
-              bottomNavigationBar: SafeArea(
-                child: Container(
-                  width: double.infinity,
-                  height: 74,
-                  margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    clipBehavior: Clip.antiAlias,
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: theme.cardColor.withOpacity(0.65),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(isDark ? 0.15 : 0.4),
-                            width: 1.0,
+                    padding: const EdgeInsets.only(right: 16.0, left: 8.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          "assets/pictures/image 66.png", 
+                          width: 40, 
+                          height: 40, 
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Icon(
+                            Icons.account_circle, 
+                            size: 40, 
+                            color: Theme.of(context).disabledColor
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            )
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _buildNavIconButton(theme, Icons.home_rounded, false, () => Navigator.pushAndRemoveUntil(context, _fadeRoute(const SnedInterafce1(userName: "Student")), (route) => false)),
-                            _buildNavIconButton(theme, Icons.auto_stories_rounded, true, () {}),
-                            _buildNavIconButton(theme, Icons.sports_esports_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const LeaderboardScreen()))),
-                            _buildNavIconButton(theme, Icons.person_rounded, false, () => Navigator.pushReplacement(context, _fadeRoute(const ProfileScreen()))),
-                          ],
                         ),
                       ),
                     ),
                   ),
-                ),
+                ],
+              ),
+      
+              bottomNavigationBar: AppNavBar(
+                currentIndex: 1,
+                onTap: (i) {
+                  switch (i) {
+                    case 0:
+                      Navigator.pushAndRemoveUntil(context, _fadeRoute(const SnedInterafce1(userName: "Student")), (route) => false);
+                    case 2:
+                      Navigator.pushReplacement(context, _fadeRoute(const LeaderboardScreen()));
+                    case 3:
+                      Navigator.pushReplacement(context, _fadeRoute(const ProfileScreen()));
+                  }
+                },
               ),
 
               body: Stack(
@@ -385,29 +376,6 @@ class SnedInterface2 extends StatelessWidget {
     );
   }
 
-  Widget _buildNavIconButton(ThemeData theme, IconData icon, bool isSelected, VoidCallback onPressed) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: isSelected
-          ? BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(20),
-            )
-          : null,
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(),
-        icon: Icon(
-          icon,
-          color: isSelected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.5),
-          size: isSelected ? 30 : 28,
-        ),
-        onPressed: onPressed,
-      ),
-    );
-  }
 
   Widget _buildGridNode({
     required BuildContext context,

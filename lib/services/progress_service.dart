@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'gesture_analytics.dart';
 
 class ProgressService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -32,22 +33,15 @@ class ProgressService {
     User? currentUser = _auth.currentUser;
     if (currentUser == null) return;
 
-    final formattedSign = sign.toLowerCase().startsWith('http') ? sign : sign.toUpperCase();
-
-    try {
-      await _db.collection('gesture_attempts').add({
-        'userId': currentUser.uid,
-        'sign': formattedSign,
-        'category': _normalizeCategory(category),
-        'levelId': levelId,
-        'questionId': questionId,
-        'isCorrect': isCorrect,
-        'score': score.round(),
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      debugPrint('Error recording camera gesture attempt: $e');
-    }
+    // Same organised layout as the activities: one session document per
+    // level with an `attempts` subcollection (see gesture_analytics.dart).
+    await GestureAttemptTracker.forScreen(category: _normalizeCategory(category), levelId: levelId).recordAttempt(
+      sign: sign,
+      questionId: questionId,
+      isCorrect: isCorrect,
+      score: score,
+      handsDetected: score > 0,
+    );
   }
 
   /// Records group challenge performance data to Firestore for web dashboard tracking

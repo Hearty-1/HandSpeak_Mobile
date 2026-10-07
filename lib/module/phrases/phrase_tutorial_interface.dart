@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'phrase_tutorial_practice.dart' show CalendarSigns;
 import 'phrase_tutorial_detail.dart';
 
 class PhraseLesson {
@@ -11,6 +12,7 @@ class PhraseLesson {
   final String imageUrl;
   final int order;
   final bool isLocked;
+  final String category; // PhraseCategories.greetings | PhraseCategories.calendar
 
   PhraseLesson({
     required this.id,
@@ -18,7 +20,23 @@ class PhraseLesson {
     required this.imageUrl,
     required this.order,
     this.isLocked = false,
+    this.category = PhraseCategories.greetings,
   });
+}
+
+class PhraseCategories {
+  static const String greetings = 'greetings';
+  static const String calendar = 'calendar';
+
+  static const List<String> phraseKeys = ['phrase', 'phrases', 'Phrase', 'Phrases'];
+  static const List<String> calendarKeys = [
+    'calendar', 'Calendar', 'calendar_phrases', 'month', 'months', 'Months', 'buwan', 'Buwan',
+  ];
+
+  static const Map<String, String> titles = {
+    greetings: 'Pagbati at Parirala',
+    calendar: 'Kalendaryo (Mga Buwan)',
+  };
 }
 
 class PhraseTutorialInterface extends StatefulWidget {
@@ -33,6 +51,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
   List<PhraseLesson> _filteredLessons = [];
   bool _isLoading = true;
   bool _hasError = false;
+  String _query = '';
 
   @override
   void initState() {
@@ -40,102 +59,171 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
     _fetchLessons();
   }
 
+  /// Built-in month lessons, used for any month that has no Firestore lesson
+  /// (category "calendar") yet. Firestore lessons always take precedence.
+  List<PhraseLesson> _builtInMonths(Set<int> present) => [
+        for (int i = 0; i < 12; i++)
+          if (!present.contains(i))
+            PhraseLesson(
+              id: 'builtin_month_$i',
+              title: CalendarSigns.displayLabels[i],
+              imageUrl: '',
+              order: 1000 + i,
+              category: PhraseCategories.calendar,
+            ),
+      ];
+
+  Future<String> _resolveImage(String rawImagePath) async {
+    // Resolve Firebase Storage paths dynamically if not a direct URL or local asset
+    if (rawImagePath.isNotEmpty &&
+        !rawImagePath.startsWith('http://') &&
+        !rawImagePath.startsWith('https://') &&
+        !rawImagePath.startsWith('assets/') &&
+        !rawImagePath.startsWith('data:image')) {
+      try {
+        final ref = rawImagePath.startsWith('gs://')
+            ? FirebaseStorage.instance.refFromURL(rawImagePath)
+            : FirebaseStorage.instance.ref(rawImagePath);
+        return await ref.getDownloadURL();
+      } catch (e) {
+        debugPrint("Cloud Storage resolution error for $rawImagePath: $e");
+      }
+    }
+    return rawImagePath;
+  }
+
   Future<void> _fetchLessons() async {
+    final lessons = <PhraseLesson>[];
+    bool failed = false;
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('tutorial_lessons')
-          .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
+          .where('category', whereIn: [...PhraseCategories.phraseKeys, ...PhraseCategories.calendarKeys])
           .get();
 
-      if (snapshot.docs.isNotEmpty) {
-        List<PhraseLesson> lessons = [];
-
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
-          
-          String rawImagePath = (data['image_url'] ?? 
-                                 data['imageUrl'] ?? 
-                                 data['imageStoragePath'] ?? 
-                                 data['imagePath'] ?? 
-                                 '').toString().trim();
-
-          String resolvedUrl = rawImagePath;
-
-          // Resolve Firebase Storage paths dynamically if not a direct URL or local asset
-          if (rawImagePath.isNotEmpty &&
-              !rawImagePath.startsWith('http://') &&
-              !rawImagePath.startsWith('https://') &&
-              !rawImagePath.startsWith('assets/') &&
-              !rawImagePath.startsWith('data:image')) {
-            try {
-              resolvedUrl = await FirebaseStorage.instance
-                  .ref(rawImagePath)
-                  .getDownloadURL();
-            } catch (e) {
-              debugPrint("Cloud Storage resolution error for $rawImagePath: $e");
-            }
-          }
-
-          lessons.add(PhraseLesson(
-            id: doc.id,
-            title: data['displayTitle'] ?? 
-                   data['gestureKey'] ?? 
-                   data['symbol'] ?? 
-                   data['title'] ?? 
-                   data['label'] ?? 
-                   data['name'] ?? 
-                   'Unknown Phrase',
-            imageUrl: resolvedUrl,
-            order: (data['order'] as num?)?.toInt() ?? 0,
-            isLocked: data['isLocked'] ?? (data['status'] == 'locked'),
-          ));
-        }
-
-        lessons.sort((a, b) => a.order.compareTo(b.order));
-
-        if (mounted) {
-          setState(() {
-            _allLessons = lessons;
-            _filteredLessons = lessons;
-            _isLoading = false;
-            _hasError = false;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _allLessons = [];
-            _filteredLessons = [];
-            _isLoading = false;
-            _hasError = false;
-          });
-        }
-      }
+      final resolved = await Future.wait(snapshot.docs.map((doc) async {
+        final data = doc.data();
+        final rawImagePath = (data['image_url'] ??
+                data['imageUrl'] ??
+                data['imageStoragePath'] ??
+                data['imagePath'] ??
+                '')
+            .toString()
+            .trim();
+        final title = (data['displayTitle'] ??
+                data['gestureKey'] ??
+                data['symbol'] ??
+                data['title'] ??
+                data['label'] ??
+                data['name'] ??
+                'Unknown Phrase')
+            .toString();
+        final isCalendar = PhraseCategories.calendarKeys.contains(data['category']) ||
+            CalendarSigns.isMonth(title);
+        return PhraseLesson(
+          id: doc.id,
+          title: title,
+          imageUrl: await _resolveImage(rawImagePath),
+          order: (data['order'] as num?)?.toInt() ?? 0,
+          isLocked: data['isLocked'] ?? (data['status'] == 'locked'),
+          category: isCalendar ? PhraseCategories.calendar : PhraseCategories.greetings,
+        );
+      }));
+      lessons.addAll(resolved);
     } catch (e) {
       debugPrint("Firestore fetch error: $e");
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-        });
-      }
+      failed = true;
+    }
+
+    final presentMonths = {
+      for (final l in lessons)
+        if (l.category == PhraseCategories.calendar) CalendarSigns.indexFor(l.title),
+    };
+    lessons.addAll(_builtInMonths(presentMonths));
+    lessons.sort((a, b) {
+      if (a.category != b.category) return a.category == PhraseCategories.greetings ? -1 : 1;
+      return a.order.compareTo(b.order);
+    });
+
+    if (mounted) {
+      setState(() {
+        _allLessons = lessons;
+        _filteredLessons = _applyFilter(lessons, _query);
+        _isLoading = false;
+        _hasError = failed;
+      });
     }
   }
 
-  void _runFilter(String enteredKeyword) {
-    List<PhraseLesson> results = [];
-    if (enteredKeyword.isEmpty) {
-      results = _allLessons;
-    } else {
-      results = _allLessons
-          .where((lesson) =>
-              lesson.title.toLowerCase().contains(enteredKeyword.toLowerCase()))
-          .toList();
-    }
+  List<PhraseLesson> _applyFilter(List<PhraseLesson> lessons, String keyword) {
+    if (keyword.isEmpty) return lessons;
+    final k = keyword.toLowerCase();
+    return lessons.where((l) {
+      if (l.title.toLowerCase().contains(k)) return true;
+      final m = CalendarSigns.indexFor(l.title); // "march" finds Marso
+      return m != -1 && CalendarSigns.classNames[m].toLowerCase().contains(k);
+    }).toList();
+  }
 
+  void _runFilter(String enteredKeyword) {
     setState(() {
-      _filteredLessons = results;
+      _query = enteredKeyword;
+      _filteredLessons = _applyFilter(_allLessons, enteredKeyword);
     });
+  }
+
+  void _openLesson(PhraseLesson lesson) {
+    if (lesson.isLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Complete previous phrases to unlock ${lesson.title}!"),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+    // Next / Previous in the detail screen stay within the lesson's section.
+    final section = _allLessons.where((l) => l.category == lesson.category).toList();
+    final index = section.indexWhere((l) => l.id == lesson.id);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PhraseTutorialDetail(
+          dynamicLessons: section
+              .map((l) => <String, dynamic>{
+                    'title': l.title,
+                    'gestureKey': l.title, // the title is the gesture target for phrases
+                    'imageUrl': l.imageUrl,
+                    'category': l.category,
+                  })
+              .toList(),
+          initialIndex: index == -1 ? 0 : index,
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String category, int count, Color textColor) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 12, left: 4),
+      child: Row(
+        children: [
+          Icon(
+            category == PhraseCategories.calendar ? Icons.calendar_month_rounded : Icons.waving_hand_rounded,
+            size: 20,
+            color: Theme.of(context).primaryColor,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              PhraseCategories.titles[category] ?? category,
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, fontFamily: 'Inter', color: textColor),
+            ),
+          ),
+          Text('$count', style: TextStyle(fontWeight: FontWeight.w700, color: textColor.withOpacity(0.5))),
+        ],
+      ),
+    );
   }
 
   @override
@@ -255,7 +343,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
       return Center(child: CircularProgressIndicator(color: Theme.of(context).primaryColor));
     }
 
-    if (_hasError) {
+    if (_hasError && _allLessons.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -288,40 +376,47 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
       );
     }
 
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      itemCount: _filteredLessons.length, 
-      itemBuilder: (context, index) {
-        final lesson = _filteredLessons[index];
-        
-        return PhraseCard(
+    final rows = <Widget>[
+      if (_hasError)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Icon(Icons.cloud_off_rounded, size: 18, color: textColor.withOpacity(0.6)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text("Hindi ma-load ang ibang aralin mula sa server.",
+                    style: TextStyle(fontSize: 13, color: textColor.withOpacity(0.7))),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() => _isLoading = true);
+                  _fetchLessons();
+                },
+                child: const Text("Retry"),
+              ),
+            ],
+          ),
+        ),
+    ];
+    for (final category in [PhraseCategories.greetings, PhraseCategories.calendar]) {
+      final section = _filteredLessons.where((l) => l.category == category).toList();
+      if (section.isEmpty) continue;
+      rows.add(_sectionHeader(category, section.length, textColor));
+      for (final lesson in section) {
+        rows.add(PhraseCard(
           title: lesson.title,
           isLocked: lesson.isLocked,
-          onTap: () {
-            if (!lesson.isLocked) {
-              final originalIndex = _allLessons.indexWhere((l) => l.id == lesson.id);
-              
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PhraseTutorialDetail(
-                    phraseList: _allLessons, 
-                    initialIndex: originalIndex == -1 ? 0 : originalIndex,
-                  ),
-                ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Complete previous phrases to unlock ${lesson.title}!"),
-                  backgroundColor: Colors.redAccent,
-                ),
-              );
-            }
-          },
-        );
-      },
+          onTap: () => _openLesson(lesson),
+        ));
+      }
+      rows.add(const SizedBox(height: 8));
+    }
+
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      children: rows,
     );
   }
 }

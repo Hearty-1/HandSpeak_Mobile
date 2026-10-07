@@ -45,6 +45,12 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Test builds: no R8 shrinking. With the MediaPipe / TFLite / ONNX
+            // libraries, R8 needs more memory than this PC has (the build ran
+            // 89 min and the Gradle daemon was killed). Turn back on, with
+            // proguard-rules.pro, for a store release on a bigger machine.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

@@ -40,10 +40,10 @@ class _NumbersDifficultySelectionScreenState
 
     if (bgColor == 0xFF080928) { // Galaxy
       return {
-        'primary': const Color(0xFF8750A1),
-        'text': const Color(0xFF9F88D8),
-        'appBarIcon': const Color(0xFF9F88D8),
-        'cardBg': const Color(0xFF282059),
+        'primary': const Color(0xFF7C4DFF),
+        'text': const Color(0xFFB9A6FF),
+        'appBarIcon': const Color(0xFFB9A6FF),
+        'cardBg': const Color(0xFF1B1A4B),
       };
     }
     if (bgColor == 0xFF1D3D3A) { // Enchanted Forest
