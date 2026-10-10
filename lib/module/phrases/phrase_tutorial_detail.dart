@@ -8,6 +8,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '/services/performance_monitor.dart';
 
 import 'phrase_tutorial_practice.dart'; // Updated import
+import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
 
 class TutorialSign {
   final String label;
@@ -99,6 +100,16 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
         }
 
         final resolvedUrl = snapshot.data ?? '';
+
+        // Video lessons (dynamic signs) play with speed control.
+        final lower = resolvedUrl.split('?').first.toLowerCase();
+        if (const ['.mp4', '.mov', '.webm', '.m4v', '.3gp', '.mkv'].any(lower.endsWith)) {
+          return SizedBox(
+            width: width,
+            height: height,
+            child: ColoredBox(color: Colors.black, child: Center(child: CustomVideoPlayer(videoUrl: resolvedUrl))),
+          );
+        }
 
         if (resolvedUrl.startsWith('data:image')) {
           try {
@@ -408,6 +419,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
                                     MaterialPageRoute(
                                       builder: (context) => PhraseTutorialPractice(
                                         targetPhrase: currentSign.gestureKey, // Links to PhrasePractice properly
+                                        mediaUrl: currentSign.imageUrl, // lesson demo video / image
                                       ),
                                     ),
                                   );

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show FrameTiming, ImageFilter;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -172,8 +173,9 @@ class PerformanceMonitor {
       );
     }
 
-    // UI smoothness.
-    if (_frames.length >= 30) {
+    // UI smoothness. Not judged in debug builds: they always render slowly
+    // (no AOT), which would raise a false "app is lagging" alarm.
+    if (!kDebugMode && _frames.length >= 30) {
       final slow = _frames.where((f) => f.ms > 33).length / _frames.length;
       if (slow > maxJankRatio) {
         problems[PerfIssue.jank] = PerfStatus(

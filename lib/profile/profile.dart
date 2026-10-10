@@ -14,7 +14,7 @@ import '../home/settings_screen.dart';
 import 'add_friend_screen.dart';
 import '/auth/login_screen.dart';
 import '../widgets/app_nav_bar.dart';
-import '/services/daily_challenge_service.dart';
+import 'achievements.dart';
 
 import '/services/performance_monitor.dart';
 
@@ -28,27 +28,6 @@ Route _fadeRoute(Widget page) {
   );
 }
 
-class BadgeData {
-  final String title;
-  final String description;
-  final String imagePath;
-  final int currentProgress;
-  final int targetProgress;
-  final Color themeColor;
-
-  bool get isUnlocked => currentProgress >= targetProgress;
-  double get progressPercent => (currentProgress / targetProgress).clamp(0.0, 1.0);
-
-  BadgeData({
-    required this.title,
-    required this.description,
-    required this.imagePath,
-    required this.currentProgress,
-    required this.targetProgress,
-    required this.themeColor,
-  });
-}
-
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -57,7 +36,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool _showAllBadges = false;
 
   Widget _buildAvatarImage(BuildContext context, String avatarData, double scale, {double size = 100}) {
     final theme = Theme.of(context);
@@ -256,125 +234,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 String email = currentUser.email ?? "student@handspeak.edu";
                 String avatarUrl = "";
                 
-                int stars = 0, xp = 0, streak = 0, followersCount = 0, followingCount = 0, soloChallenges = 0;
-                int perfectScores = 0;
-                
+                int stars = 0, xp = 0, streak = 0, followersCount = 0, followingCount = 0;
+
                 List<dynamic> followersList = [];
                 List<dynamic> followingList = [];
-                Map<String, dynamic> progressMap = {};
                 Map<String, dynamic> storedBadgesMap = {};
-                List<String> completedQuests = [];
-                List<String>? unexploredCategories;
+                Map<String, dynamic> userData = {};
 
                 if (snapshot.hasData && snapshot.data!.exists) {
-                  final userData = snapshot.data!.data() as Map<String, dynamic>?;
-                  if (userData != null) {
-                    name = userData['name'] ?? name;
-                    email = userData['email'] ?? email;
-                    avatarUrl = userData['avatar'] ?? "";
-                    stars = userData['stars'] ?? 0;
-                    streak = userData['streak'] ?? 0;
-                    soloChallenges = userData['soloChallengesCompleted'] ?? 0;
-                    perfectScores = userData['perfectScores'] ?? 0;
-                    
-                    followersList = userData['followers'] as List<dynamic>? ?? [];
-                    followingList = userData['following'] as List<dynamic>? ?? [];
-                    
-                    followersCount = followersList.length;
-                    followingCount = followingList.length;
+                  userData = (snapshot.data!.data() as Map<String, dynamic>?) ?? {};
+                  name = userData['name'] ?? name;
+                  email = userData['email'] ?? email;
+                  avatarUrl = userData['avatar'] ?? "";
+                  stars = userData['stars'] ?? 0;
+                  streak = userData['streak'] ?? 0;
 
-                    // Pull existing synced badges
-                    storedBadgesMap = userData['badges'] as Map<String, dynamic>? ?? {};
-                    completedQuests = List<String>.from(userData['completedDailyChallenges'] ?? const []);
-                    final lp = userData['learnerProfile'];
-                    if (lp is Map && lp['unexplored'] is List) {
-                      unexploredCategories = List<String>.from(lp['unexplored']);
-                    }
-                    
-                    if (userData.containsKey('progress') && userData['progress'] is Map) {
-                      progressMap = Map<String, dynamic>.from(userData['progress']);
-                      xp = userData['xp'] ?? 0;
-                      if (xp == 0) progressMap.forEach((key, val) { if (val is num) xp += val.toInt(); });
-                    }
+                  followersList = userData['followers'] as List<dynamic>? ?? [];
+                  followingList = userData['following'] as List<dynamic>? ?? [];
+                  followersCount = followersList.length;
+                  followingCount = followingList.length;
+
+                  // Already-synced badges (title -> unlock time).
+                  storedBadgesMap = userData['badges'] as Map<String, dynamic>? ?? {};
+
+                  xp = userData['xp'] ?? 0;
+                  if (xp == 0 && userData['progress'] is Map) {
+                    (userData['progress'] as Map).forEach((key, val) { if (val is num) xp += val.toInt(); });
                   }
                 }
 
-                final List<BadgeData> badges = [
-                  BadgeData(
-                    title: "First Sign",
-                    description: "Complete your very first lesson.",
-                    imagePath: "assets/pictures/alphabet1.png",
-                    currentProgress: xp,
-                    targetProgress: 50,
-                    themeColor: Colors.blueAccent,
-                  ),
-                  BadgeData(
-                    title: "Star Scholar",
-                    description: "Collect 10 total stars from modules.",
-                    imagePath: "assets/pictures/large_star.png",
-                    currentProgress: stars,
-                    targetProgress: 10,
-                    themeColor: Colors.amber,
-                  ),
-                  BadgeData(
-                    title: "Streak Keeper",
-                    description: "Maintain a 7-day learning streak.",
-                    imagePath: "assets/pictures/fire.png", 
-                    currentProgress: streak,
-                    targetProgress: 7,
-                    themeColor: Colors.deepOrange,
-                  ),
-                  BadgeData(
-                    title: "Perfectionist",
-                    description: "Achieve a perfect score on 5 lessons.",
-                    imagePath: "assets/pictures/perfect.png", 
-                    currentProgress: perfectScores,
-                    targetProgress: 5,
-                    themeColor: Colors.green,
-                  ),
-                  BadgeData(
-                    title: "Sign Master",
-                    description: "Earn 1,000 XP through lessons and arenas.",
-                    imagePath: "assets/pictures/sign1.png",
-                    currentProgress: xp,
-                    targetProgress: 1000,
-                    themeColor: Colors.purpleAccent,
-                  ),
-                  BadgeData(
-                    title: "Challenger",
-                    description: "Complete 10 Solo Challenges.",
-                    imagePath: "assets/pictures/swords.png", 
-                    currentProgress: soloChallenges,
-                    targetProgress: 10,
-                    themeColor: Colors.redAccent,
-                  ),
-                  BadgeData(
-                    title: "Socialite",
-                    description: "Connect with 10 other students.",
-                    imagePath: "assets/pictures/people.png", 
-                    currentProgress: followersCount,
-                    targetProgress: 10,
-                    themeColor: Colors.teal,
-                  ),
-                  // Daily quest badges: finish every quest of a track.
-                  for (final entry in DailyChallengeService.trackProgress(completedQuests, unexplored: unexploredCategories).entries)
-                    BadgeData(
-                      title: questTracks[entry.key]!.badgeTitle,
-                      description: questTracks[entry.key]!.badgeDescription,
-                      imagePath: questTracks[entry.key]!.badgeImage,
-                      currentProgress: entry.value.$1,
-                      targetProgress: entry.value.$2,
-                      themeColor: questTracks[entry.key]!.color,
-                    ),
-                  BadgeData(
-                    title: "Quest Master",
-                    description: "Complete 25 daily quests.",
-                    imagePath: "assets/pictures/Crown.png",
-                    currentProgress: completedQuests.length,
-                    targetProgress: 25,
-                    themeColor: const Color(0xFFFFC107),
-                  ),
-                ];
+                // Every achievement (achievements.dart): learning, mastery,
+                // consistency, arena, social and daily-quest badges.
+                final List<BadgeData> badges = buildAchievements(userData);
+                final List<BadgeData> previewBadges = highlightBadges(badges);
 
                 // Sync newly unlocked badges to Firestore for web reporting tracking
                 Map<String, dynamic> newBadgesToSync = {};
@@ -557,13 +449,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               SizedBox(width: 12 * scale),
                               GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _showAllBadges = !_showAllBadges;
-                                  });
-                                },
+                                onTap: () => AchievementsSheet.show(
+                                  context,
+                                  badges: badges,
+                                  scale: scale,
+                                  onBadgeTap: (b) => _showBadgeDetails(context, b, scale),
+                                ),
                                 child: Text(
-                                  _showAllBadges ? "Show Less" : "See All",
+                                  "See All",
                                   style: TextStyle(
                                     color: textColor.withOpacity(0.6),
                                     fontSize: 14 * scale,
@@ -599,9 +492,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 crossAxisSpacing: 16 * scale,
                                 childAspectRatio: 0.75,
                               ),
-                              itemCount: _showAllBadges ? badges.length : 3,
+                              itemCount: previewBadges.length,
                               itemBuilder: (context, index) {
-                                return _buildInteractiveBadge(context, badges[index], scale);
+                                return BadgeTile(
+                                  badge: previewBadges[index],
+                                  scale: scale,
+                                  onTap: () => _showBadgeDetails(context, previewBadges[index], scale),
+                                );
                               },
                             ),
                           ),
@@ -663,102 +560,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
 
-  Widget _buildInteractiveBadge(BuildContext context, BadgeData badge, double scale) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
-
-    return GestureDetector(
-      onTap: () => _showBadgeDetails(context, badge, scale),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Expanded(
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                if (badge.isUnlocked)
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: badge.themeColor.withOpacity(0.4),
-                          blurRadius: 15,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                  ),
-                ColorFiltered(
-                  colorFilter: badge.isUnlocked
-                      ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply)
-                      : const ColorFilter.matrix([
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0,      0,      0,      0.4, 0, 
-                        ]),
-                  child: Image.asset(
-                    badge.imagePath,
-                    fit: BoxFit.contain,
-                    errorBuilder: (c, e, s) => Icon(Icons.shield_rounded, size: 40 * scale, color: theme.disabledColor),
-                  ),
-                ),
-                if (!badge.isUnlocked)
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: EdgeInsets.all(4 * scale),
-                      decoration: BoxDecoration(
-                        color: theme.scaffoldBackgroundColor,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.lock_rounded, size: 14 * scale, color: textColor.withOpacity(0.6)),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          SizedBox(height: 8 * scale),
-          Text(
-            badge.title,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: badge.isUnlocked ? textColor : textColor.withOpacity(0.5),
-              fontSize: 12 * scale,
-              fontWeight: FontWeight.w800,
-              fontFamily: 'Inter',
-            ),
-          ),
-          SizedBox(height: 4 * scale),
-          if (!badge.isUnlocked)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4 * scale),
-              child: LinearProgressIndicator(
-                value: badge.progressPercent,
-                minHeight: 4 * scale,
-                backgroundColor: textColor.withOpacity(0.1),
-                valueColor: AlwaysStoppedAnimation<Color>(badge.themeColor.withOpacity(0.7)),
-              ),
-            )
-          else
-            Text(
-              "UNLOCKED",
-              style: TextStyle(
-                color: badge.themeColor,
-                fontSize: 9 * scale,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.5,
-              ),
-            )
-        ],
-      ),
-    );
-  }
-
   void _showBadgeDetails(BuildContext context, BadgeData badge, double scale) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
@@ -795,20 +596,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     BoxShadow(color: badge.themeColor.withOpacity(0.3), blurRadius: 30, spreadRadius: 5)
                   ] : [],
                 ),
-                child: ColorFiltered(
-                  colorFilter: badge.isUnlocked
-                      ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply)
-                      : const ColorFilter.matrix([
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0,      0,      0,      0.3, 0,
-                        ]),
-                  child: Image.asset(
-                    badge.imagePath,
-                    errorBuilder: (c, e, s) => Icon(Icons.shield_rounded, size: 80 * scale, color: theme.disabledColor),
-                  ),
-                ),
+                child: BadgeMedallion(badge: badge, size: 100 * scale),
               ),
               SizedBox(height: 20 * scale),
               Text(
@@ -852,7 +640,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                         Text(
-                          "${badge.currentProgress} / ${badge.targetProgress}",
+                          "${badge.shownProgress} / ${badge.targetProgress}",
                           style: TextStyle(
                             color: badge.isUnlocked ? badge.themeColor : textColor.withOpacity(0.5),
                             fontWeight: FontWeight.w900,

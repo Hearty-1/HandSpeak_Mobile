@@ -22,6 +22,8 @@ import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
 
+import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
+
 // =============================================================================
 // THEME VISUAL MAPPING (Imported from Numbers UI/UX)
 // =============================================================================
@@ -121,7 +123,10 @@ class CalendarSigns {
 class PhraseTutorialPractice extends StatefulWidget {
   final String targetPhrase;
 
-  const PhraseTutorialPractice({super.key, required this.targetPhrase});
+  /// Lesson demo video / image (optional; a placeholder is shown otherwise).
+  final String mediaUrl;
+
+  const PhraseTutorialPractice({super.key, required this.targetPhrase, this.mediaUrl = ''});
 
   @override
   State<PhraseTutorialPractice> createState() => _PhraseTutorialPracticeState();
@@ -406,7 +411,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     final landmarker = _landmarker;
     if (c == null || landmarker == null) return;
 
-    final int rotation = c.description.sensorOrientation;
+    final int rotation = _cameraImageRotation(c); // live device rotation
+    _recognizer.handRotation = rotation;
     final bool swap = rotation == 90 || rotation == 270;
     _xScale = PhraseRecognizer.aspectXScale(
       swap ? image.height : image.width,
@@ -488,7 +494,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     _nativeInFlight++;
     final sentMs = DateTime.now().millisecondsSinceEpoch;
     try {
-      final r = await HolisticCapture.process(image, c.description.sensorOrientation);
+      final r = await HolisticCapture.process(image, _cameraImageRotation(c));
       if (r == null || _disposed || !mounted) return;
       _logCalendarPerf(sentMs);
       _imageWidth = r.imageWidth;
@@ -1215,13 +1221,86 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     }
   }
 
+  /// Lesson demo video, else its image, else the gesture template, else a
+  /// video-style placeholder.
+  Widget _buildReference(ThemeData theme) {
+    final url = widget.mediaUrl.trim();
+    final path = url.split('?').first.toLowerCase();
+    if (url.isNotEmpty && const ['.mp4', '.mov', '.webm', '.m4v', '.3gp', '.mkv'].any(path.endsWith)) {
+      return ColoredBox(color: Colors.black, child: Center(child: CustomVideoPlayer(videoUrl: url)));
+    }
+    final fallback = _templateImage != null
+        ? Image.memory(_templateImage!, fit: BoxFit.cover)
+        : _buildPlaceholder(theme);
+    if (url.startsWith('assets/')) {
+      return Image.asset(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+    }
+    if (url.isEmpty) return fallback;
+    return FutureBuilder<String>(
+      future: _mediaUrlFuture ??= url.startsWith('http')
+          ? Future.value(url)
+          : FirebaseStorage.instance.ref(url).getDownloadURL().catchError((_) => ''),
+      builder: (context, snap) {
+        final u = snap.data;
+        if (u == null) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
+        if (u.isEmpty) return fallback;
+        return Image.network(u, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+      },
+    );
+  }
+
+  Future<String>? _mediaUrlFuture;
+
+  Widget _buildPlaceholder(ThemeData theme) {
+    final label = _isCalendar ? CalendarSigns.displayLabels[_calendarTarget] : widget.targetPhrase;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color.lerp(theme.primaryColor, Colors.black, 0.55)!, const Color(0xFF15151F)],
+        ),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withOpacity(0.14),
+              border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+            ),
+            child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 36),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Demo video coming soon',
+            style: TextStyle(color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w600, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // UI
   // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool landscape = _isLandscape(context);
+    // Landscape: the tutorial pane is ~45% of the screen, camera on the right.
+    final double screenWidth = MediaQuery.of(context).size.width * (landscape ? 0.45 : 1.0);
     final theme = Theme.of(context);
     final visuals = _ThemeVisuals.fromTheme(theme);
     final isDark = theme.brightness == Brightness.dark;
@@ -1249,117 +1328,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       borderColor = theme.dividerColor.withOpacity(0.6);
     }
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
-        flexibleSpace: ClipRRect(
-          child: SmartBlur(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
-        title: Text(
-          'Tutorial Practice',
-          style: TextStyle(
-            color: theme.colorScheme.onSurface,
-            fontSize: 22,
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.96,
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          Positioned(
-            top: -20, right: -20,
-            child: Opacity(
-              opacity: 0.12,
-              child: Transform.rotate(
-                angle: -0.2,
-                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 40, left: -30,
-            child: Opacity(
-              opacity: 0.10,
-              child: Transform.rotate(
-                angle: 0.3,
-                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      widget.targetPhrase,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Inter',
-                      ),
-                    ),
-                    if (_isCalendar)
-                      Text(
-                        CalendarSigns.classNames[_calendarTarget],
-                        style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600),
-                      ),
-                    const SizedBox(height: 12),
-
-                    if (_templateImage != null)
-                      SizedBox(
-                        width: screenWidth * 0.60,
-                        child: AspectRatio(
-                          aspectRatio: 16 / 9,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.06),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                )
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Image.memory(
-                                _templateImage!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-                                  child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (_templateImage != null) const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: screenWidth * 0.70, // Slightly wider for phrase capture
-                      child: AspectRatio(
-                        aspectRatio: 3 / 4, // Taller box ensures upper body and arms are visible
-                        child: Stack(
+    // Camera box (with its overlays): inline in portrait, right pane in landscape.
+    final Widget cameraPane = Stack(
                           alignment: Alignment.center,
                           fit: StackFit.expand,
                           children: [
@@ -1390,14 +1360,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
                                 child: _isInitialized && _controller != null
-                                    ? FittedBox(
-                                        fit: BoxFit.cover,
-                                        child: SizedBox(
-                                          width: _controller!.value.previewSize?.height ?? 1,
-                                          height: _controller!.value.previewSize?.width ?? 1,
-                                          child: CameraPreview(_controller!),
-                                        ),
-                                      )
+                                    ? _CameraView(controller: _controller!)
                                     : Center(
                                         child: CircularProgressIndicator(color: theme.primaryColor),
                                       ),
@@ -1452,17 +1415,124 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                                 ),
                               ),
                           ],
+                        );
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: theme.cardColor.withOpacity(0.4),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
+        flexibleSpace: ClipRRect(
+          child: SmartBlur(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        title: Text(
+          'Tutorial Practice',
+          style: TextStyle(
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
+          ),
+        ),
+      ),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -20, right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(
+                angle: -0.2,
+                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 40, left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(
+                angle: 0.3,
+                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      widget.targetPhrase,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                    if (_isCalendar)
+                      Text(
+                        CalendarSigns.classNames[_calendarTarget],
+                        style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600),
+                      ),
+                    const SizedBox(height: 12),
+
+                    SizedBox(
+                      width: screenWidth * 0.60,
+                      child: AspectRatio(
+                        aspectRatio: 1 / 1,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              )
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: _buildReference(theme),
+                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 24),
+
+                    if (!landscape)
+                      SizedBox(
+                        width: screenWidth * 0.60,
+                        child: AspectRatio(aspectRatio: 1 / 1, child: cameraPane),
+                      ),
                     const SizedBox(height: 16),
 
                     Text(
                       _status,
                       style: TextStyle(
-                        color: _initFailed 
-                            ? Colors.red 
-                            : (_isEvaluating ? theme.colorScheme.primary : (_poseVisible ? Colors.green : theme.colorScheme.onSurface)),
+                        color: _initFailed
+                            ? Colors.red
+                            : (_resultColor == Colors.greenAccent ? Colors.green : theme.colorScheme.primary),
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1594,40 +1664,43 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                     ],
 
                     if (_resultTitle.isNotEmpty) ...[
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: BorderRadius.circular(30),
                         child: SmartBlur(
                           filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            width: screenWidth * 0.80,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: _resultColor.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: _resultColor.withOpacity(0.6),
-                                width: 1.5,
-                              ),
+                              color: _resultColor == Colors.greenAccent
+                                  ? Colors.green.withOpacity(0.2)
+                                  : theme.cardColor.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(color: _resultColor.withOpacity(0.6), width: 1.5),
                             ),
                             child: Column(
                               children: [
                                 Text(
                                   _resultTitle,
+                                  textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    color: _resultColor,
+                                    color: _resultColor == Colors.greenAccent
+                                        ? (isDark ? Colors.greenAccent : Colors.green.shade700)
+                                        : _resultColor,
                                     fontWeight: FontWeight.w900,
-                                    fontSize: 18,
+                                    fontSize: 16,
                                     fontFamily: 'Inter',
                                   ),
                                 ),
                                 if (_resultDetail.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 4),
                                   Text(
                                     _resultDetail,
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                                      color: theme.colorScheme.onSurface.withOpacity(0.7),
                                       fontWeight: FontWeight.w600,
                                       fontSize: 13,
                                     ),
@@ -1651,9 +1724,85 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                 ),
               ),
             ),
+                ),
+                if (landscape)
+                  Expanded(
+                    flex: 6,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 10, 16, 16),
+                      child: cameraPane,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

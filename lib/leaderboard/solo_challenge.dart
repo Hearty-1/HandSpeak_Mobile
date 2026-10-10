@@ -17,6 +17,7 @@ import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 import '/services/frame_gate.dart';
 
+
 // ==========================================
 // 1. SOLO CHALLENGE SETUP SCREEN
 // ==========================================
@@ -343,6 +344,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
   // In-memory caching for loaded gesture template JSONs
   static final Map<String, List<dynamic>> _templateCache = {};
   List<dynamic>? _template;
+  String _templateLetter = ''; // letter of [_template] (tricky-letter scoring)
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
   final double successThreshold = 70.0;
@@ -434,6 +436,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
   Future<void> _loadGestureLibrary(String letter) async {
     final charKey = letter.trim().toUpperCase();
     if (charKey.isEmpty) return;
+    _templateLetter = charKey;
 
     // 1. Check in-memory cache
     if (_templateCache.containsKey(charKey)) {
@@ -485,7 +488,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
     _isProcessingFrame = true;
     try {
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
-      _landmarkerPlugin!.processFrame(image, _cameraController!.description.sensorOrientation);
+      _landmarkerPlugin!.processFrame(image, _cameraImageRotation(_cameraController));
     } catch (e) {
       debugPrint("Inference Error: $e");
     } finally {
@@ -557,8 +560,73 @@ class _GameProperScreenState extends State<GameProperScreen> {
     }
   }
 
+  /// G, H, K, P, Q: tricky letters (horizontal or crossing fingers). Scored in
+  /// 2D only (no z noise), scale from wrist->middle base or the index reach,
+  /// fingertips weighted 1.5x, a relaxed curve, and G/H/P/Q locked to the
+  /// sideways orientations.
+  static const List<String> _trickyLetters = ['G', 'H', 'K', 'P', 'Q'];
+
+  double _calculateTrickyScore(List<Landmark> liveLms, List<dynamic> template, String letter) {
+    final Landmark wrist = liveLms[0];
+    final Landmark mBase = liveLms[9];
+    final Landmark indexTip = liveLms[8];
+
+    // Stable scale factor to prevent small-fist error inflation
+    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2));
+    final double distIndex = math.sqrt(math.pow(wrist.x - indexTip.x, 2) + math.pow(wrist.y - indexTip.y, 2));
+    dist = math.max(dist, distIndex * 0.55);
+    if (dist < 0.05) dist = 0.05; // Safety floor
+
+    // High priority weighting on action fingertips: thumb, index, middle tips
+    const List<int> highPriorityLandmarks = [4, 8, 12];
+
+    const orientationMatrices = [
+      [1.0, 0.0, 0.0, 1.0, 1.0], // 0: Upright Normal
+      [0.0, -1.0, 1.0, 0.0, 1.0], // 1: 90 deg
+      [-1.0, 0.0, 0.0, -1.0, 1.0], // 2: 180 deg
+      [0.0, 1.0, -1.0, 0.0, 1.0], // 3: 270 deg
+      [1.0, 0.0, 0.0, 1.0, -1.0], // 4: Upright Mirrored
+      [0.0, -1.0, 1.0, 0.0, -1.0], // 5: 90 deg Mirrored
+      [-1.0, 0.0, 0.0, -1.0, -1.0], // 6: 180 deg Mirrored
+      [0.0, 1.0, -1.0, 0.0, -1.0], // 7: 270 deg Mirrored
+    ];
+
+    double bestScore = 0.0;
+    for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
+      // Directional Lock: horizontal letters use the sideways matrices only ('K' excluded)
+      if (letter != 'K' && mIdx.isEven) continue;
+
+      final matrix = orientationMatrices[mIdx];
+      final double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
+
+      double totalWeightedDifference = 0.0;
+      double totalWeight = 0.0;
+      for (int i = 0; i < 21; i++) {
+        final double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
+        final double dy = (liveLms[i].y - wrist.y) / dist;
+        final double rx = dx * xx + dy * xy;
+        final double ry = dx * yx + dy * yy;
+        final double tx = (template[i]['x'] as num).toDouble();
+        final double ty = (template[i]['y'] as num).toDouble();
+
+        // Purely 2D comparison to eliminate Z-depth noise
+        final double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2));
+        final double weight = highPriorityLandmarks.contains(i) ? 1.5 : 1.0;
+        totalWeightedDifference += pointDiff * weight;
+        totalWeight += weight;
+      }
+
+      // Relaxed scoring curve for G, H, K, P, Q
+      final double score = (100.0 - (totalWeightedDifference / totalWeight * 45.0)).clamp(0.0, 100.0);
+      if (score > bestScore) bestScore = score;
+    }
+    return bestScore;
+  }
+
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.length < 21 || template.length < 21) return 0.0;
+    final String letter = _templateLetter;
+    if (_trickyLetters.contains(letter)) return _calculateTrickyScore(liveLms, template, letter);
     Landmark wrist = liveLms[0];
     Landmark mBase = liveLms[9];
     double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2) + math.pow(wrist.z - mBase.z, 2));
@@ -1345,53 +1413,64 @@ class _GameProperScreenState extends State<GameProperScreen> {
     if (!_isCameraInitialized || _cameraController == null) {
       return Center(child: CircularProgressIndicator(color: theme.primaryColor));
     }
-    return Column(
-      children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: SizedBox(
-                height: 230,
-                width: double.infinity,
-                child: CameraPreview(_cameraController!),
-              ),
-            ),
-            Container(
-              height: 230,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: _currentScore >= successThreshold ? Colors.green : theme.primaryColor.withValues(alpha: 0.6), width: 3),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: LinearProgressIndicator(
-            value: _holdProgress,
-            backgroundColor: textColor.withValues(alpha: 0.1),
-            valueColor: AlwaysStoppedAnimation<Color>(_currentScore >= successThreshold ? const Color(0xFF4CAF50) : theme.primaryColor),
-            minHeight: 10,
+    final bool landscape = _isLandscape(context);
+    // Landscape: taller camera on the right, accuracy + progress on the left.
+    final double camHeight = landscape ? MediaQuery.of(context).size.height * 0.55 : 230;
+    final Widget camera = SizedBox(
+      height: camHeight,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: _CameraView(controller: _cameraController!),
           ),
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: _currentScore >= successThreshold ? Colors.green : theme.primaryColor.withValues(alpha: 0.6), width: 3),
+            ),
+          ),
+        ],
+      ),
+    );
+    final List<Widget> status = [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: LinearProgressIndicator(
+          value: _holdProgress,
+          backgroundColor: textColor.withValues(alpha: 0.1),
+          valueColor: AlwaysStoppedAnimation<Color>(_currentScore >= successThreshold ? const Color(0xFF4CAF50) : theme.primaryColor),
+          minHeight: 10,
         ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.center_focus_strong_rounded, color: theme.primaryColor, size: 20),
-            const SizedBox(width: 6),
-            Text(
+      ),
+      const SizedBox(height: 10),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.center_focus_strong_rounded, color: theme.primaryColor, size: 20),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
               "Sign Accuracy: ${_currentScore.toStringAsFixed(1)}%",
               style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontSize: 15),
             ),
-          ],
-        ),
-      ],
-    );
+          ),
+        ],
+      ),
+    ];
+    if (landscape) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(flex: 5, child: Column(mainAxisSize: MainAxisSize.min, children: status)),
+          const SizedBox(width: 16),
+          Expanded(flex: 6, child: camera),
+        ],
+      );
+    }
+    return Column(children: [camera, const SizedBox(height: 14), ...status]);
   }
 
   /// Records comprehensive challenge progress and game session metrics into Firestore.
@@ -1679,7 +1758,7 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        Text( 
                           title,
                           style: TextStyle(
                             fontSize: 19,
@@ -1724,6 +1803,71 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

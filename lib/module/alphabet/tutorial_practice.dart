@@ -17,6 +17,7 @@ import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
 
+
 // =============================================================================
 // LANDMARK & RESULT MODELS
 // =============================================================================
@@ -1259,7 +1260,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     if (_isProcessingFrame) return;
 
     try {
-      final int sensorOrientation = _controller!.description.sensorOrientation;
+      final int sensorOrientation = _cameraImageRotation(_controller); // live device rotation
       _imageWidth = image.width;
       _imageHeight = image.height;
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
@@ -1269,8 +1270,121 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     }
   }
 
+  /// G, H, K, P, Q: tricky letters (horizontal or crossing fingers). Scored in
+  /// 2D only (no z noise), scale from wrist->middle base or the index reach,
+  /// fingertips weighted 1.5x, a relaxed curve, and G/H/P/Q locked to the
+  /// sideways orientations.
+  static const List<String> _trickyLetters = ['G', 'H', 'K', 'P', 'Q'];
+
+  double _calculateTrickyScore(List<Landmark> liveLms, List<dynamic> template, String letter) {
+    final Landmark wrist = liveLms[0];
+    final Landmark mBase = liveLms[9];
+    final Landmark indexTip = liveLms[8];
+
+    // Stable scale factor to prevent small-fist error inflation
+    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2));
+    final double distIndex = math.sqrt(math.pow(wrist.x - indexTip.x, 2) + math.pow(wrist.y - indexTip.y, 2));
+    dist = math.max(dist, distIndex * 0.55);
+    if (dist < 0.05) dist = 0.05; // Safety floor
+
+    // High priority weighting on action fingertips: thumb, index, middle tips
+    const List<int> highPriorityLandmarks = [4, 8, 12];
+
+    const orientationMatrices = [
+      [1.0, 0.0, 0.0, 1.0, 1.0], // 0: Upright Normal
+      [0.0, -1.0, 1.0, 0.0, 1.0], // 1: 90 deg
+      [-1.0, 0.0, 0.0, -1.0, 1.0], // 2: 180 deg
+      [0.0, 1.0, -1.0, 0.0, 1.0], // 3: 270 deg
+      [1.0, 0.0, 0.0, 1.0, -1.0], // 4: Upright Mirrored
+      [0.0, -1.0, 1.0, 0.0, -1.0], // 5: 90 deg Mirrored
+      [-1.0, 0.0, 0.0, -1.0, -1.0], // 6: 180 deg Mirrored
+      [0.0, 1.0, -1.0, 0.0, -1.0], // 7: 270 deg Mirrored
+    ];
+
+    double bestScore = 0.0;
+    for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
+      // Directional Lock: horizontal letters use the sideways matrices only ('K' excluded)
+      if (letter != 'K' && mIdx.isEven) continue;
+
+      final matrix = orientationMatrices[mIdx];
+      final double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
+
+      double totalWeightedDifference = 0.0;
+      double totalWeight = 0.0;
+      for (int i = 0; i < 21; i++) {
+        final double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
+        final double dy = (liveLms[i].y - wrist.y) / dist;
+        final double rx = dx * xx + dy * xy;
+        final double ry = dx * yx + dy * yy;
+        final double tx = (template[i]['x'] as num).toDouble();
+        final double ty = (template[i]['y'] as num).toDouble();
+
+        // Purely 2D comparison to eliminate Z-depth noise
+        final double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2));
+        final double weight = highPriorityLandmarks.contains(i) ? 1.5 : 1.0;
+        totalWeightedDifference += pointDiff * weight;
+        totalWeight += weight;
+      }
+
+      // Relaxed scoring curve for G, H, K, P, Q
+      final double score = (100.0 - (totalWeightedDifference / totalWeight * 45.0)).clamp(0.0, 100.0);
+      if (score > bestScore) bestScore = score;
+    }
+    return bestScore;
+  }
+
+  /// The relaxed template match above lets many hands reach 70%. A tricky
+  /// letter therefore also needs its finger states and pointing direction
+  /// (upright view): G = index sideways, others folded; H = index + middle
+  /// sideways; K = index up; P = index down; Q = index down, others folded.
+  /// Ring and pinky are folded in all five. The thumb and K / P's middle
+  /// finger (often pointing at the camera) are left to the template.
+  static const Map<String, ({bool middleUp, bool middleFolded, String dir})> _trickyShapes = {
+    'G': (middleUp: false, middleFolded: true, dir: 'side'),
+    'H': (middleUp: true, middleFolded: false, dir: 'side'),
+    'K': (middleUp: false, middleFolded: false, dir: 'up'),
+    'P': (middleUp: false, middleFolded: false, dir: 'down'),
+    'Q': (middleUp: false, middleFolded: true, dir: 'down'),
+  };
+  final List<bool> _trickyShapeHistory = []; // last frames' verdicts (smoothing)
+  String? _lastTrickyProblem;
+
+  String? _trickyShapeProblem(Hand hand, String letter) {
+    final spec = _trickyShapes[letter];
+    if (spec == null || hand.landmarks.length < 21) return null;
+    final p = _toSelfieView(hand);
+    double ratio(int tip, int pip) => p[tip].distanceTo(p[0]) / (p[pip].distanceTo(p[0]) + 1e-6);
+    bool extended(int tip, int pip) => ratio(tip, pip) >= 1.10;
+    bool folded(int tip, int pip) => ratio(tip, pip) <= 1.05;
+
+    if (!extended(8, 6)) return 'Iunat ang hintuturo para sa Letter $letter.';
+    if (spec.middleUp && !extended(12, 10)) return 'Iunat din ang hinlalato para sa Letter $letter.';
+    final mustFold = [
+      if (spec.middleFolded && !folded(12, 10)) 'hinlalato',
+      if (!folded(16, 14)) 'palasingsingan',
+      if (!folded(20, 18)) 'kalingkingan',
+    ];
+    if (mustFold.isNotEmpty) return 'Itikom ang ${mustFold.join(', ')} para sa Letter $letter.';
+
+    // Pointing direction of the index finger (knuckle -> tip), y points down.
+    final dx = p[8].x - p[5].x, dy = p[8].y - p[5].y;
+    final ax = dx.abs(), ay = dy.abs();
+    const tan50 = 1.19;
+    switch (spec.dir) {
+      case 'side':
+        if (ay > ax * tan50) return 'Itagilid ang kamay: pahalang dapat ang hintuturo.';
+      case 'up':
+        if (!(dy < 0 && ax <= ay * tan50)) return 'Ituro pataas ang hintuturo para sa Letter $letter.';
+      case 'down':
+        if (!(dy > 0 && ax <= ay * tan50)) return 'Ituro pababa ang hintuturo para sa Letter $letter.';
+    }
+    return null;
+  }
+
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
+    final String letter = widget.targetLetter.toUpperCase();
+    if (_trickyLetters.contains(letter)) return _calculateTrickyScore(liveLms, template, letter);
 
     final Landmark wrist = liveLms[0];
     final Landmark mBase = liveLms[9];
@@ -1356,8 +1470,15 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     }
   }
 
-  int get _handRotation =>
-      _lockedRotation ?? (_controller?.description.sensorOrientation ?? 0);
+  /// Live rotation (portrait / landscape) plus the correction learned from
+  /// the hand when it was locked (kept as an offset from the rotation at
+  /// that moment, so turning the phone afterwards stays correct).
+  int get _handRotation {
+    final live = _cameraImageRotation(_controller);
+    final locked = _lockedRotation;
+    return locked == null ? live : (locked + live - _lockBase + 360) % 360;
+  }
+  int _lockBase = 0;
 
   /// Votes for the rotation under which the hand points up. hand_landmarker
   /// may report landmarks in the raw sensor frame (its example rotates the
@@ -1378,6 +1499,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     final best = _uprightVotes.entries.reduce((a, b) => a.value <= b.value ? a : b);
     if (best.value / _orientationFrames < -0.5) {
       _lockedRotation = best.key;
+      _lockBase = _cameraImageRotation(_controller);
       debugPrint('Dynamic letter: hand rotation locked at ${best.key}° '
           '(sensorOrientation ${_controller?.description.sensorOrientation})');
     }
@@ -1573,6 +1695,17 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
           _debugDetails = 'attempt: ${stroke.length} frames -> local Z check fail\n${_letterZService.lastReport}';
           throw const _LocalReject();
         }
+      } else {
+        // Same for J: the server alone also passes other pinky / hand
+        // movements. The stroke must contain a real J (pinky-only handshape,
+        // drop + hook, nothing but positioning around it) that the on-device
+        // J model also scores >= its floor; only then is the server asked.
+        final local = _letterJService.classifyStroke(stroke);
+        if (!local.isLetterJ) {
+          feedback = local.message;
+          _debugDetails = 'attempt: ${stroke.length} frames -> local J check fail\n${_letterJService.lastReport}';
+          throw const _LocalReject();
+        }
       }
       final req = _strokeForServer(stroke);
       final r = isJ
@@ -1586,7 +1719,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       _debugDetails = 'attempt: ${stroke.length} frames (${req.width}x${req.height}), rotation $_handRotation'
           '${_lockedRotation == null ? ' (unconfirmed)' : ''} -> server ${r.accepted ? 'PASS' : 'fail'} '
           'P($letter)=${r.confidence.toStringAsFixed(3)} (threshold ${r.threshold})'
-          '${isJ ? '' : '\nlocal: ${_letterZService.lastReport}'}';
+          '\nlocal: ${isJ ? _letterJService.lastReport : _letterZService.lastReport}';
     } on _LocalReject {
       // feedback / _debugDetails already set by the local check.
     } on ArgumentError catch (e) {
@@ -1627,6 +1760,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
         if (!_isDynamicLetter) {
           if (_template != null) {
             double highestScoreAcrossAllHands = 0.0;
+            Hand? bestHand;
 
             for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
               final double handScore = _calculateScore(
@@ -1635,6 +1769,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
               );
               if (handScore > highestScoreAcrossAllHands) {
                 highestScoreAcrossAllHands = handScore;
+                bestHand = detectedHands[handIdx];
               }
             }
 
@@ -1642,6 +1777,20 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
             feedback = score >= successThreshold
                 ? "Tama ang posisyon! Hawakan ang kamay."
                 : "I-adjust ang posisyon para sa Letter $letter.";
+
+            // Tricky letters: the shape must also be right (majority of the
+            // last 5 frames, so one noisy frame does not reset the hold).
+            if (_trickyLetters.contains(letter) && bestHand != null) {
+              final problem = _trickyShapeProblem(bestHand, letter);
+              if (problem != null) _lastTrickyProblem = problem;
+              _trickyShapeHistory.add(problem == null);
+              if (_trickyShapeHistory.length > 5) _trickyShapeHistory.removeAt(0);
+              final okFrames = _trickyShapeHistory.where((ok) => ok).length;
+              if (okFrames * 2 <= _trickyShapeHistory.length) {
+                score = math.min(score, successThreshold - 5);
+                feedback = _lastTrickyProblem ?? feedback;
+              }
+            }
           }
         }
 
@@ -1873,7 +2022,9 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
   Widget build(BuildContext context) {
     String currentLetter = widget.targetLetter.toUpperCase();
     bool isPassing = _currentScore >= successThreshold;
-    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool landscape = _isLandscape(context);
+    // Landscape: the tutorial pane is ~45% of the screen, camera on the right.
+    final double screenWidth = MediaQuery.of(context).size.width * (landscape ? 0.45 : 1.0);
     final theme = Theme.of(context);
     final visuals = _ThemeVisuals.fromTheme(theme);
     final isDark = theme.brightness == Brightness.dark;
@@ -1885,110 +2036,8 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       ),
     );
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
-        flexibleSpace: ClipRRect(
-          child: SmartBlur(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
-        title: Text(
-          'Tutorial Practice',
-          style: TextStyle(
-            color: theme.colorScheme.onSurface,
-            fontSize: 22,
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.96,
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          Positioned(
-            top: -20, right: -20,
-            child: Opacity(
-              opacity: 0.12,
-              child: Transform.rotate(
-                angle: -0.2,
-                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 40, left: -30,
-            child: Opacity(
-              opacity: 0.10,
-              child: Transform.rotate(
-                angle: 0.3,
-                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      '$currentLetter${currentLetter.toLowerCase()}',
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 42,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Inter',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    SizedBox(
-                      width: screenWidth * 0.60,
-                      child: AspectRatio(
-                        aspectRatio: 1 / 1,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              )
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                              "assets/pictures/$currentLetter.jpg",
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-                                child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: screenWidth * 0.60,
-                      child: AspectRatio(
-                        aspectRatio: 1 / 1,
-                        child: Stack(
+    // Camera box (with its overlays): inline in portrait, right pane in landscape.
+    final Widget cameraPane = Stack(
                           alignment: Alignment.center,
                           fit: StackFit.expand,
                           children: [
@@ -2019,14 +2068,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
                                 child: _isInitialized && _controller != null
-                                    ? FittedBox(
-                                        fit: BoxFit.cover,
-                                        child: SizedBox(
-                                          width: _controller!.value.previewSize?.height ?? 1,
-                                          height: _controller!.value.previewSize?.width ?? 1,
-                                          child: CameraPreview(_controller!),
-                                        ),
-                                      )
+                                    ? _CameraView(controller: _controller!)
                                     : Center(
                                         child: CircularProgressIndicator(color: theme.primaryColor),
                                       ),
@@ -2081,9 +2123,117 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                                 ),
                               ),
                           ],
+                        );
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: theme.cardColor.withOpacity(0.4),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
+        flexibleSpace: ClipRRect(
+          child: SmartBlur(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        title: Text(
+          'Tutorial Practice',
+          style: TextStyle(
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
+          ),
+        ),
+      ),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -20, right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(
+                angle: -0.2,
+                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 40, left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(
+                angle: 0.3,
+                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      '$currentLetter${currentLetter.toLowerCase()}',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 42,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    SizedBox(
+                      width: screenWidth * 0.60,
+                      child: AspectRatio(
+                        aspectRatio: 1 / 1,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              )
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.asset(
+                              "assets/pictures/$currentLetter.jpg",
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                                child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 24),
+
+                    if (!landscape)
+                      SizedBox(
+                        width: screenWidth * 0.60,
+                        child: AspectRatio(aspectRatio: 1 / 1, child: cameraPane),
+                      ),
                     const SizedBox(height: 16),
 
                     Text(
@@ -2240,9 +2390,85 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                 ),
               ),
             ),
+                ),
+                if (landscape)
+                  Expanded(
+                    flex: 6,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 10, 16, 16),
+                      child: cameraPane,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

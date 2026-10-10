@@ -248,7 +248,17 @@ class PhraseRecognizer {
   /// painter rotates the canvas by sensorOrientation), while ML Kit pose is
   /// already upright -- so set this to the camera's sensorOrientation.
   /// It is double-checked at runtime against the pose wrists.
-  int handRotation = 0;
+  int get handRotation => _handRotation;
+  set handRotation(int value) {
+    if (value == _handRotation) return;
+    // Device turned (portrait <-> landscape): re-learn the check below.
+    _handRotation = value;
+    _detectedRotation = null;
+    _rotationSamples = 0;
+    _rotationError.updateAll((_, __) => 0);
+  }
+
+  int _handRotation = 0;
 
   /// In every training template the hands are absent while the arms hang at
   /// rest (wrist ~2.3 shoulder-widths below the shoulders); Holistic only

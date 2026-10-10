@@ -15,6 +15,7 @@ import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
 
+
 // =============================================================================
 // ONNX INFERENCE SERVICE WITH 78-FEATURE EXTRACTOR
 // =============================================================================
@@ -546,7 +547,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     if (_isProcessingFrame) return;
 
     try {
-      int sensorOrientation = _controller!.description.sensorOrientation;
+      int sensorOrientation = _cameraImageRotation(_controller); // live device rotation
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
@@ -815,7 +816,9 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   Widget build(BuildContext context) {
     String currentNumber = targetNumber;
     bool isPassing = _currentScore >= successThreshold;
-    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool landscape = _isLandscape(context);
+    // Landscape: the tutorial pane is ~45% of the screen, camera on the right.
+    final double screenWidth = MediaQuery.of(context).size.width * (landscape ? 0.45 : 1.0);
     final theme = Theme.of(context);
     final visuals = _ThemeVisuals.fromTheme(theme);
     final isDark = theme.brightness == Brightness.dark;
@@ -827,110 +830,8 @@ class _NumbersPracticeState extends State<NumbersPractice> {
       ),
     );
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
-        flexibleSpace: ClipRRect(
-          child: SmartBlur(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
-        title: Text(
-          'Continuous Practice',
-          style: TextStyle(
-            color: theme.colorScheme.onSurface,
-            fontSize: 22,
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.96,
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          Positioned(
-            top: -20, right: -20,
-            child: Opacity(
-              opacity: 0.12,
-              child: Transform.rotate(
-                angle: -0.2,
-                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 40, left: -30,
-            child: Opacity(
-              opacity: 0.10,
-              child: Transform.rotate(
-                angle: 0.3,
-                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      currentNumber,
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 48,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Inter',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    SizedBox(
-                      width: screenWidth * 0.60,
-                      child: AspectRatio(
-                        aspectRatio: 1 / 1,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              )
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                              "assets/pictures/$currentNumber.png",
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-                                child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    SizedBox(
-                      width: screenWidth * 0.60,
-                      child: AspectRatio(
-                        aspectRatio: 1 / 1,
-                        child: Stack(
+    // Camera box (with its overlays): inline in portrait, right pane in landscape.
+    final Widget cameraPane = Stack(
                           alignment: Alignment.center,
                           fit: StackFit.expand,
                           children: [
@@ -961,14 +862,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
                                 child: _isInitialized && _controller != null
-                                    ? FittedBox(
-                                        fit: BoxFit.cover,
-                                        child: SizedBox(
-                                          width: _controller!.value.previewSize?.height ?? 1,
-                                          height: _controller!.value.previewSize?.width ?? 1,
-                                          child: CameraPreview(_controller!),
-                                        ),
-                                      )
+                                    ? _CameraView(controller: _controller!)
                                     : Center(
                                         child: CircularProgressIndicator(color: theme.primaryColor),
                                       ),
@@ -1023,9 +917,117 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                                 ),
                               ),
                           ],
+                        );
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: theme.cardColor.withOpacity(0.4),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
+        flexibleSpace: ClipRRect(
+          child: SmartBlur(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        title: Text(
+          'Continuous Practice',
+          style: TextStyle(
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
+          ),
+        ),
+      ),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -20, right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(
+                angle: -0.2,
+                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 40, left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(
+                angle: 0.3,
+                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      currentNumber,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 48,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    SizedBox(
+                      width: screenWidth * 0.60,
+                      child: AspectRatio(
+                        aspectRatio: 1 / 1,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              )
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.asset(
+                              "assets/pictures/$currentNumber.png",
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                                child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 24),
+
+                    if (!landscape)
+                      SizedBox(
+                        width: screenWidth * 0.60,
+                        child: AspectRatio(aspectRatio: 1 / 1, child: cameraPane),
+                      ),
                     const SizedBox(height: 16),
 
                     Text(
@@ -1205,9 +1207,85 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                 ),
               ),
             ),
+                ),
+                if (landscape)
+                  Expanded(
+                    flex: 6,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 10, 16, 16),
+                      child: cameraPane,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -17,6 +17,7 @@ import '/providers/theme_provider.dart';
 import '/services/progress_service.dart';
 import '/services/frame_gate.dart';
 
+
 class GameProperScreen extends StatefulWidget {
   final String roomCode;
   final String challengeTitle;
@@ -94,6 +95,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   bool _dynamicModelReady = false;
 
   List<dynamic>? _template;
+  String _templateLetter = ''; // letter of [_template] (tricky-letter scoring)
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
   final double successThreshold = 70.0;
@@ -273,6 +275,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   }
 
   Future<void> _loadGestureLibrary(String letter) async {
+    _templateLetter = letter.toUpperCase();
     try {
       String jsonString = await rootBundle.loadString('assets/alphabet/${letter.toUpperCase()}.json');
       if (mounted) {
@@ -297,7 +300,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     _isProcessingFrame = true;
 
     try {
-      final int sensorOrientation = _cameraController!.description.sensorOrientation;
+      final int sensorOrientation = _cameraImageRotation(_cameraController); // live device rotation
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
@@ -418,8 +421,73 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     }
   }
 
+  /// G, H, K, P, Q: tricky letters (horizontal or crossing fingers). Scored in
+  /// 2D only (no z noise), scale from wrist->middle base or the index reach,
+  /// fingertips weighted 1.5x, a relaxed curve, and G/H/P/Q locked to the
+  /// sideways orientations.
+  static const List<String> _trickyLetters = ['G', 'H', 'K', 'P', 'Q'];
+
+  double _calculateTrickyScore(List<Landmark> liveLms, List<dynamic> template, String letter) {
+    final Landmark wrist = liveLms[0];
+    final Landmark mBase = liveLms[9];
+    final Landmark indexTip = liveLms[8];
+
+    // Stable scale factor to prevent small-fist error inflation
+    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2));
+    final double distIndex = math.sqrt(math.pow(wrist.x - indexTip.x, 2) + math.pow(wrist.y - indexTip.y, 2));
+    dist = math.max(dist, distIndex * 0.55);
+    if (dist < 0.05) dist = 0.05; // Safety floor
+
+    // High priority weighting on action fingertips: thumb, index, middle tips
+    const List<int> highPriorityLandmarks = [4, 8, 12];
+
+    const orientationMatrices = [
+      [1.0, 0.0, 0.0, 1.0, 1.0], // 0: Upright Normal
+      [0.0, -1.0, 1.0, 0.0, 1.0], // 1: 90 deg
+      [-1.0, 0.0, 0.0, -1.0, 1.0], // 2: 180 deg
+      [0.0, 1.0, -1.0, 0.0, 1.0], // 3: 270 deg
+      [1.0, 0.0, 0.0, 1.0, -1.0], // 4: Upright Mirrored
+      [0.0, -1.0, 1.0, 0.0, -1.0], // 5: 90 deg Mirrored
+      [-1.0, 0.0, 0.0, -1.0, -1.0], // 6: 180 deg Mirrored
+      [0.0, 1.0, -1.0, 0.0, -1.0], // 7: 270 deg Mirrored
+    ];
+
+    double bestScore = 0.0;
+    for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
+      // Directional Lock: horizontal letters use the sideways matrices only ('K' excluded)
+      if (letter != 'K' && mIdx.isEven) continue;
+
+      final matrix = orientationMatrices[mIdx];
+      final double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
+
+      double totalWeightedDifference = 0.0;
+      double totalWeight = 0.0;
+      for (int i = 0; i < 21; i++) {
+        final double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
+        final double dy = (liveLms[i].y - wrist.y) / dist;
+        final double rx = dx * xx + dy * xy;
+        final double ry = dx * yx + dy * yy;
+        final double tx = (template[i]['x'] as num).toDouble();
+        final double ty = (template[i]['y'] as num).toDouble();
+
+        // Purely 2D comparison to eliminate Z-depth noise
+        final double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2));
+        final double weight = highPriorityLandmarks.contains(i) ? 1.5 : 1.0;
+        totalWeightedDifference += pointDiff * weight;
+        totalWeight += weight;
+      }
+
+      // Relaxed scoring curve for G, H, K, P, Q
+      final double score = (100.0 - (totalWeightedDifference / totalWeight * 45.0)).clamp(0.0, 100.0);
+      if (score > bestScore) bestScore = score;
+    }
+    return bestScore;
+  }
+
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
+    final String letter = _templateLetter;
+    if (_trickyLetters.contains(letter)) return _calculateTrickyScore(liveLms, template, letter);
 
     final Landmark wrist = liveLms[0];
     final Landmark mBase = liveLms[9];
@@ -1727,11 +1795,8 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   Widget _buildCameraSpellLayout(String correctAnswer, ThemeData theme, Color textColor) {
     final bool isPassing = _currentScore >= successThreshold;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: Stack(
+    // Camera on the right in landscape, status + controls on the left.
+    final Widget camera = Stack(
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
@@ -1752,14 +1817,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                 ),
                 clipBehavior: Clip.hardEdge,
                 child: _isCameraInitialized && _cameraController != null && _cameraController!.value.isInitialized
-                    ? FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: _cameraController!.value.previewSize?.height ?? 1,
-                          height: _cameraController!.value.previewSize?.width ?? 1,
-                          child: CameraPreview(_cameraController!),
-                        ),
-                      )
+                    ? _CameraView(controller: _cameraController!)
                     : Center(
                         child: CircularProgressIndicator(color: theme.primaryColor),
                       ),
@@ -1779,9 +1837,8 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 12),
+          );
+    final List<Widget> controls = [
 
         if (_holdProgress > 0.0) ...[
           Column(
@@ -1861,6 +1918,30 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
               style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 14),
             ),
           ),
+    ];
+    if (_isLandscape(context)) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 5,
+            child: Center(
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: controls),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(flex: 6, child: camera),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: camera),
+        const SizedBox(height: 12),
+        ...controls,
       ],
     );
   }
@@ -2610,4 +2691,69 @@ class ViewfinderCornersPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant ViewfinderCornersPainter oldDelegate) =>
       oldDelegate.color != color || oldDelegate.pulseValue != pulseValue;
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

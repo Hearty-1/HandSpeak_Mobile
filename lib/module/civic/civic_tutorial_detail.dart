@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:video_player/video_player.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'civic_tutorial_practice.dart'; 
 import 'civic_tutorial_interface.dart'; 
 
@@ -373,6 +374,13 @@ class CustomVideoPlayer extends StatefulWidget {
 }
 
 class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
+  /// Playback speeds offered for the sign demos (slow motion helps with
+  /// dynamic signs). The chosen speed is remembered across videos and launches.
+  static const List<double> _speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5];
+  static const String _speedPrefKey = 'tutorial_video_speed';
+  static double _speed = 1.0;
+  static bool _speedLoaded = false;
+
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _hasError = false;
@@ -411,6 +419,14 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
       }
 
       await _controller!.initialize();
+      if (!_speedLoaded) {
+        try {
+          final saved = (await SharedPreferences.getInstance()).getDouble(_speedPrefKey);
+          if (saved != null && _speeds.contains(saved)) _speed = saved;
+        } catch (_) {}
+        _speedLoaded = true;
+      }
+      await _controller!.setPlaybackSpeed(_speed);
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -424,6 +440,61 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
         });
       }
     }
+  }
+
+  Future<void> _setSpeed(double speed) async {
+    setState(() => _speed = speed);
+    await _controller?.setPlaybackSpeed(speed);
+    try {
+      await (await SharedPreferences.getInstance()).setDouble(_speedPrefKey, speed);
+    } catch (_) {}
+  }
+
+  static String _speedLabel(double s) => '${s == s.roundToDouble() ? s.toStringAsFixed(0) : s.toString()}x';
+
+  Widget _buildSpeedButton(BuildContext context) {
+    return PopupMenuButton<double>(
+      tooltip: 'Playback speed',
+      initialValue: _speed,
+      onSelected: _setSpeed,
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      itemBuilder: (context) => [
+        for (final s in _speeds)
+          PopupMenuItem<double>(
+            value: s,
+            height: 40,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 22,
+                  child: s == _speed ? Icon(Icons.check_rounded, size: 18, color: Theme.of(context).primaryColor) : null,
+                ),
+                const SizedBox(width: 6),
+                Text(s == 1.0 ? 'Normal' : _speedLabel(s),
+                    style: TextStyle(fontWeight: s == _speed ? FontWeight.w800 : FontWeight.w500)),
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.speed_rounded, color: Colors.white, size: 16),
+            const SizedBox(width: 4),
+            Text(_speedLabel(_speed),
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -479,6 +550,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
             ),
           ),
           VideoProgressIndicator(_controller!, allowScrubbing: true),
+          Positioned(top: 8, right: 8, child: _buildSpeedButton(context)),
         ],
       ),
     );

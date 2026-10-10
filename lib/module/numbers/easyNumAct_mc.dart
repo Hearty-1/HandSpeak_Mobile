@@ -19,6 +19,7 @@ import '/services/gesture_analytics.dart';
 
 import '/services/performance_monitor.dart';
 
+
 // ==========================================
 // 1. DATA MODELS
 // ==========================================
@@ -575,7 +576,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     _isProcessingFrame = true;
 
     try {
-      final int sensorOrientation = _cameraController!.description.sensorOrientation;
+      final int sensorOrientation = _cameraImageRotation(_cameraController); // live device rotation
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
@@ -1291,7 +1292,10 @@ Future<void> _saveUserProgress(int starsEarned) async {
       child: Column(
         children: [
           Expanded(
-            child: SingleChildScrollView(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 5, child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -1352,6 +1356,17 @@ Future<void> _saveUserProgress(int starsEarned) async {
                     _buildMultipleChoiceLayout(currentQuestion, theme), 
                 ],
               ),
+            )),
+                if (_isLandscape(context) && _isCameraQuestion(currentQuestion) &&
+                    !const {'typing', 'fill_in_the_blank', 'sequence_order', 'matching_type'}.contains(currentQuestion.type))
+                  Expanded(
+                    flex: 6,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 20, 20, 12),
+                      child: _buildCameraBox(theme),
+                    ),
+                  ),
+              ],
             ),
           ),
 
@@ -1654,14 +1669,10 @@ Future<void> _saveUserProgress(int starsEarned) async {
     );
   }
 
-  Widget _buildCameraLayout(QuizQuestion currentQuestion, ThemeData theme) {
-    bool isPassing = _currentScore >= successThreshold;
-    
-    return Column(
-      children: [
-        AspectRatio(
-          aspectRatio: 1 / 1.1, 
-          child: AnimatedContainer(
+  /// Camera box with its highlight; inline in portrait, right pane in landscape.
+  Widget _buildCameraBox(ThemeData theme) {
+    final bool isPassing = _currentScore >= successThreshold;
+    return AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
@@ -1677,18 +1688,20 @@ Future<void> _saveUserProgress(int starsEarned) async {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: _isCameraInitialized && _cameraController != null && _cameraController!.value.isInitialized
-                  ? FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: _cameraController!.value.previewSize?.height ?? 1,
-                        height: _cameraController!.value.previewSize?.width ?? 1,
-                        child: CameraPreview(_cameraController!),
-                      ),
-                    )
+                  ? _CameraView(controller: _cameraController!)
                   : Center(child: CircularProgressIndicator(color: theme.primaryColor)),
             ),
-          ),
-        ),
+          );
+  }
+
+  Widget _buildCameraLayout(QuizQuestion currentQuestion, ThemeData theme) {
+    bool isPassing = _currentScore >= successThreshold;
+    
+    return Column(
+      children: [
+        if (!_isLandscape(context))
+          AspectRatio(aspectRatio: 1 / 1.1, child: _buildCameraBox(theme)),
+        if (!_isLandscape(context))
         const SizedBox(height: 24),
 
         if (_holdProgress > 0.0) ...[
@@ -1857,6 +1870,71 @@ Future<void> _saveUserProgress(int starsEarned) async {
           }),
         ),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

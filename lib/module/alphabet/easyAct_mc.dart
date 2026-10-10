@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
@@ -19,6 +20,7 @@ import '/services/gesture_analytics.dart';
 import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
+
 
 // ==========================================
 // 1. DATA MODELS
@@ -385,6 +387,19 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   bool _dynamicModelReady = false;
 
   List<dynamic>? _template;
+  String _templateLetter = ''; // letter of [_template] (tricky-letter scoring)
+  static final Map<String, List<dynamic>> _templateCache = {};
+
+  // Capture & check judges the recent past, not the single frame under the
+  // tap: tapping moves / blurs the hand, so a sign held correctly a moment
+  // earlier used to fail. Static letters keep each frame's template score
+  // for [_staticWindowMs]; J / Z keep the hand frames of [_dynamicWindowMs]
+  // so the motion model sees the movement, not one still frame.
+  static const int _staticWindowMs = 1500;
+  static const int _dynamicWindowMs = 3000;
+  final List<({int t, double score})> _recentScores = [];
+  final List<({int t, Float32List f})> _recentMotion = [];
+  double _liveScore = 0.0; // best score in the window (shown live)
   double _currentScore = 0.0;
   final double successThreshold = 70.0; 
 
@@ -552,18 +567,37 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     }
   }
 
+  /// Same templates as the tutorial practice (Firebase Storage
+  /// alphabet/<L>.json, the bundled asset as fallback), so a sign that passes
+  /// there is scored against the same reference here.
   Future<void> _loadGestureLibrary(String letter) async {
-    try {
-      String jsonString = await rootBundle.loadString('assets/alphabet/$letter.json');
-      setState(() {
-        _template = jsonDecode(jsonString);
-      });
-    } catch (e) {
-      debugPrint("Could not find gesture resource profile for: $letter");
-      setState(() {
-        _template = null;
-      });
+    letter = letter.toUpperCase();
+    _templateLetter = letter;
+    _template = _templateCache[letter];
+    if (_template != null) {
+      if (mounted) setState(() {});
+      return;
     }
+    List<dynamic>? loaded;
+    try {
+      final bytes = await FirebaseStorage.instance
+          .ref('alphabet/$letter.json')
+          .getData()
+          .timeout(const Duration(seconds: 4));
+      if (bytes != null) loaded = jsonDecode(utf8.decode(bytes)) as List<dynamic>;
+    } catch (e) {
+      debugPrint("Cloud gesture template for $letter unavailable ($e), using the bundled one.");
+    }
+    if (loaded == null) {
+      try {
+        loaded = jsonDecode(await rootBundle.loadString('assets/alphabet/$letter.json')) as List<dynamic>;
+      } catch (e) {
+        debugPrint("Could not find gesture resource profile for: $letter");
+      }
+    }
+    if (loaded != null) _templateCache[letter] = loaded;
+    if (!mounted || _templateLetter != letter) return; // question changed meanwhile
+    setState(() => _template = loaded);
   }
 
   final FrameGate _frameGate = FrameGate();
@@ -573,7 +607,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _isProcessingFrame = true;
 
     try {
-      final int sensorOrientation = _cameraController!.description.sensorOrientation;
+      final int sensorOrientation = _cameraImageRotation(_cameraController); // live device rotation
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
@@ -586,6 +620,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   void _onHandsDetected(List<Hand> detectedHands) {
     _frameGate.done();
     if (_isAnswered) return;
+    if (_isCameraLevel && _questions.isNotEmpty) _recordRecentFrame(detectedHands);
 
     if (mounted) {
       setState(() {
@@ -594,8 +629,100 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     }
   }
 
+  void _clearRecentFrames() {
+    _recentScores.clear();
+    _recentMotion.clear();
+    _liveScore = 0.0;
+  }
+
+  void _recordRecentFrame(List<Hand> hands) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_isDynamicLetter) {
+      if (hands.isNotEmpty && _dynamicModelReady && _dynamicSignRecognizer != null) {
+        _recentMotion.add((t: now, f: _dynamicSignRecognizer!.extractFrameFeatures(hands)));
+      }
+      _recentMotion.removeWhere((e) => now - e.t > _dynamicWindowMs);
+      return;
+    }
+    final template = _template;
+    if (hands.isNotEmpty && template != null) {
+      double best = 0.0;
+      for (final h in hands) {
+        best = math.max(best, _calculateScore(h.landmarks, template));
+      }
+      _recentScores.add((t: now, score: best));
+    }
+    _recentScores.removeWhere((e) => now - e.t > _staticWindowMs);
+    _liveScore = _recentScores.isEmpty ? 0.0 : _recentScores.map((e) => e.score).reduce(math.max);
+  }
+
+  /// G, H, K, P, Q: tricky letters (horizontal or crossing fingers). Scored in
+  /// 2D only (no z noise), scale from wrist->middle base or the index reach,
+  /// fingertips weighted 1.5x, a relaxed curve, and G/H/P/Q locked to the
+  /// sideways orientations.
+  static const List<String> _trickyLetters = ['G', 'H', 'K', 'P', 'Q'];
+
+  double _calculateTrickyScore(List<Landmark> liveLms, List<dynamic> template, String letter) {
+    final Landmark wrist = liveLms[0];
+    final Landmark mBase = liveLms[9];
+    final Landmark indexTip = liveLms[8];
+
+    // Stable scale factor to prevent small-fist error inflation
+    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2));
+    final double distIndex = math.sqrt(math.pow(wrist.x - indexTip.x, 2) + math.pow(wrist.y - indexTip.y, 2));
+    dist = math.max(dist, distIndex * 0.55);
+    if (dist < 0.05) dist = 0.05; // Safety floor
+
+    // High priority weighting on action fingertips: thumb, index, middle tips
+    const List<int> highPriorityLandmarks = [4, 8, 12];
+
+    const orientationMatrices = [
+      [1.0, 0.0, 0.0, 1.0, 1.0], // 0: Upright Normal
+      [0.0, -1.0, 1.0, 0.0, 1.0], // 1: 90 deg
+      [-1.0, 0.0, 0.0, -1.0, 1.0], // 2: 180 deg
+      [0.0, 1.0, -1.0, 0.0, 1.0], // 3: 270 deg
+      [1.0, 0.0, 0.0, 1.0, -1.0], // 4: Upright Mirrored
+      [0.0, -1.0, 1.0, 0.0, -1.0], // 5: 90 deg Mirrored
+      [-1.0, 0.0, 0.0, -1.0, -1.0], // 6: 180 deg Mirrored
+      [0.0, 1.0, -1.0, 0.0, -1.0], // 7: 270 deg Mirrored
+    ];
+
+    double bestScore = 0.0;
+    for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
+      // Directional Lock: horizontal letters use the sideways matrices only ('K' excluded)
+      if (letter != 'K' && mIdx.isEven) continue;
+
+      final matrix = orientationMatrices[mIdx];
+      final double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
+
+      double totalWeightedDifference = 0.0;
+      double totalWeight = 0.0;
+      for (int i = 0; i < 21; i++) {
+        final double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
+        final double dy = (liveLms[i].y - wrist.y) / dist;
+        final double rx = dx * xx + dy * xy;
+        final double ry = dx * yx + dy * yy;
+        final double tx = (template[i]['x'] as num).toDouble();
+        final double ty = (template[i]['y'] as num).toDouble();
+
+        // Purely 2D comparison to eliminate Z-depth noise
+        final double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2));
+        final double weight = highPriorityLandmarks.contains(i) ? 1.5 : 1.0;
+        totalWeightedDifference += pointDiff * weight;
+        totalWeight += weight;
+      }
+
+      // Relaxed scoring curve for G, H, K, P, Q
+      final double score = (100.0 - (totalWeightedDifference / totalWeight * 45.0)).clamp(0.0, 100.0);
+      if (score > bestScore) bestScore = score;
+    }
+    return bestScore;
+  }
+
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
+    final String letter = _templateLetter;
+    if (_trickyLetters.contains(letter)) return _calculateTrickyScore(liveLms, template, letter);
 
     final Landmark wrist = liveLms[0];
     final Landmark mBase = liveLms[9]; 
@@ -667,6 +794,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _isAnswered = false;
     _latestDetectedHands = [];
     _currentScore = 0.0;
+    _template = null; // the next letter's template is loading
+    _clearRecentFrames();
 
     if (q.type == 'typing') {
       final String target = q.correctAnswer.toUpperCase();
@@ -763,11 +892,19 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     final bool usedDynamicModel = _isCameraLevel && _isDynamicLetter && _dynamicModelReady && _dynamicSignRecognizer != null;
 
     if (_isCameraLevel) {
-      if (_latestDetectedHands.isNotEmpty) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final recentStatic = _recentScores.where((e) => now - e.t <= _staticWindowMs).toList();
+      final recentMotion = _recentMotion.where((e) => now - e.t <= _dynamicWindowMs).toList();
+      final bool sawHand = _latestDetectedHands.isNotEmpty ||
+          (_isDynamicLetter ? recentMotion.isNotEmpty : recentStatic.isNotEmpty);
+      if (sawHand) {
         if (_isDynamicLetter && _dynamicModelReady && _dynamicSignRecognizer != null) {
           final targetLetter = q.correctAnswer.toUpperCase();
-          final frame = _dynamicSignRecognizer!.extractFrameFeatures(_latestDetectedHands);
-          final result = _dynamicSignRecognizer!.predictFromRecording([frame]);
+          // The recorded movement of the last few seconds (one frame cannot show a J / Z).
+          final frames = recentMotion.isNotEmpty
+              ? [for (final e in recentMotion) e.f]
+              : [_dynamicSignRecognizer!.extractFrameFeatures(_latestDetectedHands)];
+          final result = _dynamicSignRecognizer!.predictFromRecording(frames);
           predictedLabel = result?.label;
           modelConfidence = result?.confidence;
           if (result != null && result.label.toUpperCase() == targetLetter) {
@@ -777,7 +914,9 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
             _currentScore = 0.0;
           }
         } else if (_template != null) {
-          double highestScoreAcrossAllHands = 0.0;
+          // Best match of the last 1.5 s plus the current frame.
+          double highestScoreAcrossAllHands =
+              recentStatic.isEmpty ? 0.0 : recentStatic.map((e) => e.score).reduce(math.max);
           for (int handIdx = 0; handIdx < _latestDetectedHands.length; handIdx++) {
             final double score = _calculateScore(_latestDetectedHands[handIdx].landmarks, _template!);
             if (score > highestScoreAcrossAllHands) highestScoreAcrossAllHands = score;
@@ -1069,7 +1208,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     if (q.type == 'typing') return !_userAnswerSlots.contains(null);
     if (q.type == 'sequence_order') return _currentSequence.length == q.options.length;
     if (q.type == 'matching_type') return !_matchingAnswers.values.contains(null);
-    if (_isCameraLevel) return _latestDetectedHands.isNotEmpty;
+    if (_isCameraLevel) {
+      // A hand seen in the last moments counts too: the hand often moves away to tap.
+      return _latestDetectedHands.isNotEmpty || _recentScores.isNotEmpty || _recentMotion.isNotEmpty;
+    }
 
     return _selectedAnswer != null; 
   }
@@ -1153,7 +1295,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       child: Column(
         children: [
           Expanded(
-            child: SingleChildScrollView(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 5, child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -1214,6 +1359,17 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     _buildMultipleChoiceLayout(currentQuestion, theme), 
                 ],
               ),
+            )),
+                if (_isLandscape(context) && _isCameraLevel &&
+                    !const {'typing', 'fill_in_the_blank', 'sequence_order', 'matching_type'}.contains(currentQuestion.type))
+                  Expanded(
+                    flex: 6,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 20, 20, 12),
+                      child: _buildCameraBox(theme),
+                    ),
+                  ),
+              ],
             ),
           ),
 
@@ -1488,14 +1644,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildCameraLayout(QuizQuestion currentQuestion, ThemeData theme) {
-    bool handDetected = _latestDetectedHands.isNotEmpty;
-
-    return Column(
-      children: [
-        AspectRatio(
-          aspectRatio: 1 / 1.1, 
-          child: AnimatedContainer(
+  /// Camera box with its highlight; inline in portrait, right pane in landscape.
+  Widget _buildCameraBox(ThemeData theme) {
+    final bool handDetected = _latestDetectedHands.isNotEmpty;
+    return AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
@@ -1511,19 +1663,20 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: _isCameraInitialized && _cameraController != null
-                  ? FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: _cameraController!.value.previewSize?.height ?? 1,
-                        height: _cameraController!.value.previewSize?.width ?? 1,
-                        child: CameraPreview(_cameraController!),
-                      ),
-                    )
+                  ? _CameraView(controller: _cameraController!)
                   : Center(child: CircularProgressIndicator(color: theme.primaryColor)),
             ),
-          ),
-        ),
-        const SizedBox(height: 20),
+          );
+  }
+
+  Widget _buildCameraLayout(QuizQuestion currentQuestion, ThemeData theme) {
+    bool handDetected = _latestDetectedHands.isNotEmpty;
+
+    return Column(
+      children: [
+        if (!_isLandscape(context))
+          AspectRatio(aspectRatio: 1 / 1.1, child: _buildCameraBox(theme)),
+        if (!_isLandscape(context)) const SizedBox(height: 20),
 
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
@@ -1545,14 +1698,22 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                 size: 20,
               ),
               const SizedBox(width: 8),
-              Text(
-                handDetected 
-                    ? "Hand detected! Tap 'CAPTURE & CHECK' below." 
-                    : "Position your hand in the frame",
-                style: TextStyle(
-                  color: handDetected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.7),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
+              Flexible(
+                child: Text(
+                  !handDetected
+                      ? "Position your hand in the frame"
+                      : (_isDynamicLetter
+                          ? "Sign the letter, then tap 'CAPTURE & CHECK'."
+                          : (_template == null
+                              ? "Loading the reference sign..."
+                              : (_liveScore >= successThreshold
+                                  ? "Match ${_liveScore.toStringAsFixed(0)}% - tap 'CAPTURE & CHECK'."
+                                  : "Match ${_liveScore.toStringAsFixed(0)}%: adjust your hand."))),
+                  style: TextStyle(
+                    color: handDetected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ],
@@ -1666,6 +1827,71 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           }),
         ),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -10,6 +10,7 @@ import '/services/progress_service.dart';
 import '/services/handspeak_api_service.dart';
 import '/services/performance_monitor.dart';
 
+
 // =============================================================================
 // DATA MODELS
 // =============================================================================
@@ -320,7 +321,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         'uvPixelStride': planes[1].bytesPerPixel ?? 1,
         'width': image.width,
         'height': image.height,
-        'rotation': _controller?.description.sensorOrientation ?? 0,
+        'rotation': _cameraImageRotation(_controller), // live device rotation
       });
       if (_isDisposed || res is! Map) return;
       PerformanceMonitor.instance.reportCameraResult(DateTime.now().millisecondsSinceEpoch - capturedMs);
@@ -851,7 +852,27 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         ? DateTime.now().difference(_recordStart!).inMilliseconds / 1000.0
         : 0.0;
 
-    return SingleChildScrollView(
+    // Landscape: the line, reference and controls on the left, camera on the right.
+    final bool landscape = _isLandscape(context);
+    final Widget cameraPane = Container(
+      decoration: BoxDecoration(
+        border: Border.all(
+          width: 4,
+          color: _isSuccessAchieved || isPassing
+              ? Colors.green
+              : (_isRecording ? Colors.redAccent : theme.dividerColor),
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: _isInitialized && _controller != null
+            ? _CameraView(controller: _controller!)
+            : const Center(child: CircularProgressIndicator()),
+      ),
+    );
+
+    final Widget tutorial = SingleChildScrollView(
       child: Column(
         children: [
           // Step Counter Header & Test Navigation Bar
@@ -925,27 +946,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           const SizedBox(height: 20),
 
           // Camera Preview Box with Dynamic Success Highlight
-          SizedBox(
-            width: 220,
-            height: 220,
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  width: 4,
-                  color: _isSuccessAchieved || isPassing
-                      ? Colors.green
-                      : (_isRecording ? Colors.redAccent : theme.dividerColor),
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: _isInitialized && _controller != null
-                  ? CameraPreview(_controller!)
-                  : const Center(child: CircularProgressIndicator()),
-              ),
-            ),
-          ),
+          if (!landscape) SizedBox(width: 220, height: 220, child: cameraPane),
           const SizedBox(height: 8),
           if (_countdown > 0)
             Text(
@@ -1015,6 +1016,15 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         ],
       ),
     );
+    if (!landscape) return tutorial;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 5, child: tutorial),
+        const SizedBox(width: 16),
+        Expanded(flex: 6, child: Padding(padding: const EdgeInsets.only(bottom: 8), child: cameraPane)),
+      ],
+    );
   }
 
   Widget _buildCompletionView(ThemeData theme) {
@@ -1057,6 +1067,71 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

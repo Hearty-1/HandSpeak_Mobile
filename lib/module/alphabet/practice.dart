@@ -14,6 +14,7 @@ import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
 
+
 /// Dynamic theme visual mapping for thematic icons & graphics
 class _ThemeVisuals {
   final IconData mainBadgeIcon;
@@ -233,7 +234,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
 
     try {
-      final int sensorOrientation = _controller!.description.sensorOrientation;
+      final int sensorOrientation = _cameraImageRotation(_controller); // live device rotation
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
@@ -528,7 +529,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   Widget build(BuildContext context) {
     String currentLetter = targetLetter.toUpperCase();
     bool isPassing = _currentScore >= successThreshold;
-    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool landscape = _isLandscape(context);
+    // Landscape: the tutorial pane is ~45% of the screen, camera on the right.
+    final double screenWidth = MediaQuery.of(context).size.width * (landscape ? 0.45 : 1.0);
 
     // Grab the current theme and visual configurations
     final theme = Theme.of(context);
@@ -541,6 +544,92 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
+
+    // Camera box (with its overlays): inline in portrait, right pane in landscape.
+    final Widget cameraPane = Stack(
+                          alignment: Alignment.center,
+                          fit: StackFit.expand,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  width: 4.0,
+                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
+                                ),
+                                boxShadow: [
+                                  if (isPassing)
+                                    BoxShadow(
+                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      blurRadius: 25,
+                                      spreadRadius: 2,
+                                    )
+                                  else
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    )
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: _isInitialized && _controller != null
+                                    ? _CameraView(controller: _controller!)
+                                    : Center(
+                                        child: CircularProgressIndicator(color: theme.primaryColor),
+                                      ),
+                              ),
+                            ),
+
+                            if (_isInitialized && !_isSuccessAchieved)
+                              Center(
+                                child: Container(
+                                  width: 110, 
+                                  height: 110,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: isPassing ? Colors.greenAccent.withOpacity(0.8) : Colors.white54,
+                                      width: 3.0,
+                                    ),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: SmartBlur(
+                                        filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          color: Colors.black45,
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              if (isPassing) ...[
+                                                Icon(visuals.mainBadgeIcon, color: Colors.greenAccent, size: 12),
+                                                const SizedBox(width: 4),
+                                               ],
+                                              Text(
+                                                isPassing ? "Hold!" : "Position Hand",
+                                                style: TextStyle(
+                                                  color: isPassing ? Colors.greenAccent : Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
 
     return Scaffold(
       extendBodyBehindAppBar: true, 
@@ -596,7 +685,12 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
           ),
           
           SafeArea(
-            child: SingleChildScrollView(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
               child: SizedBox(
@@ -647,103 +741,11 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                     const SizedBox(height: 24),
 
                     // Front Camera Preview Container Envelope
-                    SizedBox(
-                      width: screenWidth * 0.60, 
-                      child: AspectRatio(
-                        aspectRatio: 1 / 1, 
-                        child: Stack(
-                          alignment: Alignment.center,
-                          fit: StackFit.expand,
-                          children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surface,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  width: 4.0,
-                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
-                                ),
-                                boxShadow: [
-                                  if (isPassing)
-                                    BoxShadow(
-                                      color: Colors.greenAccent.withOpacity(0.6),
-                                      blurRadius: 25,
-                                      spreadRadius: 2,
-                                    )
-                                  else
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.06),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    )
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: _isInitialized && _controller != null
-                                    ? FittedBox(
-                                        fit: BoxFit.cover,
-                                        child: SizedBox(
-                                          width: _controller!.value.previewSize?.height ?? 1,
-                                          height: _controller!.value.previewSize?.width ?? 1,
-                                          child: CameraPreview(_controller!),
-                                        ),
-                                      )
-                                    : Center(
-                                        child: CircularProgressIndicator(color: theme.primaryColor),
-                                      ),
-                              ),
-                            ),
-
-                            if (_isInitialized && !_isSuccessAchieved)
-                              Center(
-                                child: Container(
-                                  width: 110, 
-                                  height: 110,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: isPassing ? Colors.greenAccent.withOpacity(0.8) : Colors.white54,
-                                      width: 3.0,
-                                    ),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: SmartBlur(
-                                        filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          color: Colors.black45,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              if (isPassing) ...[
-                                                Icon(visuals.mainBadgeIcon, color: Colors.greenAccent, size: 12),
-                                                const SizedBox(width: 4),
-                                               ],
-                                              Text(
-                                                isPassing ? "Hold!" : "Position Hand",
-                                                style: TextStyle(
-                                                  color: isPassing ? Colors.greenAccent : Colors.white,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
+                    if (!landscape)
+                      SizedBox(
+                        width: screenWidth * 0.60,
+                        child: AspectRatio(aspectRatio: 1 / 1, child: cameraPane),
                       ),
-                    ),
                     const SizedBox(height: 24),
 
                     // --- GLASSMORPHISM FEEDBACK TRACK ---
@@ -879,9 +881,85 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                 ),
               ),
             ),
+                ),
+                if (landscape)
+                  Expanded(
+                    flex: 6,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 10, 16, 16),
+                      child: cameraPane,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================================
+// CAMERA HELPERS (local to this screen)
+// =============================================================================
+
+/// Clockwise rotation that makes the camera image upright for the current
+/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
+int _cameraImageRotation(CameraController? c) {
+  if (c == null) return 0;
+  final sensor = c.description.sensorOrientation;
+  final ccw = switch (c.value.deviceOrientation) {
+    DeviceOrientation.portraitUp => 0,
+    DeviceOrientation.landscapeLeft => 90,
+    DeviceOrientation.portraitDown => 180,
+    DeviceOrientation.landscapeRight => 270,
+  };
+  return c.description.lensDirection == CameraLensDirection.front
+      ? (sensor + ccw) % 360
+      : (sensor - ccw + 360) % 360;
+}
+
+bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+
+/// Camera preview scaled to cover its box without stretching. Display only:
+/// recognition uses the image stream, not this widget.
+class _CameraView extends StatelessWidget {
+  final CameraController controller;
+  const _CameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

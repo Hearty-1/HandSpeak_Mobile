@@ -22,6 +22,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
   final AuthService _authService = AuthService();
   
   bool _isLoading = false; 
+  bool _isGoogleLoading = false;
   bool _obscurePassword = true;
 
   // Rate Limiting & Brute Force Protection
@@ -138,6 +139,57 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
           ),
         );
       }
+    }
+  }
+
+  void _showMessage(String text, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), behavior: SnackBarBehavior.floating, backgroundColor: color),
+    );
+  }
+
+  /// Google SSO: only approved student accounts are let in.
+  void _handleGoogleLogin() async {
+    if (_isLoading || _isGoogleLoading) return;
+    setState(() => _isGoogleLoading = true);
+    final result = await _authService.signInWithGoogle();
+    if (!mounted) return;
+
+    if (result.outcome == GoogleSignInOutcome.approved) {
+      final profile = result.profile!;
+      final displayName = profile['name'] ?? (result.email ?? 'Student').split('@')[0];
+      await Provider.of<ThemeProvider>(context, listen: false).loadThemeFromPrefs();
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => SnedInterafce1(userName: displayName)),
+      );
+      return;
+    }
+
+    setState(() => _isGoogleLoading = false);
+    switch (result.outcome) {
+      case GoogleSignInOutcome.cancelled:
+        break;
+      case GoogleSignInOutcome.pending:
+        _showMessage("Your account is awaiting faculty approval.");
+        break;
+      case GoogleSignInOutcome.notApproved:
+        _showMessage("This account is not approved for HandSpeak. Please contact your teacher.",
+            color: Colors.redAccent);
+        break;
+      case GoogleSignInOutcome.notRegistered:
+        _showMessage("No student account uses ${result.email ?? 'this Google email'}. "
+            "Sign up first and wait for faculty approval.", color: Colors.redAccent);
+        break;
+      case GoogleSignInOutcome.needsPassword:
+        _emailController.text = result.email ?? '';
+        _showMessage("This email was registered with a password. Log in with your password once "
+            "and Google sign-in will be linked to your account.");
+        break;
+      default:
+        _showMessage("Google sign-in failed. Please try again.", color: Colors.redAccent);
     }
   }
 
@@ -306,7 +358,53 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                           ),
                   ),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 20),
+
+                // Divider
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey.shade300)),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('or continue with', style: TextStyle(color: Colors.black45, fontSize: 13)),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey.shade300)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // Google SSO (approved students only)
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: OutlinedButton(
+                    onPressed: isButtonDisabled || _isGoogleLoading ? null : _handleGoogleLogin,
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black87,
+                      side: BorderSide(color: Colors.grey.shade300, width: 1.2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                    ),
+                    child: _isGoogleLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(color: Color(0xFFFFB800), strokeWidth: 3),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _GoogleLogo(),
+                              SizedBox(width: 12),
+                              Text(
+                                'Sign in with Google',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.3),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 36),
 
                 // Footer "Or Sign Up"
                 GestureDetector(
@@ -379,4 +477,43 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       ),
     );
   }
+}
+
+/// Google "G" mark drawn with arcs (no image asset needed).
+class _GoogleLogo extends StatelessWidget {
+  const _GoogleLogo();
+
+  @override
+  Widget build(BuildContext context) =>
+      const SizedBox(width: 22, height: 22, child: CustomPaint(painter: _GoogleLogoPainter()));
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  const _GoogleLogoPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = size.width * 0.2;
+    final rect = Rect.fromLTWH(stroke / 2, stroke / 2, size.width - stroke, size.height - stroke);
+    Paint p(Color c) => Paint()
+      ..color = c
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    const deg = 3.14159265 / 180;
+    canvas.drawArc(rect, -140 * deg, 95 * deg, false, p(const Color(0xFFEA4335))); // red (top)
+    canvas.drawArc(rect, 145 * deg, 75 * deg, false, p(const Color(0xFFFBBC05))); // yellow (left)
+    canvas.drawArc(rect, 45 * deg, 100 * deg, false, p(const Color(0xFF34A853))); // green (bottom)
+    canvas.drawArc(rect, 0, 45 * deg, false, p(const Color(0xFF4285F4))); // blue (right)
+    // Blue crossbar.
+    canvas.drawLine(
+      Offset(size.width / 2, size.height / 2),
+      Offset(size.width - stroke / 2, size.height / 2),
+      Paint()
+        ..color = const Color(0xFF4285F4)
+        ..strokeWidth = stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
