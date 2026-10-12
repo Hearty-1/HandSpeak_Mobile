@@ -1,6 +1,7 @@
 import 'dart:ui'; 
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
@@ -14,6 +15,7 @@ import '../leaderboard/arena.dart';
 import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
 import '/services/performance_monitor.dart';
+import '/auth/login_screen.dart';
 
 import '../home/notification_bell.dart'; // Added import for the standardized bell
 
@@ -426,11 +428,24 @@ class SnedInterafce1 extends StatelessWidget {
                                 title: '9. Teacher Analytics',
                                 body: 'Your performance data is securely beamed to a cloud database so your teachers can view descriptive and predictive analytics. This aids educators in tailoring your learning interventions while maintaining strict role-based access control (RBAC).',
                                 icon: Icons.school_rounded,
-                              ),
+                              )
                             ],
                           )));
                         }, 
                       ),
+                      ListTile(
+  leading: const Icon(Icons.logout_rounded, color: Color(0xFFF34B1B)), 
+  title: const Text('Sign Out', style: TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
+  onTap: () async {
+    await FirebaseAuth.instance.signOut();
+    if (!context.mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const SnedStudentLogin()), 
+      (route) => false
+    );
+  }, 
+),
                     ],
                   ),
                 ),

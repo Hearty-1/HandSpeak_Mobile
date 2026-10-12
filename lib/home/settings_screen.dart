@@ -104,6 +104,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 valueListenable: PerformanceSettings.reduceEffects,
                 builder: (context, on, _) => SwitchListTile(
                   activeColor: const Color(0xFFFFB800),
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
                   secondary: const Icon(CupertinoIcons.bolt_fill, color: Color(0xFFFFB800)),
                   title: Text("Performance Mode", style: TextStyle(color: textColor)),
                   subtitle: Text(
@@ -117,6 +119,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Divider(height: 1, color: theme.dividerColor),
               SwitchListTile(
                 activeColor: const Color(0xFFFFB800),
+                inactiveThumbColor: Colors.grey.shade400,
+                inactiveTrackColor: Colors.grey.withOpacity(0.3),
                 secondary: Icon(
                   soundProvider.isBgmMuted
                       ? CupertinoIcons.speaker_slash_fill
@@ -132,6 +136,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Divider(height: 1, color: theme.dividerColor),
               SwitchListTile(
                 activeColor: const Color(0xFFFFB800),
+                inactiveThumbColor: Colors.grey.shade400,
+                inactiveTrackColor: Colors.grey.withOpacity(0.3),
                 secondary: Icon(
                   soundProvider.isSfxMuted
                       ? CupertinoIcons.speaker_slash
@@ -256,6 +262,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 16),
                 SwitchListTile(
                   activeColor: const Color(0xFFFFB800),
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
                   secondary: const Icon(CupertinoIcons.flame_fill, color: Colors.deepOrange),
                   title: Text("Streak Reminders", style: TextStyle(color: textColor)),
                   value: _streakNotif,
@@ -274,6 +282,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 SwitchListTile(
                   activeColor: const Color(0xFFFFB800),
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
                   secondary: const Icon(CupertinoIcons.star_fill, color: Color(0xFFFFB800)),
                   title: Text("Daily Challenges", style: TextStyle(color: textColor)),
                   value: _dailyChallengesNotif,
@@ -284,6 +294,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 SwitchListTile(
                   activeColor: const Color(0xFFFFB800),
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
                   secondary: const Icon(CupertinoIcons.person_2_fill, color: Colors.blue),
                   title: Text("Friend Requests & Activity", style: TextStyle(color: textColor)),
                   value: _friendNotif,
@@ -299,6 +311,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 SwitchListTile(
                   activeColor: const Color(0xFFFFB800),
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
                   secondary: const Icon(CupertinoIcons.speaker_2_fill, color: Colors.green),
                   title: Text("Notification Sounds", style: TextStyle(color: textColor)),
                   value: _notificationSound,
@@ -310,6 +324,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 SwitchListTile(
                   activeColor: const Color(0xFFFFB800),
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
                   secondary: const Icon(CupertinoIcons.waveform_path, color: Colors.purple),
                   title: Text("Vibration", style: TextStyle(color: textColor)),
                   value: _notificationVibration,

@@ -3,7 +3,10 @@
   "version": "2.0",
   "pipeline": "MediaPipe Holistic (Pose + Dual Hand + Face)",
   "model_filename": "fsl_lupang_hinirang.onnx",
-  "input_tensor_shape": [1, 818],
+  "input_tensor_shape": [
+    1,
+    818
+  ],
   "sample_frames": 32,
   "phrases": [
     {
@@ -13,7 +16,7 @@
       "label": "Bayang magiliw",
       "orientation": "upper_body",
       "instruction": "Place your right flat palm against your left chest (heart), then gently open and extend your hand forward with palm facing slightly upward.",
-      "min_energy": 0.20
+      "min_energy": 0.2
     },
     {
       "id": 2,
@@ -49,7 +52,7 @@
       "label": "Lupang hinirang",
       "orientation": "upper_body",
       "instruction": "Gesture toward the ground/land with open palms facing downward, then bring the dominant hand forward in a choosing/cherishing motion.",
-      "min_energy": 0.20
+      "min_energy": 0.2
     },
     {
       "id": 6,
@@ -94,25 +97,16 @@
       "label": "Sa simoy at sa langit",
       "orientation": "upper_body",
       "instruction": "Sway open fluttered palms softly across the face level (breeze), then sweep both arms upward toward the sky.",
-      "min_energy": 0.20
+      "min_energy": 0.2
     },
     {
       "id": 11,
       "index": 10,
       "folder_code": "11_May_dilag_ang_tula_at_awit",
-      "label": "May dilag ang tula at awit",
+      "label": "May dilag ang tula at awit sa paglayang minamahal",
       "orientation": "upper_body",
-      "instruction": "Trace along your cheek for beauty/radiance, followed by conduct waves from the mouth symbolizing lyrical song.",
-      "min_energy": 0.20
-    },
-    {
-      "id": 12,
-      "index": 11,
-      "folder_code": "12_Sa_paglayang_minamahal",
-      "label": "Sa paglayang minamahal",
-      "orientation": "upper_body",
-      "instruction": "Cross wrists and break them outward to an open release (freedom), then cross open hands over the chest (cherished/beloved).",
-      "min_energy": 0.24
+      "instruction": "Trace along your cheek for beauty/radiance, followed by conduct waves from the mouth symbolizing lyrical song. Then: Cross wrists and break them outward to an open release (freedom), then cross open hands over the chest (cherished/beloved).",
+      "min_energy": 0.2
     },
     {
       "id": 13,
@@ -175,7 +169,7 @@
       "label": "Aming ligaya",
       "orientation": "upper_body",
       "instruction": "Brush flat open palms upward across your chest repeatedly with a cheerful, smiling facial expression (happiness/joy).",
-      "min_energy": 0.20
+      "min_energy": 0.2
     },
     {
       "id": 20,
@@ -202,7 +196,10 @@
       "label": "Nang dahil sa'yo",
       "orientation": "upper_body",
       "instruction": "Point open hand forward outward with reverent eye contact, acknowledging devotion to the nation.",
-      "min_energy": 0.20
+      "min_energy": 0.2
     }
-  ]
+  ],
+  "merged_lines": {
+    "10": "May dilag ang tula at awit + Sa paglayang minamahal (index 11 retired; INVALID stays 22)"
+  }
 }

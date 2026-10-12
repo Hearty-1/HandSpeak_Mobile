@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart'; 
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Added dependency
 import '/providers/theme_provider.dart'; 
 import 'create_account.dart';
 import '../home/home.dart';
@@ -24,6 +25,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
   bool _isLoading = false; 
   bool _isGoogleLoading = false;
   bool _obscurePassword = true;
+  bool _rememberMe = false; // Added state
 
   // Rate Limiting & Brute Force Protection
   int _failedAttempts = 0;
@@ -33,11 +35,29 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
   Timer? _lockoutTimer;
 
   @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials(); // Load credentials on startup
+  }
+
+  @override
   void dispose() {
     _lockoutTimer?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  // Load Saved Credentials
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _rememberMe = prefs.getBool('remember_me') ?? false;
+      if (_rememberMe) {
+        _emailController.text = prefs.getString('saved_email') ?? '';
+        _passwordController.text = prefs.getString('saved_password') ?? '';
+      }
+    });
   }
 
   void _startLockoutTimer() {
@@ -97,6 +117,18 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
         // Reset failed attempts on success
         _failedAttempts = 0;
 
+        // Remember Me Logic: Save or clear credentials
+        final prefs = await SharedPreferences.getInstance();
+        if (_rememberMe) {
+          await prefs.setBool('remember_me', true);
+          await prefs.setString('saved_email', email);
+          await prefs.setString('saved_password', password);
+        } else {
+          await prefs.remove('remember_me');
+          await prefs.remove('saved_email');
+          await prefs.remove('saved_password');
+        }
+
         if (!mounted) return;
         
         await Provider.of<ThemeProvider>(context, listen: false).loadThemeFromPrefs();
@@ -149,7 +181,6 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
     );
   }
 
-  /// Google SSO: only approved student accounts are let in.
   void _handleGoogleLogin() async {
     if (_isLoading || _isGoogleLoading) return;
     setState(() => _isGoogleLoading = true);
@@ -196,7 +227,6 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
   void _handleForgotPassword() async {
     String email = _emailController.text.trim();
 
-    // Require the user to enter an email before requesting a reset
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -207,13 +237,11 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       return;
     }
 
-    // Call the new AuthService method
     String? error = await _authService.sendPasswordResetEmail(email);
 
     if (!mounted) return;
 
     if (error == null) {
-      // Success case
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("A password reset link has been sent to $email."),
@@ -222,7 +250,6 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
         ),
       );
     } else {
-      // Error case (e.g., user not found, badly formatted email)
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error),
@@ -255,22 +282,11 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Logo
-                Image.asset(
-                  "assets/pictures/logo.png", 
-                  width: 75,
-                ),
+                Image.asset("assets/pictures/logo.png", width: 75),
                 const SizedBox(height: 24),
-
-                // Character Illustration
-                Image.asset(
-                  "assets/pictures/image 66.png", 
-                  width: 200,
-                  fit: BoxFit.contain,
-                ),
+                Image.asset("assets/pictures/image 66.png", width: 200, fit: BoxFit.contain),
                 const SizedBox(height: 40),
 
-                // Email Input Field
                 _buildTextField(
                   hint: "Email",
                   controller: _emailController,
@@ -279,7 +295,6 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                 ),
                 const SizedBox(height: 16),
 
-                // Password Input Field with Toggle
                 _buildTextField(
                   hint: "Password",
                   controller: _passwordController,
@@ -293,38 +308,61 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                         color: const Color(0xFF8E8E93),
                         size: 20,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
                 
-                // Forgot Password Button
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _handleForgotPassword,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                // Remember Me & Forgot Password Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: Checkbox(
+                            value: _rememberMe,
+                            onChanged: (value) => setState(() => _rememberMe = value ?? false),
+                            activeColor: const Color(0xFFFFB800),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                            side: const BorderSide(color: Color(0xFF8E8E93)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          "Remember Me",
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
-                    child: const Text(
-                      "Forgot Password?",
-                      style: TextStyle(
-                        color: Color(0xFFFFB800), 
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                    TextButton(
+                      onPressed: _handleForgotPassword,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        "Forgot Password?",
+                        style: TextStyle(
+                          color: Color(0xFFFFB800), 
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-                // Login Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -335,32 +373,18 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                       backgroundColor: const Color(0xFFFFB800),
                       disabledBackgroundColor: Colors.grey.shade400,
                       foregroundColor: Colors.white, 
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(32),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
                     ),
                     child: _isLoading
-                        ? const SizedBox(
-                            width: 24, 
-                            height: 24, 
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
-                          )
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
                         : Text(
-                            _remainingLockoutSeconds > 0
-                                ? 'Locked out (${_remainingLockoutSeconds}s)'
-                                : 'Login', 
-                            style: const TextStyle(
-                              color: Colors.white, 
-                              fontSize: 17, 
-                              fontWeight: FontWeight.w600, 
-                              letterSpacing: -0.4,
-                            ),
+                            _remainingLockoutSeconds > 0 ? 'Locked out (${_remainingLockoutSeconds}s)' : 'Login', 
+                            style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.4),
                           ),
                   ),
                 ),
                 const SizedBox(height: 20),
 
-                // Divider
                 Row(
                   children: [
                     Expanded(child: Divider(color: Colors.grey.shade300)),
@@ -373,7 +397,6 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                 ),
                 const SizedBox(height: 20),
 
-                // Google SSO (approved students only)
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -386,50 +409,26 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
                     ),
                     child: _isGoogleLoading
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(color: Color(0xFFFFB800), strokeWidth: 3),
-                          )
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Color(0xFFFFB800), strokeWidth: 3))
                         : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               _GoogleLogo(),
                               SizedBox(width: 12),
-                              Text(
-                                'Sign in with Google',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.3),
-                              ),
+                              Text('Sign in with Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.3)),
                             ],
                           ),
                   ),
                 ),
                 const SizedBox(height: 36),
 
-                // Footer "Or Sign Up"
                 GestureDetector(
-                  onTap: () => Navigator.push(
-                    context, 
-                    MaterialPageRoute(builder: (context) => const CreateAccount())
-                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CreateAccount())),
                   child: const Column(
                     children: [
-                      Text(
-                        'or', 
-                        style: TextStyle(
-                          color: Colors.black54, 
-                          fontSize: 14,
-                        )
-                      ),
+                      Text('or', style: TextStyle(color: Colors.black54, fontSize: 14)),
                       SizedBox(height: 8),
-                      Text(
-                        'Sign Up', 
-                        style: TextStyle(
-                          color: Color(0xFFFFB800), 
-                          fontSize: 16, 
-                          fontWeight: FontWeight.w600,
-                        )
-                      ),
+                      Text('Sign Up', style: TextStyle(color: Color(0xFFFFB800), fontSize: 16, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
@@ -455,65 +454,40 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       obscureText: obscureText,
       enabled: enabled,
       keyboardType: keyboardType,
-      style: const TextStyle(
-        fontSize: 16,
-        color: Colors.black,
-        fontWeight: FontWeight.w400,
-      ),
+      style: const TextStyle(fontSize: 16, color: Colors.black, fontWeight: FontWeight.w400),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(
-          color: Color(0xFF8E8E93), 
-          fontSize: 16,
-        ),
+        hintStyle: const TextStyle(color: Color(0xFF8E8E93), fontSize: 16),
         filled: true,
         fillColor: enabled ? const Color(0xFFF2F2F7) : Colors.grey.shade200, 
         contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18), 
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(32),
-          borderSide: BorderSide.none, 
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(32), borderSide: BorderSide.none),
         suffixIcon: suffixIcon,
       ),
     );
   }
 }
 
-/// Google "G" mark drawn with arcs (no image asset needed).
 class _GoogleLogo extends StatelessWidget {
   const _GoogleLogo();
-
   @override
-  Widget build(BuildContext context) =>
-      const SizedBox(width: 22, height: 22, child: CustomPaint(painter: _GoogleLogoPainter()));
+  Widget build(BuildContext context) => const SizedBox(width: 22, height: 22, child: CustomPaint(painter: _GoogleLogoPainter()));
 }
 
 class _GoogleLogoPainter extends CustomPainter {
   const _GoogleLogoPainter();
-
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = size.width * 0.2;
     final rect = Rect.fromLTWH(stroke / 2, stroke / 2, size.width - stroke, size.height - stroke);
-    Paint p(Color c) => Paint()
-      ..color = c
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke;
+    Paint p(Color c) => Paint()..color = c..style = PaintingStyle.stroke..strokeWidth = stroke;
     const deg = 3.14159265 / 180;
-    canvas.drawArc(rect, -140 * deg, 95 * deg, false, p(const Color(0xFFEA4335))); // red (top)
-    canvas.drawArc(rect, 145 * deg, 75 * deg, false, p(const Color(0xFFFBBC05))); // yellow (left)
-    canvas.drawArc(rect, 45 * deg, 100 * deg, false, p(const Color(0xFF34A853))); // green (bottom)
-    canvas.drawArc(rect, 0, 45 * deg, false, p(const Color(0xFF4285F4))); // blue (right)
-    // Blue crossbar.
-    canvas.drawLine(
-      Offset(size.width / 2, size.height / 2),
-      Offset(size.width - stroke / 2, size.height / 2),
-      Paint()
-        ..color = const Color(0xFF4285F4)
-        ..strokeWidth = stroke,
-    );
+    canvas.drawArc(rect, -140 * deg, 95 * deg, false, p(const Color(0xFFEA4335))); 
+    canvas.drawArc(rect, 145 * deg, 75 * deg, false, p(const Color(0xFFFBBC05))); 
+    canvas.drawArc(rect, 45 * deg, 100 * deg, false, p(const Color(0xFF34A853))); 
+    canvas.drawArc(rect, 0, 45 * deg, false, p(const Color(0xFF4285F4))); 
+    canvas.drawLine(Offset(size.width / 2, size.height / 2), Offset(size.width - stroke / 2, size.height / 2), Paint()..color = const Color(0xFF4285F4)..strokeWidth = stroke);
   }
-
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

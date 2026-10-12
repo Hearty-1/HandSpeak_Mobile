@@ -1,4 +1,5 @@
 import 'dart:ui'; 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,6 +14,7 @@ import '../leaderboard/arena.dart';
 import '../home/notification_bell.dart';
 import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
+import '/auth/login_screen.dart';
 
 import '/services/performance_monitor.dart';
 
@@ -198,6 +200,19 @@ class SnedInterface2 extends StatelessWidget {
                               )));
                             },
                           ),
+                          ListTile(
+  leading: const Icon(Icons.logout_rounded, color: Color(0xFFF34B1B)), 
+  title: const Text('Sign Out', style: TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
+  onTap: () async {
+    await FirebaseAuth.instance.signOut();
+    if (!context.mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const SnedStudentLogin()), 
+      (route) => false
+    );
+  }, 
+),
                         ],
                       ),
                     ),
