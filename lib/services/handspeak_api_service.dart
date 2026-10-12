@@ -17,6 +17,28 @@ class HandSpeakModels {
 
   /// Mga model sa POST /v1/predict_raw/{model_id} (raw landmarks + server-side gates).
   static const List<String> rawModels = [lupangHinirang, calendar];
+
+  /// Model na dapat sumagot para sa isang raw model, at ang tagged Cloud Run
+  /// revision na siguradong may ganitong model. Kapag ibang model_version ang
+  /// sagot ng live URL (hal. hindi pa nailipat ang traffic sa bagong revision),
+  /// ipinapadala ulit sa tagged revision. Kapag nailipat na ang traffic, ang
+  /// live URL na mismo ang ginagamit; walang kailangang baguhin dito.
+  static const Map<String, StagedRawModel> stagedRawModels = {
+    lupangHinirang: StagedRawModel(
+      checkpoint: 'palm_lupang_v9_switch',
+      url: 'https://lupang-v9---handspeak-inference-xo2j6ffgta-as.a.run.app',
+    ),
+  };
+}
+
+/// Inaasahang `source_checkpoint` ng isang raw model + tagged revision URL nito.
+class StagedRawModel {
+  final String checkpoint;
+  final String url;
+  const StagedRawModel({required this.checkpoint, required this.url});
+
+  /// model_version = "<feature_version>/<source_checkpoint>", hal. "lupang-v4/palm_lupang_v9_switch".
+  bool servedBy(String modelVersion) => modelVersion.endsWith('/$checkpoint');
 }
 
 class Prediction {
@@ -792,15 +814,48 @@ class HandSpeakApiService {
       throw ArgumentError("Masyadong malaki ang request (${body.length} bytes)");
     }
 
-    final response = await _authed((h) => _client.post(
-          Uri.parse("$baseUrl/v1/predict_raw/$modelId"),
-          headers: h,
-          body: body,
-        ));
+    Future<RawPredictResponse> send(String base) async {
+      final response = await _authed((h) => _client.post(
+            Uri.parse("$base/v1/predict_raw/$modelId"),
+            headers: h,
+            body: body,
+          ));
+      if (response.statusCode != 200) throw _error(response);
+      return RawPredictResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    }
 
-    if (response.statusCode != 200) throw _error(response);
-    return RawPredictResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    final staged = HandSpeakModels.stagedRawModels[modelId];
+    final chosen = _rawBaseUrls[modelId];
+    if (staged == null) return send(baseUrl);
+
+    // Natukoy na sa session na ito na tagged revision ang may tamang model.
+    if (chosen != null && chosen != baseUrl) {
+      try {
+        return await send(chosen);
+      } catch (e) {
+        // Tinanggal ang tag o walang network papunta rito: balik sa live URL.
+        _rawBaseUrls.remove(modelId);
+      }
+    }
+
+    final live = await send(baseUrl);
+    if (chosen == baseUrl || staged.servedBy(live.modelVersion)) {
+      _rawBaseUrls[modelId] = baseUrl;
+      return live;
+    }
+    // Lumang model pa ang nasa live traffic: subukan ang tagged revision.
+    try {
+      final tagged = await send(staged.url);
+      if (staged.servedBy(tagged.modelVersion)) {
+        _rawBaseUrls[modelId] = staged.url;
+        return tagged;
+      }
+    } catch (_) {}
+    return live;
   }
+
+  /// model id -> base URL na naghahatid ng inaasahang model (per app session).
+  static final Map<String, String> _rawBaseUrls = {};
 
   /// Bilang ng features ng J/Z model (feature version jz-v2).
   static const int letterFeatureDim = 24;

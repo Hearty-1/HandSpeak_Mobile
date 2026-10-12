@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -119,6 +118,18 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
   /// INVALID_GESTURE is the last of the v4 model's 23 classes.
   static const int _invalidIndex = 22;
+
+  /// palm_lupang_v9_switch merged "Sa paglayang minamahal" (class 11) into
+  /// line 11 "May dilag ang tula at awit sa paglayang minamahal" (class 10);
+  /// class 11 is retired and never predicted as a line of its own.
+  static const int _mergedIndex = 10;
+  static const int _retiredIndex = 11;
+  static final Set<String> _mergedAliases = {
+    _compact('May dilag ang tula at awit'),
+    _compact('Sa paglayang minamahal'),
+    _compact('11_May_dilag_ang_tula_at_awit'),
+    _compact('12_Sa_paglayang_minamahal'),
+  };
   final double successThreshold = 0.70; // UI colour threshold for the score
   final int xpReward = 15;
 
@@ -174,7 +185,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       _phrases.sort((a, b) => ((a['index'] as num?) ?? 0).compareTo((b['index'] as num?) ?? 0));
 
       if (widget.questions != null && widget.questions!.isNotEmpty) {
-        _activeQuestions = widget.questions!;
+        _activeQuestions = key == 'lupang_hinirang' ? _mergeRetiredSteps(widget.questions!) : widget.questions!;
       } else {
         _activeQuestions = _phrases.map((p) => {
           'id': p['label'],
@@ -453,6 +464,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   int _classIndexForName(String? name) {
     if (name == null || name.trim().isEmpty) return -1;
     final key = _compact(name);
+    // Old 22-line names (Firestore lessons, previous server labels) and the
+    // retired class label "Sa paglayang minamahal (merged into line 11)".
+    if (_mergedAliases.contains(key) || key.contains('mergedintoline')) return _mergedIndex;
     for (int i = 0; i < _phrases.length; i++) {
       final p = _phrases[i];
       if (_compact('${p['folder_code'] ?? ''}') == key || _compact('${p['label'] ?? ''}') == key) {
@@ -462,15 +476,42 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     return -1;
   }
 
-  /// Class index the current step expects. Questions may come from Firestore
-  /// with their own fields, so try them all, then fall back to step order.
-  int _expectedClassIndex() {
-    final q = _activeQuestions[_currentStep];
+  /// Class index named by a question's own fields (Firestore questions carry
+  /// their own field names), or -1.
+  int _questionClassIndex(Map<String, dynamic> q) {
     for (final field in ['folder_code', 'label', 'id', 'question', 'title', 'answer']) {
       final idx = _classIndexForName(q[field]?.toString());
       if (idx != -1) return idx;
     }
-    return _currentStep < _phrases.length ? _currentStep : -1;
+    return -1;
+  }
+
+  /// Class index the current step expects; falls back to the manifest order
+  /// (step order != class index after line 11, since class 11 is retired).
+  int _expectedClassIndex() {
+    final idx = _questionClassIndex(_activeQuestions[_currentStep]);
+    if (idx != -1) return idx;
+    return _currentStep < _phrases.length
+        ? ((_phrases[_currentStep]['index'] as num?) ?? _currentStep).toInt()
+        : -1;
+  }
+
+  /// Firestore lessons may still list the 22 original lines: "May dilag ang
+  /// tula at awit" and "Sa paglayang minamahal" are now ONE line (class 10),
+  /// so the second of them is dropped and the first shows the merged label.
+  List<Map<String, dynamic>> _mergeRetiredSteps(List<Map<String, dynamic>> questions) {
+    final mergedLabel = _labelForIndex(_mergedIndex);
+    final out = <Map<String, dynamic>>[];
+    bool seenMerged = false;
+    for (final q in questions) {
+      if (_questionClassIndex(q) != _mergedIndex) {
+        out.add(q);
+      } else if (!seenMerged) {
+        seenMerged = true;
+        out.add({...q, 'question': mergedLabel, 'label': mergedLabel});
+      }
+    }
+    return out;
   }
 
   String _labelForIndex(int idx) {
@@ -491,7 +532,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       final idx = _classIndexForName(name);
       if (idx != -1) return idx;
     }
-    return (p.index >= 0 && p.index < _phrases.length) ? p.index : -1;
+    // By index: only manifest lines (0-10, 12-21); retired 11 counts as line 11.
+    if (p.index == _retiredIndex) return _mergedIndex;
+    return _phrases.any((ph) => (ph['index'] as num?)?.toInt() == p.index) ? p.index : -1;
   }
 
   /// v4 rejection codes (lupang_common.REJECT_TEXT) -> what to do differently.
@@ -506,6 +549,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     'LOW_CONFIDENCE': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
     'SMALL_MARGIN': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
     'HIGH_ENTROPY': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
+    // Reliability abstention: not enough evidence -> no prediction (never a forced guess).
+    'LOW_LANDMARKS': "Hindi sapat ang nakikitang katawan o kamay. Ipakita ang balikat at parehong kamay sa camera.",
+    'OUT_OF_FRAME': "Lumalabas ang kamay sa camera. Umatras nang kaunti para makita ang buong galaw.",
+    'UNSTABLE': "Hindi pa sapat ang ebidensya para makilala ang senyas. Ulitin nang buo, malinaw, at tuloy-tuloy.",
   };
 
   // ---------------------------------------------------------------------------
@@ -518,75 +565,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       _currentFeedback = text;
       _currentScore = score;
     });
-  }
-
-  // Still-edge trimming = lupang_common._trim_still_edges (training pipeline).
-  static const double _stillSpeed = 0.25; // shoulder spans per second
-  static const double _stillMinS = 0.20; // a still run must last this long to be cut
-  static const double _speedWindowS = 0.3; // speed measured over 0.3 s: tracking jitter averages out
-  static const int _minActiveFrames = 8;
-
-  /// Cuts hands held still before the line starts / after it ends.
-  ///
-  /// The Lupang Hinirang server gate does NOT trim still edges (trim_still is
-  /// off in palm_lupang_best.json), while the training clips are pure
-  /// signing. Replaying the 363 training clips through the model showed what
-  /// a typical phone recording does to it: hands held still 1 s before and
-  /// 1.5 s after the line drop correct + accepted results from 81% to 21%.
-  /// This is the training pipeline's own trim rule (wrist speed below 0.25
-  /// shoulder spans / s for >= 0.2 s at either end), applied here before
-  /// upload; with it the same recordings pass 78% again, and clean
-  /// recordings are unaffected.
-  List<CaptureFrame> _trimStillEdges(List<CaptureFrame> frames) {
-    final first = frames.indexWhere((f) => f.hasHands);
-    final last = frames.lastIndexWhere((f) => f.hasHands);
-    if (first == -1) return frames;
-    final f = frames.sublist(first, last + 1);
-    final n = f.length;
-    if (n < _minActiveFrames) return f;
-    final aspect = (_imageWidth > 0 && _imageHeight > 0) ? _imageWidth / _imageHeight : 1.0;
-
-    // Median shoulder width (aspect-corrected), the speed unit.
-    final spans = <double>[
-      for (final fr in f)
-        if (fr.pose != null && fr.pose!.length > 16)
-          sqrt(pow((fr.pose![11][0] - fr.pose![12][0]) * aspect, 2) + pow(fr.pose![11][1] - fr.pose![12][1], 2))
-    ]..sort();
-    if (spans.length < 2) return f;
-    final span = spans[spans.length ~/ 2] + 1e-6;
-
-    // Wrist per side: the hand's own wrist when tracked, else the pose wrist.
-    List<double>? wrist(CaptureFrame fr, bool left) {
-      final h = left ? fr.leftHand : fr.rightHand;
-      if (h != null && h.isNotEmpty) return [h[0][0] * aspect, h[0][1]];
-      final p = fr.pose;
-      if (p == null || p.length <= 16) return null;
-      final w = p[left ? 15 : 16];
-      return [w[0] * aspect, w[1]];
-    }
-
-    final speed = List<double>.filled(n, 0);
-    for (final left in [true, false]) {
-      int j = 0;
-      for (int i = 1; i < n; i++) {
-        while (j < i - 1 && (f[i].timeMs - f[j + 1].timeMs) / 1000.0 >= _speedWindowS) {
-          j++;
-        }
-        final a = wrist(f[j], left), b = wrist(f[i], left);
-        if (a == null || b == null) continue;
-        final dt = max((f[i].timeMs - f[j].timeMs) / 1000.0, 1e-3);
-        final v = sqrt(pow(b[0] - a[0], 2) + pow(b[1] - a[1], 2)) / dt / span;
-        if (v > speed[i]) speed[i] = v;
-      }
-    }
-
-    final moving = [for (int i = 0; i < n; i++) if (speed[i] >= _stillSpeed) i];
-    if (moving.isEmpty) return f; // all still: leave it to the server's motion gate
-    int a = max(moving.first - 1, 0), b = moving.last;
-    if ((f[a].timeMs - f[0].timeMs) / 1000.0 < _stillMinS) a = 0;
-    if ((f[n - 1].timeMs - f[b].timeMs) / 1000.0 < _stillMinS) b = n - 1;
-    if (b - a + 1 < _minActiveFrames) return f;
-    return f.sublist(a, b + 1);
   }
 
   Future<void> _stopAndEvaluate({bool manual = false}) async {
@@ -615,11 +593,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       _showFeedback(_rejectAdvice['NO_HANDS']!);
       return;
     }
-    final before = frames.length;
-    frames = _trimStillEdges(frames);
-    if (frames.length != before) {
-      debugPrint("Civic v4: trimmed ${before - frames.length} still frame(s) at the edges");
-    }
+    // No client-side trimming: the v9 gate trims still edges itself
+    // (trim_still), exactly as in training and in webcam_test_staging.py.
 
     final expected = _expectedClassIndex();
     final t0 = frames.first.timeMs;
@@ -668,7 +643,13 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               ].join('\n')
             : '';
         final secs = (frames.last.timeMs - t0) / 1000.0;
-        setState(() => _serverDebug = 'expected #$expected ${_labelForIndex(expected)} | '
+        final staged = HandSpeakModels.stagedRawModels[HandSpeakModels.lupangHinirang];
+        final version = result.modelVersion.isEmpty ? '?' : result.modelVersion;
+        final versionNote = staged == null || staged.servedBy(result.modelVersion)
+            ? 'model $version'
+            : 'OLD MODEL $version (expected ${staged.checkpoint}; tagged revision unreachable)';
+        setState(() => _serverDebug = '$versionNote\n'
+            'expected #$expected ${_labelForIndex(expected)} | '
             'top=#$topIdx (${top?.label} ${top?.confidence.toStringAsFixed(2)}) | failed=${result.failed}\n'
             'capture: ${frames.length} frames / ${secs.toStringAsFixed(1)} s = '
             '${(frames.length / (secs > 0 ? secs : 1)).toStringAsFixed(1)} fps | ${fixed.report} | '
