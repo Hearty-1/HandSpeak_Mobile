@@ -7,6 +7,7 @@ import 'phrase_tutorial_practice.dart' show CalendarSigns;
 import 'phrase_tutorial_detail.dart';
 
 import '/services/performance_monitor.dart';
+import '/services/progress_service.dart';
 
 class PhraseLesson {
   final String id;
@@ -54,6 +55,8 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
   bool _isLoading = true;
   bool _hasError = false;
   String _query = '';
+  // Signs mastered in tutorial practice (green outline on their cards).
+  late final Stream<Set<String>> _mastered = ProgressService().masteredTutorialLines('phrases');
 
   @override
   void initState() {
@@ -378,47 +381,54 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
       );
     }
 
-    final rows = <Widget>[
-      if (_hasError)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            children: [
-              Icon(Icons.cloud_off_rounded, size: 18, color: textColor.withOpacity(0.6)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text("Hindi ma-load ang ibang aralin mula sa server.",
-                    style: TextStyle(fontSize: 13, color: textColor.withOpacity(0.7))),
+    return StreamBuilder<Set<String>>(
+      stream: _mastered,
+      builder: (context, masteredSnap) {
+        final mastered = masteredSnap.data ?? const <String>{};
+        final rows = <Widget>[
+          if (_hasError)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_off_rounded, size: 18, color: textColor.withOpacity(0.6)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text("Hindi ma-load ang ibang aralin mula sa server.",
+                        style: TextStyle(fontSize: 13, color: textColor.withOpacity(0.7))),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() => _isLoading = true);
+                      _fetchLessons();
+                    },
+                    child: const Text("Retry"),
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () {
-                  setState(() => _isLoading = true);
-                  _fetchLessons();
-                },
-                child: const Text("Retry"),
-              ),
-            ],
-          ),
-        ),
-    ];
-    for (final category in [PhraseCategories.greetings, PhraseCategories.calendar]) {
-      final section = _filteredLessons.where((l) => l.category == category).toList();
-      if (section.isEmpty) continue;
-      rows.add(_sectionHeader(category, section.length, textColor));
-      for (final lesson in section) {
-        rows.add(PhraseCard(
-          title: lesson.title,
-          isLocked: lesson.isLocked,
-          onTap: () => _openLesson(lesson),
-        ));
-      }
-      rows.add(const SizedBox(height: 8));
-    }
+            ),
+        ];
+        for (final category in [PhraseCategories.greetings, PhraseCategories.calendar]) {
+          final section = _filteredLessons.where((l) => l.category == category).toList();
+          if (section.isEmpty) continue;
+          rows.add(_sectionHeader(category, section.length, textColor));
+          for (final lesson in section) {
+            rows.add(PhraseCard(
+              title: lesson.title,
+              isLocked: lesson.isLocked,
+              isMastered: mastered.contains(ProgressService.masteryKey(lesson.title)),
+              onTap: () => _openLesson(lesson),
+            ));
+          }
+          rows.add(const SizedBox(height: 8));
+        }
 
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      children: rows,
+        return ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          children: rows,
+        );
+      },
     );
   }
 }
@@ -426,6 +436,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
 class PhraseCard extends StatelessWidget {
   final String title;
   final bool isLocked;
+  final bool isMastered;
   final VoidCallback onTap;
 
   const PhraseCard({
@@ -433,6 +444,7 @@ class PhraseCard extends StatelessWidget {
     required this.title,
     required this.isLocked,
     required this.onTap,
+    this.isMastered = false,
   });
 
   @override
@@ -456,7 +468,9 @@ class PhraseCard extends StatelessWidget {
                   color: theme.cardColor.withOpacity(isLocked ? 0.4 : 0.75),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isLocked ? theme.dividerColor.withOpacity(0.2) : theme.primaryColor.withOpacity(0.5), 
+                    color: isLocked
+                        ? theme.dividerColor.withOpacity(0.2)
+                        : (isMastered ? Colors.green.withOpacity(0.75) : theme.primaryColor.withOpacity(0.5)),
                     width: 1.5,
                   ),
                 ),

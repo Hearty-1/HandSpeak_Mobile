@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '/services/progress_service.dart';
+import 'civic_tutorial_interface.dart' show LupangLines;
 import '/services/handspeak_api_service.dart';
 import '/services/performance_monitor.dart';
 
@@ -44,10 +48,18 @@ class CivicTutorialPractice extends StatefulWidget {
   final String category;
   final List<Map<String, dynamic>>? questions;
 
+  /// Continuous practice (civic_practice.dart): the lines loop, each success
+  /// gives [continuousXp] (like the alphabet / numbers continuous practice)
+  /// and an inline success card instead of the "Mastered!" dialog.
+  final bool continuous;
+  final int continuousXp;
+
   const CivicTutorialPractice({
     super.key,
     this.category = 'lupang_hinirang',
     this.questions,
+    this.continuous = false,
+    this.continuousXp = 10,
   });
 
   @override
@@ -70,7 +82,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   bool _isBootstrapping = true;
 
   int _currentStep = 0;
-  int _score = 0;
+  int _xpEarned = 0; // XP actually awarded this session (first masteries only)
   bool _progressSaved = false;
 
   static final Map<String, Uint8List> _templateImageCache = {};
@@ -131,7 +143,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     _compact('12_Sa_paglayang_minamahal'),
   };
   final double successThreshold = 0.70; // UI colour threshold for the score
-  final int xpReward = 15;
+  final int xpReward = LupangLines.xpPerLine;
 
   @override
   void initState() {
@@ -208,7 +220,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     if (_isDisposed || _activeQuestions.isEmpty || _currentStep >= _activeQuestions.length) return;
 
     final categoryKey = _normalizeCategoryKey(widget.category);
-    final normalizedKey = '${categoryKey}_line_${_currentStep + 1}';
+    // Single-line lessons (civic tutorial list) carry their own line number.
+    final lineNumber = (_activeQuestions[_currentStep]['line_number'] as num?)?.toInt() ?? _currentStep + 1;
+    final normalizedKey = '${categoryKey}_line_$lineNumber';
 
     if (_templateImageCache.containsKey(normalizedKey)) {
       if (mounted) setState(() => _templateImageBytes = _templateImageCache[normalizedKey]);
@@ -702,23 +716,164 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   void _onSuccess() async {
     if (_isSuccessAchieved) return;
     _isSuccessAchieved = true;
-    _score++;
     HapticFeedback.heavyImpact();
 
     if (!mounted) return;
 
-    final isLastStep = _currentStep >= _activeQuestions.length - 1;
+    if (widget.continuous) {
+      // Inline success card (see _buildContinuousUI), then the next line.
+      setState(() => _currentFeedback = "Mahusay! Tumpak ang kumpas!");
+      await _awardPracticeXp();
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted && !_isDisposed) _advanceContinuous();
+      return;
+    }
 
-    setState(() {
-      _currentFeedback = isLastStep
-          ? "Mahusay! Kumpleto na ang lahat ng linya!"
-          : "Mahusay! Tumpak ang kumpas! Lumilipat...";
-    });
+    final line = '${_activeQuestions[_currentStep]['question'] ?? _labelForIndex(_expectedClassIndex())}';
+    setState(() => _currentFeedback = "Mahusay! Tumpak ang kumpas!");
+    await Future.delayed(const Duration(milliseconds: 100));
+    HapticFeedback.heavyImpact();
 
-    await Future.delayed(const Duration(milliseconds: 1500));
-
+    // XP per line: awarded only the first time this line is mastered.
+    final gained = await _awardLineXp(_expectedClassIndex());
     if (!mounted || _isDisposed) return;
-    _handleNextStep();
+    _xpEarned += gained;
+    await _showMasteredDialog(line, gained);
+    if (!mounted || _isDisposed) return;
+
+    // One line opened from the tutorial list: back to its lesson, like the
+    // other categories. A full run moves on to the next line.
+    if (_activeQuestions.length == 1) {
+      Navigator.pop(context);
+    } else {
+      _handleNextStep();
+    }
+  }
+
+  /// Same reward dialog as the alphabet / numbers / phrases tutorials.
+  Future<void> _showMasteredDialog(String line, int gained) {
+    final theme = Theme.of(context);
+    final visuals = _ThemeVisuals.fromTheme(theme);
+    final rewardColor = gained > 0 ? Colors.green : theme.colorScheme.onSurface.withOpacity(0.6);
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => SmartBlur(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: TweenAnimationBuilder(
+            tween: Tween<double>(begin: 0.5, end: 1.0),
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.elasticOut,
+            builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: theme.primaryColor.withOpacity(0.6), width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.primaryColor.withOpacity(0.35),
+                    blurRadius: 40,
+                    spreadRadius: 8,
+                  )
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: theme.primaryColor.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(visuals.mainBadgeIcon, color: theme.primaryColor, size: 64),
+                      ),
+                      Positioned(
+                        right: 0, top: 0,
+                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withOpacity(0.7), size: 22),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "Mastered!",
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Outstanding job! You have successfully mastered the line \"$line\"!",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  TweenAnimationBuilder(
+                    tween: Tween<double>(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeOutBack,
+                    builder: (context, value, child) => Transform.scale(scale: value, child: child),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: rewardColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: rewardColor.withOpacity(0.4), width: 2),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(gained > 0 ? visuals.secondaryIcon : Icons.check_circle_rounded, color: rewardColor, size: 22),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                // XP is given once per line; a repeat earns none.
+                                gained > 0 ? "+$gained XP Earned!" : "Already mastered",
+                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: rewardColor),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.primaryColor,
+                      foregroundColor: theme.colorScheme.onPrimary,
+                      elevation: 4,
+                      shadowColor: theme.primaryColor.withOpacity(0.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      minimumSize: const Size(double.infinity, 54),
+                    ),
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text("Continue", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _resetStepState() {
@@ -752,20 +907,397 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     });
   }
 
+  /// Session end. XP is already awarded per line in [_awardLineXp]; this only
+  /// marks the civic module as recently used.
   Future<void> _saveUserProgress() async {
     if (_progressSaved) return;
     _progressSaved = true;
+    await ProgressService().trackRecentModule('civic');
+  }
+
+  /// Awards the line's XP the first time it is mastered (Lupang Hinirang
+  /// only; one mastery record per model class). Returns the XP awarded.
+  Future<int> _awardLineXp(int classIndex) async {
+    if (classIndex < 0 || _normalizeCategoryKey(widget.category) != LupangLines.category) return 0;
+    return ProgressService().awardTutorialLineXp(
+      moduleKey: LupangLines.moduleKey,
+      lineKey: LupangLines.lineKey(classIndex),
+      xp: xpReward,
+      xpField: LupangLines.xpField,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Continuous practice (civic_practice.dart)
+  // ---------------------------------------------------------------------------
+
+  /// Practice XP for every success (not once per line like the tutorial).
+  Future<void> _awardPracticeXp() async {
     try {
-      dynamic service = ProgressService();
-      await service.updateUserProgress(
-        levelKey: 'civic_practice_${_normalizeCategoryKey(widget.category)}',
-        stars: _score == _activeQuestions.length ? 3 : 2,
-        xpEarned: _score * xpReward,
-        xpCategoryKey: 'civicXp',
-      );
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final xp = widget.continuousXp;
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        LupangLines.xpField: FieldValue.increment(xp),
+        'xp': FieldValue.increment(xp),
+        'dailyXp': FieldValue.increment(xp),
+        'weeklyXp': FieldValue.increment(xp),
+      }, SetOptions(merge: true));
     } catch (e) {
-      debugPrint("Progress save error: $e");
+      debugPrint("Failed to award XP: $e");
     }
+  }
+
+  /// Next line (after the last one: the first again). Used by success and Skip.
+  void _advanceContinuous() {
+    if (_activeQuestions.isEmpty) return;
+    setState(() {
+      _resetStepState();
+      _currentStep = (_currentStep + 1) % _activeQuestions.length;
+      _loadCurrentStepData();
+    });
+  }
+
+  /// Same layout as the alphabet / numbers / phrases continuous practice.
+  Widget _buildContinuousUI(ThemeData theme) {
+    final visuals = _ThemeVisuals.fromTheme(theme);
+    final isDark = theme.brightness == Brightness.dark;
+    final bool landscape = _isLandscape(context);
+    final double screenWidth = MediaQuery.of(context).size.width * (landscape ? 0.45 : 1.0);
+    final bool ready = !_isBootstrapping && _activeQuestions.isNotEmpty && _currentStep < _activeQuestions.length;
+    final currentItem = ready ? _activeQuestions[_currentStep] : const <String, dynamic>{};
+    final bool busy = _isRecording || _countdown > 0;
+    final double elapsed = (_isRecording && _recordStart != null)
+        ? DateTime.now().difference(_recordStart!).inMilliseconds / 1000.0
+        : 0.0;
+    final Color borderColor = _isSuccessAchieved
+        ? Colors.greenAccent
+        : (_isRecording ? Colors.redAccent : theme.dividerColor.withOpacity(0.6));
+
+    final Widget cameraPane = Stack(
+      alignment: Alignment.center,
+      fit: StackFit.expand,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(width: 4.0, color: borderColor),
+            boxShadow: [
+              if (_isSuccessAchieved || _isRecording)
+                BoxShadow(color: borderColor.withOpacity(0.6), blurRadius: 25, spreadRadius: 2)
+              else
+                BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4)),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: _isInitialized && _controller != null
+                ? _CameraView(controller: _controller!)
+                : Center(child: CircularProgressIndicator(color: theme.primaryColor)),
+          ),
+        ),
+        if (_isInitialized && !_isSuccessAchieved)
+          Center(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SmartBlur(
+                filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  color: Colors.black45,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_isRecording) ...[
+                        const Icon(Icons.fiber_manual_record, color: Colors.redAccent, size: 12),
+                        const SizedBox(width: 4),
+                      ],
+                      Text(
+                        _isRecording ? "Recording" : (_isEvaluating ? "Evaluating..." : "Frame Body"),
+                        style: TextStyle(
+                          color: _isRecording ? Colors.redAccent : Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    final List<Widget> content = !ready
+        ? [
+            const SizedBox(height: 120),
+            CircularProgressIndicator(color: theme.primaryColor),
+            const SizedBox(height: 20),
+            Text(_loadingStatus,
+                style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.8))),
+          ]
+        : [
+            // Progress chip + Skip (same header as the other continuous practices).
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.primaryColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Line ${_currentStep + 1} of ${_activeQuestions.length}',
+                      style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  TextButton.icon(
+                    onPressed: (busy || _isEvaluating || _isSuccessAchieved) ? null : _advanceContinuous,
+                    icon: const Icon(Icons.skip_next_rounded, size: 18),
+                    label: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w700)),
+                    style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7)),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '${currentItem['question'] ?? ''}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                fontFamily: 'Inter',
+                height: 1.15,
+              ),
+            ),
+            if ('${currentItem['instruction'] ?? ''}'.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${currentItem['instruction']}',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.7), fontStyle: FontStyle.italic),
+              ),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: screenWidth * 0.60,
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: _isImageLoading
+                        ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                        : _templateImageBytes != null
+                            ? Image.memory(_templateImageBytes!, fit: BoxFit.cover)
+                            : Container(
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                                child: Icon(visuals.ambientIcon1, color: Colors.grey, size: 50),
+                              ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Same camera size as the civic tutorial (220 x 220).
+            if (!landscape) SizedBox(width: 220, height: 220, child: cameraPane),
+            const SizedBox(height: 16),
+            if (_isSuccessAchieved)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: SmartBlur(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: TweenAnimationBuilder(
+                    tween: Tween<double>(begin: 0.8, end: 1.0),
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.elasticOut,
+                    builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Success! +${widget.continuousXp} XP",
+                                style: const TextStyle(
+                                    color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            "Loading next line...",
+                            style: TextStyle(
+                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else ...[
+              if (_countdown > 0)
+                Text('Arms down… $_countdown',
+                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.orange))
+              else if (_isRecording)
+                Text(
+                  "Recording... ${elapsed.toStringAsFixed(1)}s",
+                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900, fontSize: 16),
+                )
+              else
+                Text(
+                  !_poseVisible
+                      ? 'Lumayo nang kaunti para makita ang balikat at mga kamay'
+                      : 'Nakikita ang katawan ✓  Pindutin ang RECORD',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _poseVisible ? Colors.green : Colors.orange, fontWeight: FontWeight.w600),
+                ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 64,
+                width: 64,
+                child: FloatingActionButton(
+                  heroTag: 'civic_practice_record_button',
+                  backgroundColor: busy ? Colors.red : theme.primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 8,
+                  onPressed: (_isEvaluating || !_isInitialized) ? null : _toggleRecording,
+                  child: _isEvaluating
+                      ? const SizedBox(
+                          width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))
+                      : Icon(_countdown > 0 ? Icons.close : (_isRecording ? Icons.stop : Icons.fiber_manual_record),
+                          size: 32),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: SmartBlur(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: theme.cardColor.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: theme.colorScheme.surface.withOpacity(0.8), width: 1.5),
+                    ),
+                    child: Text(
+                      _currentFeedback,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.8), fontWeight: FontWeight.w700, fontSize: 14),
+                    ),
+                  ),
+                ),
+              ),
+              if (kDebugMode && _serverDebug.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                SelectableText(
+                  _serverDebug,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                ),
+              ],
+            ],
+          ];
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: theme.cardColor.withOpacity(0.4),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
+        flexibleSpace: ClipRRect(
+          child: SmartBlur(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        title: Text(
+          'Continuous Practice',
+          style: TextStyle(
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
+          ),
+        ),
+      ),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -20,
+            right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(angle: -0.2, child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor)),
+            ),
+          ),
+          Positioned(
+            bottom: 40,
+            left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(
+                  angle: 0.3, child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary)),
+            ),
+          ),
+          SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: content),
+                    ),
+                  ),
+                ),
+                if (landscape && ready)
+                  Expanded(
+                    flex: 6,
+                    child: Padding(padding: const EdgeInsets.fromLTRB(0, 10, 16, 16), child: cameraPane),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -786,6 +1318,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (widget.continuous) return _buildContinuousUI(theme);
 
     return Scaffold(
       appBar: AppBar(
@@ -875,7 +1408,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  'Linya ${_currentStep + 1} sa ${_activeQuestions.length}',
+                  _activeQuestions.length == 1 && currentItem['line_number'] != null
+                      ? 'Linya ${currentItem['line_number']} • +$xpReward XP'
+                      : 'Linya ${_currentStep + 1} sa ${_activeQuestions.length}',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.primaryColor),
                 ),
               ),
@@ -1021,7 +1556,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           ),
           const SizedBox(height: 12),
           Text(
-            'Lahat ng ${_activeQuestions.length} na linya ay matagumpay mong naisagawa.',
+            _activeQuestions.length == 1
+                ? 'Naisagawa mo nang tama ang "${_activeQuestions.first['question'] ?? ''}".'
+                : 'Lahat ng ${_activeQuestions.length} na linya ay matagumpay mong naisagawa.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface.withOpacity(0.8)),
           ),
@@ -1033,7 +1570,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               borderRadius: BorderRadius.circular(30),
             ),
             child: Text(
-              '+${_score * xpReward} Civic XP Earned',
+              _xpEarned > 0 ? '+$_xpEarned Civic XP Earned' : 'Na-master na dati (walang dagdag XP)',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: theme.primaryColor),
             ),
           ),
@@ -1049,6 +1586,58 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         ],
       ),
     );
+  }
+}
+
+// =============================================================================
+// REWARD DIALOG VISUALS (same as the other categories' tutorial practice)
+// =============================================================================
+class _ThemeVisuals {
+  final IconData mainBadgeIcon;
+  final IconData secondaryIcon;
+  final IconData ambientIcon1;
+  final IconData ambientIcon2;
+
+  const _ThemeVisuals({
+    required this.mainBadgeIcon,
+    required this.secondaryIcon,
+    required this.ambientIcon1,
+    required this.ambientIcon2,
+  });
+
+  factory _ThemeVisuals.fromTheme(ThemeData theme) {
+    final primary = theme.primaryColor;
+    final isDark = theme.brightness == Brightness.dark;
+
+    if (primary.blue > 160 && primary.red < 120) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.water_drop_rounded,
+        secondaryIcon: Icons.waves_rounded,
+        ambientIcon1: Icons.bubble_chart_rounded,
+        ambientIcon2: Icons.sailing_rounded,
+      );
+    } else if (primary.green > 160 && primary.red < 120) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.eco_rounded,
+        secondaryIcon: Icons.forest_rounded,
+        ambientIcon1: Icons.park_rounded,
+        ambientIcon2: Icons.energy_savings_leaf_rounded,
+      );
+    } else if (isDark) {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.auto_awesome_rounded,
+        secondaryIcon: Icons.nights_stay_rounded,
+        ambientIcon1: Icons.star_border_rounded,
+        ambientIcon2: Icons.wb_twilight_rounded,
+      );
+    } else {
+      return const _ThemeVisuals(
+        mainBadgeIcon: Icons.stars_rounded,
+        secondaryIcon: Icons.workspace_premium_rounded,
+        ambientIcon1: Icons.wb_sunny_rounded,
+        ambientIcon2: Icons.auto_awesome_rounded,
+      );
+    }
   }
 }
 

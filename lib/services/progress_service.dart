@@ -18,6 +18,20 @@ class ProgressService {
     return k; 
   }
 
+  /// The four learning modules, as stored in `recentModules` / `moduleLastOpened`.
+  static const List<String> modules = ['alphabet', 'numbers', 'common words', 'civic'];
+
+  /// Fields that mark [moduleKey]'s module as just used: the legacy
+  /// `recentModules` set plus `moduleLastOpened.<module>` (a timestamp, so the
+  /// home screen can order modules by recency; arrayUnion keeps first-use order).
+  Map<String, dynamic> _touchModule(String moduleKey) {
+    final cat = _normalizeCategory(moduleKey);
+    return {
+      'recentModules': FieldValue.arrayUnion([cat]),
+      if (modules.contains(cat)) 'moduleLastOpened': {cat: FieldValue.serverTimestamp()},
+    };
+  }
+
   /// Records an individual gesture attempt for camera gesture recognition in activities across any category.
   Future<void> recordGestureAttempt({
     required String sign,
@@ -112,7 +126,7 @@ class ProgressService {
         'totalQuestionsAnswered': FieldValue.increment(totalQuestions),
         'totalCorrectAnswers': FieldValue.increment(correctCount),
         'lastActive': FieldValue.serverTimestamp(),
-        'recentModules': FieldValue.arrayUnion([normalizedCat]),
+        ..._touchModule(normalizedCat),
         'progress': {
           '${normalizedCat.replaceAll(' ', '_')}_challenge_xp': FieldValue.increment(score)
         }
@@ -191,7 +205,7 @@ class ProgressService {
 
     try {
       await userRef.set({
-        'recentModules': FieldValue.arrayUnion([_normalizeCategory(moduleKey)]),
+        ..._touchModule(moduleKey),
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
@@ -211,7 +225,7 @@ class ProgressService {
         'progress': {
           levelName: FieldValue.increment(xpToAdd),
         },
-        'recentModules': FieldValue.arrayUnion([_normalizeCategory(levelName)]),
+        ..._touchModule(levelName),
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
@@ -234,6 +248,81 @@ class ProgressService {
     } catch (e) {
       debugPrint('Error adding overall XP: $e');
     }
+  }
+
+  /// Awards [xp] the FIRST time the user masters one tutorial line (e.g. one
+  /// Lupang Hinirang line), so practising a line again cannot farm XP.
+  /// Mastered lines are kept on the user document as
+  /// `tutorialMastery.<moduleKey>.<lineKey> = timestamp`.
+  /// Returns the XP actually awarded (0 when the line was already mastered
+  /// or nobody is signed in).
+  Future<int> awardTutorialLineXp({
+    required String moduleKey,
+    required String lineKey,
+    required int xp,
+    required String xpField, // module XP field, e.g. 'civicXp'
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+    final userRef = _db.collection('users').doc(user.uid);
+    try {
+      return await _db.runTransaction<int>((tx) async {
+        final snap = await tx.get(userRef);
+        final mastery = (snap.data()?['tutorialMastery'] as Map?)?[moduleKey];
+        if (mastery is Map && mastery.containsKey(lineKey)) return 0;
+        tx.set(
+          userRef,
+          {
+            xpField: FieldValue.increment(xp),
+            'xp': FieldValue.increment(xp),
+            'dailyXp': FieldValue.increment(xp),
+            'weeklyXp': FieldValue.increment(xp),
+            'completedLessons': FieldValue.increment(1),
+            'lastActive': FieldValue.serverTimestamp(),
+            ..._touchModule(moduleKey),
+            'tutorialMastery': {
+              moduleKey: {lineKey: FieldValue.serverTimestamp()},
+            },
+          },
+          SetOptions(merge: true),
+        );
+        return xp;
+      });
+    } catch (e) {
+      debugPrint('Error awarding tutorial line XP: $e');
+      return 0;
+    }
+  }
+
+  /// Mastery key of a sign: lowercase letters / digits only ("Magandang
+  /// Umaga" -> "magandangumaga", "A" -> "a", "11" -> "11").
+  static String masteryKey(String sign) => sign.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  /// Records that a tutorial sign was mastered (no XP: modules that award
+  /// their own XP call this so their tutorial lists can mark the sign).
+  Future<void> markTutorialMastered(String moduleKey, String sign) async {
+    final user = _auth.currentUser;
+    final key = masteryKey(sign);
+    if (user == null || key.isEmpty) return;
+    try {
+      await _db.collection('users').doc(user.uid).set({
+        'tutorialMastery': {
+          moduleKey: {key: FieldValue.serverTimestamp()},
+        },
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error recording tutorial mastery: $e');
+    }
+  }
+
+  /// Line keys the user has mastered in a tutorial module (live).
+  Stream<Set<String>> masteredTutorialLines(String moduleKey) {
+    final user = _auth.currentUser;
+    if (user == null) return Stream.value(const {});
+    return _db.collection('users').doc(user.uid).snapshots().map((snap) {
+      final mastery = (snap.data()?['tutorialMastery'] as Map?)?[moduleKey];
+      return mastery is Map ? mastery.keys.map((k) => k.toString()).toSet() : <String>{};
+    });
   }
 
   /// Stream the user's current progress

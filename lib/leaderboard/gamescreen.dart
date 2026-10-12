@@ -35,6 +35,9 @@ class GameProperScreen extends StatefulWidget {
 }
 
 class _GameProperScreenState extends State<GameProperScreen> with SingleTickerProviderStateMixin {
+  // Game music while this screen is open (see SoundProvider.claimBgm).
+  late final SoundProvider _bgm;
+
   final ProgressService _progressService = ProgressService();
 
   late final String _currentUserId;
@@ -120,6 +123,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   @override
   void initState() {
     super.initState();
+    _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.activity); // gamebgm.mp3
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -130,6 +134,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
 
   @override
   void dispose() {
+    _bgm.releaseBgm(this);
     _base64Cache.clear();
     _imageProviderCache.clear();
     _pulseController.dispose();

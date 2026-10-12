@@ -1,10 +1,12 @@
-import 'dart:ui'; 
+import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'civic_tutorial_detail.dart';
 
 import '/services/performance_monitor.dart';
+import '/services/progress_service.dart';
 
 class CivicLesson {
   final String id;
@@ -15,6 +17,14 @@ class CivicLesson {
   final bool isLocked;
   final List<Map<String, dynamic>> questions;
 
+  /// Practice category (e.g. 'lupang_hinirang'); empty = use [title].
+  final String category;
+
+  /// Lupang Hinirang line: model class index (-1 = not a single line) and the
+  /// 1-based number shown to the user.
+  final int lineIndex;
+  final int lineNumber;
+
   CivicLesson({
     required this.id,
     required this.title,
@@ -23,6 +33,9 @@ class CivicLesson {
     required this.order,
     this.isLocked = false,
     this.questions = const [],
+    this.category = '',
+    this.lineIndex = -1,
+    this.lineNumber = 0,
   });
 
   factory CivicLesson.fromJson(Map<String, dynamic> json, String docId) {
@@ -40,6 +53,34 @@ class CivicLesson {
   }
 }
 
+/// The Lupang Hinirang tutorial: one lesson per line of the merged 21-line
+/// manifest (assets/civic/labels_lupang_hinirang.json, the class order of the
+/// deployed model), each with its own XP reward.
+class LupangLines {
+  static const String category = 'lupang_hinirang';
+  static const String manifestPath = 'assets/civic/labels_lupang_hinirang.json';
+
+  /// Key of the per-line mastery record (ProgressService.awardTutorialLineXp).
+  static const String moduleKey = 'civic_lupang_hinirang';
+  static const int xpPerLine = 15;
+  static const String xpField = 'civicXp';
+
+  /// Mastery key of a line = its model class index (stable across reorders).
+  static String lineKey(int classIndex) => 'line_$classIndex';
+
+  static String compact(String s) => s
+      .toLowerCase()
+      .replaceFirst(RegExp(r'^\s*\d+[_\s-]+'), '')
+      .replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  /// Manifest phrases sorted by class index.
+  static Future<List<Map<String, dynamic>>> loadPhrases() async {
+    final manifest = jsonDecode(await rootBundle.loadString(manifestPath));
+    return List<Map<String, dynamic>>.from(manifest['phrases'])
+      ..sort((a, b) => ((a['index'] as num?) ?? 0).compareTo((b['index'] as num?) ?? 0));
+  }
+}
+
 class CivicTutorialInterface extends StatefulWidget {
   const CivicTutorialInterface({super.key});
 
@@ -51,60 +92,166 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
   List<CivicLesson> _allLessons = [];
   List<CivicLesson> _filteredLessons = [];
   bool _isLoading = true;
-  String? _errorMessage;
+  bool _hasError = false; // the line list itself could not be built
+  bool _videosUnavailable = false; // Firestore (videos) failed; lines still work
+  String _query = '';
+  late final Stream<Set<String>> _mastered = ProgressService().masteredTutorialLines(LupangLines.moduleKey);
 
   @override
   void initState() {
     super.initState();
-    _fetchLessonsFromFirestore();
+    _fetchLessons();
   }
 
-  Future<void> _fetchLessonsFromFirestore() async {
+  /// Firestore civic lessons, used only for videos: a lesson whose title is a
+  /// line, a question of the Lupang Hinirang lesson that carries a video, or
+  /// the whole-anthem video as the fallback for every line.
+  Future<List<Map<String, dynamic>>> _fetchFirestoreLessons() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('tutorial_lessons')
+        .where('category', whereIn: ['civic', 'Civic', 'civics'])
+        .get();
+    return [for (final doc in snapshot.docs) doc.data()];
+  }
+
+  static String _video(Map m) =>
+      (m['videoUrl'] ?? m['video_url'] ?? m['mediaUrl'] ?? '').toString().trim();
+
+  Future<void> _fetchLessons() async {
+    List<Map<String, dynamic>> phrases;
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('tutorial_lessons')
-          .where('category', isEqualTo: 'civic')
-          .get();
-
-      List<CivicLesson> lessons = snapshot.docs
-          .map((doc) => CivicLesson.fromJson(doc.data(), doc.id))
-          .toList();
-
-      lessons.sort((a, b) => a.order.compareTo(b.order));
-
-      if (mounted) {
-        setState(() {
-          _allLessons = lessons;
-          _filteredLessons = lessons;
-          _isLoading = false;
-        });
-      }
+      phrases = await LupangLines.loadPhrases();
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Failed to load lessons from Firestore: $e";
-          _isLoading = false;
-        });
+      debugPrint("Lupang Hinirang manifest error: $e");
+      if (mounted) setState(() {
+        _isLoading = false;
+        _hasError = true;
+      });
+      return;
+    }
+
+    var docs = <Map<String, dynamic>>[];
+    bool videosFailed = false;
+    try {
+      docs = await _fetchFirestoreLessons();
+    } catch (e) {
+      debugPrint("Firestore civic lessons unavailable: $e");
+      videosFailed = true;
+    }
+
+    final videoByLine = <String, String>{};
+    String anthemVideo = '';
+    for (final d in docs) {
+      final title = (d['displayTitle'] ?? d['title'] ?? d['label'] ?? '').toString();
+      final key = LupangLines.compact(title);
+      if (_video(d).isNotEmpty) videoByLine.putIfAbsent(key, () => _video(d));
+      final isAnthem = key.contains('lupang') && key.contains('hinirang') && key.length <= 'lupanghinirang'.length + 12;
+      if (isAnthem && anthemVideo.isEmpty) anthemVideo = _video(d);
+      for (final q in (d['questions'] as List?) ?? const []) {
+        if (q is! Map || _video(q).isEmpty) continue;
+        for (final f in ['folder_code', 'label', 'question', 'title', 'id']) {
+          final k = LupangLines.compact('${q[f] ?? ''}');
+          if (k.isNotEmpty) videoByLine.putIfAbsent(k, () => _video(q));
+        }
       }
     }
+
+    final lessons = <CivicLesson>[];
+    for (int i = 0; i < phrases.length; i++) {
+      final p = phrases[i];
+      final index = ((p['index'] as num?) ?? i).toInt();
+      final label = '${p['label']}';
+      final lineVideo = videoByLine[LupangLines.compact(label)] ??
+          videoByLine[LupangLines.compact('${p['folder_code'] ?? ''}')] ??
+          anthemVideo;
+      lessons.add(CivicLesson(
+        id: 'lupang_line_$index',
+        title: label,
+        videoUrl: lineVideo,
+        description: '${p['instruction'] ?? ''}',
+        order: i,
+        category: LupangLines.category,
+        lineIndex: index,
+        lineNumber: i + 1,
+        questions: [
+          {
+            'id': label,
+            'question': label,
+            'label': label,
+            'instruction': p['instruction'] ?? '',
+            'folder_code': p['folder_code'] ?? '',
+            'index': index,
+            'line_number': i + 1,
+          }
+        ],
+      ));
+    }
+
+    if (mounted) {
+      setState(() {
+        _allLessons = lessons;
+        _filteredLessons = _applyFilter(lessons, _query);
+        _isLoading = false;
+        _hasError = false;
+        _videosUnavailable = videosFailed;
+      });
+    }
+  }
+
+  List<CivicLesson> _applyFilter(List<CivicLesson> lessons, String keyword) {
+    final k = keyword.trim().toLowerCase();
+    if (k.isEmpty) return lessons;
+    return lessons
+        .where((l) => l.title.toLowerCase().contains(k) || '${l.lineNumber}' == k || 'linya ${l.lineNumber}'.contains(k))
+        .toList();
   }
 
   void _runFilter(String enteredKeyword) {
-    List<CivicLesson> results = [];
-    if (enteredKeyword.isEmpty) {
-      results = _allLessons;
-    } else {
-      results = _allLessons
-          .where((lesson) =>
-              lesson.title.toLowerCase().contains(enteredKeyword.toLowerCase()))
-          .toList();
-    }
-
     setState(() {
-      _filteredLessons = results;
+      _query = enteredKeyword;
+      _filteredLessons = _applyFilter(_allLessons, enteredKeyword);
     });
   }
 
+  void _openLesson(CivicLesson lesson) {
+    final index = _allLessons.indexWhere((l) => l.id == lesson.id);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CivicTutorialDetail(
+          civicList: _allLessons,
+          initialIndex: index == -1 ? 0 : index,
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(int mastered, int total, Color textColor) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 14, left: 4, right: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.flag_rounded, size: 20, color: theme.primaryColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Lupang Hinirang',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, fontFamily: 'Inter', color: textColor),
+                ),
+              ),
+              Text('$mastered / $total linya',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: textColor.withOpacity(0.6))),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -119,10 +266,11 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
     );
 
     return Scaffold(
-      extendBodyBehindAppBar: true, 
+      extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
+
       appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6), 
+        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: textColor),
@@ -143,12 +291,13 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
           ),
         ),
         title: Text(
-          'Civic Video Tutorials',
+          'Civic Tutorial',
           style: TextStyle(
             color: textColor, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
           ),
         ),
       ),
+
       body: Stack(
         children: [
           Positioned(
@@ -156,7 +305,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
             child: Container(
               width: 250, height: 250,
               decoration: BoxDecoration(
-                shape: BoxShape.circle, 
+                shape: BoxShape.circle,
                 color: theme.primaryColor.withOpacity(0.25),
               ),
             ),
@@ -166,11 +315,12 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
             child: Container(
               width: 280, height: 280,
               decoration: BoxDecoration(
-                shape: BoxShape.circle, 
+                shape: BoxShape.circle,
                 color: const Color(0xFF4CAF50).withOpacity(0.15),
               ),
             ),
           ),
+
           SafeArea(
             child: Column(
               children: [
@@ -188,10 +338,10 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                           border: Border.all(color: theme.dividerColor.withOpacity(0.15), width: 1.5),
                         ),
                         child: TextField(
-                          onChanged: (value) => _runFilter(value), 
+                          onChanged: (value) => _runFilter(value),
                           style: TextStyle(color: textColor),
                           decoration: InputDecoration(
-                            hintText: 'Search video tutorial...',
+                            hintText: 'Search line...',
                             hintStyle: TextStyle(color: textColor.withOpacity(0.5), fontWeight: FontWeight.w500),
                             prefixIcon: Icon(Icons.search, color: textColor.withOpacity(0.5)),
                             border: InputBorder.none,
@@ -202,6 +352,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                     ),
                   ),
                 ),
+
                 Expanded(
                   child: _buildBodyContent(textColor),
                 ),
@@ -218,60 +369,83 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
       return Center(child: CircularProgressIndicator(color: Theme.of(context).primaryColor));
     }
 
-    if (_errorMessage != null) {
+    if (_hasError) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Text(
-            _errorMessage!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 16, color: Colors.redAccent),
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: textColor.withOpacity(0.6)),
+            const SizedBox(height: 16),
+            Text(
+              "Failed to load the lines.",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.8)),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                setState(() => _isLoading = true);
+                _fetchLessons();
+              },
+              child: const Text("Tap to retry"),
+            )
+          ],
         ),
       );
     }
 
-    if (_filteredLessons.isEmpty) {
-      return Center(
-        child: Text(
-          "No civic video lessons found in Firestore.", 
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
-        ),
-      );
-    }
+    return StreamBuilder<Set<String>>(
+      stream: _mastered,
+      builder: (context, snapshot) {
+        final mastered = snapshot.data ?? const <String>{};
+        final masteredCount =
+            _allLessons.where((l) => mastered.contains(LupangLines.lineKey(l.lineIndex))).length;
 
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      itemCount: _filteredLessons.length, 
-      itemBuilder: (context, index) {
-        final lesson = _filteredLessons[index];
-        
-        return CivicCard(
-          title: lesson.title,
-          isLocked: lesson.isLocked,
-          onTap: () {
-            if (!lesson.isLocked) {
-              final originalIndex = _allLessons.indexWhere((l) => l.id == lesson.id);
-              
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => CivicTutorialDetail(
-                    civicList: _allLessons, 
-                    initialIndex: originalIndex == -1 ? 0 : originalIndex,
+        final rows = <Widget>[
+          if (_videosUnavailable)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_off_rounded, size: 18, color: textColor.withOpacity(0.6)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text("Hindi ma-load ang mga video mula sa server.",
+                        style: TextStyle(fontSize: 13, color: textColor.withOpacity(0.7))),
                   ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() => _isLoading = true);
+                      _fetchLessons();
+                    },
+                    child: const Text("Retry"),
+                  ),
+                ],
+              ),
+            ),
+          _sectionHeader(masteredCount, _allLessons.length, textColor),
+          if (_filteredLessons.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: Center(
+                child: Text(
+                  "No lines found.",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
                 ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Complete previous video lessons to unlock ${lesson.title}!"),
-                  backgroundColor: Colors.redAccent,
-                ),
-              );
-            }
-          },
+              ),
+            ),
+          for (final lesson in _filteredLessons)
+            CivicCard(
+              title: lesson.title,
+              isLocked: lesson.isLocked,
+              isMastered: mastered.contains(LupangLines.lineKey(lesson.lineIndex)),
+              onTap: () => _openLesson(lesson),
+            ),
+        ];
+
+        return ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          children: rows,
         );
       },
     );
@@ -281,6 +455,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
 class CivicCard extends StatelessWidget {
   final String title;
   final bool isLocked;
+  final bool isMastered;
   final VoidCallback onTap;
 
   const CivicCard({
@@ -288,6 +463,7 @@ class CivicCard extends StatelessWidget {
     required this.title,
     required this.isLocked,
     required this.onTap,
+    this.isMastered = false,
   });
 
   @override
@@ -306,65 +482,60 @@ class CivicCard extends StatelessWidget {
             child: GestureDetector(
               onTap: onTap,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
                 decoration: BoxDecoration(
                   color: theme.cardColor.withOpacity(isLocked ? 0.4 : 0.75),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isLocked ? theme.dividerColor.withOpacity(0.2) : theme.primaryColor.withOpacity(0.5), 
+                    color: isLocked
+                        ? theme.dividerColor.withOpacity(0.2)
+                        : (isMastered ? Colors.green.withOpacity(0.6) : theme.primaryColor.withOpacity(0.5)),
                     width: 1.5,
                   ),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Row(
-                        children: [
-                          Icon(Icons.video_library_rounded, color: isLocked ? textColor.withOpacity(0.3) : theme.primaryColor, size: 22),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: TextStyle(
-                                fontSize: 18, 
-                                fontWeight: FontWeight.w800,
-                                fontFamily: 'Inter',
-                                color: isLocked ? textColor.withOpacity(0.4) : textColor,
-                                letterSpacing: -0.5,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'Inter',
+                          color: isLocked ? textColor.withOpacity(0.4) : textColor,
+                          letterSpacing: -0.6,
+                          height: 1.15,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    isLocked
-                        ? Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: textColor.withOpacity(0.08), 
-                              shape: BoxShape.circle,
+                    if (isLocked)
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: textColor.withOpacity(0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.lock_outline, color: textColor.withOpacity(0.4), size: 22),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: theme.cardColor,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: theme.primaryColor.withOpacity(0.3),
+                              blurRadius: 8,
+                              spreadRadius: 1,
                             ),
-                            child: Icon(Icons.lock_outline, color: textColor.withOpacity(0.4), size: 20),
-                          )
-                        : Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: theme.cardColor,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: theme.primaryColor.withOpacity(0.3), 
-                                  blurRadius: 8, 
-                                  spreadRadius: 1,
-                                ),
-                              ],
-                            ),
-                            child: Icon(Icons.play_arrow_rounded, color: theme.primaryColor, size: 22),
-                          ),
+                          ],
+                        ),
+                        child: Icon(Icons.play_arrow_rounded, color: theme.primaryColor, size: 22),
+                      ),
                   ],
                 ),
               ),

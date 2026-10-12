@@ -446,12 +446,23 @@ class NumbersActivityInterface extends StatefulWidget {
 }
 
 class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
+  /// Index of the last playable level: the first level not yet cleared with
+  /// 2+ stars. Every level before it must be cleared, so a level that has
+  /// stars from old data (e.g. level 10, played when levels were sorted as
+  /// text: 1, 10, 11, 2, ...) stays locked until the levels before it are done.
+  static int _unlockedUpTo(List<String> levelKeys, Map<String, dynamic> progress) {
+    for (int i = 0; i < levelKeys.length; i++) {
+      if (((progress[levelKeys[i]] as num?) ?? 0) < 2) return i;
+    }
+    return levelKeys.length - 1;
+  }
+
   late SoundProvider _soundProvider;
 
   @override
   void initState() {
     super.initState();
-    Provider.of<SoundProvider>(context, listen: false).playBgm();
+    Provider.of<SoundProvider>(context, listen: false).claimBgm(this, BgmType.menu); // bgm.mp3 while open
   }
 
   @override
@@ -462,7 +473,7 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
 
   @override
   void dispose() {
-    _soundProvider.stopBgm();
+    _soundProvider.releaseBgm(this);
     super.dispose();
   }
 
@@ -728,14 +739,13 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                               final String questionType = levelData['type'];
 
                               final int earnedStars = progressMap[levelId] ?? 0;
-                              final String prevLevelId = index > 0 ? levelKeys[index - 1] : '';
-                              final int prevLevelStars = prevLevelId.isNotEmpty ? (progressMap[prevLevelId] ?? 0) : 0;
 
-                              final bool isUnlocked = isTierUnlocked && (index == 0 || prevLevelStars >= 2);
+                              final int unlockedUpTo = _unlockedUpTo(levelKeys, progressMap);
+                              final bool isUnlocked = isTierUnlocked && index <= unlockedUpTo;
 
                               final unlockMsg = !isTierUnlocked
                                   ? 'Earn at least 5 ⭐ in the previous difficulty to unlock!'
-                                  : 'Earn 2 ⭐ in Level $index to unlock!';
+                                  : 'Earn 2 ⭐ in Level ${levelKeys[unlockedUpTo].split('_').last} to unlock!';
 
                               return Column(
                                 children: [
@@ -765,7 +775,6 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                                         GestureDetector(
                                           onTap: isUnlocked
                                               ? () {
-                                                  _soundProvider.stopBgm();
                                                   Navigator.push(
                                                     context,
                                                     MaterialPageRoute(
@@ -774,9 +783,7 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                                                         questionType: questionType,
                                                       ),
                                                     ),
-                                                  ).then((_) {
-                                                    _soundProvider.playBgm();
-                                                  });
+                                                  );
                                                 }
                                               : () {
                                                   ScaffoldMessenger.of(context).showSnackBar(

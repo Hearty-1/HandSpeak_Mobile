@@ -28,6 +28,13 @@ Route _fadeRoute(Widget page) {
   );
 }
 
+/// Opens a module and records it as the most recently used one (the home
+/// screen's "Continue Learning" shows the two latest).
+void _openModule(BuildContext context, String moduleKey, Route route) {
+  ProgressService().trackRecentModule(moduleKey);
+  Navigator.push(context, route);
+}
+
 class SnedInterface2 extends StatelessWidget {
   const SnedInterface2({super.key}); 
 
@@ -64,7 +71,10 @@ class SnedInterface2 extends StatelessWidget {
             alphabetXp = data['alphabetXp'] ?? 0; 
             numbersXp = data['numbersXp'] ?? 0; 
             wordsXp = data['phraseXp'] ?? data['wordsXp'] ?? 0; 
-            civicsXp = data['civicsXp'] ?? 0; 
+            // Civic screens write 'civicXp'; older data may have 'civicsXp'.
+            civicsXp = ((data['civicXp'] ?? 0) as num).toInt() > ((data['civicsXp'] ?? 0) as num).toInt()
+                ? (data['civicXp'] as num).toInt()
+                : ((data['civicsXp'] ?? 0) as num).toInt();
 
             if (data['progress'] != null) {
               Map<String, dynamic> progressMap = Map<String, dynamic>.from(data['progress']);
@@ -326,8 +336,8 @@ class SnedInterface2 extends StatelessWidget {
                               targetXp: targetXp,
                               isLocked: false,
                               progressColor: adaptiveProgressColor,
-                              onTap: () => Navigator.push(
-                                context, 
+                              onTap: () => _openModule(
+                                context, 'alphabet',
                                 _fadeRoute(AlphabetInterface(currentXp: displayAlpXp, targetXp: targetXp)),
                               ),
                             ),
@@ -342,8 +352,8 @@ class SnedInterface2 extends StatelessWidget {
                               targetXp: targetXp,
                               isLocked: false,
                               progressColor: adaptiveProgressColor,
-                              onTap: () => Navigator.push(
-                                context, 
+                              onTap: () => _openModule(
+                                context, 'numbers',
                                 _fadeRoute(NumbersInterface(currentXp: displayNumXp, targetXp: targetXp)),
                               ),
                             ),
@@ -358,8 +368,8 @@ class SnedInterface2 extends StatelessWidget {
                               targetXp: targetXp,
                               isLocked: isWordsLocked,
                               progressColor: adaptiveProgressColor,
-                              onTap: () => Navigator.push(
-                                context, 
+                              onTap: () => _openModule(
+                                context, 'common words',
                                 _fadeRoute(PhraseInterface(currentXp: displayWordsXp, targetXp: targetXp)),
                               ),
                             ),
@@ -374,8 +384,8 @@ class SnedInterface2 extends StatelessWidget {
                               targetXp: targetXp,
                               isLocked: isCivicsLocked,
                               progressColor: adaptiveProgressColor,
-                              onTap: () => Navigator.push(
-                                context, 
+                              onTap: () => _openModule(
+                                context, 'civic',
                                 _fadeRoute(CivicInterface(currentXp: displayCivicsXp, targetXp: targetXp)),
                               ),
                             ),

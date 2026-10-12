@@ -445,7 +445,7 @@ class _CivicDifficultySelectionScreenState
   void initState() {
     super.initState();
     try {
-      Provider.of<SoundProvider>(context, listen: false).playBgm();
+      Provider.of<SoundProvider>(context, listen: false).claimBgm(this, BgmType.menu); // bgm.mp3 while open
     } catch (_) {}
   }
 
@@ -460,7 +460,7 @@ class _CivicDifficultySelectionScreenState
   @override
   void dispose() {
     try {
-      _soundProvider.stopBgm();
+      _soundProvider.releaseBgm(this);
     } catch (_) {}
     super.dispose();
   }
@@ -510,9 +510,6 @@ class _CivicDifficultySelectionScreenState
   }
 
   void _navigateToActivity(BuildContext context, String difficulty) {
-    try {
-      _soundProvider.stopBgm();
-    } catch (_) {}
 
     Navigator.push(
       context,
@@ -521,11 +518,7 @@ class _CivicDifficultySelectionScreenState
           difficulty: difficulty,
         ),
       ),
-    ).then((_) {
-      try {
-        _soundProvider.playBgm();
-      } catch (_) {}
-    });
+    );
   }
 
   @override

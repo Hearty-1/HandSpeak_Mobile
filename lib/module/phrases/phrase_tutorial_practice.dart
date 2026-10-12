@@ -21,6 +21,7 @@ import 'pose_provider.dart';
 import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
+import '/services/progress_service.dart';
 
 import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
 
@@ -126,7 +127,28 @@ class PhraseTutorialPractice extends StatefulWidget {
   /// Lesson demo video / image (optional; a placeholder is shown otherwise).
   final String mediaUrl;
 
-  const PhraseTutorialPractice({super.key, required this.targetPhrase, this.mediaUrl = ''});
+  /// Continuous practice (phrase_practice.dart): no "Mastered!" dialog; an
+  /// inline success card is shown, then [onMastered] moves to the next phrase.
+  final bool continuous;
+  final VoidCallback? onMastered;
+
+  /// Continuous practice header, e.g. "Phrase 3 of 21", with a Skip button.
+  final String? progressLabel;
+  final VoidCallback? onSkip;
+
+  /// XP per success (tutorial 20; continuous practice 10, like alphabet / numbers).
+  final int xpReward;
+
+  const PhraseTutorialPractice({
+    super.key,
+    required this.targetPhrase,
+    this.mediaUrl = '',
+    this.continuous = false,
+    this.onMastered,
+    this.progressLabel,
+    this.onSkip,
+    this.xpReward = 20,
+  });
 
   @override
   State<PhraseTutorialPractice> createState() => _PhraseTutorialPracticeState();
@@ -176,7 +198,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   static const Duration _maxRecording = Duration(seconds: 12);
 
   double _minConfidence = PhraseRecognizer.defaultMinConfidence;
-  final int xpReward = 20;
+  int get xpReward => widget.xpReward;
 
   // UI text
   String _status = 'Preparing…';
@@ -1062,7 +1084,17 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     HapticFeedback.heavyImpact();
 
     await _awardXp();
+    // Marks the sign in the tutorial list (green outline).
+    unawaited(ProgressService().markTutorialMastered('phrases', widget.targetPhrase));
     if (!mounted) return;
+
+    if (widget.continuous) {
+      // Inline success card (see build), then the next phrase.
+      setState(() {});
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted) widget.onMastered?.call();
+      return;
+    }
 
     final theme = Theme.of(context);
     final visuals = _ThemeVisuals.fromTheme(theme);
@@ -1292,6 +1324,87 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     );
   }
 
+
+  // ---------------------------------------------------------------------------
+  // Continuous practice (phrase_practice.dart)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildProgressHeader(ThemeData theme) {
+    final onSurface = theme.colorScheme.onSurface;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              widget.progressLabel!,
+              style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+          ),
+          if (widget.onSkip != null) ...[
+            const SizedBox(width: 10),
+            TextButton.icon(
+              onPressed: (_isRecording || _isEvaluating || _isSuccessAchieved || _countdown > 0) ? null : widget.onSkip,
+              icon: const Icon(Icons.skip_next_rounded, size: 18),
+              label: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w700)),
+              style: TextButton.styleFrom(foregroundColor: onSurface.withOpacity(0.7)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Same success card as the alphabet / numbers continuous practice.
+  Widget _buildContinuousSuccess(ThemeData theme, _ThemeVisuals visuals) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: SmartBlur(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: TweenAnimationBuilder(
+          tween: Tween<double>(begin: 0.8, end: 1.0),
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.elasticOut,
+          builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
+                    const SizedBox(width: 8),
+                    Text(
+                      "Success! +$xpReward XP",
+                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  "Loading next phrase...",
+                  style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // UI
   // ---------------------------------------------------------------------------
@@ -1432,7 +1545,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           ),
         ),
         title: Text(
-          'Tutorial Practice',
+          widget.continuous ? 'Continuous Practice' : 'Tutorial Practice',
           style: TextStyle(
             color: theme.colorScheme.onSurface,
             fontSize: 22,
@@ -1479,6 +1592,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    if (widget.progressLabel != null) _buildProgressHeader(theme),
                     Text(
                       widget.targetPhrase,
                       textAlign: TextAlign.center,
@@ -1663,7 +1777,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                         ),
                     ],
 
-                    if (_resultTitle.isNotEmpty) ...[
+                    if (widget.continuous && _isSuccessAchieved) ...[
+                      const SizedBox(height: 24),
+                      _buildContinuousSuccess(theme, visuals),
+                    ] else if (_resultTitle.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(30),

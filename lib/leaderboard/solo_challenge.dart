@@ -29,6 +29,21 @@ class SoloChallengeSetupScreen extends StatefulWidget {
 }
 
 class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
+  // Game music while this screen is open (see SoundProvider.claimBgm).
+  late final SoundProvider _bgm;
+
+  @override
+  void dispose() {
+    _bgm.releaseBgm(this);
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.activity); // gamebgm.mp3
+  }
+
   String _selectedCategory = 'Alphabet';
   int _selectedRounds = 10;
   int _selectedTimer = 15;
@@ -295,6 +310,9 @@ class GameProperScreen extends StatefulWidget {
 }
 
 class _GameProperScreenState extends State<GameProperScreen> {
+  // Game music while this screen is open (see SoundProvider.claimBgm).
+  late final SoundProvider _bgm;
+
   late String _currentUserId;
 
   List<Map<String, dynamic>> _questions = [];
@@ -366,6 +384,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
   @override
   void initState() {
     super.initState();
+    _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.activity); // gamebgm.mp3
     _maxTime = widget.timerDuration;
     _totalRounds = widget.totalRounds;
     _category = widget.category;
@@ -375,6 +394,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
 
   @override
   void dispose() {
+    _bgm.releaseBgm(this);
     _timer?.cancel();
     _identificationController.dispose();
     _handSub?.cancel();

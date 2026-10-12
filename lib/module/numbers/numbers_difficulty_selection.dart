@@ -20,7 +20,7 @@ class _NumbersDifficultySelectionScreenState
   @override
   void initState() {
     super.initState();
-    Provider.of<SoundProvider>(context, listen: false).playBgm();
+    Provider.of<SoundProvider>(context, listen: false).claimBgm(this, BgmType.menu); // bgm.mp3 while open
   }
 
   @override
@@ -31,7 +31,7 @@ class _NumbersDifficultySelectionScreenState
 
   @override
   void dispose() {
-    _soundProvider.stopBgm();
+    _soundProvider.releaseBgm(this);
     super.dispose();
   }
 
@@ -81,16 +81,13 @@ class _NumbersDifficultySelectionScreenState
   }
 
   void _navigateToActivity(BuildContext context, String difficulty) {
-    _soundProvider.stopBgm();
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => NumbersActivityInterface(difficulty: difficulty),
       ),
-    ).then((_) {
-      _soundProvider.playBgm();
-    });
+    );
   }
 
   @override

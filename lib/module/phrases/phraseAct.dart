@@ -447,6 +447,9 @@ class PhraseActivityInterface extends StatefulWidget {
 }
 
 class _PhraseActivityInterfaceState extends State<PhraseActivityInterface> {
+  // Game music while this level is open (see SoundProvider.claimBgm).
+  late final SoundProvider _bgm;
+
   int _currentIndex = 0;
   String? _selectedOption;
   bool _isAnswered = false;
@@ -458,8 +461,15 @@ class _PhraseActivityInterfaceState extends State<PhraseActivityInterface> {
   bool _isLoading = true;
 
   @override
+  void dispose() {
+    _bgm.releaseBgm(this);
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
+    _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.activity);
     _loadPhraseQuestions();
   }
 

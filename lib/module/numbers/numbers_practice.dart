@@ -779,28 +779,84 @@ class _NumbersPracticeState extends State<NumbersPractice> {
     await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
+    await _advance();
+  }
 
-    final nextIdx = (_currentIdx + 1) % _numbers.length;
-    final nextTargetNum = int.tryParse(_numbers[nextIdx]) ?? 0;
+  bool _isAdvancing = false;
 
-    _frameBuffer.clear();
-    _bufferFrameCount = 0;
+  /// Next number (after 100: 1 again). Used by success and Skip.
+  Future<void> _advance() async {
+    if (!mounted || _isAdvancing) return;
+    _isAdvancing = true;
+    try {
+      final nextIdx = (_currentIdx + 1) % _numbers.length;
+      final nextTargetNum = int.tryParse(_numbers[nextIdx]) ?? 0;
 
-    if (nextTargetNum > 10) {
-      await FSLOnnxService.loadModelForTarget(nextTargetNum);
-    }
+      _frameBuffer.clear();
+      _bufferFrameCount = 0;
 
-    setState(() {
-      _currentIdx = nextIdx;
-      _isSuccessAchieved = false;
-      _currentScore = 0.0;
-      _currentFeedback = "Ipuwesto ang kamay sa tapat ng camera";
-    });
+      if (nextTargetNum > 10) {
+        await FSLOnnxService.loadModelForTarget(nextTargetNum);
+      }
+      if (!mounted) return;
 
-    if (_isStaticSign) {
-      await _loadGestureLibrary(targetNumber);
+      setState(() {
+        _currentIdx = nextIdx;
+        _isSuccessAchieved = false;
+        _currentScore = 0.0;
+        _holdProgress = 0.0;
+        _startHoldTime = null;
+        _template = null; // the next number's template is loaded below
+        _currentFeedback = "Ipuwesto ang kamay sa tapat ng camera";
+      });
+
+      if (_isStaticSign) {
+        await _loadGestureLibrary(targetNumber);
+      }
+    } finally {
+      _isAdvancing = false;
+      if (mounted) setState(() {});
     }
   }
+
+  /// Progress chip + Skip, same header as the phrases / civic continuous practice.
+  Widget _buildSkipHeader(ThemeData theme, String progress) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              progress,
+              style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+          ),
+          const SizedBox(width: 10),
+          TextButton.icon(
+            onPressed: (_isSuccessAchieved || _isAdvancing) ? null : _skip,
+            icon: const Icon(Icons.skip_next_rounded, size: 18),
+            label: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w700)),
+            style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Skip: next sign without XP.
+  Future<void> _skip() async {
+    if (_isSuccessAchieved || _isAdvancing) return;
+    _startHoldTime = null;
+    _holdProgress = 0.0;
+    await _advance();
+  }
+
 
   @override
   void dispose() {
@@ -981,6 +1037,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    _buildSkipHeader(theme, 'Number ${_currentIdx + 1} of ${_numbers.length}'),
                     Text(
                       currentNumber,
                       style: TextStyle(

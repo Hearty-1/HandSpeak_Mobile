@@ -341,7 +341,11 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                                     context, 
                                     MaterialPageRoute(
                                       builder: (context) => CivicTutorialPractice(
-                                        category: currentLesson.title,
+                                        // A Lupang Hinirang line lesson has the line as its
+                                        // title; the practice screen needs the category.
+                                        category: currentLesson.category.isNotEmpty
+                                            ? currentLesson.category
+                                            : currentLesson.title,
                                         questions: currentLesson.questions,
                                       ),
                                     ),

@@ -1,6 +1,7 @@
 import 'dart:ui'; 
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_application_1/module/numbers/numbers_interface.dart';
 import '../services/progress_service.dart'; 
 import '../module/module.dart'; 
 import '../module/phrases/phrase_interface.dart';
+import '../module/civic/civic_interface.dart';
 import '../profile/profile.dart'; 
 import '../leaderboard/arena.dart'; 
 import '../home/settings_screen.dart';
@@ -96,40 +98,180 @@ class SnedInterafce1 extends StatelessWidget {
     }
   }
 
-  Widget _buildDynamicModuleCard(BuildContext context, String moduleType, double scale) {
-    String title;
-    String imagePath;
-    Widget targetScreen;
+  static const int _moduleTargetXp = 1000; // XP that completes a module (module.dart)
 
-    final String key = moduleType.toLowerCase().trim();
+  static String _moduleOf(String raw) {
+    final k = raw.toLowerCase().trim();
+    if (k.contains('number')) return 'numbers';
+    if (k.contains('phrase') || k.contains('word') || k.contains('common')) return 'common words';
+    if (k.contains('civic')) return 'civic';
+    if (k.contains('alpha') || k.contains('letter')) return 'alphabet';
+    return '';
+  }
 
-    if (key.contains('phrase') || key.contains('word') || key.contains('common')) {
-      title = 'Common Words';
-      imagePath = 'assets/pictures/commons.png';
-      targetScreen = const PhraseInterface();
-    } else if (key.contains('number')) {
-      title = 'Numbers';
-      imagePath = 'assets/pictures/numbers.png';
-      targetScreen = const NumbersInterface();
-    } else {
-      title = 'Alphabet';
-      imagePath = 'assets/pictures/abc.png';
-      targetScreen = const AlphabetInterface();
+  /// The two most recently opened modules (latest first), filling [moduleXp]
+  /// and [lastOpened] for their cards. Order: `moduleLastOpened` timestamps,
+  /// then the legacy `recentModules` list (newest entries last). Locked
+  /// modules are skipped; Alphabet / Numbers fill in for new learners.
+  static List<String> _latestModules(
+    Map<String, dynamic> data,
+    Map<String, int> moduleXp,
+    Map<String, DateTime> lastOpened,
+  ) {
+    int xp(String field) => (data[field] as num?)?.toInt() ?? 0;
+    final mapped = <String, int>{};
+    final progress = data['progress'];
+    if (progress is Map) {
+      progress.forEach((key, value) {
+        final m = _moduleOf('$key');
+        if (m.isNotEmpty && value is num) mapped[m] = (mapped[m] ?? 0) + value.toInt();
+      });
+    }
+    final fields = {
+      'alphabet': xp('alphabetXp'),
+      'numbers': xp('numbersXp'),
+      'common words': math.max(xp('phraseXp'), xp('wordsXp')),
+      'civic': math.max(xp('civicXp'), xp('civicsXp')),
+    };
+    for (final m in fields.keys) {
+      moduleXp[m] = math.max(fields[m]!, mapped[m] ?? 0);
     }
 
-    return _buildGlassCategoryCard(
-      context: context,
-      title: title,
-      imagePath: imagePath,
-      scale: scale,
-      onTap: () async {
-        await ProgressService().trackRecentModule(key);
-        if (!context.mounted) return;
-        Navigator.push(
-          context,
-          _fadeRoute(targetScreen),
-        );
+    final opened = data['moduleLastOpened'];
+    if (opened is Map) {
+      opened.forEach((key, value) {
+        final m = _moduleOf('$key');
+        if (m.isNotEmpty && value is Timestamp) lastOpened[m] = value.toDate();
+      });
+    }
+
+    final wordsLocked = moduleXp['alphabet']! < _moduleTargetXp;
+    final civicLocked = wordsLocked || moduleXp['common words']! < _moduleTargetXp;
+    bool unlocked(String m) => !(m == 'common words' && wordsLocked) && !(m == 'civic' && civicLocked);
+
+    final byTime = lastOpened.keys.toList()..sort((a, b) => lastOpened[b]!.compareTo(lastOpened[a]!));
+    final legacy = [
+      for (final e in ((data['recentModules'] as List?) ?? const []).reversed) _moduleOf('$e'),
+    ];
+    final ordered = <String>[];
+    for (final m in [...byTime, ...legacy, 'alphabet', 'numbers']) {
+      if (m.isNotEmpty && unlocked(m) && !ordered.contains(m)) ordered.add(m);
+    }
+    return ordered.take(2).toList();
+  }
+
+  static String _timeAgo(DateTime? t) {
+    if (t == null) return 'Start learning';
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'Just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    if (d.inDays == 1) return 'Yesterday';
+    if (d.inDays < 7) return '${d.inDays} days ago';
+    return '${t.month}/${t.day}/${t.year}';
+  }
+
+  /// "Continue Learning" shortcut: module art, name, last opened and the
+  /// module's XP progress; tapping resumes the module.
+  Widget _buildContinueCard(BuildContext context, String moduleKey, int xp, DateTime? opened, double scale) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final (String title, String imagePath, Widget Function(int) screen) = switch (moduleKey) {
+      'numbers' => ('Numbers', 'assets/pictures/numbers.png', (int x) => NumbersInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      'common words' => ('Words/Phrases', 'assets/pictures/words.png', (int x) => PhraseInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      'civic' => ('Civic Observances', 'assets/pictures/civic.png', (int x) => CivicInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      _ => ('Alphabet', 'assets/pictures/abc.png', (int x) => AlphabetInterface(currentXp: x, targetXp: _moduleTargetXp)),
+    };
+    final shownXp = math.min(xp, _moduleTargetXp);
+    final progress = shownXp / _moduleTargetXp;
+    final complete = xp >= _moduleTargetXp;
+    final accent = complete ? Colors.green : theme.primaryColor;
+
+    return GestureDetector(
+      onTap: () {
+        ProgressService().trackRecentModule(moduleKey);
+        Navigator.push(context, _fadeRoute(screen(shownXp)));
       },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24 * scale),
+        clipBehavior: Clip.antiAlias,
+        child: SmartBlur(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            padding: EdgeInsets.all(16 * scale),
+            decoration: BoxDecoration(
+              color: theme.cardColor.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(24 * scale),
+              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 58 * scale,
+                      width: 58 * scale,
+                      padding: EdgeInsets.all(10 * scale),
+                      decoration: BoxDecoration(
+                        color: theme.scaffoldBackgroundColor.withOpacity(0.8),
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
+                      ),
+                      child: Image.asset(imagePath, fit: BoxFit.contain),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: EdgeInsets.all(7 * scale),
+                      decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                      child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18 * scale),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 14 * scale),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.3, height: 1.15),
+                ),
+                SizedBox(height: 4 * scale),
+                Row(
+                  children: [
+                    Icon(Icons.history_rounded, size: 13 * scale, color: textColor.withOpacity(0.5)),
+                    SizedBox(width: 4 * scale),
+                    Flexible(
+                      child: Text(
+                        _timeAgo(opened),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: textColor.withOpacity(0.55), fontSize: 12 * scale, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                SizedBox(height: 12 * scale),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6 * scale),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 7 * scale,
+                    backgroundColor: theme.dividerColor.withOpacity(0.15),
+                    color: accent,
+                  ),
+                ),
+                SizedBox(height: 6 * scale),
+                Text(
+                  complete ? 'Completed' : '$shownXp / $_moduleTargetXp XP',
+                  style: TextStyle(color: complete ? Colors.green : textColor.withOpacity(0.6), fontSize: 11.5 * scale, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -215,12 +357,9 @@ class SnedInterafce1 extends StatelessWidget {
         List<String> recentModules = [];
         String questSubtitle = 'Your personalised quests are ready!';
 
-        String normalizeKey(String raw) {
-          final k = raw.toLowerCase().trim();
-          if (k.contains('number')) return 'numbers';
-          if (k.contains('phrase') || k.contains('word') || k.contains('common')) return 'common words';
-          return 'alphabet';
-        }
+        // Continue Learning: per-module XP + when each module was last opened.
+        final moduleXp = <String, int>{for (final m in ProgressService.modules) m: 0};
+        final lastOpened = <String, DateTime>{};
 
         if (userSnapshot.hasData && userSnapshot.data!.exists) { 
           final userData = userSnapshot.data!.data() as Map<String, dynamic>?; 
@@ -243,27 +382,7 @@ class SnedInterafce1 extends StatelessWidget {
             stars = userData['stars'] ?? (totalXp ~/ 1000);  
             avatarUrl = userData['avatar'] ?? userData['photoURL']; 
 
-            List<String> userLoggedModules = [];
-
-            if (userData['recentModules'] != null && (userData['recentModules'] as List).isNotEmpty) {
-              userLoggedModules = (userData['recentModules'] as List)
-                  .map((e) => normalizeKey(e.toString()))
-                  .toSet()
-                  .toList();
-            } 
-            else if (userData['progress'] != null && (userData['progress'] as Map).isNotEmpty) {
-              userLoggedModules = (userData['progress'] as Map<String, dynamic>)
-                  .keys
-                  .map((key) => normalizeKey(key))
-                  .toSet()
-                  .toList();
-            }
-
-            const defaultCategories = ['alphabet', 'numbers', 'common words'];
-            recentModules = [
-              ...userLoggedModules,
-              ...defaultCategories.where((cat) => !userLoggedModules.contains(cat)),
-            ].take(2).toList();
+            recentModules = _latestModules(userData, moduleXp, lastOpened);
           }
         }
 
@@ -680,16 +799,21 @@ class SnedInterafce1 extends StatelessWidget {
                       style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5), 
                     ),
                     SizedBox(height: 16 * scale), 
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
+                    // The two most recently opened modules, side by side.
+                    IntrinsicHeight(
                       child: Row(
-                        children: recentModules.map((moduleKey) {
-                          return Padding(
-                            padding: EdgeInsets.only(right: 16 * scale),
-                            child: _buildDynamicModuleCard(context, moduleKey, scale),
-                          );
-                        }).toList(),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (int i = 0; i < 2; i++) ...[
+                            if (i > 0) SizedBox(width: 14 * scale),
+                            Expanded(
+                              child: i < recentModules.length
+                                  ? _buildContinueCard(context, recentModules[i], moduleXp[recentModules[i]] ?? 0,
+                                      lastOpened[recentModules[i]], scale)
+                                  : const SizedBox.shrink(),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],
@@ -761,65 +885,6 @@ class SnedInterafce1 extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassCategoryCard({
-    required BuildContext context, 
-    required String title, 
-    required String imagePath, 
-    required double scale, 
-    required VoidCallback onTap
-  }) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
-
-    return GestureDetector(
-      onTap: onTap, 
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24 * scale), 
-        clipBehavior: Clip.antiAlias,
-        child: SmartBlur(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Container(
-            width: 160 * scale, 
-            padding: EdgeInsets.symmetric(vertical: 24 * scale, horizontal: 20 * scale), 
-            decoration: BoxDecoration(
-              color: theme.cardColor.withOpacity(0.6),
-              borderRadius: BorderRadius.circular(24 * scale), 
-              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center, 
-              children: [
-                Container(
-                  height: 70 * scale,
-                  width: 70 * scale,
-                  padding: EdgeInsets.all(12 * scale),  
-                  decoration: BoxDecoration(
-                    color: theme.scaffoldBackgroundColor.withOpacity(0.8), 
-                    shape: BoxShape.circle, 
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
-                    ],
-                  ), 
-                  child: Image.asset(imagePath, fit: BoxFit.contain), 
-                ),
-                SizedBox(height: 16 * scale), 
-                Text(
-                  title, 
-                  style: TextStyle(
-                    color: textColor, 
-                    fontSize: 16 * scale, 
-                    fontWeight: FontWeight.bold, 
-                    letterSpacing: -0.3
-                  ), 
-                ),
-              ],
-            ),
           ),
         ),
       ),

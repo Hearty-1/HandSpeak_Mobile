@@ -104,14 +104,68 @@ class AlphabetQuizApiService {
       levelQuestions.add(QuizQuestion.fromJson(data));
     }
 
-    List<QuizQuestion> matchingQuestions = levelQuestions.where((q) => q.type == typeFilter).toList();
+    // A level uploaded from the web app can mix question types (e.g. 3
+    // sign_to_text + 1 text_to_sign); every question renders by its own type,
+    // so the whole level is played. Only camera levels keep their own type.
+    List<QuizQuestion> matchingQuestions = typeFilter == 'camera_spell'
+        ? levelQuestions.where((q) => q.type == typeFilter).toList()
+        : levelQuestions;
 
     List<QuizQuestion> finalQuestions = matchingQuestions.isNotEmpty
         ? matchingQuestions
         : levelQuestions;
 
+    // Short level (the web app fills levels up to 4 questions; some have
+    // fewer, e.g. the newest level while it is still being filled): top it up
+    // with review questions from the other levels of the same difficulty.
+    if (finalQuestions.length < minQuestionsPerLevel && typeFilter != 'camera_spell') {
+      finalQuestions = [
+        ...finalQuestions,
+        ...await _reviewQuestions(levelId, finalQuestions, minQuestionsPerLevel - finalQuestions.length),
+      ];
+    }
+
     finalQuestions.shuffle();
     return finalQuestions.take(5).toList();
+  }
+
+  /// Questions a level should have; shorter levels get review questions.
+  static const int minQuestionsPerLevel = 4;
+
+  /// Up to [count] questions from other levels of the same difficulty
+  /// (e.g. 'alphabet_easy_*' for 'alphabet_easy_18'): same question types first,
+  /// never a camera question or an answer the level already asks.
+  Future<List<QuizQuestion>> _reviewQuestions(String levelId, List<QuizQuestion> current, int count) async {
+    final cut = levelId.lastIndexOf('_');
+    if (cut <= 0 || count <= 0) return [];
+    final prefix = levelId.substring(0, cut + 1);
+    try {
+      final snap = await _db.collection('activity_questions').where('category', isEqualTo: 'alphabet').get();
+      final answers = {for (final q in current) q.correctAnswer.toLowerCase()};
+      final types = {for (final q in current) q.type};
+      final pool = <QuizQuestion>[];
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final level = (data['level'] ?? '').toString();
+        if (!level.startsWith(prefix) || level == levelId) continue;
+        data['id'] = doc.id;
+        final q = QuizQuestion.fromJson(data);
+        if (q.type == 'camera_spell' || answers.contains(q.correctAnswer.toLowerCase())) continue;
+        pool.add(q);
+      }
+      pool.shuffle();
+      // Same types as the level first, then any other type.
+      pool.sort((a, b) => (types.contains(a.type) ? 0 : 1).compareTo(types.contains(b.type) ? 0 : 1));
+      final picked = <QuizQuestion>[];
+      for (final q in pool) {
+        if (picked.length >= count) break;
+        if (answers.add(q.correctAnswer.toLowerCase())) picked.add(q);
+      }
+      return picked;
+    } catch (e) {
+      debugPrint("Review questions unavailable for $levelId: $e");
+      return [];
+    }
   }
 }
 
@@ -336,6 +390,9 @@ class EasyActMc extends StatefulWidget {
 }
 
 class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMixin {
+  // Game music while this level is open (see SoundProvider.claimBgm).
+  late final SoundProvider _bgm;
+
   final AlphabetQuizApiService _apiService = AlphabetQuizApiService();
   final ProgressService _progressService = ProgressService();
   // Every camera attempt of this session -> gesture_attempts (hard levels).
@@ -416,6 +473,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
+    _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.activity);
     _progressService.trackRecentModule('alphabet');
     _loadQuestions();
 
@@ -444,6 +502,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   @override
   void dispose() {
+    _bgm.releaseBgm(this);
     // Left mid-level (no-op if the level was completed / lost: already finished).
     _gestureTracker?.finish(outcome: 'exited', heartsLeft: _hearts, totalQuestions: _questions.length);
     _handSub?.cancel();

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '/services/progress_service.dart'; 
 import 'civic_tutorial_interface.dart';
+import 'civic_practice.dart';
 import 'civic_difficulty_selection.dart';
 import '/leaderboard/arena.dart';
 
@@ -188,7 +189,7 @@ class CivicInterface extends StatelessWidget {
                                       scale: scale,
                                       icon: Icons.camera_alt_rounded,
                                       label: 'Train Sign',
-                                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CivicTutorialInterface())),
+                                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CivicPractice())),
                                     ),
                                   ],
                                 ),

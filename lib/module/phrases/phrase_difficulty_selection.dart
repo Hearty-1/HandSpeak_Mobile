@@ -20,7 +20,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
   void initState() {
     super.initState(); 
     try {
-      Provider.of<SoundProvider>(context, listen: false).playBgm(); 
+      Provider.of<SoundProvider>(context, listen: false).claimBgm(this, BgmType.menu); // bgm.mp3 while open 
     } catch (_) {}
   }
 
@@ -35,7 +35,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
   @override
   void dispose() {
     try {
-      _soundProvider.stopBgm();
+      _soundProvider.releaseBgm(this);
     } catch (_) {}
     super.dispose(); 
   }
@@ -86,20 +86,13 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
   }
 
   void _navigateToActivity(BuildContext context, String difficulty) {
-    try {
-      _soundProvider.stopBgm();
-    } catch (_) {}
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PhrasesActivityInterface(difficulty: difficulty),
       ),
-    ).then((_) {
-      try {
-        _soundProvider.playBgm();
-      } catch (_) {}
-    });
+    );
   }
 
   @override

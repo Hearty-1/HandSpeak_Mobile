@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'tutorial_interface_3.dart';
 
 import '/services/performance_monitor.dart';
+import '/services/progress_service.dart';
 
 class TutorialInterface extends StatefulWidget {
   const TutorialInterface({super.key});
@@ -15,6 +16,8 @@ class TutorialInterface extends StatefulWidget {
 
 class _TutorialInterfaceState extends State<TutorialInterface> {
   String _searchQuery = "";
+  // Signs mastered in tutorial practice (green outline on their cards).
+  late final Stream<Set<String>> _mastered = ProgressService().masteredTutorialLines('alphabet');
 
   final List<Map<String, dynamic>> _defaultLessons = [
     {'title': 'Aa', 'gestureKey': 'A', 'imageUrl': 'assets/pictures/A.jpg'},
@@ -193,6 +196,10 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                         );
                       }
 
+                      return StreamBuilder<Set<String>>(
+                        stream: _mastered,
+                        builder: (context, masteredSnap) {
+                      final mastered = masteredSnap.data ?? const <String>{};
                       return ListView.builder(
                         physics: const BouncingScrollPhysics(),
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -204,6 +211,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                           return LessonCard(
                             title: lesson['title']!,
                             isLocked: isLocked,
+                            isMastered: mastered.contains(ProgressService.masteryKey('${lesson['gestureKey'] ?? lesson['title']}')),
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -216,6 +224,8 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                               );
                             },
                           );
+                        },
+                      );
                         },
                       );
                     },
@@ -233,6 +243,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
 class LessonCard extends StatelessWidget {
   final String title;
   final bool isLocked;
+  final bool isMastered;
   final VoidCallback onTap;
 
   const LessonCard({
@@ -240,7 +251,12 @@ class LessonCard extends StatelessWidget {
     required this.title,
     required this.isLocked,
     required this.onTap,
+    this.isMastered = false,
   });
+
+  /// Green outline for a sign already mastered in tutorial practice.
+  static Color _outline(ThemeData theme, bool isMastered) =>
+      isMastered ? Colors.green.withOpacity(0.75) : theme.primaryColor.withOpacity(0.5);
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +279,7 @@ class LessonCard extends StatelessWidget {
                   color: isLocked ? theme.cardColor.withOpacity(0.2) : theme.cardColor.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isLocked ? theme.colorScheme.surface.withOpacity(0.4) : theme.primaryColor.withOpacity(0.5),
+                    color: isLocked ? theme.colorScheme.surface.withOpacity(0.4) : _outline(theme, isMastered),
                     width: 1.5,
                   ),
                   boxShadow: [

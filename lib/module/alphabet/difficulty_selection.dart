@@ -18,7 +18,7 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
   @override
   void initState() {
     super.initState(); 
-    Provider.of<SoundProvider>(context, listen: false).playBgm(); 
+    Provider.of<SoundProvider>(context, listen: false).claimBgm(this, BgmType.menu); // bgm.mp3 while open 
   }
 
   @override
@@ -29,7 +29,7 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
 
   @override
   void dispose() {
-    _soundProvider.stopBgm();
+    _soundProvider.releaseBgm(this);
     super.dispose(); 
   }
 
@@ -79,15 +79,12 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
   }
 
   void _navigateToActivity(BuildContext context, String difficulty) {
-    _soundProvider.stopBgm();
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ActivityInterface(difficulty: difficulty),
       ),
-    ).then((_) {
-      _soundProvider.playBgm();
-    });
+    );
   }
 
   @override

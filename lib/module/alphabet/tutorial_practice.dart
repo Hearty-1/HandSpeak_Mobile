@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '/providers/sound_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
@@ -16,6 +18,7 @@ import '/services/handspeak_api_service.dart';
 import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
+import '/services/progress_service.dart';
 
 
 // =============================================================================
@@ -1080,6 +1083,9 @@ class TutorialPractice extends StatefulWidget {
 }
 
 class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBindingObserver {
+  // Game music while this screen is open (see SoundProvider.claimBgm).
+  late final SoundProvider _bgm;
+
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarkerPlugin;
   StreamSubscription<List<Hand>>? _handSub;
@@ -1155,6 +1161,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
   @override
   void initState() {
     super.initState();
+    _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.activity); // gamebgm.mp3
     WidgetsBinding.instance.addObserver(this);
     _initializePipeline();
   }
@@ -1869,6 +1876,8 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     HapticFeedback.heavyImpact();
 
     await _awardXp();
+    // Marks the sign in the tutorial list (green outline).
+    unawaited(ProgressService().markTutorialMastered('alphabet', widget.targetLetter));
 
     if (!mounted) return;
 
@@ -2007,6 +2016,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
 
   @override
   void dispose() {
+    _bgm.releaseBgm(this);
     WidgetsBinding.instance.removeObserver(this);
     _handSub?.cancel();
     _controller?.stopImageStream();

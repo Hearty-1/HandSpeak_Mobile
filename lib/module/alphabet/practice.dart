@@ -501,19 +501,74 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
+    await _advance();
+  }
 
+  bool _isAdvancing = false;
+
+  /// Next letter (after Z: A again). Used by success and Skip.
+  Future<void> _advance() async {
+    if (!mounted || _isAdvancing) return;
+    _isAdvancing = true;
     setState(() {
       _currentIdx = (_currentIdx + 1) % _alphabet.length;
       _isSuccessAchieved = false;
       _currentScore = 0.0;
+      _holdProgress = 0.0;
+      _startHoldTime = null;
+      _template = null; // the next letter's template is loaded below
     });
 
     // Clear leftover frames so a fresh J/Z attempt (or the transition
     // away from one) doesn't start from a stale window.
     _dynamicSignRecognizer?.resetBuffer();
 
-    await _loadGestureLibrary(targetLetter);
+    try {
+      await _loadGestureLibrary(targetLetter);
+    } finally {
+      _isAdvancing = false;
+      if (mounted) setState(() {});
+    }
   }
+
+  /// Progress chip + Skip, same header as the phrases / civic continuous practice.
+  Widget _buildSkipHeader(ThemeData theme, String progress) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              progress,
+              style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+          ),
+          const SizedBox(width: 10),
+          TextButton.icon(
+            onPressed: (_isSuccessAchieved || _isAdvancing) ? null : _skip,
+            icon: const Icon(Icons.skip_next_rounded, size: 18),
+            label: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w700)),
+            style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Skip: next sign without XP.
+  Future<void> _skip() async {
+    if (_isSuccessAchieved || _isAdvancing) return;
+    _startHoldTime = null;
+    _holdProgress = 0.0;
+    await _advance();
+  }
+
 
   @override
   void dispose() {
@@ -698,6 +753,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    _buildSkipHeader(theme, 'Letter ${_currentIdx + 1} of ${_alphabet.length}'),
                     Text(
                       '$currentLetter${currentLetter.toLowerCase()}',
                       style: TextStyle(
