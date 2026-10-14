@@ -51,7 +51,12 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 int requestCount = 0;
                 if (snapshot.hasData && snapshot.data!.exists) {
                   final data = snapshot.data!.data() as Map<String, dynamic>?;
-                  requestCount = (data?['incomingRequests'] as List?)?.length ?? 0;
+                  // Only followers you don't follow back yet (friends aren't requests).
+                  final following = (data?['following'] as List?) ?? const [];
+                  requestCount = ((data?['incomingRequests'] as List?) ?? const [])
+                      .where((u) => !following.contains(u))
+                      .toSet()
+                      .length;
                 }
 
                 return Padding(
@@ -346,32 +351,44 @@ class _UserCardState extends State<_UserCard> {
               setState(() => isFollowing = !isFollowing);
               
               try {
+                final batch = FirebaseFirestore.instance.batch();
                 if (isFollowing) {
+                  // Following someone who already follows you = follow back:
+                  // you become friends, and they are not asked to follow back.
+                  final bool followBack = widget.isTargetFollowingMe;
                   final payload = {
-                    'type': 'new_follower',
-                    'title': 'New Follower',
-                    'body': '${widget.currentUserName} started following you.',
+                    'type': followBack ? 'follow_back' : 'new_follower',
+                    'title': followBack ? 'New Friend!' : 'New Follower',
+                    'body': followBack
+                        ? '${widget.currentUserName} followed you back. You are now friends!'
+                        : '${widget.currentUserName} started following you.',
                     'fromUserId': widget.currentUserId,
                     'timestamp': DateTime.now().millisecondsSinceEpoch,
                     'isRead': false,
                   };
 
-                  await targetUserRef.update({
-                    'incomingRequests': FieldValue.arrayUnion([widget.currentUserId]),
+                  batch.update(targetUserRef, {
+                    'incomingRequests': followBack
+                        ? FieldValue.arrayRemove([widget.currentUserId])
+                        : FieldValue.arrayUnion([widget.currentUserId]),
                     'followers': FieldValue.arrayUnion([widget.currentUserId]),
-                    'notifications': FieldValue.arrayUnion([payload]), 
+                    'notifications': FieldValue.arrayUnion([payload]),
                   });
-                  await currentUserRef.update({
-                    'following': FieldValue.arrayUnion([widget.targetUserId])
+                  batch.update(currentUserRef, {
+                    'following': FieldValue.arrayUnion([widget.targetUserId]),
+                    // Their follow request is answered.
+                    'incomingRequests': FieldValue.arrayRemove([widget.targetUserId]),
                   });
                 } else {
-                  await targetUserRef.update({
-                    'followers': FieldValue.arrayRemove([widget.currentUserId])
+                  batch.update(targetUserRef, {
+                    'followers': FieldValue.arrayRemove([widget.currentUserId]),
+                    'incomingRequests': FieldValue.arrayRemove([widget.currentUserId]),
                   });
-                  await currentUserRef.update({
+                  batch.update(currentUserRef, {
                     'following': FieldValue.arrayRemove([widget.targetUserId])
                   });
                 }
+                await batch.commit();
               } catch (e) {
                 setState(() => isFollowing = !isFollowing);
               }

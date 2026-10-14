@@ -37,9 +37,6 @@ class _PhrasePracticeState extends State<PhrasePractice> {
     ...CalendarSigns.displayLabels,
   ];
 
-  /// XP per phrase, same as the other continuous practices.
-  static const int _xpReward = 10;
-
   int _currentIdx = 0;
 
   /// Lesson demo (image / video) per phrase from Firestore tutorial_lessons.
@@ -104,7 +101,6 @@ class _PhrasePracticeState extends State<PhrasePractice> {
       onMastered: _next,
       onSkip: _next,
       progressLabel: 'Phrase ${_currentIdx + 1} of ${_phrases.length}',
-      xpReward: _xpReward,
     );
   }
 }

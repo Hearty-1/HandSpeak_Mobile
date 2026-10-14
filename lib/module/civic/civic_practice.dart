@@ -21,7 +21,6 @@ class CivicPractice extends StatelessWidget {
     return const CivicTutorialPractice(
       category: LupangLines.category, // all lines of labels_lupang_hinirang.json
       continuous: true,
-      continuousXp: 10,
     );
   }
 }

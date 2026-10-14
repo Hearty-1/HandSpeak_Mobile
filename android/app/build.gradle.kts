@@ -64,5 +64,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("androidx.concurrent:concurrent-futures:1.1.0")
     implementation("org.tensorflow:tensorflow-lite-select-tf-ops:+")
-    implementation("com.google.mediapipe:tasks-vision:0.10.14")
+    // 0.10.29 (already the version Gradle resolves): has HolisticLandmarker,
+    // the training clips' landmark pipeline (MainActivity.kt).
+    implementation("com.google.mediapipe:tasks-vision:0.10.29")
 }

@@ -10,8 +10,6 @@ import '/providers/sound_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import '/services/handspeak_api_service.dart';
@@ -19,6 +17,7 @@ import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
+import '/services/xp_rewards.dart';
 
 
 // =============================================================================
@@ -1156,7 +1155,9 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
 
   final double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
-  final int xpReward = 10;
+  /// XP for the FIRST mastery of this sign (xp_rewards.dart); 0 afterwards.
+  final int xpReward = XpRewards.alphabetTutorial;
+  int _xpGained = 0;
 
   @override
   void initState() {
@@ -1848,22 +1849,13 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
   }
 
   Future<void> _awardXp() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-
-        await docRef.set({
-          'alphabetXp': FieldValue.increment(xpReward),
-          'xp': FieldValue.increment(xpReward),
-          'dailyXp': FieldValue.increment(xpReward),
-          'weeklyXp': FieldValue.increment(xpReward),
-          'completedLessons': FieldValue.increment(1),
-        }, SetOptions(merge: true));
-      }
-    } catch (e) {
-      debugPrint("Failed to award XP: $e");
-    }
+    // Once per sign: repeating a mastered sign earns no XP.
+    _xpGained = await ProgressService().awardFirstMastery(
+      moduleKey: 'alphabet',
+      itemKey: ProgressService.masteryKey(widget.targetLetter),
+      xp: xpReward,
+      xpField: 'alphabetXp',
+    );
   }
 
   void _onSuccess() async {
@@ -1876,8 +1868,6 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     HapticFeedback.heavyImpact();
 
     await _awardXp();
-    // Marks the sign in the tutorial list (green outline).
-    unawaited(ProgressService().markTutorialMastered('alphabet', widget.targetLetter));
 
     if (!mounted) return;
 
@@ -1981,7 +1971,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                             Icon(visuals.secondaryIcon, color: Colors.green, size: 22),
                             const SizedBox(width: 8),
                             Text(
-                              "+$xpReward XP Earned!",
+                              _xpGained > 0 ? "+$_xpGained XP Earned!" : "Daily XP limit reached",
                               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.green),
                             ),
                           ],

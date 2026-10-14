@@ -7,6 +7,7 @@ import 'civic_tutorial_detail.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
+import '/services/xp_rewards.dart';
 
 class CivicLesson {
   final String id;
@@ -62,7 +63,7 @@ class LupangLines {
 
   /// Key of the per-line mastery record (ProgressService.awardTutorialLineXp).
   static const String moduleKey = 'civic_lupang_hinirang';
-  static const int xpPerLine = 15;
+  static int get xpPerLine => XpRewards.civicTutorial; // xp_rewards.dart
   static const String xpField = 'civicXp';
 
   /// Mastery key of a line = its model class index (stable across reorders).

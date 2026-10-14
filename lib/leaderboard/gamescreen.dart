@@ -921,7 +921,8 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       // Update player XP & level progression
       if (_score > 0) {
         await _progressService.addXp(_score);
-        await _progressService.updateLevelXP(_category, _score);
+        // Category module XP (was written into the activity stars map).
+        await _progressService.addModuleXp(_category, _score);
 
         int stars = _score >= 500 ? 3 : (_score >= 250 ? 2 : 1);
         await _progressService.recordActivityAttempt(

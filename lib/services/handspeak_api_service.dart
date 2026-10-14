@@ -588,7 +588,11 @@ class CaptureFixer {
 
   /// [frames]: maps in the request format (e.g. CaptureFrame.toJson(t0) or
   /// RawFrame.toJson(t0)); any Map type is accepted.
-  static FixedCapture fix(List<Map> frames, int imageWidth, int imageHeight) {
+  /// [reassignHands]: false when the frames come from the native Holistic
+  /// engine: its hands are already labelled from the pose wrists, crossed
+  /// and overlapping hands included, exactly as in the training clips, so
+  /// they are kept as reported.
+  static FixedCapture fix(List<Map> frames, int imageWidth, int imageHeight, {bool reassignHands = true}) {
     final r = uprightRotation(frames);
     final swapSize = r == 90 || r == 270;
     int reassigned = 0;
@@ -598,7 +602,7 @@ class CaptureFixer {
       final pose = rot(f['pose']);
       var left = rot(f['left_hand']);
       var right = rot(f['right_hand']);
-      if (pose != null && pose.length >= 17) {
+      if (reassignHands && pose != null && pose.length >= 17) {
         final hands = [if (left != null) left, if (right != null) right];
         final assigned = RawLandmarkFrame.fromDetections(t: 0, pose: pose, hands: hands);
         if (!identical(assigned.leftHand, left) || !identical(assigned.rightHand, right)) reassigned++;

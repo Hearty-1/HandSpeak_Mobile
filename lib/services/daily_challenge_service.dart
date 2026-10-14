@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'progress_service.dart';
+
 // =============================================================================
 // CATALOG
 // =============================================================================
@@ -602,6 +604,12 @@ class DailyChallengeService {
       return await _db.runTransaction((tx) async {
         final existing = await tx.get(historyRef);
         if (existing.exists) return false; // each quest counts once
+        // Module XP: a category quest feeds its category; a general quest feeds
+        // the module being worked toward, so quests help unlock the next one.
+        final userSnap = await tx.get(_userRef);
+        final moduleField = ProgressService.moduleXpField(q.category).isNotEmpty
+            ? ProgressService.moduleXpField(q.category)
+            : ProgressService.currentModuleXpField(userSnap.data());
         tx.set(historyRef, {
           'challengeId': q.id,
           'title': q.title,
@@ -621,6 +629,7 @@ class DailyChallengeService {
               'dailyChallengesCompletedCount': FieldValue.increment(1),
               'xp': FieldValue.increment(q.reward),
               'dailyXp': FieldValue.increment(q.reward),
+              moduleField: FieldValue.increment(q.reward),
             },
             SetOptions(merge: true));
         return true;

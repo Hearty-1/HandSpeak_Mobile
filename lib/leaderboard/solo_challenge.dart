@@ -331,6 +331,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
   List<String?> _userAnswerSlots = [];
   List<int?> _selectedOptionIndices = [];
   List<String> _shuffledOptions = [];
+  /// Typing: slots pre-filled by `given_fsl` (position -> FSL image, may be ''),
+  /// shown as hand-sign hints and not removable (same as easyAct_mc.dart).
+  Map<int, String> _givenFslImages = {};
 
   List<String> _currentSequence = [];
   List<String> _availableSequenceOptions = [];
@@ -778,10 +781,12 @@ class _GameProperScreenState extends State<GameProperScreen> {
       _selectedOptionIndices = List<int?>.filled(target.length, null);
 
       final givenFsl = _extractGivenFsl(q);
+      _givenFslImages = {};
       for (var item in givenFsl) {
-        int pos = item['position'] ?? -1;
+        final int pos = (item['position'] as num?)?.toInt() ?? -1;
         if (pos >= 0 && pos < target.length) {
           _userAnswerSlots[pos] = (item['letter'] ?? item['number'] ?? '').toString().toUpperCase();
+          _givenFslImages[pos] = (item['image_url'] ?? item['imageUrl'] ?? item['image'] ?? '').toString();
         }
       }
       _shuffledOptions = options.map((e) => e.toString()).toList()..shuffle();
@@ -941,6 +946,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
   String _extractQuestionText(Map<String, dynamic> q) => (_getValueCaseInsensitive(q, ['question_text', 'questionText', 'question', 'title', 'prompt']) ?? '').toString();
 
   String? _extractQuestionImage(Map<String, dynamic> q) => _getValueCaseInsensitive(q, [
+    'main_image', // typing questions (web app content tool)
+    'mainImage',
     'image_url',
     'imageUrl',
     'image',
@@ -1153,63 +1160,110 @@ class _GameProperScreenState extends State<GameProperScreen> {
     );
   }
 
+  /// FSL hand-sign picture for a letter / number answer piece (A-Z -> jpg,
+  /// 1-10 -> png in assets/pictures), the piece itself when it is already an
+  /// image, else null (shown as text).
+  String? _signImageFor(String value) {
+    final v = value.trim();
+    if (_isImageString(v)) return v;
+    if (RegExp(r'^[A-Za-z]$').hasMatch(v)) return 'assets/pictures/${v.toUpperCase()}.jpg';
+    if (RegExp(r'^[0-9]+$').hasMatch(v)) return 'assets/pictures/$v.png';
+    return null;
+  }
+
+  /// A sign picture with the plain text as fallback (missing picture).
+  Widget _signTile(String value, TextStyle style, {String? image}) {
+    final src = (image != null && image.trim().isNotEmpty) ? image : _signImageFor(value);
+    if (src == null) return Text(value, style: style);
+    if (src.startsWith('assets/')) {
+      return Image.asset(src, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Text(value, style: style));
+    }
+    return _buildSafeImage(src, fit: BoxFit.contain);
+  }
+
+  /// Typing (same as easyAct_mc.dart): letter slots, the `given_fsl` hints
+  /// pre-filled as hand-sign pictures (fixed), and the letter pieces shown as
+  /// FSL hand signs; tap a piece to fill the next empty slot, tap a filled
+  /// slot to take it back.
   Widget _buildTypingLayout(ThemeData theme, Color textColor) {
+    final slotText = TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor);
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
           Wrap(
             spacing: 8,
-            runSpacing: 8,
+            runSpacing: 12,
             alignment: WrapAlignment.center,
             children: List.generate(_userAnswerSlots.length, (index) {
               final char = _userAnswerSlots[index];
+              final bool isGiven = _givenFslImages.containsKey(index);
               return InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: _hasAnswered ? null : () => setState(() { _userAnswerSlots[index] = null; _selectedOptionIndices[index] = null; }),
+                borderRadius: BorderRadius.circular(12),
+                onTap: (_hasAnswered || isGiven || char == null)
+                    ? null
+                    : () => setState(() {
+                          _userAnswerSlots[index] = null;
+                          _selectedOptionIndices[index] = null;
+                        }),
                 child: Container(
-                  width: 50, height: 58,
+                  width: 52,
+                  height: 64,
+                  padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: theme.cardColor,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: theme.primaryColor, width: 2),
-                    boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.1), blurRadius: 6)],
+                    color: char == null
+                        ? theme.cardColor
+                        : theme.primaryColor.withValues(alpha: isGiven ? 0.08 : 0.18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: char != null ? theme.primaryColor : theme.dividerColor, width: 2),
                   ),
                   alignment: Alignment.center,
-                  child: Text(char ?? '', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor)),
+                  child: char == null
+                      ? const SizedBox.shrink()
+                      : isGiven
+                          ? _signTile(char, slotText, image: _givenFslImages[index])
+                          : Text(char, style: slotText),
                 ),
               );
             }),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           Wrap(
-            spacing: 8, runSpacing: 8,
+            spacing: 8,
+            runSpacing: 8,
             alignment: WrapAlignment.center,
             children: List.generate(_shuffledOptions.length, (index) {
               final isUsed = _selectedOptionIndices.contains(index);
               final opt = _shuffledOptions[index];
-              final isImg = _isImageString(opt);
-
               return InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: (isUsed || _hasAnswered) ? null : () {
-                  int empty = _userAnswerSlots.indexOf(null);
-                  if (empty != -1) {
-                    setState(() { _userAnswerSlots[empty] = opt; _selectedOptionIndices[empty] = index; });
-                  }
-                },
-                child: Opacity(
-                  opacity: isUsed ? 0.25 : 1.0,
-                  child: Container(
-                    width: 50, height: 50,
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: theme.cardColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: theme.primaryColor.withValues(alpha: 0.4), width: 1.5),
-                    ),
-                    alignment: Alignment.center,
-                    child: isImg ? _buildSafeImage(opt, fit: BoxFit.contain) : Text(opt, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+                borderRadius: BorderRadius.circular(10),
+                onTap: (isUsed || _hasAnswered)
+                    ? null
+                    : () {
+                        final empty = _userAnswerSlots.indexOf(null);
+                        if (empty != -1) {
+                          setState(() {
+                            _userAnswerSlots[empty] = _signImageFor(opt) != null && !_isImageString(opt)
+                                ? opt.toUpperCase()
+                                : opt;
+                            _selectedOptionIndices[empty] = index;
+                          });
+                        }
+                      },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 60,
+                  height: 60,
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: isUsed ? theme.dividerColor.withValues(alpha: 0.3) : theme.cardColor,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: isUsed ? Colors.transparent : theme.primaryColor, width: 1.5),
+                  ),
+                  alignment: Alignment.center,
+                  child: Opacity(
+                    opacity: isUsed ? 0.3 : 1.0,
+                    child: _signTile(opt, TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   ),
                 ),
               );
@@ -1219,7 +1273,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
           SizedBox(
             width: double.infinity, height: 50,
             child: ElevatedButton(
-              onPressed: _hasAnswered ? null : () => _submitAnswer(_userAnswerSlots.join('')),
+              onPressed: (_hasAnswered || _userAnswerSlots.contains(null))
+                  ? null
+                  : () => _submitAnswer(_userAnswerSlots.join('')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

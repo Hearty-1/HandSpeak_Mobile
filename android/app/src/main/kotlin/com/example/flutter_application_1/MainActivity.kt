@@ -29,6 +29,14 @@ import java.util.concurrent.Executors
  *
  * Coordinates are normalised to the UPRIGHT, un-mirrored frame (x, y in 0..1,
  * z as reported by MediaPipe). Missing parts are zeros, exactly like training.
+ *
+ * Engine: separate Pose + Hand landmarkers. MediaPipe's Holistic task (the
+ * training clips' pipeline) cannot run on Android: tasks-vision 0.10.29 builds
+ * its options with full protobuf-java (Any$Builder.build():Any) while the app,
+ * Firebase and MediaPipe itself ship protobuf-javalite, so creating it fails
+ * with NoSuchMethodError on every phone (logcat FslHolistic, 2026-10-14).
+ * Holistic's labelling is reproduced instead: each hand goes to the nearest
+ * pose wrist.
  */
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "fsl_holistic_channel"
@@ -125,6 +133,11 @@ class MainActivity : FlutterActivity() {
     private val minConfidence = 0.35f
 
     private fun initMediaPipe() {
+        initSeparate()
+    }
+
+    /** Pose + Hand landmarkers. */
+    private fun initSeparate() {
         var handInfo = "none"
         // GPU first (on a Unisoc T616 the CPU hand model was slower: 100-270 ms
         // vs 50-150 ms), CPU fallback.
@@ -175,6 +188,68 @@ class MainActivity : FlutterActivity() {
         }
         engineInfo = "$poseInfo, $handInfo"
         android.util.Log.i("FslHolistic", "MediaPipe engines: $engineInfo")
+    }
+
+    /** Training face-mesh indices of the 68-keypoint layout (slots 56-67). */
+    private val faceIndices = intArrayOf(1, 33, 61, 199, 263, 291, 0, 17, 10, 152, 234, 454)
+
+    /** The frame map sent to Dart (same keys for both engines). */
+    private fun buildFrame(
+        pose: List<NormalizedLandmark>?,
+        left: List<NormalizedLandmark>?,
+        right: List<NormalizedLandmark>?,
+        face: List<NormalizedLandmark>?,
+        imageWidth: Int,
+        imageHeight: Int,
+    ): Map<String, Any?> {
+        val out = DoubleArray(68 * 3)
+        fun put(slot: Int, x: Double, y: Double, z: Double) {
+            out[slot * 3] = x; out[slot * 3 + 1] = y; out[slot * 3 + 2] = z
+        }
+        val hasPose = pose != null && pose.size >= 25
+        if (hasPose) {
+            for (i in 11..24) {
+                val p = pose!![i]
+                put(i - 11, p.x().toDouble(), p.y().toDouble(), p.z().toDouble())
+            }
+            if (face != null && face.size > faceIndices.max()) {
+                // Real face-mesh points (Holistic), as in training.
+                faceIndices.forEachIndexed { k, idx ->
+                    val p = face[idx]
+                    put(56 + k, p.x().toDouble(), p.y().toDouble(), p.z().toDouble())
+                }
+            } else {
+                putFace(pose!!, ::put)
+            }
+        }
+        left?.forEachIndexed { i, p -> put(14 + i, p.x().toDouble(), p.y().toDouble(), p.z().toDouble()) }
+        right?.forEachIndexed { i, p -> put(35 + i, p.x().toDouble(), p.y().toDouble(), p.z().toDouble()) }
+
+        // Raw landmarks for the server pipeline (/v1/predict_raw): all 33 pose
+        // points as [x, y, visibility] and each hand as 21 x [x, y, z],
+        // left = the signer's own left. All normalised to the upright,
+        // UN-mirrored frame.
+        val pose33: List<List<Double>>? = if (pose != null && pose.size >= 33) {
+            pose.take(33).map { p ->
+                listOf(p.x().toDouble(), p.y().toDouble(), p.visibility().orElse(0f).toDouble())
+            }
+        } else null
+        fun hand21(h: List<NormalizedLandmark>?): List<List<Double>>? =
+            h?.map { p -> listOf(p.x().toDouble(), p.y().toDouble(), p.z().toDouble()) }
+
+        return mapOf(
+            "landmarks" to out.toList(),
+            "hasPose" to hasPose,
+            "hasLeft" to (left != null),
+            "hasRight" to (right != null),
+            "pose33" to pose33,
+            "leftHand" to hand21(left),
+            "rightHand" to hand21(right),
+            // Upright frame size (the server scales x by width / height).
+            "imageWidth" to imageWidth,
+            "imageHeight" to imageHeight,
+            "engine" to engineInfo,
+        )
     }
 
     /**
@@ -303,23 +378,8 @@ class MainActivity : FlutterActivity() {
         mpImage.close()
         bitmap.recycle()
 
-        val out = DoubleArray(68 * 3)
-        fun put(slot: Int, x: Double, y: Double, z: Double) {
-            out[slot * 3] = x; out[slot * 3 + 1] = y; out[slot * 3 + 2] = z
-        }
-
-        val hasPose = pose != null && pose.size >= 25
-        if (hasPose) {
-            for (i in 11..24) {
-                val p = pose!![i]
-                put(i - 11, p.x().toDouble(), p.y().toDouble(), p.z().toDouble())
-            }
-            putFace(pose!!, ::put)
-        }
-
         // Holistic decides left/right from the pose wrists (15 = left, 16 = right).
-        var hasLeft = false
-        var hasRight = false
+        val hasPose = pose != null && pose.size >= 25
         val hands = handResult?.landmarks().orEmpty().filter { it.size == 21 }
         val assigned = arrayOfNulls<List<NormalizedLandmark>>(2) // 0 = left, 1 = right
         if (hands.isNotEmpty()) {
@@ -352,40 +412,8 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
-        assigned.forEachIndexed { slot, h ->
-            if (h == null) return@forEachIndexed
-            if (slot == 0) hasLeft = true else hasRight = true
-            val base = if (slot == 0) 14 else 35
-            h.forEachIndexed { i, p -> put(base + i, p.x().toDouble(), p.y().toDouble(), p.z().toDouble()) }
-        }
-
-        // Raw landmarks for the v4 server pipeline (/v1/predict_raw):
-        // all 33 pose points as [x, y, visibility] (the server's nose /
-        // occlusion repair needs visibility) and each hand as 21 x [x, y, z],
-        // left = the signer's own left (assigned from the pose wrists above).
-        // All normalised to the upright, UN-mirrored frame.
-        val pose33: List<List<Double>>? = if (pose != null && pose.size >= 33) {
-            pose.take(33).map { p ->
-                listOf(p.x().toDouble(), p.y().toDouble(), p.visibility().orElse(0f).toDouble())
-            }
-        } else null
-        fun hand21(h: List<NormalizedLandmark>?): List<List<Double>>? =
-            h?.map { p -> listOf(p.x().toDouble(), p.y().toDouble(), p.z().toDouble()) }
-
-        return mapOf(
-            "landmarks" to out.toList(),
-            "hasPose" to hasPose,
-            "hasLeft" to hasLeft,
-            "hasRight" to hasRight,
-            "pose33" to pose33,
-            "leftHand" to hand21(assigned[0]),
-            "rightHand" to hand21(assigned[1]),
-            // Upright frame size (the server scales x by width / height).
-            "imageWidth" to imageWidth,
-            "imageHeight" to imageHeight,
-            "engine" to engineInfo,
-            "processMs" to (SystemClock.uptimeMillis() - ts),
-        )
+        return buildFrame(pose, assigned[0], assigned[1], null, imageWidth, imageHeight) +
+            ("processMs" to (SystemClock.uptimeMillis() - ts))
     }
 
     /**

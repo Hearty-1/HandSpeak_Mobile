@@ -6,11 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart'; // Added Firebase Cloud Storage
 import 'recognizer.dart';
 import '/services/frame_gate.dart';
+import '/services/progress_service.dart';
+import '/services/xp_rewards.dart';
 
 import '/services/performance_monitor.dart';
 
@@ -113,7 +113,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   final double holdDurationSeconds = 1.0;
   
   // --- XP SETTINGS ---
-  final int xpReward = 10; 
+  /// XP for the FIRST practice success on each sign (xp_rewards.dart).
+  final int xpReward = XpRewards.alphabetPractice;
+  int _xpGained = 0;
 
   @override
   void initState() {
@@ -467,20 +469,14 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   }
 
   Future<void> _awardXp() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        await docRef.set({
-          'alphabetXp': FieldValue.increment(xpReward),
-          'xp': FieldValue.increment(xpReward),
-          'dailyXp': FieldValue.increment(xpReward),
-          'weeklyXp': FieldValue.increment(xpReward),
-        }, SetOptions(merge: true));
-      }
-    } catch (e) {
-      debugPrint("Failed to award XP: $e");
-    }
+    // Once per sign: repeating a sign in practice earns no more XP.
+    _xpGained = await ProgressService().awardFirstMastery(
+      moduleKey: XpRewards.practiceKey('alphabet'),
+      itemKey: ProgressService.masteryKey(targetLetter),
+      xp: xpReward,
+      xpField: 'alphabetXp',
+      countsAsLesson: false,
+    );
   }
 
   void _onSuccess() async {
@@ -835,7 +831,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                       Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                                       const SizedBox(width: 8),
                                       Text(
-                                        "Success! +$xpReward XP",
+                                        _xpGained > 0 ? "Success! +$_xpGained XP" : "Success! (daily XP limit reached)",
                                         style: const TextStyle(
                                           color: Colors.green,
                                           fontWeight: FontWeight.w900,

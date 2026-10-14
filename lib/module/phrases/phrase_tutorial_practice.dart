@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Directory, File, Platform;
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +22,7 @@ import '/services/frame_gate.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
+import '/services/xp_rewards.dart';
 
 import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
 
@@ -96,19 +97,30 @@ class CalendarSigns {
   static String _compact(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
   /// Month index (0..11) for a lesson title / server label in Filipino or
-  /// English ("Enero", "january", "SETYEMBRE", "calendar_marso"), else -1.
+  /// English, with or without numbering / prefixes: "Enero", "january",
+  /// "SETYEMBRE", "calendar_marso", "01_January", "enero_01", "Jan"; else -1.
   static int indexFor(String? name) {
     if (name == null) return -1;
-    var key = _compact(name);
+    var key = _compact(name).replaceAll(RegExp(r'[0-9]'), ''); // training folders are often numbered
     for (final prefix in ['calendar', 'buwan', 'month']) {
       if (key.startsWith(prefix) && key.length > prefix.length) key = key.substring(prefix.length);
     }
+    if (key.isEmpty) return -1;
     for (int i = 0; i < 12; i++) {
       if (_compact(displayLabels[i]) == key || _compact(classNames[i]) == key) return i;
     }
-    // Common alternative spellings.
-    const alt = {'septyembre': 8, 'setiyembre': 8, 'nobiyembre': 10, 'disiyembre': 11};
+    // Common alternative spellings and 3-letter abbreviations.
+    const alt = {
+      'septyembre': 8, 'setiyembre': 8, 'septiyembre': 8, 'nobiyembre': 10, 'disiyembre': 11, 'pebrero': 1, 'febrero': 1,
+      'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'jun': 5, 'jul': 6, 'aug': 7, 'sep': 8, 'sept': 8, 'oct': 9, 'nov': 10, 'dec': 11,
+    };
     return alt[key] ?? -1;
+  }
+
+  /// True for the model's "no sign" class (INVALID_GESTURE / Hindi kilalang senyas).
+  static bool isInvalidName(String? name) {
+    final k = _compact(name ?? '');
+    return k.contains('invalid') || k.contains('hindikilala') || k.contains('unknown') || k.contains('nosign');
   }
 
   static bool isMonth(String? name) => indexFor(name) != -1;
@@ -136,8 +148,9 @@ class PhraseTutorialPractice extends StatefulWidget {
   final String? progressLabel;
   final VoidCallback? onSkip;
 
-  /// XP per success (tutorial 20; continuous practice 10, like alphabet / numbers).
-  final int xpReward;
+  /// XP for the first mastery of this phrase; null = the XP plan
+  /// (xp_rewards.dart): tutorial vs continuous practice.
+  final int? xpReward;
 
   const PhraseTutorialPractice({
     super.key,
@@ -147,7 +160,7 @@ class PhraseTutorialPractice extends StatefulWidget {
     this.onMastered,
     this.progressLabel,
     this.onSkip,
-    this.xpReward = 20,
+    this.xpReward,
   });
 
   @override
@@ -197,8 +210,29 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   late final int _targetIndex = PhraseRecognizer.classIndexFor(widget.targetPhrase);
   static const Duration _maxRecording = Duration(seconds: 12);
 
+  /// Month signs take ~1-1.5 s: a shorter cap keeps a capture from filling
+  /// up with lowered hands (the server rejects > 50 % cut-off frames).
+  static const Duration _maxCalendarRecording = Duration(seconds: 6);
+  Duration get _recordingLimit => _isCalendar ? _maxCalendarRecording : _maxRecording;
+
+  /// A hand that is fully inside the image (all 21 points within a small
+  /// margin of the edges). Lowered hands resting at the bottom edge are
+  /// still detected but cut off: they are not signing, and the calendar
+  /// server rejects captures with too many cut-off frames (OUT_OF_FRAME).
+  static bool _handInFrame(List<List<double>>? hand) {
+    if (hand == null || hand.isEmpty) return false;
+    const m = 0.02;
+    for (final p in hand) {
+      if (p.length < 2 || p[0] < m || p[0] > 1 - m || p[1] < m || p[1] > 1 - m) return false;
+    }
+    return true;
+  }
+
+  static bool _signingHands(RawFrame f) => _handInFrame(f.leftHand) || _handInFrame(f.rightHand);
+
   double _minConfidence = PhraseRecognizer.defaultMinConfidence;
-  int get xpReward => widget.xpReward;
+  int get xpReward => widget.xpReward ?? (widget.continuous ? XpRewards.phrasePractice : XpRewards.phraseTutorial);
+  int _xpGained = 0; // XP actually awarded (0 when the phrase was mastered before)
 
   // UI text
   String _status = 'Preparing…';
@@ -532,7 +566,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
         return;
       }
       _rawFrames.add(f);
-      if (f.hasHands) {
+      // Lowered hands at the bottom edge are still detected but cut off;
+      // only hands fully in frame count as signing, so auto-stop works when
+      // the hands are lowered (not only when they leave the camera).
+      if (_signingHands(f)) {
         _sawHands = true;
         _lastHandMs = f.timeMs;
       } else if (_sawHands && f.timeMs - _lastHandMs > _autoStopAfterMs) {
@@ -600,7 +637,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     _clearCapture();
     _recognizer.resetTracking();
     _maxRecordTimer?.cancel();
-    _maxRecordTimer = Timer(_maxRecording, _stopAndEvaluate);
+    _maxRecordTimer = Timer(_recordingLimit, _stopAndEvaluate);
     setState(() {
       _countdown = 0;
       _isRecording = true;
@@ -822,14 +859,23 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
   String _monthName(Prediction? p) {
     if (p == null) return '';
-    final i = CalendarSigns.indexFor(p.label);
+    final i = _monthIndexOf(p);
     return i >= 0 ? CalendarSigns.displayLabels[i] : p.label;
   }
 
+  /// Server prediction -> month 0..11, or -1 (invalid / unknown).
+  /// Names first (label = Filipino display label, label_en = class name):
+  /// a retrained model may order its classes differently (e.g. alphabetical
+  /// folders), so the class index is only trusted when no name is given.
   int _monthIndexOf(Prediction p) {
-    if (p.label.toUpperCase().contains('INVALID') || p.index == CalendarSigns.invalidIndex) return -1;
-    final byName = CalendarSigns.indexFor(p.label);
-    if (byName != -1) return byName;
+    final names = [p.label, p.labelEn, p.code].whereType<String>().where((n) => n.trim().isNotEmpty).toList();
+    if (names.any(CalendarSigns.isInvalidName)) return -1;
+    for (final n in names) {
+      final i = CalendarSigns.indexFor(n);
+      if (i != -1) return i;
+    }
+    if (names.isNotEmpty) return -1; // a name we do not know: never guess by index
+    if (p.index == CalendarSigns.invalidIndex) return -1;
     return (p.index >= 0 && p.index < 12) ? p.index : -1;
   }
 
@@ -845,24 +891,59 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
   static String? _adviceFor(String code) => _calendarAdvice[code] ?? HolisticCapture.rejectAdvice[code];
 
-  /// Shorter sub-windows of a capture (the whole capture is judged too):
-  /// 1.5 / 2.0 / 2.6 s long, every 0.5 s, at most 8.
-  List<List<RawFrame>> _calendarWindows(List<RawFrame> frames) {
-    if (frames.length < 10) return const [];
-    final t0 = frames.first.timeMs, total = frames.last.timeMs - t0;
-    final out = <List<RawFrame>>[];
-    for (final len in const [1500, 2000, 2600]) {
-      if (len > total - 300) continue;
-      for (int start = 0; start + len <= total; start += 500) {
-        final w = frames
-            .where((f) => f.timeMs - t0 >= start && f.timeMs - t0 <= start + len)
-            .toList();
-        if (w.length >= 8 && w.any((f) => f.hasHands)) out.add(w);
+  /// Released calendar models (source_checkpoint; responses report
+  /// "<feature_version>/<checkpoint>"). v1 = palm_calendar_best.pt is the model
+  /// the training team recommends for production (calendar kit REPORT.md,
+  /// 2026-10-13: 64 % of live attempts accepted vs 30 % for v2).
+  /// Practice check (see _evaluateCalendar): failed server checks that only
+  /// mean "not sure" (INVALID included: for signers v2 never saw, it puts
+  /// "not a sign" first and the right month second), and how clearly the
+  /// target must lead the other MONTHS. Measured by replaying the server code
+  /// + v2 on 145 labelled captures (3 phone, 142 calendar-kit live takes):
+  /// 0 / 1,595 wrong-month passes; the phone's January and November pass.
+  static const Set<String> _unsureChecks = {
+    'LOW_CONFIDENCE', 'SMALL_MARGIN', 'HIGH_ENTROPY', 'UNSTABLE', 'INVALID_CLASS',
+  };
+  static const double _practiceMinConf = 0.30;
+  static const double _practiceMinLead = 0.25; // over the next month
+
+  /// Server checks that fail on long still holds around the sign.
+  static const Set<String> _retrimChecks = {'PHASE_IMBALANCE', 'LOW_MOTION', 'FRAGMENT_DURATION'};
+
+  /// Frames from 3 before the first to 3 after the last frame in which a hand
+  /// moved (mean |dx|, |dy| of its 21 points > 0.008 of the image), so
+  /// handshape changes with a still wrist count as motion too.
+  static List<RawFrame> _trimToHandMotion(List<RawFrame> frames) {
+    const thr = 0.008, pad = 3;
+    double motion(RawFrame a, RawFrame b) {
+      var best = 0.0;
+      for (final pair in [(a.leftHand, b.leftHand), (a.rightHand, b.rightHand)]) {
+        final x = pair.$1, y = pair.$2;
+        if (x == null || y == null || x.length != y.length) continue;
+        var sum = 0.0;
+        for (var i = 0; i < x.length; i++) {
+          sum += (x[i][0] - y[i][0]).abs() + (x[i][1] - y[i][1]).abs();
+        }
+        best = math.max(best, sum / (2 * x.length));
+      }
+      return best;
+    }
+
+    var first = -1, last = -1;
+    for (var i = 1; i < frames.length; i++) {
+      if (motion(frames[i - 1], frames[i]) > thr) {
+        if (first == -1) first = i;
+        last = i;
       }
     }
-    if (out.length <= 8) return out;
-    return [for (int i = 0; i < 8; i++) out[(i * (out.length - 1) / 7).round()]];
+    if (first == -1 || first == last) return frames;
+    return frames.sublist(math.max(first - pad, 0), math.min(last + pad, frames.length - 1) + 1);
   }
+
+  static const Map<String, String> _calendarModels = {
+    'palm_calendar_best.pt': 'v1',
+    'palm_calendar_v2_ens3': 'v2',
+  };
 
   Future<void> _evaluateCalendar(bool manual) async {
     var frames = List<RawFrame>.of(_rawFrames)..sort((a, b) => a.timeMs.compareTo(b.timeMs));
@@ -887,6 +968,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     // per-month FRAGMENT_DURATION floor). The server applies calendar's own
     // trim_still, exactly as in training. Only drop the resting lead-in /
     // tail where no hand is visible at all.
+    // Calendar v2 client spec (calendar kit README, section 1): trim ONLY the
+    // frames with no hand at all at the start / end; the server does its own
+    // trim_still. (Auto-stop above already ends the capture shortly after the
+    // hands leave full view, so lowered hands do not fill the capture.)
     final firstHand = frames.indexWhere((f) => f.hasHands);
     final lastHand = frames.lastIndexWhere((f) => f.hasHands);
     frames = frames.sublist(firstHand, lastHand + 1);
@@ -902,53 +987,40 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     final t0 = frames.first.timeMs;
     final secs = (frames.last.timeMs - t0) / 1000.0;
     try {
-      // The whole capture plus a few shorter windows, judged in parallel by
-      // the server. Training clips are pure signing (~1.2-2 s); a capture
-      // also holds the hand coming up, pauses and the hand going down, which
-      // can dilute a correct sign. Every window still has to pass all of the
-      // server's strict gates (confidence, margin, entropy, duration).
-      final api = HandSpeakApiService();
-      final windows = _calendarWindows(frames);
-      Future<RawPredictResponse?> judge(List<RawFrame> w, {bool rethrowErrors = false}) async {
-        try {
-          final w0 = w.first.timeMs;
-          // Upright landmarks + hands assigned to the pose wrists, exactly
-          // like the desktop engine (a no-op when native already did it).
-          final fixed = CaptureFixer.fix([for (final f in w) f.toJson(w0)], _imageWidth, _imageHeight);
-          return await api.predictRaw(
-            modelId: HandSpeakModels.calendar,
-            frames: fixed.frames,
-            imageWidth: fixed.imageWidth,
-            imageHeight: fixed.imageHeight,
-          );
-        } catch (e) {
-          if (rethrowErrors) rethrow;
-          debugPrint('Calendar window error: $e');
-          return null;
+      // One request per attempt, like Lupang Hinirang: the v2 gate already
+      // checks stability on slightly shifted views, and shorter sub-windows
+      // were always rejected (they lose the start / end of the sign).
+      // Upright landmarks + hands assigned to the pose wrists (CaptureFixer).
+      Future<RawPredictResponse> send(List<RawFrame> fs) {
+        final s0 = fs.first.timeMs;
+        final fixed = CaptureFixer.fix([for (final f in fs) f.toJson(s0)], _imageWidth, _imageHeight,
+            reassignHands: !HolisticResult.isHolisticEngine(_engine));
+        return HandSpeakApiService().predictRaw(
+          modelId: HandSpeakModels.calendar,
+          frames: fixed.frames,
+          imageWidth: fixed.imageWidth,
+          imageHeight: fixed.imageHeight,
+          topK: 5, // the practice check compares the target with the next month
+        );
+      }
+
+      var result = await send(frames);
+      // A capture rejected for its timing (long still holds before / after
+      // the sign: PHASE_IMBALANCE, ...) is sent once more, cut to the part
+      // where the hands move. Replayed on 24 phone attempts + 142 kit takes
+      // with the server code (2026-10-14): one more phone attempt passes
+      // (January, 4.6 s capture -> 60 % January), no kit take is lost and no
+      // wrong month passes. Trimming every capture instead lost 2 kit takes.
+      if (result.failed.any(_retrimChecks.contains)) {
+        final moving = _trimToHandMotion(frames);
+        if (moving.length != frames.length && moving.length >= 8) {
+          debugPrint('Calendar retry: ${result.failed} -> ${frames.length} -> ${moving.length} frames');
+          result = await send(moving);
         }
       }
-
-      final results = await Future.wait([
-        judge(frames, rethrowErrors: true),
-        for (final w in windows) judge(w),
-      ]);
       if (!mounted || _disposed) return;
-      bool isTargetAccept(RawPredictResponse? r) =>
-          r != null && r.accepted && r.prediction != null && _monthIndexOf(r.prediction!) == target;
-
-      final matchAt = results.indexWhere(isTargetAccept);
-      final result = matchAt >= 0 ? results[matchAt]! : results.first!;
-      String windowLabel(int i) {
-        final r = results[i];
-        final name = i == 0 ? 'full' : 'w$i';
-        if (r == null) return '$name:error';
-        if (r.prediction != null) return '$name:${_monthName(r.prediction)}${r.accepted ? '✓' : ''}';
-        return '$name:${r.failed.isNotEmpty ? r.failed.first : '-'}';
-      }
-
-      final windowReport = [for (int i = 0; i < results.length; i++) windowLabel(i)].join(' ');
+      final modelName = _calendarModels[result.modelVersion.split('/').last] ?? 'UNKNOWN MODEL';
       debugPrint('Calendar response: ${result.raw}');
-      debugPrint('Calendar windows: $windowReport');
       if (!kReleaseMode) {
         // Debug / profile builds keep each attempt for offline analysis:
         // adb shell run-as <package> ls code_cache/calendar_dumps
@@ -960,8 +1032,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
             'image_width': _imageWidth,
             'image_height': _imageHeight,
             'frames': [for (final f in frames) f.toJson(t0)],
-            'response': results.first?.raw,
-            'windows': windowReport,
+            'response': result.raw,
           }));
         } catch (e) {
           debugPrint('Calendar dump failed: $e');
@@ -978,6 +1049,29 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       }
 
       final accepted = result.accepted;
+
+      // Practice check. The server gate is built for open recognition (any of
+      // 12 months, unknown signers) and abstains on most correct signs from
+      // signers it never saw (calendar v2 report: ~9 % accepted). In a lesson
+      // the target month is known, so the question is only "is this that
+      // month?": pass when the ONLY failed checks are the "not sure" ones and
+      // the model's own top guess is the target with a clear lead. A
+      // different top month, INVALID, too short, too little motion, no hands
+      // or hands out of frame still fail exactly as before.
+      double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
+      // The model's best MONTH (INVALID left out) and the next month.
+      final monthGuesses = [for (final p in result.topK) if (_monthIndexOf(p) != -1) p];
+      final best = monthGuesses.isNotEmpty ? monthGuesses.first : top;
+      final bestIdx = best == null ? -1 : _monthIndexOf(best);
+      final bestConf = best == null ? 0.0 : pct(best);
+      final nextMonth = monthGuesses.length > 1 ? pct(monthGuesses[1]) : 0.0;
+      final practicePass = !accepted &&
+          bestIdx == target &&
+          result.failed.isNotEmpty &&
+          result.failed.every(_unsureChecks.contains) &&
+          bestConf >= _practiceMinConf &&
+          bestConf - nextMonth >= _practiceMinLead;
+
       if (kDebugMode) {
         final checks = result.raw['checks'];
         final lines = checks is List
@@ -986,18 +1080,18 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                   if (c is Map) "${c['passed'] == true ? '✓' : '✗'} ${c['label']}: ${c['text']}"
               ].join('\n')
             : '';
-        _debug = 'target #$target $targetLabel | top=#$topIdx (${top?.label} '
+        _debug = 'calendar $modelName (${result.modelVersion.isEmpty ? '?' : result.modelVersion})\n'
+            'target #$target $targetLabel | top=#$topIdx (${top?.label}${top?.labelEn != null ? '/${top!.labelEn}' : ''} idx ${top?.index} '
             '${top?.confidence.toStringAsFixed(2)}) | failed=${result.failed}\n'
             'capture: ${frames.length} frames / ${secs.toStringAsFixed(1)} s = '
             '${(frames.length / (secs > 0 ? secs : 1)).toStringAsFixed(1)} fps | '
             '${_engine.isEmpty ? 'OLD NATIVE BUILD - run "flutter run" again' : _engine}\n'
-            'windows: $windowReport\n'
             'top3: ${result.topK.take(3).map((p) => '${_monthName(p)} ${(p.confidence > 1 ? p.confidence : p.confidence * 100).toStringAsFixed(0)}%').join(', ')}\n'
             '$lines';
       }
 
-      if (accepted && topIdx == target) {
-        final conf = confFor(target);
+      if ((accepted && topIdx == target) || practicePass) {
+        final conf = practicePass ? bestConf : confFor(target);
         setState(() {
           _resultColor = Colors.greenAccent;
           _resultTitle = 'Match!';
@@ -1022,11 +1116,12 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           (result.message?.trim().isNotEmpty == true
               ? 'Hindi tinanggap: ${result.message}'
               : 'Hindi makilala ang kumpas. Ulitin nang mas malinaw.');
-      final close = topIdx != -1 && !const {'NO_HANDS', 'TOO_SHORT', 'LOW_MOTION'}.contains(code);
+      // A rejected answer has no prediction: use the model's top guess.
+      final close = bestIdx != -1 && !const {'NO_HANDS', 'TOO_SHORT', 'LOW_MOTION'}.contains(code);
       _showResult(
-        title: close && topIdx == target
+        title: close && bestIdx == target
             ? 'Almost! Needs more clarity'
-            : (close ? 'Unclear — looks like ${_monthName(top)}' : 'Sign not recognized'),
+            : (close ? 'Unclear — looks like ${_monthName(best)}' : 'Sign not recognized'),
         detail: advice,
         color: close && topIdx == target ? Colors.orange : Colors.redAccent,
       );
@@ -1060,19 +1155,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   // ---------------------------------------------------------------------------
 
   Future<void> _awardXp() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'phraseXp': FieldValue.increment(xpReward),
-          'xp': FieldValue.increment(xpReward),
-          'dailyXp': FieldValue.increment(xpReward),
-          'completedLessons': FieldValue.increment(1),
-        }, SetOptions(merge: true));
-      }
-    } catch (e) {
-      debugPrint('Failed to write XP: $e');
-    }
+    // Once per phrase (tutorial and continuous practice counted separately).
+    _xpGained = await ProgressService().awardFirstMastery(
+      moduleKey: widget.continuous ? XpRewards.practiceKey('phrases') : 'phrases',
+      itemKey: ProgressService.masteryKey(widget.targetPhrase),
+      xp: xpReward,
+      xpField: 'phraseXp',
+      countsAsLesson: !widget.continuous,
+    );
   }
 
   Future<void> _onSuccess() async {
@@ -1084,8 +1174,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     HapticFeedback.heavyImpact();
 
     await _awardXp();
-    // Marks the sign in the tutorial list (green outline).
-    unawaited(ProgressService().markTutorialMastered('phrases', widget.targetPhrase));
     if (!mounted) return;
 
     if (widget.continuous) {
@@ -1196,7 +1284,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                             Icon(visuals.secondaryIcon, color: Colors.green, size: 22),
                             const SizedBox(width: 8),
                             Text(
-                              "+$xpReward XP Earned!",
+                              _xpGained > 0 ? "+$_xpGained XP Earned!" : "Daily XP limit reached",
                               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.green),
                             ),
                           ],
@@ -1387,7 +1475,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                     Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                     const SizedBox(width: 8),
                     Text(
-                      "Success! +$xpReward XP",
+                      _xpGained > 0 ? "Success! +$_xpGained XP" : "Success! (daily XP limit reached)",
                       style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
                     ),
                   ],
@@ -1428,7 +1516,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     final double elapsed = (_isRecording && _recordStart != null)
         ? DateTime.now().difference(_recordStart!).inMilliseconds / 1000.0
         : 0.0;
-    final double recordProgress = (elapsed / _maxRecording.inSeconds).clamp(0.0, 1.0).toDouble();
+    final double recordProgress = (elapsed / _recordingLimit.inSeconds).clamp(0.0, 1.0).toDouble();
 
     Color borderColor;
     if (_isRecording) {

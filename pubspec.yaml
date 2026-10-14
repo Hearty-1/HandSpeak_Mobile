@@ -110,7 +110,12 @@ flutter:
     - assets/numbers/labels_71_80.json
     - assets/numbers/labels_81_90.json
     - assets/numbers/labels_91_100.json
-    - assets/phrases/
+    # Greetings model (runs on the phone). The calendar model
+    # (calendar_v1.json + fsl_calendar_v2.onnx) runs on the server
+    # (POST /v1/predict_raw/calendar), so it and the reference zips in this
+    # folder are NOT bundled into the app.
+    - assets/phrases/fsl_model.onnx
+    - assets/phrases/labels.json
     # Civic line lists (the models run on the server, so only the labels ship).
     - assets/civic/labels_lupang_hinirang.json
     - assets/pictures/

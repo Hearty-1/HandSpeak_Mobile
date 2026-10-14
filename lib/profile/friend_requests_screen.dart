@@ -3,8 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+/// New followers (follow back / ignore) and friends (mutual follows).
 class FriendRequestsScreen extends StatefulWidget {
-  const FriendRequestsScreen({Key? key}) : super(key: key);
+  /// User to highlight (the one a tapped notification is about).
+  final String? highlightUid;
+
+  const FriendRequestsScreen({Key? key, this.highlightUid}) : super(key: key);
 
   @override
   State<FriendRequestsScreen> createState() => _FriendRequestsScreenState();
@@ -42,13 +46,29 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     };
 
     // 2. Requester: Add you to their followers. You are now mutuals (Friends).
+    // Not into their incomingRequests: they already follow you, so they
+    // must not be asked to follow back.
     batch.update(requesterRef, {
       'followers': FieldValue.arrayUnion([currentUserId]),
-      'incomingRequests': FieldValue.arrayUnion([currentUserId]), 
+      'incomingRequests': FieldValue.arrayRemove([currentUserId]),
       'notifications': FieldValue.arrayUnion([notificationPayload]),
     });
 
     await batch.commit();
+  }
+
+  /// Requests left over from users you already follow (old follow-back bug):
+  /// removed once so they stop showing as "Follow Back".
+  bool _cleaning = false;
+  void _cleanUpStaleRequests(List<String> stale) {
+    if (stale.isEmpty || _cleaning || currentUserId.isEmpty) return;
+    _cleaning = true;
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .update({'incomingRequests': FieldValue.arrayRemove(stale)})
+        .catchError((e) => debugPrint("Could not clean follow requests: $e"))
+        .whenComplete(() => _cleaning = false);
   }
 
   Future<void> _declineRequest(String requesterUid) async {
@@ -96,9 +116,16 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           }
 
           final userData = snapshot.data!.data() as Map<String, dynamic>?;
-          final List<dynamic> incomingRequests = userData?['incomingRequests'] ?? [];
+          final following = {for (final u in (userData?['following'] as List?) ?? const []) u.toString()};
+          final followers = {for (final u in (userData?['followers'] as List?) ?? const []) u.toString()};
+          final incoming = [for (final u in (userData?['incomingRequests'] as List?) ?? const []) u.toString()];
 
-          if (incomingRequests.isEmpty) {
+          // Someone you already follow back is a friend, not a request.
+          final pending = incoming.where((u) => !following.contains(u)).toSet().toList();
+          final friends = following.where(followers.contains).toList();
+          _cleanUpStaleRequests(incoming.where(following.contains).toList());
+
+          if (pending.isEmpty && friends.isEmpty) {
             return Center(
               child: Text(
                 "No new followers.",
@@ -107,18 +134,40 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
             );
           }
 
-          return ListView.builder(
+          Widget header(String text) => Padding(
+                padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+                child: Text(
+                  text,
+                  style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+              );
+
+          return ListView(
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.all(16),
-            itemCount: incomingRequests.length,
-            itemBuilder: (context, index) {
-              final requesterUid = incomingRequests[index].toString();
-              return _RequestTile(
-                requesterUid: requesterUid,
-                onAccept: () => _acceptRequest(requesterUid),
-                onDecline: () => _declineRequest(requesterUid),
-              );
-            },
+            children: [
+              if (pending.isNotEmpty) ...[
+                header("New Followers"),
+                for (final uid in pending)
+                  _RequestTile(
+                    key: ValueKey('req_$uid'),
+                    requesterUid: uid,
+                    highlighted: uid == widget.highlightUid,
+                    onAccept: () => _acceptRequest(uid),
+                    onDecline: () => _declineRequest(uid),
+                  ),
+              ],
+              if (friends.isNotEmpty) ...[
+                header("Friends"),
+                for (final uid in friends)
+                  _RequestTile(
+                    key: ValueKey('friend_$uid'),
+                    requesterUid: uid,
+                    isFriend: true,
+                    highlighted: uid == widget.highlightUid,
+                  ),
+              ],
+            ],
           );
         },
       ),
@@ -128,14 +177,20 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
 class _RequestTile extends StatelessWidget {
   final String requesterUid;
-  final VoidCallback onAccept;
-  final VoidCallback onDecline;
+  final VoidCallback? onAccept;
+  final VoidCallback? onDecline;
+
+  /// Mutual follow: shows a "Friends" label instead of the buttons.
+  final bool isFriend;
+  final bool highlighted;
 
   const _RequestTile({
     Key? key,
     required this.requesterUid,
-    required this.onAccept,
-    required this.onDecline,
+    this.onAccept,
+    this.onDecline,
+    this.isFriend = false,
+    this.highlighted = false,
   }) : super(key: key);
 
   Widget _buildAvatarImage(BuildContext context, String? avatarData, {double size = 48}) {
@@ -193,6 +248,7 @@ class _RequestTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.cardColor,
             borderRadius: BorderRadius.circular(16),
+            border: highlighted ? Border.all(color: theme.primaryColor, width: 2) : null,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.04),
@@ -217,6 +273,26 @@ class _RequestTile extends StatelessWidget {
                 ),
               ),
 
+              if (isFriend)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade600,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.people_alt_rounded, size: 16, color: Colors.white),
+                      SizedBox(width: 6),
+                      Text(
+                        "Friends",
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
               // --- FOLLOW BACK BUTTON ---
               GestureDetector(
                 onTap: onAccept,
@@ -257,6 +333,7 @@ class _RequestTile extends StatelessWidget {
                   ),
                 ),
               ),
+              ],
             ],
           ),
         );

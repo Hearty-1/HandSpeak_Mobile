@@ -1,16 +1,15 @@
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '/services/progress_service.dart';
+import '/services/xp_rewards.dart';
 import 'civic_tutorial_interface.dart' show LupangLines;
 import '/services/handspeak_api_service.dart';
+import '/services/holistic_capture.dart' show HolisticResult;
 import '/services/performance_monitor.dart';
 
 
@@ -48,18 +47,16 @@ class CivicTutorialPractice extends StatefulWidget {
   final String category;
   final List<Map<String, dynamic>>? questions;
 
-  /// Continuous practice (civic_practice.dart): the lines loop, each success
-  /// gives [continuousXp] (like the alphabet / numbers continuous practice)
-  /// and an inline success card instead of the "Mastered!" dialog.
+  /// Continuous practice (civic_practice.dart): the lines loop, the first
+  /// success on each line gives XpRewards.civicPractice, and an inline
+  /// success card replaces the "Mastered!" dialog.
   final bool continuous;
-  final int continuousXp;
 
   const CivicTutorialPractice({
     super.key,
     this.category = 'lupang_hinirang',
     this.questions,
     this.continuous = false,
-    this.continuousXp = 10,
   });
 
   @override
@@ -68,6 +65,8 @@ class CivicTutorialPractice extends StatefulWidget {
 
 class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with WidgetsBindingObserver {
   static const MethodChannel _platformChannel = MethodChannel('fsl_holistic_channel');
+  /// Native landmark engine of the last frame (MainActivity.kt).
+  String _engine = '';
 
   // Up to 2 frames in flight: native converts the next camera image while
   // the previous one is still in the pose / hand models (higher capture fps).
@@ -109,9 +108,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   DateTime? _recordStart;
   final List<CaptureFrame> _recorded = [];
   int _imageWidth = 0, _imageHeight = 0; // upright frame size from the native side
-  String _serverDebug = ''; // last server reply, shown in debug builds
-  String _engineInfo = ''; // native pose/hand models + delegate (diagnostics)
-  double _nativeMs = 0; // smoothed native time per frame (conversion + MediaPipe)
   bool _sawHands = false;
   int _lastHandMs = 0;
   static const Duration _maxRecording = Duration(seconds: 10);
@@ -353,9 +349,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
       _imageWidth = (res['imageWidth'] as num?)?.toInt() ?? _imageWidth;
       _imageHeight = (res['imageHeight'] as num?)?.toInt() ?? _imageHeight;
-      _engineInfo = (res['engine'] as String?) ?? _engineInfo;
-      final procMs = ((res['processMs'] as num?) ?? 0) + ((res['convertMs'] as num?) ?? 0);
-      _nativeMs = _nativeMs == 0 ? procMs.toDouble() : 0.8 * _nativeMs + 0.2 * procMs;
+      _engine = (res['engine'] as String?) ?? _engine;
       _onHolisticFrame(CaptureFrame(
         pose: _points(res['pose33']),
         leftHand: _points(res['leftHand']),
@@ -614,10 +608,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     final t0 = frames.first.timeMs;
     // Same form as the desktop engine: upright landmarks + hands assigned to
     // the pose wrists (CaptureFixer, in handspeak_api_service.dart).
-    final fixed = CaptureFixer.fix([for (final f in frames) f.toJson(t0)], _imageWidth, _imageHeight);
-    debugPrint("Civic v4: ${frames.length} frames over ${((frames.last.timeMs - t0) / 1000).toStringAsFixed(2)} s, "
-        "pose ${frames.where((f) => f.hasPose).length}, L ${frames.where((f) => f.leftHand != null).length}, "
-        "R ${frames.where((f) => f.rightHand != null).length}, image ${_imageWidth}x$_imageHeight | ${fixed.report}");
+    final fixed = CaptureFixer.fix([for (final f in frames) f.toJson(t0)], _imageWidth, _imageHeight,
+        reassignHands: !HolisticResult.isHolisticEngine(_engine));
 
     setState(() {
       _isEvaluating = true;
@@ -632,8 +624,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         imageHeight: fixed.imageHeight,
       );
       if (_isDisposed || _isSuccessAchieved) return;
-      final rawText = jsonEncode(result.raw);
-      debugPrint("Civic v4 response: $rawText");
 
       final top = result.prediction;
       final topIdx = top == null ? -1 : _indexOf(top);
@@ -648,28 +638,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       // Accepted = the server says so; if the reply has no explicit verdict,
       // a real (non-INVALID) top-1 with no failed gate counts as accepted.
       final accepted = result.accepted;
-      if (kDebugMode && mounted) {
-        final checks = result.raw['checks'];
-        final checkLines = checks is List
-            ? [
-                for (final c in checks)
-                  if (c is Map) "${c['passed'] == true ? '✓' : '✗'} ${c['label']}: ${c['text']}"
-              ].join('\n')
-            : '';
-        final secs = (frames.last.timeMs - t0) / 1000.0;
-        final staged = HandSpeakModels.stagedRawModels[HandSpeakModels.lupangHinirang];
-        final version = result.modelVersion.isEmpty ? '?' : result.modelVersion;
-        final versionNote = staged == null || staged.servedBy(result.modelVersion)
-            ? 'model $version'
-            : 'OLD MODEL $version (expected ${staged.checkpoint}; tagged revision unreachable)';
-        setState(() => _serverDebug = '$versionNote\n'
-            'expected #$expected ${_labelForIndex(expected)} | '
-            'top=#$topIdx (${top?.label} ${top?.confidence.toStringAsFixed(2)}) | failed=${result.failed}\n'
-            'capture: ${frames.length} frames / ${secs.toStringAsFixed(1)} s = '
-            '${(frames.length / (secs > 0 ? secs : 1)).toStringAsFixed(1)} fps | ${fixed.report} | '
-            '${_engineInfo.isEmpty ? 'OLD NATIVE BUILD - stop the app and run "flutter run" again (hot reload does not update Android code)' : '$_engineInfo, ${_nativeMs.toStringAsFixed(0)} ms/frame'}\n'
-            '${checkLines.isNotEmpty ? checkLines : (rawText.length > 600 ? '${rawText.substring(0, 600)}…' : rawText)}');
-      }
 
       // Pass only when the capture is accepted (all v4 gates passed) and its
       // top-1 line is the one being practised.
@@ -845,7 +813,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                             Flexible(
                               child: Text(
                                 // XP is given once per line; a repeat earns none.
-                                gained > 0 ? "+$gained XP Earned!" : "Already mastered",
+                                gained > 0 ? "+$gained XP Earned!" : "Daily XP limit reached",
                                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: rewardColor),
                               ),
                             ),
@@ -933,20 +901,17 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
   /// Practice XP for every success (not once per line like the tutorial).
   Future<void> _awardPracticeXp() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-      final xp = widget.continuousXp;
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        LupangLines.xpField: FieldValue.increment(xp),
-        'xp': FieldValue.increment(xp),
-        'dailyXp': FieldValue.increment(xp),
-        'weeklyXp': FieldValue.increment(xp),
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint("Failed to award XP: $e");
-    }
+    // Once per line: repeating a line in practice earns no more XP.
+    _practiceXpGained = await ProgressService().awardFirstMastery(
+      moduleKey: XpRewards.practiceKey('civic'),
+      itemKey: LupangLines.lineKey(_expectedClassIndex()),
+      xp: XpRewards.civicPractice,
+      xpField: LupangLines.xpField,
+      countsAsLesson: false,
+    );
   }
+
+  int _practiceXpGained = 0;
 
   /// Next line (after the last one: the first again). Used by success and Skip.
   void _advanceContinuous() {
@@ -1142,7 +1107,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                               Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                               const SizedBox(width: 8),
                               Text(
-                                "Success! +${widget.continuousXp} XP",
+                                _practiceXpGained > 0 ? "Success! +$_practiceXpGained XP" : "Success! (daily XP limit reached)",
                                 style: const TextStyle(
                                     color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
                               ),
@@ -1217,14 +1182,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   ),
                 ),
               ),
-              if (kDebugMode && _serverDebug.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                SelectableText(
-                  _serverDebug,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
-                ),
-              ],
             ],
           ];
 
@@ -1507,14 +1464,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               fontSize: 16,
             ),
           ),
-          if (kDebugMode && _serverDebug.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            SelectableText(
-              _serverDebug,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
-            ),
-          ],
           const SizedBox(height: 12),
           LinearProgressIndicator(
             value: _isRecording

@@ -33,7 +33,11 @@ class HolisticResult {
   final RawFrame frame;
   final int imageWidth;
   final int imageHeight;
-  final String engine; // e.g. "pose_landmarker_full/GPU, hands/GPU"
+  final String engine; // e.g. "holistic:holistic_landmarker_full/GPU" or "separate:..."
+
+  /// Native MediaPipe Holistic (the training pipeline): hands already
+  /// labelled from the pose wrists (CaptureFixer.fix(reassignHands: false)).
+  static bool isHolisticEngine(String engine) => engine.startsWith('holistic');
   /// Body in view (also true on frames where native skipped the pose model
   /// for speed; those frames carry pose = null and the server interpolates).
   final bool poseVisible;
@@ -158,5 +162,9 @@ class HolisticCapture {
     'LOW_CONFIDENCE': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
     'SMALL_MARGIN': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
     'HIGH_ENTROPY': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
+    // Reliability checks (calendar v2, Lupang Hinirang v9).
+    'LOW_LANDMARKS': "Hindi sapat ang nakikitang katawan o kamay. Ipakita ang balikat at parehong kamay sa camera.",
+    'OUT_OF_FRAME': "Lumalabas ang kamay sa camera. Umatras nang kaunti para makita ang buong galaw.",
+    'UNSTABLE': "Hindi pa sapat ang ebidensya para makilala ang senyas. Ulitin nang buo, malinaw, at tuloy-tuloy.",
   };
 }

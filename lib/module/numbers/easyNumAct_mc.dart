@@ -12,6 +12,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
 import '/providers/sound_provider.dart';
+import '/services/progress_service.dart';
 import '/providers/theme_provider.dart' show GalaxyPalette;
 import '/module/alphabet/recognizer.dart';
 import '/services/frame_gate.dart';
@@ -1058,28 +1059,14 @@ Future<void> _saveUserProgress(int starsEarned) async {
   final db = FirebaseFirestore.instance;
   final userRef = db.collection('users').doc(user.uid);
   final attemptRef = db.collection('activity_attempts').doc();
+  // Stars (best per level) and XP: fixed XP per new star, small repeat XP
+  // within the daily cap (ProgressService.saveActivityStars, xp_rewards.dart).
+  await ProgressService().saveActivityStars(levelId: widget.levelId, stars: starsEarned, xpField: 'numbersXp');
 
   try {
     await db.runTransaction((transaction) async {
       final snapshotDoc = await transaction.get(userRef);
       final data = snapshotDoc.exists ? (snapshotDoc.data() ?? {}) : <String, dynamic>{};
-
-      // 1. Level Stars Progress Map
-      final Map<String, dynamic> progress = data['progress'] is Map
-          ? Map<String, dynamic>.from(data['progress'] as Map)
-          : {};
-      final int previousStars = (progress[widget.levelId] ?? 0) as int;
-
-      int starsToAdd = 0;
-      if (starsEarned > previousStars) {
-        starsToAdd = starsEarned - previousStars;
-        progress[widget.levelId] = starsEarned;
-      }
-
-      // 2. Global Stars & XP Calculation
-      final int currentStars = (data['stars'] ?? 0) as int;
-      final int currentXp = (data['xp'] ?? 0) as int;
-      final int xpGained = starsEarned * 50;
 
       // 3. Auto-Unlock Next Sequential Level
       List<String> unlockedLevels = data['unlockedLevels'] is List
@@ -1109,9 +1096,6 @@ Future<void> _saveUserProgress(int starsEarned) async {
       transaction.set(
         userRef,
         {
-          'stars': currentStars + starsToAdd,
-          'xp': currentXp + (starsToAdd > 0 ? xpGained : 10),
-          'progress': progress,
           'unlockedLevels': unlockedLevels,
           'completedActivitiesCount': completedCount + 1,
           'lastActive': FieldValue.serverTimestamp(),

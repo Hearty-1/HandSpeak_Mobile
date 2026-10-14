@@ -6,7 +6,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
@@ -1115,34 +1114,13 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       _gestureTracker?.finish(
           outcome: 'completed', heartsLeft: _hearts, starsEarned: starsEarned, totalQuestions: _questions.length);
       
-      try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-          await FirebaseFirestore.instance.runTransaction((transaction) async {
-            final snapshotDoc = await transaction.get(userRef);
-            if (snapshotDoc.exists) {
-              final data = snapshotDoc.data() as Map<String, dynamic>;
-              final Map<String, dynamic> progress = data['progress'] != null ? Map<String, dynamic>.from(data['progress']) : {};
-              final int previousStars = progress[widget.levelId] ?? 0;
-              
-              int globalStarsToAdd = 0;
-              if (starsEarned > previousStars) {
-                globalStarsToAdd = starsEarned - previousStars;
-                progress[widget.levelId] = starsEarned; 
-              }
-
-              final int currentGlobalStars = data['stars'] ?? 0;
-              transaction.update(userRef, {
-                'stars': currentGlobalStars + globalStarsToAdd,
-                'progress': progress, 
-              });
-            }
-          });
-        }
-      } catch (e) {
-        debugPrint("Error updating Stars: $e");
-      }
+      // Best stars per level; fixed XP per new star, small repeat XP (xp_rewards.dart), so
+      // replaying a level without beating it earns nothing.
+      await _progressService.saveActivityStars(
+        levelId: widget.levelId,
+        stars: starsEarned,
+        xpField: 'alphabetXp',
+      );
 
       setState(() => _isSaving = false);
       if (!mounted) return;
