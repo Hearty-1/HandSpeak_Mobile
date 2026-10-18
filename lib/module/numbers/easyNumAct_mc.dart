@@ -843,6 +843,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
   void _setupQuestionState(int index) {
     final q = _questions[index];
+    _gestureTracker?.questionShown(q.id); // durationMs of its tries
     _selectedAnswer = null;
     _isAnswered = false;
 

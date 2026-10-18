@@ -848,6 +848,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   void _setupQuestionState(int index) {
     final q = _questions[index];
+    _gestureTracker?.questionShown(q.id); // durationMs of its tries
     _selectedAnswer = null;
     _isAnswered = false;
     _latestDetectedHands = [];

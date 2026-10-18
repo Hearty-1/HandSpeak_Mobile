@@ -18,8 +18,13 @@ import 'package:flutter/foundation.dart';
 ///   needsAttention [ "L — failed 2 times in this session (student needs practice)", ... ]
 ///
 ///   attempts/{01_Q1_L_try1}                every single attempt of that session
-///     order, question, sign, try, result ("correct" | "wrong"), score, passMark,
-///     mistake (plain words), mistakeCode, howJudged, handsDetected, time
+///     web analytics fields (flat, queryable with a collection-group query):
+///       userId, sectionId, sign, predictedSign (null if nothing recognised),
+///       score, passMark, result ("correct" | "wrong"), try, durationMs
+///       (prompt -> this try), errorType ("none" | "lowScore" | "nearMiss" |
+///       "noHands" | "wrongSign"), handsDetected, modelVersion, time
+///     plus the report fields: order, question, mistake (plain words),
+///     mistakeCode, howJudged,
 ///     model { confidencePercent, recognizedAs, framesRecorded }   dynamic signs only
 ///
 /// gesture_level_stats/{levelId}           running totals over ALL students
@@ -34,12 +39,22 @@ class GestureAttemptTracker {
   final String difficulty;
   final double threshold; // pass mark, 0..100
 
+  /// Recognition engine behind the score (attempt `modelVersion`): static
+  /// signs are matched against the reference templates, dynamic signs (J, Z,
+  /// moving numbers) go through the motion model.
+  final String modelVersion;
+  final String dynamicModelVersion;
+
   GestureAttemptTracker({
     required this.category,
     required this.levelId,
     required this.threshold,
     String? difficulty,
-  }) : difficulty = difficulty ?? _difficultyOf(levelId);
+    String? modelVersion,
+    String? dynamicModelVersion,
+  })  : difficulty = difficulty ?? _difficultyOf(levelId),
+        modelVersion = modelVersion ?? 'fsl_${category}_template_v1',
+        dynamicModelVersion = dynamicModelVersion ?? 'fsl_${category}_motion_tflite_v1';
 
   static String _difficultyOf(String levelId) {
     final l = levelId.toLowerCase();
@@ -76,6 +91,15 @@ class GestureAttemptTracker {
   int _order = 0, _correct = 0, _dynamicCount = 0;
   double _scoreSum = 0, _confidenceSum = 0;
   final Map<String, int> _triesPerQuestion = {};
+  // durationMs: a try is timed from the previous try of the same question,
+  // else from when the question was shown ([questionShown]), else from the
+  // previous attempt of the session (games: questions follow each other).
+  final Map<String, DateTime> _promptAt = {};
+  final Map<String, DateTime> _lastTryAt = {};
+  DateTime? _lastAttemptAt;
+
+  /// The student's class / section (users/{uid}.section), read once.
+  late final Future<String?> _section = _loadSection();
   final Map<String, int> _mistakes = {'noHands': 0, 'wrongSign': 0, 'nearMiss': 0, 'lowScore': 0};
   final Map<String, _SignStats> _signs = {};
 
@@ -91,6 +115,24 @@ class GestureAttemptTracker {
     final uid = _user?.uid ?? 'anon';
     return '${d.year}-${_two(d.month)}-${_two(d.day)}_${_two(d.hour)}${_two(d.minute)}${_two(d.second)}'
         '_${levelId}_${uid.substring(0, uid.length < 6 ? uid.length : 6)}';
+  }
+
+  Future<String?> _loadSection() async {
+    final uid = _user?.uid;
+    if (uid == null) return null;
+    try {
+      final data = (await _db.collection('users').doc(uid).get()).data();
+      final s = (data?['section'] ?? data?['sectionId'] ?? '').toString().trim();
+      return s.isEmpty ? null : s;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Call when a question appears on screen: its tries are timed from here.
+  void questionShown(String questionId) {
+    _promptAt[questionId] = DateTime.now();
+    _lastTryAt.remove(questionId);
   }
 
   static String _signKey(String sign) =>
@@ -134,10 +176,17 @@ class GestureAttemptTracker {
     bool handsDetected = true,
     int? framesRecorded,
     String trigger = 'check',
+    String? modelVersion,
+    int? durationMs,
   }) async {
     final user = _user;
     if (user == null) return;
-    _lastActivity = DateTime.now();
+    final now = DateTime.now();
+    _lastActivity = now;
+    final since = _lastTryAt[questionId] ?? _promptAt[questionId] ?? _lastAttemptAt ?? _startedAt;
+    final elapsedMs = durationMs ?? now.difference(since).inMilliseconds;
+    _lastTryAt[questionId] = now;
+    _lastAttemptAt = now;
 
     final s = score.isFinite ? score.clamp(0.0, 100.0).toDouble() : 0.0;
     final conf = confidence == null || !confidence.isFinite
@@ -161,19 +210,33 @@ class GestureAttemptTracker {
 
     final q = (questionIndex ?? 0) + 1;
     final attemptId = '${_two(_order)}_Q${q}_${_fieldKey(sign)}_try$tryNo';
+    // What was recognised: the classifier's label (dynamic signs); template
+    // matching only tells whether the target matched, so a pass counts as
+    // the target and a fail without a label as null.
+    final predicted = predictedLabel != null && predictedLabel.trim().isNotEmpty
+        ? _signKey(predictedLabel)
+        : (isCorrect ? _signKey(sign) : null);
     final attempt = <String, dynamic>{
-      'order': _order,
-      'question': q,
+      // ---- web analytics fields ----
+      'userId': user.uid,
+      'sectionId': await _section,
       'sign': _signKey(sign),
-      'try': tryNo,
-      'result': isCorrect ? 'correct' : 'wrong',
+      'predictedSign': predicted,
       'score': _round(s),
       'passMark': threshold,
+      'result': isCorrect ? 'correct' : 'wrong',
+      'try': tryNo,
+      'durationMs': elapsedMs < 0 ? 0 : elapsedMs,
+      'errorType': code.isEmpty ? 'none' : code,
+      'handsDetected': handsDetected,
+      'modelVersion': modelVersion ?? (isDynamic ? dynamicModelVersion : this.modelVersion),
+      'time': FieldValue.serverTimestamp(),
+      // ---- session report fields ----
+      'order': _order,
+      'question': q, 
       if (!isCorrect) 'mistake': mistakeText[code],
       if (!isCorrect) 'mistakeCode': code,
       'howJudged': howJudgedText[trigger] ?? trigger,
-      'handsDetected': handsDetected,
-      'time': FieldValue.serverTimestamp(),
       if (isDynamic)
         'model': {
           if (conf != null) 'confidencePercent': _round(conf * 100),
@@ -184,7 +247,7 @@ class GestureAttemptTracker {
 
     try {
       await _sessionRef.collection('attempts').doc(attemptId).set(attempt);
-      await _sessionRef.set(_sessionDoc(), SetOptions(merge: true));
+      await _sessionRef.set(await _sessionDoc(), SetOptions(merge: true));
     } catch (e) {
       debugPrint('gesture_attempts: attempt not saved: $e');
     }
@@ -192,7 +255,8 @@ class GestureAttemptTracker {
   }
 
   /// The session report (rewritten after every attempt, final on [finish]).
-  Map<String, dynamic> _sessionDoc({List<String>? needsAttention}) {
+  Future<Map<String, dynamic>> _sessionDoc({List<String>? needsAttention}) async {
+    final section = await _section;
     final user = _user;
     final wrong = _order - _correct;
     final acc = _order == 0 ? 0.0 : _correct / _order * 100;
@@ -207,7 +271,11 @@ class GestureAttemptTracker {
       'student': {
         'userId': user?.uid,
         'name': user?.displayName?.isNotEmpty == true ? user!.displayName : (user?.email ?? ''),
+        'sectionId': section,
       },
+      // Flat copies for web queries (where userId / sectionId == ...).
+      'userId': user?.uid,
+      'sectionId': section,
       'level': {'category': category, 'levelId': levelId, 'difficulty': difficulty, 'passMark': threshold},
       'session': {
         'startedAt': Timestamp.fromDate(_startedAt),
@@ -290,7 +358,7 @@ class GestureAttemptTracker {
       }
     });
     try {
-      await _sessionRef.set(_sessionDoc(needsAttention: notes), SetOptions(merge: true));
+      await _sessionRef.set(await _sessionDoc(needsAttention: notes), SetOptions(merge: true));
     } catch (e) {
       debugPrint('gesture_attempts: session report not saved: $e');
     }

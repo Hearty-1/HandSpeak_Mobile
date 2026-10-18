@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../providers/theme_provider.dart';
 import '../providers/sound_provider.dart';
-import '../services/local_notification_service.dart'; 
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,12 +16,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Notification State
-  bool _streakNotif = true;
-  bool _dailyChallengesNotif = true;
-  bool _friendNotif = true;
-  bool _notificationSound = true;
-  bool _notificationVibration = true;
+  bool _twoFactorEnabled = false;
 
   @override
   void initState() {
@@ -38,16 +32,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final prefs = doc.data()!['preferences'] as Map<String, dynamic>;
         if (mounted) {
           setState(() {
-            _friendNotif = prefs['friendNotifications'] ?? true;
-            _notificationSound = prefs['playSound'] ?? true;
-            _notificationVibration = prefs['enableVibration'] ?? true;
+            _twoFactorEnabled = prefs['twoFactorEnabled'] ?? false;
           });
         }
       }
     }
   }
 
-  Future<void> _updateNotificationPreference(String key, bool value) async {
+  Future<void> _updatePreference(String key, bool value) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -179,32 +171,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
 
-          // Clean, Professional Notifications Section
-          _buildSectionHeader("Notifications", textColor),
-          _buildSettingsCard(
-            context: context,
-            children: [
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(CupertinoIcons.bell_solid, color: Colors.redAccent, size: 20),
-                ),
-                title: Text("Push Notifications", style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
-                subtitle: Text("Manage alerts, sounds, and behaviors", style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 12)),
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
-                onTap: () => _showNotificationPreferences(context),
-              ),
-            ],
-          ),
-
           _buildSectionHeader("Security & Privacy", textColor),
           _buildSettingsCard(
             context: context,
             children: [
+              SwitchListTile(
+                activeColor: const Color(0xFFFFB800),
+                inactiveThumbColor: Colors.grey.shade400,
+                inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                secondary: Icon(CupertinoIcons.shield_fill, color: textColor.withOpacity(0.6)),
+                title: Text("Two-Factor Authentication", style: TextStyle(color: textColor)),
+                subtitle: Text(
+                  "Add extra security to your account with 2FA",
+                  style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 12),
+                ),
+                value: _twoFactorEnabled,
+                onChanged: (val) async {
+                  setState(() => _twoFactorEnabled = val);
+                  await _updatePreference('twoFactorEnabled', val);
+                },
+              ),
+              Divider(height: 1, color: theme.dividerColor),
               ListTile(
                 leading: Icon(CupertinoIcons.lock_fill, color: textColor.withOpacity(0.6)),
                 title: Text("Change Password", style: TextStyle(color: textColor)),
@@ -232,116 +219,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // --- HELPER WIDGETS & DIALOGS ---
-
-  void _showNotificationPreferences(BuildContext context) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onBackground;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: theme.cardColor,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 32.0, top: 12.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: textColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Text("Notification Preferences", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  activeColor: const Color(0xFFFFB800),
-                  inactiveThumbColor: Colors.grey.shade400,
-                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
-                  secondary: const Icon(CupertinoIcons.flame_fill, color: Colors.deepOrange),
-                  title: Text("Streak Reminders", style: TextStyle(color: textColor)),
-                  value: _streakNotif,
-                  onChanged: (val) async {
-                    setSheetState(() => _streakNotif = val);
-                    setState(() => _streakNotif = val);
-                    if (val) {
-                      await LocalNotificationService.scheduleStreakReminder(
-                        playSound: _notificationSound,
-                        enableVibration: _notificationVibration,
-                      );
-                    } else {
-                      await LocalNotificationService.cancelStreakReminder();
-                    }
-                  },
-                ),
-                SwitchListTile(
-                  activeColor: const Color(0xFFFFB800),
-                  inactiveThumbColor: Colors.grey.shade400,
-                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
-                  secondary: const Icon(CupertinoIcons.star_fill, color: Color(0xFFFFB800)),
-                  title: Text("Daily Challenges", style: TextStyle(color: textColor)),
-                  value: _dailyChallengesNotif,
-                  onChanged: (val) {
-                    setSheetState(() => _dailyChallengesNotif = val);
-                    setState(() => _dailyChallengesNotif = val);
-                  },
-                ),
-                SwitchListTile(
-                  activeColor: const Color(0xFFFFB800),
-                  inactiveThumbColor: Colors.grey.shade400,
-                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
-                  secondary: const Icon(CupertinoIcons.person_2_fill, color: Colors.blue),
-                  title: Text("Friend Requests & Activity", style: TextStyle(color: textColor)),
-                  value: _friendNotif,
-                  onChanged: (val) async {
-                    setSheetState(() => _friendNotif = val);
-                    setState(() => _friendNotif = val);
-                    await _updateNotificationPreference('friendNotifications', val);
-                  },
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                  child: Divider(height: 1, color: theme.dividerColor),
-                ),
-                SwitchListTile(
-                  activeColor: const Color(0xFFFFB800),
-                  inactiveThumbColor: Colors.grey.shade400,
-                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
-                  secondary: const Icon(CupertinoIcons.speaker_2_fill, color: Colors.green),
-                  title: Text("Notification Sounds", style: TextStyle(color: textColor)),
-                  value: _notificationSound,
-                  onChanged: (val) async {
-                    setSheetState(() => _notificationSound = val);
-                    setState(() => _notificationSound = val);
-                    await _updateNotificationPreference('playSound', val);
-                  },
-                ),
-                SwitchListTile(
-                  activeColor: const Color(0xFFFFB800),
-                  inactiveThumbColor: Colors.grey.shade400,
-                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
-                  secondary: const Icon(CupertinoIcons.waveform_path, color: Colors.purple),
-                  title: Text("Vibration", style: TextStyle(color: textColor)),
-                  value: _notificationVibration,
-                  onChanged: (val) async {
-                    setSheetState(() => _notificationVibration = val);
-                    setState(() => _notificationVibration = val);
-                    await _updateNotificationPreference('enableVibration', val);
-                  },
-                ),
-              ],
-            ),
-          );
-        }
-      ),
-    );
-  }
 
   Widget _buildSectionHeader(String title, Color textColor) {
     return Padding(

@@ -11,8 +11,8 @@ import 'phrase_tutorial_practice.dart';
 ///
 /// Phrases are signs with movement, so each one is recorded and evaluated
 /// by the same pipeline as the phrase tutorial (PhraseTutorialPractice in
-/// continuous mode): greetings by the greetings model, months by the
-/// calendar model.
+/// continuous mode). Months (calendar) are left out: the calendar model
+/// does not recognise new signers yet (2026-10-14 phone replay).
 class PhrasePractice extends StatefulWidget {
   const PhrasePractice({super.key});
 
@@ -22,9 +22,8 @@ class PhrasePractice extends StatefulWidget {
 
 class _PhrasePracticeState extends State<PhrasePractice> {
   /// Greetings the model recognises (PhraseRecognizer classes; "Walang
-  /// anuman" is inactive in the model and the invalid class is not a sign),
-  /// then the 12 months of the calendar model.
-  static final List<String> _phrases = [
+  /// anuman" is inactive in the model and the invalid class is not a sign).
+  static const List<String> _phrases = [
     'Magandang Umaga',
     'Magandang Hapon',
     'Magandang Gabi',
@@ -34,7 +33,6 @@ class _PhrasePracticeState extends State<PhrasePractice> {
     'Ikinagagalak Kong Makilala Ka',
     'Salamat',
     'Magkita Tayo Bukas',
-    ...CalendarSigns.displayLabels,
   ];
 
   int _currentIdx = 0;
@@ -48,11 +46,9 @@ class _PhrasePracticeState extends State<PhrasePractice> {
     _loadLessonMedia();
   }
 
-  /// Key shared by a phrase and its Firestore lesson: greeting class index,
-  /// month index, or the compacted text.
+  /// Key shared by a phrase and its Firestore lesson: greeting class index
+  /// or the compacted text.
   static String _keyOf(String phrase) {
-    final month = CalendarSigns.indexFor(phrase);
-    if (month != -1) return 'month_$month';
     final cls = PhraseRecognizer.classIndexFor(phrase);
     if (cls != -1) return 'greeting_$cls';
     return phrase.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
@@ -62,10 +58,7 @@ class _PhrasePracticeState extends State<PhrasePractice> {
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('tutorial_lessons')
-          .where('category', whereIn: [
-            'phrase', 'phrases', 'Phrase', 'Phrases',
-            'calendar', 'Calendar', 'calendar_phrases', 'month', 'months', 'Months', 'buwan', 'Buwan',
-          ])
+          .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
           .get();
       final media = <String, String>{};
       for (final doc in snapshot.docs) {
