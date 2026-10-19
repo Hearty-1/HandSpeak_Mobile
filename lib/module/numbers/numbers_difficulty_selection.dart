@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 import 'numbers_activity.dart'; 
+import '/services/role_service.dart';
 
 class NumbersDifficultySelectionScreen extends StatefulWidget {
   const NumbersDifficultySelectionScreen({super.key});
@@ -90,8 +91,12 @@ class _NumbersDifficultySelectionScreenState
     );
   }
 
+  /// Role-based access: only roles with `AppFeature.activities` can open this screen.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      RoleGuard(feature: AppFeature.activities, child: _buildGuarded(context));
+
+  Widget _buildGuarded(BuildContext context) {
     final themeStyles = _getThemeStyles(context);
     final scaffoldBgColor = Theme.of(context).scaffoldBackgroundColor;
 

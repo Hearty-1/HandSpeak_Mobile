@@ -10,13 +10,11 @@ import '../home/home.dart';
 import '../module/module.dart';
 import '../leaderboard/arena.dart';
 import '../home/notification_bell.dart';
-import '../home/settings_screen.dart';
 import 'add_friend_screen.dart';
-import '/auth/login_screen.dart';
 import '../widgets/app_nav_bar.dart';
 import 'achievements.dart';
-
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
@@ -75,8 +73,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Role-based access: only roles with `AppFeature.profile` can open this screen.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      RoleGuard(feature: AppFeature.profile, child: _buildGuarded(context));
+
+  Widget _buildGuarded(BuildContext context) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
 
@@ -506,48 +508,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       
                       SizedBox(height: 28 * scale),
-
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(20 * scale),
-                        clipBehavior: Clip.antiAlias,
-                        child: SmartBlur(
-                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: theme.cardColor.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(20 * scale),
-                              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
-                            ),
-                            child: Column(
-                              children: [
-                                _buildActionRow(
-                                  context: context,
-                                  scale: scale,
-                                  icon: Icons.settings_rounded,
-                                  iconColor: theme.primaryColor,
-                                  title: "Settings",
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      _fadeRoute(const SettingsScreen()),
-                                    );
-                                  },
-                                ),
-                                Divider(height: 1, thickness: 0.8, color: theme.dividerColor.withOpacity(0.2)),
-                                _buildActionRow(
-                                  context: context,
-                                  scale: scale,
-                                  icon: Icons.logout_rounded,
-                                  iconColor: const Color(0xFFF34B1B),
-                                  title: "Sign Out",
-                                  isDestructive: true,
-                                  onTap: () => _handleSignOut(context),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 );
@@ -849,47 +809,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildActionRow({
-    required BuildContext context,
-    required double scale,
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required VoidCallback onTap,
-    bool isDestructive = false,
-  }) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
-
-    return ListTile(
-      onTap: onTap,
-      dense: true,
-      contentPadding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 4 * scale),
-      leading: Container(
-        padding: EdgeInsets.all(6 * scale),
-        decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(10 * scale),
-        ),
-        child: Icon(icon, color: iconColor, size: 20 * scale),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontSize: 15 * scale,
-          fontWeight: FontWeight.w700,
-          fontFamily: 'Inter',
-          color: isDestructive ? const Color(0xFFF34B1B) : textColor,
-        ),
-      ),
-      trailing: Icon(
-        Icons.arrow_forward_ios_rounded,
-        size: 14 * scale,
-        color: textColor.withOpacity(0.3),
-      ),
-    );
-  }
-
   void _showEditAvatarDialog(BuildContext context, User user, {String? currentAvatar, required double scale}) {
     final ImagePicker picker = ImagePicker();
     Uint8List? pickedImageBytes;
@@ -1023,16 +942,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
         );
       }
-    );
-  }
-
-  void _handleSignOut(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    if (!context.mounted) return;
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const SnedStudentLogin()), 
-      (route) => false
     );
   }
 

@@ -12,7 +12,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
-import '/module/alphabet/recognizer.dart';
+import '/services/dynamic_sign_judge.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 import '/services/frame_gate.dart';
@@ -355,12 +355,16 @@ class _GameProperScreenState extends State<GameProperScreen> {
 
   bool _isRecordingMotion = false;
   DateTime? _startRecordingTime;
-  final List<Float32List> _recordingFrames = [];
   static const Duration _dropoutGracePeriod = Duration(milliseconds: 300);
   DateTime? _lastHandsSeenTime;
 
-  PhraseRecognizer? _dynamicSignRecognizer;
-  bool _dynamicModelReady = false;
+  /// J / Z: judged like the alphabet tutorial practice from a recording.
+  final DynamicSignJudge _judge = DynamicSignJudge();
+  int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
+  bool _isJudging = false;
+  static const double _letterRecordSeconds = 2.5;
+  /// File(s) that judged the last J / Z (gesture_attempts modelVersion).
+  String? _lastDynamicModel;
 
   // In-memory caching for loaded gesture template JSONs
   static final Map<String, List<dynamic>> _templateCache = {};
@@ -371,6 +375,17 @@ class _GameProperScreenState extends State<GameProperScreen> {
   final double successThreshold = 70.0;
 
   static const List<String> _dynamicLetters = ['J', 'Z'];
+
+  /// File each letter's template came from (gesture_attempts modelVersion).
+  static final Map<String, String> _templateSourceCache = {};
+
+  /// The file that actually scored a camera sign: the J / Z motion model when
+  /// it is loaded, else the letter's template.
+  String _usedModelFile(String sign) {
+    final key = sign.trim().toUpperCase();
+    if (_isDynamicLetter) return _lastDynamicModel ?? 'assets/alphabet/fsl_letter_${key.toLowerCase()}.onnx';
+    return _templateSourceCache[key] ?? 'assets/alphabet/$key.json';
+  }
 
   bool get _isDynamicLetter {
     if (_questions.isEmpty || _currentQuestionIndex >= _questions.length) return false;
@@ -404,7 +419,6 @@ class _GameProperScreenState extends State<GameProperScreen> {
     _cameraController?.stopImageStream();
     _cameraController?.dispose();
     _landmarkerPlugin?.dispose();
-    _dynamicSignRecognizer?.dispose();
     super.dispose();
   }
 
@@ -438,16 +452,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
         await _cameraController!.startImageStream(_processCameraFrame);
       }
 
-      try {
-        _dynamicSignRecognizer = PhraseRecognizer(
-          modelAssetPath: 'assets/alphabet/model.tflite',
-          labelAssetPath: 'assets/alphabet/label_map.json',
-        );
-        await _dynamicSignRecognizer!.initialize();
-        _dynamicModelReady = true;
-      } catch (e) {
-        _dynamicModelReady = false;
-      }
+      // J / Z models (assets/alphabet/fsl_letter_j.onnx, fsl_letter_z.onnx).
+      DynamicSignJudge.prepare(letters: true).catchError((e) => debugPrint('J / Z models failed to load: $e'));
 
       if (mounted) setState(() => _isCameraInitialized = true);
     } catch (e) {
@@ -479,6 +485,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
         final jsonString = utf8.decode(data);
         final List<dynamic> decoded = jsonDecode(jsonString);
         _templateCache[charKey] = decoded;
+        _templateSourceCache[charKey] = 'gesture_templates/$charKey.json';
         if (mounted) {
           setState(() => _template = decoded);
         }
@@ -493,6 +500,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
       String jsonString = await rootBundle.loadString('assets/alphabet/$charKey.json');
       final List<dynamic> decoded = jsonDecode(jsonString);
       _templateCache[charKey] = decoded;
+      _templateSourceCache[charKey] = 'assets/alphabet/$charKey.json';
       if (mounted) {
         setState(() => _template = decoded);
       }
@@ -510,12 +518,35 @@ class _GameProperScreenState extends State<GameProperScreen> {
     if (!_isCameraInitialized || _landmarkerPlugin == null || _hasAnswered || _isProcessingFrame) return;
     _isProcessingFrame = true;
     try {
+      _imageWidth = image.width;
+      _imageHeight = image.height;
+      _imageRotation = _cameraImageRotation(_cameraController);
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
-      _landmarkerPlugin!.processFrame(image, _cameraImageRotation(_cameraController));
+      _landmarkerPlugin!.processFrame(image, _imageRotation);
     } catch (e) {
       debugPrint("Inference Error: $e");
     } finally {
       _isProcessingFrame = false;
+    }
+  }
+
+  /// Judges the recorded J / Z (as the alphabet tutorial practice does).
+  Future<void> _judgeMovingLetter(String letter) async {
+    setState(() => _isJudging = true);
+    final v = await _judge.judgeLetter(letter);
+    if (!mounted) return;
+    _judge.clear();
+    _lastDynamicModel = v.model;
+    debugPrint('[Game] Letter $letter: ${v.isCorrect ? 'PASS' : 'fail'} (${v.feedback}) via ${v.model}');
+    setState(() {
+      _isJudging = false;
+      _holdProgress = 0.0;
+      _currentScore = v.isCorrect ? math.max(v.score, successThreshold) : math.min(v.score, successThreshold - 1);
+    });
+    if (v.isCorrect) {
+      _submitAnswer(letter);
+    } else {
+      _startRecordingTime = null;
     }
   }
 
@@ -529,34 +560,28 @@ class _GameProperScreenState extends State<GameProperScreen> {
     final correctAnswer = _extractCorrectAnswer(currentQ).toUpperCase();
 
     if (_isDynamicLetter) {
-      if (!_dynamicModelReady || _dynamicSignRecognizer == null) return;
+      // J / Z: record a few seconds, then judge like the tutorial practice
+      // (fsl_letter_j / z.onnx + the server check).
+      if (_isJudging) return;
       if (detectedHands.isNotEmpty) {
         _lastHandsSeenTime = now;
         if (!_isRecordingMotion) {
           _isRecordingMotion = true;
           _startRecordingTime = now;
-          _recordingFrames.clear();
+          _judge.clear();
         }
-
-        _recordingFrames.add(_dynamicSignRecognizer!.extractFrameFeatures(detectedHands));
+        _judge.addFrame(detectedHands, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
         final double elapsed = now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
-        if (mounted) setState(() => _holdProgress = (elapsed / _requiredHoldSeconds).clamp(0.0, 1.0));
-
-        if (elapsed >= _requiredHoldSeconds) {
+        if (mounted) setState(() => _holdProgress = (elapsed / _letterRecordSeconds).clamp(0.0, 1.0));
+        if (elapsed >= _letterRecordSeconds) {
           _isRecordingMotion = false;
-          final result = _dynamicSignRecognizer!.predictFromRecording(_recordingFrames);
-          _recordingFrames.clear();
-
-          if (result != null && result.label.toUpperCase() == correctAnswer) {
-            _currentScore = (result.confidence * 100.0).clamp(0.0, 100.0);
-          }
-          if (_currentScore >= successThreshold) _submitAnswer(correctAnswer);
+          unawaited(_judgeMovingLetter(correctAnswer));
         }
       } else if (_isRecordingMotion) {
         final lastSeen = _lastHandsSeenTime;
         if (lastSeen == null || now.difference(lastSeen) > _dropoutGracePeriod) {
           if (mounted) setState(() { _isRecordingMotion = false; _holdProgress = 0.0; });
-          _recordingFrames.clear();
+          _judge.clear();
         }
       }
       return;
@@ -875,6 +900,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
         score: _currentScore,
         category: _category,
         isCameraGesture: true,
+        modelVersion: _usedModelFile(correctAnswer),
       );
     } else if (type == 'typing') {
       isCorrect = answer.trim().toLowerCase() == correctAnswer;

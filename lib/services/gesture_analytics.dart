@@ -102,8 +102,15 @@ class GestureAttemptTracker {
   late final Future<String?> _section = _loadSection();
   final Map<String, int> _mistakes = {'noHands': 0, 'wrongSign': 0, 'nearMiss': 0, 'lowScore': 0};
   final Map<String, _SignStats> _signs = {};
+  /// Recognition engines that scored this session's attempts (session doc).
+  final Set<String> _modelsUsed = {};
 
-  User? get _user => FirebaseAuth.instance.currentUser;
+  /// Students only: a Faculty / Parent guest's anonymous session is not
+  /// recorded in the class analytics.
+  User? get _user {
+    final u = FirebaseAuth.instance.currentUser;
+    return u == null || u.isAnonymous ? null : u;
+  }
   DocumentReference<Map<String, dynamic>> get _sessionRef => _db.collection('gesture_attempts').doc(sessionId);
   DocumentReference<Map<String, dynamic>> get _statsRef =>
       _db.collection('gesture_level_stats').doc(levelId.replaceAll('/', '_'));
@@ -216,10 +223,13 @@ class GestureAttemptTracker {
     final predicted = predictedLabel != null && predictedLabel.trim().isNotEmpty
         ? _signKey(predictedLabel)
         : (isCorrect ? _signKey(sign) : null);
+    final usedModel = modelVersion ?? (isDynamic ? dynamicModelVersion : this.modelVersion);
+    _modelsUsed.add(usedModel);
     final attempt = <String, dynamic>{
       // ---- web analytics fields ----
       'userId': user.uid,
       'sectionId': await _section,
+      'sessionId': sessionId,
       'sign': _signKey(sign),
       'predictedSign': predicted,
       'score': _round(s),
@@ -229,7 +239,7 @@ class GestureAttemptTracker {
       'durationMs': elapsedMs < 0 ? 0 : elapsedMs,
       'errorType': code.isEmpty ? 'none' : code,
       'handsDetected': handsDetected,
-      'modelVersion': modelVersion ?? (isDynamic ? dynamicModelVersion : this.modelVersion),
+      'modelVersion': usedModel,
       'time': FieldValue.serverTimestamp(),
       // ---- session report fields ----
       'order': _order,
@@ -277,6 +287,10 @@ class GestureAttemptTracker {
       'userId': user?.uid,
       'sectionId': section,
       'level': {'category': category, 'levelId': levelId, 'difficulty': difficulty, 'passMark': threshold},
+      'sessionId': sessionId,
+      // e.g. ["fsl_alphabet_template_v1", "fsl_alphabet_motion_tflite_v1"] (J / Z).
+      'modelVersions': _modelsUsed.toList()..sort(),
+      if (_modelsUsed.isNotEmpty) 'modelVersion': (_modelsUsed.toList()..sort()).first,
       'session': {
         'startedAt': Timestamp.fromDate(_startedAt),
         'endedAt': Timestamp.fromDate(now),

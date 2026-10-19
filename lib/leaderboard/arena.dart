@@ -16,6 +16,7 @@ import '../widgets/app_nav_bar.dart';
 import '../home/notification_bell.dart'; 
 
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
@@ -168,8 +169,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     }
   }
 
+  /// Role-based access: only roles with `AppFeature.challenges` can open this screen.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      RoleGuard(feature: AppFeature.challenges, child: _buildGuarded(context));
+
+  Widget _buildGuarded(BuildContext context) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final double screenWidth = MediaQuery.of(context).size.width;

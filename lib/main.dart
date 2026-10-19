@@ -7,7 +7,8 @@ import 'firebase_options.dart';
 import 'providers/theme_provider.dart'; 
 import 'providers/sound_provider.dart'; 
 import 'home/home.dart'; 
-import 'auth/login_screen.dart';
+import 'auth/role_selection_screen.dart';
+import 'services/role_service.dart';
 
 // Import the local notification service
 import 'services/local_notification_service.dart';
@@ -26,11 +27,16 @@ void main() async {
   // Saved Performance Mode (reduced visual effects) before the first frame.
   await PerformanceSettings.load();
 
+  // Remembered Faculty / Parent (guest) choice, so they re-enter without the intro.
+  final roleProvider = RoleProvider();
+  await roleProvider.load();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => SoundProvider()), 
+        ChangeNotifierProvider<RoleProvider>.value(value: roleProvider),
       ],
       child: const MyApp(),
     ),
@@ -64,11 +70,19 @@ class MyApp extends StatelessWidget {
                 );
               }
               
-              if (snapshot.hasData) {
+              // Signed-in account = Student (unchanged behaviour). An anonymous
+              // session belongs to a Faculty / Parent guest (see RoleProvider).
+              if (snapshot.hasData && !snapshot.data!.isAnonymous) {
                 String displayName = snapshot.data!.displayName ?? 
                                      snapshot.data!.email?.split('@')[0] ?? 
                                      "Student";
                 return SnedInterafce1(userName: displayName);
+              }
+
+              // Faculty / Parent who already chose a role: straight in, no login.
+              final roles = Provider.of<RoleProvider>(context, listen: false);
+              if (roles.isGuest) {
+                return SnedInterafce1(userName: roles.roleLabel);
               }
               
               return const MainLogin(); 
@@ -191,7 +205,8 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
   }
 
   void _begin() {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => const SnedStudentLogin()));
+    // Ask who is using the app (Student / Faculty / Parent) before anything else.
+    Navigator.push(context, MaterialPageRoute(builder: (context) => const RoleSelectionScreen()));
   }
 
   /// Accent colour blended between the two slides around the current scroll position.

@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '/services/progress_service.dart'; 
 import 'alphabet/alphabet_interface.dart'; 
@@ -15,6 +16,9 @@ import '../home/notification_bell.dart';
 import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
 import '/auth/login_screen.dart';
+import '/auth/role_selection_screen.dart';
+import '/services/role_service.dart';
+import 'custom_category_screen.dart';
 
 import '/services/performance_monitor.dart';
 
@@ -43,6 +47,12 @@ class SnedInterface2 extends StatelessWidget {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final isDark = theme.brightness == Brightness.dark;
+
+    // Role-based access: Faculty / Parent see every module unlocked (no XP gates,
+    // no progress) and only reach tutorials + practice inside each module.
+    final roles = context.roles;
+    final bool isGuest = roles.isGuest;
+    final bool canProgress = roles.can(AppFeature.progress);
 
     final Color adaptiveProgressColor = theme.colorScheme.secondary;
 
@@ -101,8 +111,9 @@ class SnedInterface2 extends StatelessWidget {
           }
         }
 
-        final bool isWordsLocked = alphabetXp < targetXp; 
-        final bool isCivicsLocked = isWordsLocked || (wordsXp < targetXp); 
+        // XP unlock chain applies to students only; guests have no XP to unlock with.
+        final bool isWordsLocked = canProgress && alphabetXp < targetXp; 
+        final bool isCivicsLocked = canProgress && (isWordsLocked || (wordsXp < targetXp)); 
 
         int displayAlpXp = alphabetXp > targetXp ? targetXp : alphabetXp; 
         int displayNumXp = numbersXp > targetXp ? targetXp : numbersXp; 
@@ -148,6 +159,17 @@ class SnedInterface2 extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                          if (isGuest) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '${roles.roleLabel} access',
+                              style: TextStyle(
+                                color: theme.colorScheme.onPrimary.withOpacity(0.85),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -211,9 +233,19 @@ class SnedInterface2 extends StatelessWidget {
                             },
                           ),
                           ListTile(
-  leading: const Icon(Icons.logout_rounded, color: Color(0xFFF34B1B)), 
-  title: const Text('Sign Out', style: TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
+  leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: const Color(0xFFF34B1B)), 
+  title: Text(isGuest ? 'Change Role' : 'Sign Out', style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
   onTap: () async {
+    if (isGuest) {
+      // Faculty / Parent have no account: leave guest mode and ask for a role again.
+      await context.read<RoleProvider>().clear();
+      if (!context.mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+        (route) => false,
+      );
+      return;
+    }
     await FirebaseAuth.instance.signOut();
     if (!context.mounted) return;
 
@@ -248,7 +280,7 @@ class SnedInterface2 extends StatelessWidget {
                   style: TextStyle(color: textColor, fontWeight: FontWeight.w800, letterSpacing: -0.5, fontSize: 22),
                 ),
                 actions: [
-                  const NotificationBell(),
+                  if (roles.can(AppFeature.notifications)) const NotificationBell(),
                   Padding(
                     padding: const EdgeInsets.only(right: 16.0, left: 8.0),
                     child: Container(
@@ -319,8 +351,12 @@ class SnedInterface2 extends StatelessWidget {
                     physics: const BouncingScrollPhysics(),
                     child: Padding(
                       padding: EdgeInsets.only(top: 70 * scale, bottom: 120 * scale),
-                      child: SizedBox(
-                        height: baseHeight * scale,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                      SizedBox(
+                        // Guests: no XP panels, so the grid is shorter.
+                        height: (canProgress ? baseHeight : baseHeight - 90) * scale,
                         width: constraints.maxWidth,
                         child: Stack(
                           clipBehavior: Clip.none,
@@ -336,6 +372,7 @@ class SnedInterface2 extends StatelessWidget {
                               targetXp: targetXp,
                               isLocked: false,
                               progressColor: adaptiveProgressColor,
+                              showProgress: canProgress,
                               onTap: () => _openModule(
                                 context, 'alphabet',
                                 _fadeRoute(AlphabetInterface(currentXp: displayAlpXp, targetXp: targetXp)),
@@ -352,6 +389,7 @@ class SnedInterface2 extends StatelessWidget {
                               targetXp: targetXp,
                               isLocked: false,
                               progressColor: adaptiveProgressColor,
+                              showProgress: canProgress,
                               onTap: () => _openModule(
                                 context, 'numbers',
                                 _fadeRoute(NumbersInterface(currentXp: displayNumXp, targetXp: targetXp)),
@@ -361,13 +399,14 @@ class SnedInterface2 extends StatelessWidget {
                               context: context,
                               scale: scale,
                               leftOffset: 12,
-                              topOffset: 330, 
+                              topOffset: canProgress ? 330 : 300, 
                               title: "Words/Phrases",
                               imagePath: "assets/pictures/words.png",
                               currentXp: displayWordsXp,
                               targetXp: targetXp,
                               isLocked: isWordsLocked,
                               progressColor: adaptiveProgressColor,
+                              showProgress: canProgress,
                               onTap: () => _openModule(
                                 context, 'common words',
                                 _fadeRoute(PhraseInterface(currentXp: displayWordsXp, targetXp: targetXp)),
@@ -377,13 +416,14 @@ class SnedInterface2 extends StatelessWidget {
                               context: context,
                               scale: scale,
                               leftOffset: 201,
-                              topOffset: 330, 
+                              topOffset: canProgress ? 330 : 300, 
                               title: "Civic\nObservances",
                               imagePath: "assets/pictures/civic.png",
                               currentXp: displayCivicsXp,
                               targetXp: targetXp,
                               isLocked: isCivicsLocked,
                               progressColor: adaptiveProgressColor,
+                              showProgress: canProgress,
                               onTap: () => _openModule(
                                 context, 'civic',
                                 _fadeRoute(CivicInterface(currentXp: displayCivicsXp, targetXp: targetXp)),
@@ -391,6 +431,10 @@ class SnedInterface2 extends StatelessWidget {
                             ),
                           ],
                         ),
+                      ),
+                      // Categories added in the web app (activity_categories), live.
+                      CloudCategoriesSection(scale: scale),
+                        ],
                       ),
                     ),
                   ),
@@ -416,6 +460,7 @@ class SnedInterface2 extends StatelessWidget {
     required bool isLocked,
     required Color progressColor,
     required VoidCallback onTap,
+    bool showProgress = true,
   }) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
@@ -495,6 +540,30 @@ class SnedInterface2 extends StatelessWidget {
               ),
             ),
           ),
+          if (!showProgress) ...[
+            // Guests: an "Explore" pill instead of the XP panel (keeps the grid tight).
+            SizedBox(height: 14 * scale),
+            GestureDetector(
+              onTap: isLocked ? null : onTap,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 8 * scale),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor,
+                  borderRadius: BorderRadius.circular(20 * scale),
+                  boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Explore', style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 14 * scale, fontWeight: FontWeight.w800)),
+                    SizedBox(width: 4 * scale),
+                    Icon(Icons.arrow_forward_rounded, size: 16 * scale, color: theme.colorScheme.onPrimary),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          if (showProgress) ...[
           SizedBox(height: 16 * scale),
 
           Opacity(
@@ -509,6 +578,7 @@ class SnedInterface2 extends StatelessWidget {
               progressColor: progressColor,
             ),
           ),
+          ],
         ],
       ),
     );

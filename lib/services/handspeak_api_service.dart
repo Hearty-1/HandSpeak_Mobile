@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'performance_monitor.dart';
+import 'role_service.dart' show RoleProvider;
 
 /// Feature dimensions batay sa sinanay na ONNX models (legacy /v1/predict).
 class HandSpeakModels {
@@ -615,6 +616,22 @@ class CaptureFixer {
   }
 }
 
+/// No Firebase session, so the server cannot check the sign. For a Faculty /
+/// Parent guest this means guest (anonymous) sign-in is not enabled in
+/// Firebase Authentication, or the device is offline.
+class SignInRequiredException implements Exception {
+  final bool guest;
+  const SignInRequiredException({this.guest = false});
+
+  String get message => guest
+      ? 'Hindi pa masuri ang kumpas na ito sa guest mode. Siguraduhing may internet; '
+          'kung patuloy, ipaalam sa admin na i-enable ang guest access (Firebase Anonymous sign-in).'
+      : 'Kailangang naka-sign in ang user sa Firebase Auth.';
+
+  @override
+  String toString() => message;
+}
+
 class HandSpeakApiException implements Exception {
   final int statusCode;
   final String message;
@@ -644,9 +661,12 @@ class HandSpeakApiService {
   HandSpeakApiService({http.Client? client}) : _client = client ?? http.Client();
 
   Future<String> _getIdToken({bool forceRefresh = false}) async {
-    final user = _auth.currentUser;
+    var user = _auth.currentUser;
+    // Faculty / Parent guests: (re)try their anonymous session right before
+    // the request, so checking works as soon as the provider is enabled.
+    if (user == null && await RoleProvider.ensureGuestSession()) user = _auth.currentUser;
     if (user == null) {
-      throw Exception("Kailangang naka-sign in ang user sa Firebase Auth.");
+      throw SignInRequiredException(guest: RoleProvider.guestActive);
     }
     final token = await user.getIdToken(forceRefresh);
     if (token == null || token.isEmpty) {

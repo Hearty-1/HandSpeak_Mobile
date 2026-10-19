@@ -9,6 +9,7 @@ import 'phrase_difficulty_selection.dart';
 import '/leaderboard/arena.dart';
 
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 class PhraseInterface extends StatelessWidget {
   final int currentXp; 
@@ -32,6 +33,14 @@ class PhraseInterface extends StatelessWidget {
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
+
+    // Role-based access: Faculty / Parent only get Tutorial + Practice in a module.
+    // Activities, Challenges, XP and stars are for students.
+    final roles = context.roles;
+    final bool canProgress = roles.can(AppFeature.progress);
+    final bool canActivities = roles.can(AppFeature.activities);
+    final bool canPractice = roles.can(AppFeature.practice);
+    final bool canTutorials = roles.can(AppFeature.tutorials);
 
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(), 
@@ -107,7 +116,10 @@ class PhraseInterface extends StatelessWidget {
             builder: (context, constraints) { 
               final double scale = constraints.maxWidth / 393; 
 
+              // Fill the screen: with only Tutorial + Practice (guests) the page is
+              // short, and the background circles were cut where the content ended.
               return Stack(
+                fit: StackFit.expand,
                 children: [
                   Positioned(
                     top: -50, left: -50,
@@ -133,6 +145,7 @@ class PhraseInterface extends StatelessWidget {
                         children: [
                           
                           // 1. MAIN PROGRESS PANEL (Combined Level)
+                          if (canProgress) ...[
                           _buildMainProgressPanel(
                             context: context,
                             scale: scale, 
@@ -142,7 +155,9 @@ class PhraseInterface extends StatelessWidget {
                           ),
                           
                           SizedBox(height: 24 * scale),
+                          ],
 
+                          if (canTutorials) ...[
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -171,7 +186,9 @@ class PhraseInterface extends StatelessWidget {
                           ),
 
                           SizedBox(height: 16 * scale),
+                          ],
 
+                          if (canPractice) ...[
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -200,7 +217,12 @@ class PhraseInterface extends StatelessWidget {
                           ),
 
                           SizedBox(height: 24 * scale),
+                          ],
 
+                          if (!canActivities) GuestModuleGuide(scale: scale),
+
+
+                          if (canActivities) ...[
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -267,6 +289,7 @@ class PhraseInterface extends StatelessWidget {
                               ),
                             ],
                           ),
+                          ],
                         ],
                       ),
                     ),

@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:flutter_application_1/module/alphabet/alphabet_interface.dart'; 
 import 'package:flutter_application_1/module/numbers/numbers_interface.dart'; 
@@ -18,6 +19,9 @@ import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
 import '/services/performance_monitor.dart';
 import '/auth/login_screen.dart';
+import '/auth/role_selection_screen.dart';
+import '/services/role_service.dart';
+import '/module/alphabet/tutorial_practice.dart' show TutorialPractice;
 
 import '../home/notification_bell.dart'; // Added import for the standardized bell
 
@@ -251,21 +255,185 @@ class SnedInterafce1 extends StatelessWidget {
                     ),
                   ],
                 ),
-                const Spacer(),
-                SizedBox(height: 12 * scale),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6 * scale),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 7 * scale,
-                    backgroundColor: theme.dividerColor.withOpacity(0.15),
-                    color: accent,
+                if (context.roles.can(AppFeature.progress)) ...[
+                  const Spacer(),
+                  SizedBox(height: 12 * scale),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6 * scale),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 7 * scale,
+                      backgroundColor: theme.dividerColor.withOpacity(0.15),
+                      color: accent,
+                    ),
+                  ),
+                  SizedBox(height: 6 * scale),
+                  Text(
+                    complete ? 'Completed' : '$shownXp / $_moduleTargetXp XP',
+                    style: TextStyle(color: complete ? Colors.green : textColor.withOpacity(0.6), fontSize: 11.5 * scale, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Guest home (Faculty / Parent): no XP, no recent progress. Instead: a sign
+  // of the day to practise, every module's tutorials, and a role tip.
+  // ---------------------------------------------------------------------------
+
+  static const _guestModules = <({String key, String title, String blurb, String image, IconData icon})>[
+    (key: 'alphabet', title: 'Alphabet', blurb: 'A–Z hand signs', image: 'assets/pictures/abc.png', icon: Icons.abc_rounded),
+    (key: 'numbers', title: 'Numbers', blurb: 'Counting signs', image: 'assets/pictures/numbers.png', icon: Icons.pin_rounded),
+    (key: 'common words', title: 'Words/Phrases', blurb: 'Everyday greetings', image: 'assets/pictures/words.png', icon: Icons.forum_rounded),
+    (key: 'civic', title: 'Civic Observances', blurb: 'Lupang Hinirang', image: 'assets/pictures/civic.png', icon: Icons.flag_rounded),
+  ];
+
+  static Widget _moduleScreen(String key) => switch (key) {
+        'numbers' => const NumbersInterface(currentXp: 0, targetXp: _moduleTargetXp),
+        'common words' => const PhraseInterface(currentXp: 0, targetXp: _moduleTargetXp),
+        'civic' => const CivicInterface(currentXp: 0, targetXp: _moduleTargetXp),
+        _ => const AlphabetInterface(currentXp: 0, targetXp: _moduleTargetXp),
+      };
+
+  /// Same letter for everyone on a given day (A-Z, rotating daily).
+  static String _signOfTheDay() {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day).difference(DateTime(2024)).inDays;
+    return String.fromCharCode('A'.codeUnitAt(0) + day % 26);
+  }
+
+  Widget _sectionTitle(BuildContext context, String title, double scale, {String? subtitle}) {
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+        if (subtitle != null) ...[
+          SizedBox(height: 2 * scale),
+          Text(subtitle, style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13 * scale, fontWeight: FontWeight.w500)),
+        ],
+        SizedBox(height: 14 * scale),
+      ],
+    );
+  }
+
+  Widget _buildSignOfTheDay(BuildContext context, double scale) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final letter = _signOfTheDay();
+    return GestureDetector(
+      onTap: () => Navigator.push(context, _fadeRoute(TutorialPractice(targetLetter: letter))),
+      child: _buildGlassContainer(
+        context: context,
+        scale: scale,
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18 * scale),
+              child: Container(
+                width: 92 * scale,
+                height: 92 * scale,
+                color: theme.scaffoldBackgroundColor.withOpacity(0.8),
+                child: Image.asset(
+                  'assets/pictures/$letter.jpg',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Center(
+                    child: Text(letter, style: TextStyle(fontSize: 44 * scale, fontWeight: FontWeight.w900, color: theme.primaryColor)),
                   ),
                 ),
-                SizedBox(height: 6 * scale),
+              ),
+            ),
+            SizedBox(width: 16 * scale),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Letter $letter',
+                    style: TextStyle(color: textColor, fontSize: 24 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.6),
+                  ),
+                  SizedBox(height: 2 * scale),
+                  Text(
+                    'Copy the handshape, then try it on camera.',
+                    style: TextStyle(color: textColor.withOpacity(0.65), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.3),
+                  ),
+                  SizedBox(height: 10 * scale),
+                  Row(
+                    children: [
+                      Icon(Icons.videocam_rounded, size: 16 * scale, color: theme.primaryColor),
+                      SizedBox(width: 6 * scale),
+                      Text('Practice this sign',
+                          style: TextStyle(color: theme.primaryColor, fontSize: 13.5 * scale, fontWeight: FontWeight.w800)),
+                      SizedBox(width: 2 * scale),
+                      Icon(Icons.chevron_right_rounded, size: 18 * scale, color: theme.primaryColor),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGuestModuleTile(
+      BuildContext context, ({String key, String title, String blurb, String image, IconData icon}) m, double scale) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    return GestureDetector(
+      onTap: () => Navigator.push(context, _fadeRoute(_moduleScreen(m.key))),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22 * scale),
+        clipBehavior: Clip.antiAlias,
+        child: SmartBlur(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            padding: EdgeInsets.all(14 * scale),
+            decoration: BoxDecoration(
+              color: theme.cardColor.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(22 * scale),
+              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 8))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      height: 50 * scale,
+                      width: 50 * scale,
+                      padding: EdgeInsets.all(9 * scale),
+                      decoration: BoxDecoration(
+                        color: theme.scaffoldBackgroundColor.withOpacity(0.8),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Image.asset(m.image, fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Icon(m.icon, color: theme.primaryColor)),
+                    ),
+                    const Spacer(),
+                    Icon(Icons.arrow_forward_rounded, size: 18 * scale, color: textColor.withOpacity(0.4)),
+                  ],
+                ),
+                SizedBox(height: 12 * scale),
                 Text(
-                  complete ? 'Completed' : '$shownXp / $_moduleTargetXp XP',
-                  style: TextStyle(color: complete ? Colors.green : textColor.withOpacity(0.6), fontSize: 11.5 * scale, fontWeight: FontWeight.w700),
+                  m.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: textColor, fontSize: 15.5 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.3),
+                ),
+                SizedBox(height: 2 * scale),
+                Text(
+                  m.blurb,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12 * scale, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -274,6 +442,67 @@ class SnedInterafce1 extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildGuestTip(BuildContext context, UserRole role, double scale) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final (IconData icon, String title, String body) = role == UserRole.parent
+        ? (
+            Icons.family_restroom_rounded,
+            'Learn together',
+            'Pick one sign a day and practise it with your child. Let them teach it back to you. It is the fastest way to remember.',
+          )
+        : (
+            Icons.co_present_rounded,
+            'Teaching tip',
+            'Use the tutorial videos to introduce a sign in class. Students log in with their own accounts to play activities and earn XP.',
+          );
+    return _buildGlassContainer(
+      context: context,
+      scale: scale,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: EdgeInsets.all(10 * scale),
+            decoration: BoxDecoration(color: theme.colorScheme.secondary.withOpacity(0.18), shape: BoxShape.circle),
+            child: Icon(icon, color: theme.colorScheme.secondary, size: 26 * scale),
+          ),
+          SizedBox(width: 14 * scale),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800)),
+                SizedBox(height: 4 * scale),
+                Text(body,
+                    style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.4)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildGuestSections(BuildContext context, UserRole role, double scale) => [
+        _sectionTitle(context, 'Sign of the Day', scale),
+        _buildSignOfTheDay(context, scale),
+        SizedBox(height: 28 * scale),
+        _sectionTitle(context, 'Explore the Modules', scale, subtitle: 'Watch the tutorials and practise each sign on camera.'),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          mainAxisSpacing: 14 * scale,
+          crossAxisSpacing: 14 * scale,
+          childAspectRatio: 1.1,
+          children: [for (final m in _guestModules) _buildGuestModuleTile(context, m, scale)],
+        ),
+        SizedBox(height: 28 * scale),
+        _buildGuestTip(context, role, scale),
+      ];
 
   Widget _buildDailyTreasureCard(BuildContext context, double scale, String subtitle) {
     return GestureDetector(
@@ -336,6 +565,14 @@ class SnedInterafce1 extends StatelessWidget {
     final textColor = theme.colorScheme.onSurface;
     final isDark = theme.brightness == Brightness.dark;
 
+    // Role-based access (Student = everything; Faculty / Parent = tutorials + practice).
+    final roles = context.roles;
+    final bool isGuest = roles.isGuest;
+    final bool canProgress = roles.can(AppFeature.progress);
+    final bool canChallenges = roles.can(AppFeature.challenges);
+    final bool canProfile = roles.can(AppFeature.profile);
+    final bool canNotifications = roles.can(AppFeature.notifications);
+
     final double screenWidth = MediaQuery.of(context).size.width; 
     final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393; 
 
@@ -349,7 +586,7 @@ class SnedInterafce1 extends StatelessWidget {
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(), 
       builder: (context, userSnapshot) {
-        String studentName = userName; 
+        String studentName = isGuest ? roles.roleLabel : userName; 
         int streak = 0; 
         int totalXp = 0; 
         int stars = 0; 
@@ -376,7 +613,7 @@ class SnedInterafce1 extends StatelessWidget {
                   ? 'All ${quests.length} quests done today. Great work!'
                   : '$claimedToday of ${quests.length} quests done${pace != null ? ' · $pace' : ''}';
             }
-            studentName = userData['name'] ?? userData['displayName'] ?? userName; 
+            studentName = userData['name'] ?? userData['displayName'] ?? studentName; 
             streak = userData['streak'] ?? 0; 
             totalXp = userData['xp'] ?? 0; 
             stars = userData['stars'] ?? (totalXp ~/ 1000);  
@@ -430,6 +667,17 @@ class SnedInterafce1 extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      if (isGuest) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '${roles.roleLabel} access',
+                          style: TextStyle(
+                            color: theme.colorScheme.onPrimary.withOpacity(0.85),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -553,9 +801,19 @@ class SnedInterafce1 extends StatelessWidget {
                         }, 
                       ),
                       ListTile(
-  leading: const Icon(Icons.logout_rounded, color: Color(0xFFF34B1B)), 
-  title: const Text('Sign Out', style: TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
+  leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: const Color(0xFFF34B1B)), 
+  title: Text(isGuest ? 'Change Role' : 'Sign Out', style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
   onTap: () async {
+    if (isGuest) {
+      // Faculty / Parent have no account: just leave guest mode and ask for a role again.
+      await context.read<RoleProvider>().clear();
+      if (!context.mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+        (route) => false,
+      );
+      return;
+    }
     await FirebaseAuth.instance.signOut();
     if (!context.mounted) return;
 
@@ -590,7 +848,7 @@ class SnedInterafce1 extends StatelessWidget {
               style: TextStyle(color: textColor, fontWeight: FontWeight.w700, letterSpacing: -0.5),
             ),
             actions: [
-              const NotificationBell(),
+              if (canNotifications) const NotificationBell(),
               Padding(
                 padding: const EdgeInsets.only(right: 16.0, left: 8.0),
                 child: Container(
@@ -668,11 +926,17 @@ class SnedInterafce1 extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start, 
                   children: [
+                    if (isGuest)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _buildGlassStatBadge(context, roles.role!.icon, '${roles.roleLabel} · Guest', theme.primaryColor, scale),
+                      )
+                    else
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                       children: [
                         GestureDetector(
-                          onTap: () => Navigator.push(context, _fadeRoute(const ProfileScreen())), 
+                          onTap: canProfile ? () => Navigator.push(context, _fadeRoute(const ProfileScreen())) : null, 
                           child: Container(
                             width: 48 * scale,
                             height: 48 * scale,
@@ -719,6 +983,42 @@ class SnedInterafce1 extends StatelessWidget {
                                   '$studentName!', 
                                   style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 32 * scale, fontWeight: FontWeight.w900, height: 1.0, letterSpacing: -1.0), 
                                 ),
+                                if (!canProgress) ...[
+                                  SizedBox(height: 10 * scale),
+                                  Text(
+                                    roles.role == UserRole.parent
+                                        ? 'Learn Filipino Sign Language with your child, one sign at a time.'
+                                        : 'Explore the lessons your students learn, sign by sign.',
+                                    style: TextStyle(color: theme.colorScheme.onPrimary.withOpacity(0.9), fontSize: 14 * scale, fontWeight: FontWeight.w600, height: 1.3),
+                                  ),
+                                  SizedBox(height: 12 * scale),
+                                  Wrap(
+                                    spacing: 8 * scale,
+                                    runSpacing: 6 * scale,
+                                    children: [
+                                      for (final (icon, label) in [
+                                        (Icons.play_circle_rounded, 'Tutorials'),
+                                        (Icons.videocam_rounded, 'Camera practice'),
+                                      ])
+                                        Container(
+                                          padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 5 * scale),
+                                          decoration: BoxDecoration(
+                                            color: theme.colorScheme.onPrimary.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(14 * scale),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(icon, size: 14 * scale, color: theme.colorScheme.onPrimary),
+                                              SizedBox(width: 5 * scale),
+                                              Text(label,
+                                                  style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 12 * scale, fontWeight: FontWeight.w800)),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ] else ...[
                                 SizedBox(height: 12 * scale), 
                                 Text(
                                   'Level $currentLevel', 
@@ -759,7 +1059,8 @@ class SnedInterafce1 extends StatelessWidget {
                                       )
                                     ],
                                   ),
-                                )
+                                ),
+                                ], // end: progress (students only)
                               ],
                             ),
                           ),
@@ -790,15 +1091,20 @@ class SnedInterafce1 extends StatelessWidget {
 
                     SizedBox(height: 25 * scale), 
 
-                    _buildDailyTreasureCard(context, scale, questSubtitle),
+                    if (canChallenges) ...[
+                      _buildDailyTreasureCard(context, scale, questSubtitle),
+                      SizedBox(height: 32 * scale),
+                    ],
 
-                    SizedBox(height: 32 * scale),  
-
+                    // Faculty / Parent: no progress to continue; learning shortcuts instead.
+                    if (isGuest)
+                      ..._buildGuestSections(context, roles.role!, scale)
+                    else ...[
                     Text(
-                      'Continue Learning',  
-                      style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5), 
+                      'Continue Learning',
+                      style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5),
                     ),
-                    SizedBox(height: 16 * scale), 
+                    SizedBox(height: 16 * scale),
                     // The two most recently opened modules, side by side.
                     IntrinsicHeight(
                       child: Row(
@@ -816,6 +1122,7 @@ class SnedInterafce1 extends StatelessWidget {
                         ],
                       ),
                     ),
+                    ], // end: Continue Learning (students only)
                   ],
                 ),
               ),

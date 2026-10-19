@@ -15,9 +15,11 @@ import 'package:onnxruntime/onnxruntime.dart';
 import '/services/handspeak_api_service.dart';
 import '/services/frame_gate.dart';
 
+import '/widgets/practice_feedback.dart';
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
 import '/services/xp_rewards.dart';
+import '/services/role_service.dart';
 
 
 // =============================================================================
@@ -1113,7 +1115,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
   int _cooldownUntilMs = 0;
   int _lastResultMs = 0;
   final List<List<LandmarkPoint>> _recentFrames = []; // live handshape check
-  String _debugDetails = ''; // shown in debug builds under the feedback
+  String _debugDetails = ''; // details of the last J / Z attempt (debug console only)
   int _imageWidth = 0, _imageHeight = 0; // raw camera frame size
 
   // J / Z strokes are judged on Cloud Run (POST /v1/predict_raw/letter_j|z).
@@ -1240,7 +1242,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     }
 
     try {
-      final ref = FirebaseStorage.instance.ref('alphabet/$letter.json');
+      final ref = FirebaseStorage.instance.ref('models/alphabet/$letter.json');
       final bytes = await ref.getData();
 
       if (bytes != null) {
@@ -1257,6 +1259,18 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       }
     } catch (e) {
       debugPrint("Error loading cloud gesture template for $letter: $e");
+    }
+    if (_templateCache.containsKey(letter)) return;
+
+    // Bundled template (assets/alphabet/<L>.json) when Storage is unreachable
+    // or refuses the request: offline, or a guest without a Firebase session.
+    // Without it the camera ignored every frame (no template, no score).
+    try {
+      final decodedJson = jsonDecode(await rootBundle.loadString('assets/alphabet/$letter.json')) as List<dynamic>;
+      _templateCache[letter] = decodedJson;
+      if (mounted) setState(() => _template = decodedJson);
+    } catch (e) {
+      debugPrint("No bundled gesture template for $letter: $e");
     }
   }
 
@@ -1736,6 +1750,10 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     } on HandSpeakApiException catch (e) {
       feedback = e.isAuthError ? "Mag-sign in muli para masuri ang kumpas." : "Hindi masuri ang kumpas. Subukang muli.";
       _debugDetails = 'server error: $e';
+    } on SignInRequiredException catch (e) {
+      // No Firebase session (guest access not enabled / offline): not a network error.
+      feedback = e.message;
+      _debugDetails = 'no Firebase session: $e';
     } catch (e) {
       feedback = "Walang koneksyon sa server. Subukang muli.";
       _debugDetails = 'network error: $e';
@@ -1850,6 +1868,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
 
   Future<void> _awardXp() async {
     // Once per sign: repeating a mastered sign earns no XP.
+    // Faculty / Parent (guest): 0 XP; the mastery is kept on the device.
     _xpGained = await ProgressService().awardFirstMastery(
       moduleKey: 'alphabet',
       itemKey: ProgressService.masteryKey(widget.targetLetter),
@@ -1928,7 +1947,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    "Mastered!",
+                    !context.rolesRead.isStudent ? "Great signing!" : "Mastered!",
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
@@ -1937,7 +1956,9 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    "Outstanding job! You have successfully mastered the letter ${widget.targetLetter.toUpperCase()}!",
+                    !context.rolesRead.isStudent
+                        ? "You signed the letter ${widget.targetLetter.toUpperCase()} correctly. Keep practising!"
+                        : "Outstanding job! You have successfully mastered the letter ${widget.targetLetter.toUpperCase()}!",
                     style: TextStyle(
                       fontSize: 16,
                       color: theme.colorScheme.onSurface.withOpacity(0.8),
@@ -1968,10 +1989,10 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(visuals.secondaryIcon, color: Colors.green, size: 22),
+                            Icon(!context.rolesRead.isStudent ? Icons.check_circle_rounded : visuals.secondaryIcon, color: Colors.green, size: 22),
                             const SizedBox(width: 8),
                             Text(
-                              _xpGained > 0 ? "+$_xpGained XP Earned!" : "Daily XP limit reached",
+                              _xpGained > 0 ? "+$_xpGained XP Earned!" : (context.rolesRead.isStudent ? "Daily XP limit reached" : "Correct sign!"),
                               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.green),
                             ),
                           ],
@@ -2236,23 +2257,10 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                       ),
                     const SizedBox(height: 16),
 
-                    Text(
-                      _currentFeedback,
-                      style: TextStyle(
-                        color: isPassing ? Colors.green : theme.colorScheme.primary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textAlign: TextAlign.center,
+                    PracticeFeedback(
+                      message: _currentFeedback,
+                      tone: isPassing ? FeedbackTone.success : FeedbackTone.info,
                     ),
-                    if (kDebugMode && _isDynamicLetter && _debugDetails.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        _debugDetails,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 10.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
-                      ),
-                    ],
                     const SizedBox(height: 12),
 
                     if (!_isDynamicLetter && _holdProgress > 0.0) ...[

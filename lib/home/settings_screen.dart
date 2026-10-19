@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '/services/performance_monitor.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import '/services/performance_monitor.dart';
 import '../services/auth_service.dart';
 import '../providers/theme_provider.dart';
 import '../providers/sound_provider.dart';
@@ -27,12 +27,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadPreferences() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      // Check actual Firebase MFA status instead of just Firestore preference
+      final enrolledFactors = await user.multiFactor.getEnrolledFactors();
+      bool isMfaEnabled = enrolledFactors.isNotEmpty;
+
       final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (doc.exists && doc.data()!.containsKey('preferences')) {
-        final prefs = doc.data()!['preferences'] as Map<String, dynamic>;
         if (mounted) {
           setState(() {
-            _twoFactorEnabled = prefs['twoFactorEnabled'] ?? false;
+            _twoFactorEnabled = isMfaEnabled;
           });
         }
       }
@@ -48,6 +51,140 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }, SetOptions(merge: true));
     }
+  }
+
+  Future<void> _handle2FAToggle(bool enable) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    if (enable) {
+      String? phoneNumber = await _showPhoneNumberPrompt(context);
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        setState(() => _twoFactorEnabled = false);
+        return;
+      }
+
+      try {
+        final session = await user.multiFactor.getSession();
+
+        await FirebaseAuth.instance.verifyPhoneNumber(
+          multiFactorSession: session,
+          phoneNumber: phoneNumber,
+          verificationCompleted: (_) {},
+          verificationFailed: (FirebaseAuthException e) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? "Verification failed")));
+            setState(() => _twoFactorEnabled = false);
+          },
+          codeSent: (String verificationId, int? resendToken) async {
+            String? smsCode = await _showSmsCodePrompt(context);
+            if (smsCode != null && smsCode.isNotEmpty) {
+              try {
+                final credential = PhoneAuthProvider.credential(
+                  verificationId: verificationId,
+                  smsCode: smsCode,
+                );
+                final assertion = PhoneMultiFactorGenerator.getAssertion(credential);
+                
+                await user.multiFactor.enroll(assertion, displayName: "Primary Phone");
+                
+                setState(() => _twoFactorEnabled = true);
+                await _updatePreference('twoFactorEnabled', true);
+                
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("2FA successfully enabled.")));
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid SMS code.")));
+                }
+                setState(() => _twoFactorEnabled = false);
+              }
+            } else {
+              setState(() => _twoFactorEnabled = false);
+            }
+          },
+          codeAutoRetrievalTimeout: (_) {},
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to start 2FA enrollment.")));
+        setState(() => _twoFactorEnabled = false);
+      }
+    } else {
+      try {
+        final enrolledFactors = await user.multiFactor.getEnrolledFactors();
+        for (var factor in enrolledFactors) {
+          await user.multiFactor.unenroll(factorUid: factor.uid);
+        }
+        setState(() => _twoFactorEnabled = false);
+        await _updatePreference('twoFactorEnabled', false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("2FA successfully disabled.")));
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to disable 2FA.")));
+        setState(() => _twoFactorEnabled = true);
+      }
+    }
+  }
+
+  Future<String?> _showPhoneNumberPrompt(BuildContext context) async {
+    final controller = TextEditingController();
+    final theme = Theme.of(context);
+    
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: theme.cardColor,
+        title: Text("Enter Phone Number", style: TextStyle(color: theme.colorScheme.onBackground)),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            hintText: "+1234567890",
+            hintStyle: TextStyle(color: theme.colorScheme.onBackground.withOpacity(0.5)),
+          ),
+          style: TextStyle(color: theme.colorScheme.onBackground),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800)),
+            child: const Text("Send Code", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _showSmsCodePrompt(BuildContext context) async {
+    final controller = TextEditingController();
+    final theme = Theme.of(context);
+    
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: theme.cardColor,
+        title: Text("Enter SMS Code", style: TextStyle(color: theme.colorScheme.onBackground)),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: "123456",
+            hintStyle: TextStyle(color: theme.colorScheme.onBackground.withOpacity(0.5)),
+          ),
+          style: TextStyle(color: theme.colorScheme.onBackground),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800)),
+            child: const Text("Verify", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -186,9 +323,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 12),
                 ),
                 value: _twoFactorEnabled,
-                onChanged: (val) async {
+                onChanged: (val) {
                   setState(() => _twoFactorEnabled = val);
-                  await _updatePreference('twoFactorEnabled', val);
+                  _handle2FAToggle(val);
                 },
               ),
               Divider(height: 1, color: theme.dividerColor),

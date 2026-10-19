@@ -281,7 +281,10 @@ String dayKey(DateTime d) =>
 
 class DailyChallengeService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? '';
+  String get _uid {
+    final u = FirebaseAuth.instance.currentUser;
+    return u == null || u.isAnonymous ? '' : u.uid; // guests have no quests
+  }
   DocumentReference<Map<String, dynamic>> get _userRef => _db.collection('users').doc(_uid);
 
   static const int questsPerDay = 3;

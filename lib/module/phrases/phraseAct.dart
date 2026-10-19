@@ -444,11 +444,21 @@ class PhraseActivityInterface extends StatelessWidget {
   final String title;
   final List<Map<String, dynamic>> initialQuestions;
 
+  /// Category in activity_questions; also used by categories added from the
+  /// web app (module/custom_category_screen.dart), which have no screen of
+  /// their own.
+  final String category;
+  final String moduleKey;
+  final String xpField;
+
   const PhraseActivityInterface({
     super.key,
     required this.levelId,
     this.title = 'Phrase Activity',
     this.initialQuestions = const [],
+    this.category = 'phrases',
+    this.moduleKey = 'phrases',
+    this.xpField = 'phraseXp',
   });
 
   @override
@@ -456,11 +466,11 @@ class PhraseActivityInterface extends StatelessWidget {
     return _QuizScreen(
       levelId: levelId,
       title: title,
-      category: 'phrases',
-      moduleKey: 'phrases',
-      xpField: 'phraseXp',
+      category: category,
+      moduleKey: moduleKey,
+      xpField: xpField,
       initialQuestions: initialQuestions,
-      emptyMessage: 'No phrase activity questions available.',
+      emptyMessage: 'No activity questions available.',
       background: ThemedBackground(bgColor: Theme.of(context).scaffoldBackgroundColor),
     );
   }

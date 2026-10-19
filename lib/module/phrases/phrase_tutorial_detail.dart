@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 import 'phrase_tutorial_practice.dart'; // Updated import
 import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
@@ -201,6 +202,8 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
           ),
         ),
         actions: [
+          // XP badge: students only (Faculty / Parent earn no XP).
+          if (context.roles.can(AppFeature.progress))
           StreamBuilder<DocumentSnapshot>(
             stream: _getUserDocStream(),
             builder: (context, snapshot) {

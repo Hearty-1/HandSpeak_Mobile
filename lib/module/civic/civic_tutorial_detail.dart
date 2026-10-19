@@ -10,6 +10,7 @@ import 'civic_tutorial_practice.dart';
 import 'civic_tutorial_interface.dart'; 
 
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 class CivicTutorialDetail extends StatefulWidget {
   final List<CivicLesson> civicList;
@@ -123,6 +124,8 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
           ),
         ),
         actions: [
+          // XP badge: students only (Faculty / Parent earn no XP).
+          if (context.roles.can(AppFeature.progress))
           StreamBuilder<DocumentSnapshot>(
             stream: _getUserDocStream(),
             builder: (context, snapshot) {

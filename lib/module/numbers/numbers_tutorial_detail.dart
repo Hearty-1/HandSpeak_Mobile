@@ -8,6 +8,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'numbers_tutorial_practice.dart';
 
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 class TutorialSign {
   final String label;
@@ -190,6 +191,8 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
           ),
         ),
         actions: [
+          // XP badge: students only (Faculty / Parent earn no XP).
+          if (context.roles.can(AppFeature.progress))
           StreamBuilder<DocumentSnapshot>(
             stream: _getUserDocStream(),
             builder: (context, snapshot) {

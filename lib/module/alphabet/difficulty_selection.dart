@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 import 'activity_interface.dart'; 
+import '/services/role_service.dart';
 
 class DifficultySelectionScreen extends StatefulWidget {
   const DifficultySelectionScreen({super.key});
@@ -87,8 +88,12 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
     );
   }
 
+  /// Role-based access: only roles with `AppFeature.activities` can open this screen.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      RoleGuard(feature: AppFeature.activities, child: _buildGuarded(context));
+
+  Widget _buildGuarded(BuildContext context) {
     final themeStyles = _getThemeStyles(context);
     final scaffoldBgColor = Theme.of(context).scaffoldBackgroundColor;
     

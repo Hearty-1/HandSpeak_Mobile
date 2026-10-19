@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'dart:convert';
+import 'dart:io' show Directory, File;
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
@@ -11,6 +13,7 @@ import 'civic_tutorial_interface.dart' show LupangLines;
 import '/services/handspeak_api_service.dart';
 import '/services/holistic_capture.dart' show HolisticResult;
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 
 // =============================================================================
@@ -130,6 +133,16 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   /// palm_lupang_v9_switch merged "Sa paglayang minamahal" (class 11) into
   /// line 11 "May dilag ang tula at awit sa paglayang minamahal" (class 10);
   /// class 11 is retired and never predicted as a line of its own.
+  /// Lines the v9 gate rejects correct signs on most ("not sure"):
+  /// 6 Sa manlulupig, 7 Di ka pasisiil, 18 Aming ligaya, 20 Ang mamatay.
+  /// See lenientPass().
+  static const Set<int> _lenientLines = {6, 7, 18, 20};
+  static const Set<String> _uncertainChecks = {
+    'LOW_CONFIDENCE', 'SMALL_MARGIN', 'HIGH_ENTROPY', 'UNSTABLE', 'INVALID_CLASS',
+  };
+  static const double _lenientMinConf = 0.15;
+  static const double _lenientMinLead = 0.05; // over the next line
+
   static const int _mergedIndex = 10;
   static const int _retiredIndex = 11;
   static final Set<String> _mergedAliases = {
@@ -622,8 +635,33 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         frames: fixed.frames,
         imageWidth: fixed.imageWidth,
         imageHeight: fixed.imageHeight,
+        topK: 5, // the practice check below compares the target with the next line
       );
       if (_isDisposed || _isSuccessAchieved) return;
+      // One short line per attempt (the full reply is cut off by logcat), and
+      // in debug builds the whole attempt is saved for offline replay:
+      // adb exec-out run-as <package> ls code_cache/civic_dumps
+      final guesses = [
+        for (final p in result.topK)
+          '#${p.index} ${(p.confidence > 1.0 ? p.confidence : p.confidence * 100).toStringAsFixed(0)}%'
+      ].join(', ');
+      debugPrint('Lupang #$expected ${_labelForIndex(expected)}: accepted=${result.accepted} '
+          'failed=${result.failed} top=[$guesses]');
+      if (!kReleaseMode) {
+        try {
+          final dir = Directory('${Directory.systemTemp.path}/civic_dumps')..createSync(recursive: true);
+          File('${dir.path}/${DateTime.now().millisecondsSinceEpoch}_line$expected.json').writeAsStringSync(jsonEncode({
+            'target_index': expected,
+            'target_line': _labelForIndex(expected),
+            'image_width': fixed.imageWidth,
+            'image_height': fixed.imageHeight,
+            'frames': fixed.frames,
+            'response': result.raw,
+          }));
+        } catch (e) {
+          debugPrint('Lupang dump failed: $e');
+        }
+      }
 
       final top = result.prediction;
       final topIdx = top == null ? -1 : _indexOf(top);
@@ -639,9 +677,30 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       // a real (non-INVALID) top-1 with no failed gate counts as accepted.
       final accepted = result.accepted;
 
-      // Pass only when the capture is accepted (all v4 gates passed) and its
-      // top-1 line is the one being practised.
-      if (accepted && topIdx == expected) {
+      // Practice leniency for the lines the v9 gate is strictest on (correct
+      // signs rejected only as "not sure"): pass when the ONLY failed checks
+      // are the uncertainty ones, and the model's best LINE (INVALID left
+      // out) is the target with a clear lead over the next line. Duration,
+      // motion, hands and framing checks still apply, so half-finished signs
+      // still fail. Replayed on the 145 recorded webcam attempts with the
+      // deployed v9 model (2026-10-19, lines 6 / 18 / 20 at >= 15 % and a
+      // 5-point lead): +3 wrong-line passes in 435 and +5 half-sign passes in
+      // 290 compared with the server alone; Ang mamatay 1/3 -> 2/3.
+      bool lenientPass() {
+        if (accepted || !_lenientLines.contains(expected)) return false;
+        if (result.failed.isEmpty || !result.failed.every(_uncertainChecks.contains)) return false;
+        final lines = [
+          for (final p in result.topK)
+            if (_indexOf(p) != -1) (idx: _indexOf(p), conf: p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence),
+        ]..sort((a, b) => b.conf.compareTo(a.conf));
+        if (lines.isEmpty || lines.first.idx != expected) return false;
+        final next = lines.length > 1 ? lines[1].conf : 0.0;
+        return lines.first.conf >= _lenientMinConf && lines.first.conf - next >= _lenientMinLead;
+      }
+
+      // Pass when the capture is accepted (all v4 gates passed) and its top-1
+      // line is the one being practised, or by the practice leniency above.
+      if ((accepted && topIdx == expected) || lenientPass()) {
         if (mounted) setState(() => _currentScore = targetConf > 0 ? targetConf : 0.9);
         _onSuccess();
         return;
@@ -773,7 +832,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    "Mastered!",
+                    !context.rolesRead.isStudent ? "Great signing!" : "Mastered!",
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
@@ -782,7 +841,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    "Outstanding job! You have successfully mastered the line \"$line\"!",
+                    !context.rolesRead.isStudent
+                        ? "You signed the line \"$line\" correctly. Keep practising!"
+                        : "Outstanding job! You have successfully mastered the line \"$line\"!",
                     style: TextStyle(
                       fontSize: 16,
                       color: theme.colorScheme.onSurface.withOpacity(0.8),
@@ -808,12 +869,12 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(gained > 0 ? visuals.secondaryIcon : Icons.check_circle_rounded, color: rewardColor, size: 22),
+                            Icon(gained > 0 && context.rolesRead.isStudent ? visuals.secondaryIcon : Icons.check_circle_rounded, color: rewardColor, size: 22),
                             const SizedBox(width: 8),
                             Flexible(
                               child: Text(
                                 // XP is given once per line; a repeat earns none.
-                                gained > 0 ? "+$gained XP Earned!" : "Daily XP limit reached",
+                                gained > 0 ? "+$gained XP Earned!" : (context.rolesRead.isStudent ? "Daily XP limit reached" : "Correct sign!"),
                                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: rewardColor),
                               ),
                             ),
@@ -902,6 +963,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   /// Practice XP for every success (not once per line like the tutorial).
   Future<void> _awardPracticeXp() async {
     // Once per line: repeating a line in practice earns no more XP.
+    // Faculty / Parent (guest): 0 XP; the mastery is kept on the device.
     _practiceXpGained = await ProgressService().awardFirstMastery(
       moduleKey: XpRewards.practiceKey('civic'),
       itemKey: LupangLines.lineKey(_expectedClassIndex()),
@@ -1107,7 +1169,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                               Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                               const SizedBox(width: 8),
                               Text(
-                                _practiceXpGained > 0 ? "Success! +$_practiceXpGained XP" : "Success! (daily XP limit reached)",
+                                !context.rolesRead.isStudent ? "Success! Correct sign" : (_practiceXpGained > 0 ? "Success! +$_practiceXpGained XP" : "Success! (daily XP limit reached)"),
                                 style: const TextStyle(
                                     color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
                               ),
@@ -1366,7 +1428,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 ),
                 child: Text(
                   _activeQuestions.length == 1 && currentItem['line_number'] != null
-                      ? 'Linya ${currentItem['line_number']} • +$xpReward XP'
+                      ? 'Linya ${currentItem['line_number']}${context.rolesRead.isStudent ? ' • +$xpReward XP' : ''}'
                       : 'Linya ${_currentStep + 1} sa ${_activeQuestions.length}',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.primaryColor),
                 ),
@@ -1519,7 +1581,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               borderRadius: BorderRadius.circular(30),
             ),
             child: Text(
-              _xpEarned > 0 ? '+$_xpEarned Civic XP Earned' : 'Na-master na dati (walang dagdag XP)',
+              !context.rolesRead.isStudent
+                  ? 'Magaling! Natapos mo ang pagsasanay.'
+                  : (_xpEarned > 0 ? '+$_xpEarned Civic XP Earned' : 'Na-master na dati (walang dagdag XP)'),
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: theme.primaryColor),
             ),
           ),

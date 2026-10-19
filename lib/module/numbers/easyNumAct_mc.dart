@@ -14,7 +14,7 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 import '/providers/theme_provider.dart' show GalaxyPalette;
-import '/module/alphabet/recognizer.dart';
+import '/services/dynamic_sign_judge.dart';
 import '/services/frame_gate.dart';
 import '/services/gesture_analytics.dart'; 
 
@@ -407,7 +407,14 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
   bool _isRecordingMotion = false;
   DateTime? _startRecordingTime;
-  final List<Float32List> _recordingFrames = [];
+  /// Moving numbers (11-100): judged like the numbers tutorial practice
+  /// (assets/numbers/fsl_numbers_*.onnx decade models) from the recording.
+  final DynamicSignJudge _judge = DynamicSignJudge();
+  int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
+  bool _isJudging = false;
+  /// A moving number needs its first handshape, the movement and the final
+  /// handshape: a longer recording than a held static sign.
+  static const double _dynamicRecordSeconds = 3.0;
   static const Duration _dropoutGracePeriod = Duration(milliseconds: 300);
   DateTime? _lastHandsSeenTime;
 
@@ -421,14 +428,15 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     return q.type == 'camera' || q.type == 'camera_spell' || _isCameraLevel;
   }
 
-  static const List<String> _dynamicLetters = ['J', 'Z']; 
+  /// Numbers 11-100 are signed with movement (decade models); 1-10 are
+  /// still handshapes (templates). The old list here was the alphabet's
+  /// ['J', 'Z'], so no number was ever treated as moving.
   bool get _isDynamicLetter {
     if (_questions.isEmpty) return false;
-    return _dynamicLetters.contains(_questions[_currentIndex].correctAnswer.toUpperCase());
+    final n = int.tryParse(_questions[_currentIndex].correctAnswer.trim());
+    return n != null && n >= 11;
   }
   
-  PhraseRecognizer? _dynamicSignRecognizer;
-  bool _dynamicModelReady = false;
 
   List<dynamic>? _template;
   double _currentScore = 0.0;
@@ -479,7 +487,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     }
     _cameraController?.dispose();
     _landmarkerPlugin?.dispose();
-    _dynamicSignRecognizer?.dispose();
     _feedbackAnimController.dispose();
     super.dispose();
   }
@@ -590,18 +597,6 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         await _cameraController!.startImageStream(_processCameraFrame);
       }
 
-      try {
-        _dynamicSignRecognizer = PhraseRecognizer(
-          modelAssetPath: 'assets/numbers/model.tflite', 
-          labelAssetPath: 'assets/numbers/label_map.json', 
-        );
-        await _dynamicSignRecognizer!.initialize();
-        if (!mounted) return;
-        _dynamicModelReady = true;
-      } catch (e) {
-        debugPrint("Dynamic-sign model failed to load: $e");
-        _dynamicModelReady = false;
-      }
 
       if (mounted) {
         setState(() {
@@ -637,6 +632,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
     try {
       final int sensorOrientation = _cameraImageRotation(_cameraController); // live device rotation
+      _imageWidth = image.width;
+      _imageHeight = image.height;
+      _imageRotation = sensorOrientation;
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
@@ -653,68 +651,23 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     final now = DateTime.now();
 
     if (_isDynamicLetter) {
-      if (!_dynamicModelReady || _dynamicSignRecognizer == null) return;
-
+      if (_isJudging) return;
       final bool handsPresent = detectedHands.isNotEmpty;
-      final targetLetter = _questions[_currentIndex].correctAnswer.toUpperCase();
-
       if (handsPresent) {
         _lastHandsSeenTime = now;
         if (!_isRecordingMotion) {
-           _isRecordingMotion = true;
-           _startRecordingTime = now;
-           _recordingFrames.clear();
+          _isRecordingMotion = true;
+          _startRecordingTime = now;
+          _judge.clear();
         }
-
-        _recordingFrames.add(_dynamicSignRecognizer!.extractFrameFeatures(detectedHands));
+        _judge.addFrame(detectedHands, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
         final double elapsedSeconds = now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
-
         if (mounted) {
-          setState(() {
-            _holdProgress = (elapsedSeconds / _requiredHoldSeconds).clamp(0.0, 1.0); 
-          });
+          setState(() => _holdProgress = (elapsedSeconds / _dynamicRecordSeconds).clamp(0.0, 1.0));
         }
-
-        if (elapsedSeconds >= _requiredHoldSeconds) {
-           _isRecordingMotion = false;
-           final framesRecorded = _recordingFrames.length;
-           final result = _dynamicSignRecognizer!.predictFromRecording(_recordingFrames);
-           _recordingFrames.clear();
-           _lastPredictedLabel = result?.label;
-           _lastModelConfidence = result?.confidence;
-           _lastFramesRecorded = framesRecorded;
-
-           double finalScore = 0.0;
-           if (result != null && result.label.toUpperCase() == targetLetter) {
-               double rawConfidence = result.confidence;
-               double normalizedConfidence = rawConfidence > 1.0 ? rawConfidence : rawConfidence * 100.0;
-               finalScore = normalizedConfidence.clamp(0.0, 100.0);
-           }
-           
-           _currentScore = finalScore;
-           _holdProgress = 0.0;
-
-           if (_currentScore >= successThreshold) {
-             _pendingTrigger = 'auto_recording';
-             _verifyCurrentAnswer();
-           } else {
-             // A finished recording that did not match: a failed attempt.
-             final q = _questions[_currentIndex];
-             _gestureTracker?.recordAttempt(
-               sign: q.correctAnswer,
-               questionId: q.id,
-               questionIndex: _currentIndex,
-               isCorrect: false,
-               score: _currentScore,
-               isDynamic: true,
-               confidence: _lastModelConfidence,
-               predictedLabel: _lastPredictedLabel,
-               handsDetected: true,
-               framesRecorded: framesRecorded,
-               trigger: 'auto_recording',
-             );
-             _startRecordingTime = null;
-           }
+        if (elapsedSeconds >= _dynamicRecordSeconds) {
+          _isRecordingMotion = false;
+          unawaited(_judgeMovingNumber());
         }
       } else if (_isRecordingMotion) {
         final lastSeen = _lastHandsSeenTime;
@@ -722,18 +675,18 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         if (!withinGrace) {
           if (mounted) {
             setState(() {
-                _isRecordingMotion = false;
-                _startRecordingTime = null;
-                _holdProgress = 0.0;
+              _isRecordingMotion = false;
+              _startRecordingTime = null;
+              _holdProgress = 0.0;
             });
           }
-          _recordingFrames.clear();
+          _judge.clear();
         }
       }
       return;
     }
 
-    if (_template == null) return; 
+    if (_template == null) return;
 
     if (detectedHands.isNotEmpty) {
       double highestScoreAcrossAllHands = 0.0;
@@ -773,6 +726,51 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       }
     }
   }
+
+  /// Judges the recorded moving number with its decade model (as the numbers
+  /// tutorial practice does), then answers or records the failed attempt.
+  Future<void> _judgeMovingNumber() async {
+    final q = _questions[_currentIndex];
+    final target = int.tryParse(q.correctAnswer.trim()) ?? 0;
+    setState(() => _isJudging = true);
+    final v = await _judge.judgeNumber(target);
+    if (!mounted) return;
+    _judge.clear();
+    _lastPredictedLabel = v.predicted;
+    _lastModelConfidence = v.confidence;
+    _lastFramesRecorded = v.frames;
+    _lastModelFile = v.model;
+    debugPrint('[Activity] Number $target: ${v.isCorrect ? 'PASS' : 'fail'} (${v.feedback}) via ${v.model}');
+    setState(() {
+      _isJudging = false;
+      _holdProgress = 0.0;
+      _currentScore = v.isCorrect ? math.max(v.score, successThreshold) : math.min(v.score, successThreshold - 1);
+    });
+    if (v.isCorrect) {
+      _pendingTrigger = 'auto_recording';
+      _verifyCurrentAnswer();
+    } else {
+      // A finished recording that did not match: a failed attempt.
+      _gestureTracker?.recordAttempt(
+        sign: q.correctAnswer,
+        questionId: q.id,
+        questionIndex: _currentIndex,
+        isCorrect: false,
+        score: _currentScore,
+        isDynamic: true,
+        confidence: v.confidence,
+        predictedLabel: v.predicted,
+        handsDetected: true,
+        framesRecorded: v.frames,
+        trigger: 'auto_recording',
+        modelVersion: v.model, // the decade model that judged it
+      );
+      _startRecordingTime = null;
+    }
+  }
+
+  /// File that judged the last moving number (gesture_attempts modelVersion).
+  String? _lastModelFile;
 
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
@@ -998,6 +996,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         handsDetected: _currentScore > 0 || trigger != 'check',
         framesRecorded: _isDynamicLetter ? _lastFramesRecorded : null,
         trigger: trigger,
+        // The file that actually scored it: the motion model, else the
+        // number's bundled template.
+        modelVersion: _isDynamicLetter ? _lastModelFile : 'assets/numbers/${q.correctAnswer.trim()}.json',
       );
     } else {
       isCorrect = _selectedAnswer == q.correctAnswer;

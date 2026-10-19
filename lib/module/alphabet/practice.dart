@@ -9,6 +9,7 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:firebase_storage/firebase_storage.dart'; // Added Firebase Cloud Storage
 import 'recognizer.dart';
 import '/services/frame_gate.dart';
+import '/services/role_service.dart';
 import '/services/progress_service.dart';
 import '/services/xp_rewards.dart';
 
@@ -193,7 +194,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
     // 2. Fetch from Firebase Cloud Storage
     try {
-      final storageRef = FirebaseStorage.instance.ref().child('alphabet/$letter.json');
+      final storageRef = FirebaseStorage.instance.ref().child('models/alphabet/$letter.json');
       final data = await storageRef.getData();
       if (data != null) {
         jsonString = utf8.decode(data);
@@ -470,6 +471,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
   Future<void> _awardXp() async {
     // Once per sign: repeating a sign in practice earns no more XP.
+    // Faculty / Parent (guest): 0 XP; the mastery is kept on the device.
     _xpGained = await ProgressService().awardFirstMastery(
       moduleKey: XpRewards.practiceKey('alphabet'),
       itemKey: ProgressService.masteryKey(targetLetter),
@@ -831,7 +833,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                       Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                                       const SizedBox(width: 8),
                                       Text(
-                                        _xpGained > 0 ? "Success! +$_xpGained XP" : "Success! (daily XP limit reached)",
+                                        !context.rolesRead.isStudent ? "Success! Correct sign" : (_xpGained > 0 ? "Success! +$_xpGained XP" : "Success! (daily XP limit reached)"),
                                         style: const TextStyle(
                                           color: Colors.green,
                                           fontWeight: FontWeight.w900,

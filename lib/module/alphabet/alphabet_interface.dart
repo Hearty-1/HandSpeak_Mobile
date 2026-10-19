@@ -9,6 +9,7 @@ import 'difficulty_selection.dart';
 import '/leaderboard/arena.dart'; 
 
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 class AlphabetInterface extends StatelessWidget {
   final int currentXp;
@@ -31,6 +32,14 @@ class AlphabetInterface extends StatelessWidget {
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
     );
+
+    // Role-based access: Faculty / Parent only get Tutorial + Practice in a module.
+    // Activities, Challenges, XP and stars are for students.
+    final roles = context.roles;
+    final bool canProgress = roles.can(AppFeature.progress);
+    final bool canActivities = roles.can(AppFeature.activities);
+    final bool canPractice = roles.can(AppFeature.practice);
+    final bool canTutorials = roles.can(AppFeature.tutorials);
 
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(),
@@ -102,7 +111,10 @@ class AlphabetInterface extends StatelessWidget {
             builder: (context, constraints) {
               final double scale = constraints.maxWidth / 393;
 
+              // Fill the screen: with only Tutorial + Practice (guests) the page is
+              // short, and the background circles were cut where the content ended.
               return Stack(
+                fit: StackFit.expand,
                 children: [
                   Positioned(
                     top: -50, left: -50,
@@ -127,6 +139,7 @@ class AlphabetInterface extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // 1. MAIN PROGRESS PANEL (Combined Level)
+                          if (canProgress) ...[
                           _buildMainProgressPanel(
                             context: context,
                             scale: scale,
@@ -136,8 +149,10 @@ class AlphabetInterface extends StatelessWidget {
                           ),
                           
                           SizedBox(height: 24 * scale),
+                          ],
 
                           // 2. TUTORIAL SECTION
+                          if (canTutorials) ...[
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -166,8 +181,10 @@ class AlphabetInterface extends StatelessWidget {
                           ),
 
                           SizedBox(height: 16 * scale),
+                          ],
 
                           // 3. PRACTICE SECTION
+                          if (canPractice) ...[
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -196,8 +213,13 @@ class AlphabetInterface extends StatelessWidget {
                           ),
 
                           SizedBox(height: 24 * scale),
+                          ],
+
+                          if (!canActivities) GuestModuleGuide(scale: scale),
+
 
                           // 4. ACTIVITY & CHALLENGES 
+                          if (canActivities) ...[
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -264,6 +286,7 @@ class AlphabetInterface extends StatelessWidget {
                               ),
                             ],
                           ),
+                          ],
                         ],
                       ),
                     ),

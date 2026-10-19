@@ -4,13 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '/services/performance_monitor.dart';
+import '/services/role_service.dart';
 
 /// One tab of [AppNavBar].
 class AppNavItem {
   final IconData icon;
   final IconData activeIcon;
   final String label;
-  const AppNavItem({required this.icon, required this.activeIcon, required this.label});
+
+  /// Feature a role needs to see this tab; null = visible to every role.
+  final AppFeature? feature;
+  const AppNavItem({required this.icon, required this.activeIcon, required this.label, this.feature});
 }
 
 /// Floating, frosted-glass tab bar in the style of iOS (blurred capsule,
@@ -42,8 +46,8 @@ class AppNavBar extends StatelessWidget {
   static const List<AppNavItem> defaultItems = [
     AppNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
     AppNavItem(icon: Icons.auto_stories_outlined, activeIcon: Icons.auto_stories_rounded, label: 'Learn'),
-    AppNavItem(icon: Icons.sports_esports_outlined, activeIcon: Icons.sports_esports_rounded, label: 'Arena'),
-    AppNavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile'),
+    AppNavItem(icon: Icons.sports_esports_outlined, activeIcon: Icons.sports_esports_rounded, label: 'Arena', feature: AppFeature.challenges),
+    AppNavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile', feature: AppFeature.profile),
   ];
 
   @override
@@ -52,6 +56,15 @@ class AppNavBar extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final width = mq.size.width;
+
+    // Role-based access: tabs the current role may not open are not shown.
+    // `shown` keeps each visible tab's original index so callers' onTap /
+    // currentIndex numbering is unchanged.
+    final roles = context.roles;
+    final shown = <int>[
+      for (int i = 0; i < items.length; i++)
+        if (items[i].feature == null || roles.can(items[i].feature!)) i,
+    ];
 
     // Proportional sizing, clamped to sensible limits.
     final sideMargin = (width * 0.045).clamp(10.0, 24.0);
@@ -103,7 +116,7 @@ class AppNavBar extends StatelessWidget {
                       padding: const EdgeInsets.all(5),
                       child: Row(
                         children: [
-                          for (int i = 0; i < items.length; i++)
+                          for (final i in shown)
                             Expanded(
                               child: _NavTab(
                                 item: items[i],

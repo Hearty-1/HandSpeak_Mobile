@@ -13,7 +13,7 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 
 import '/providers/sound_provider.dart';
 import '/providers/theme_provider.dart' show GalaxyPalette;
-import '/module/alphabet/recognizer.dart'; 
+import '/services/dynamic_sign_judge.dart';
 import '/services/progress_service.dart';
 import '/services/gesture_analytics.dart';
 import '/services/frame_gate.dart';
@@ -439,22 +439,26 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     return _dynamicLetters.contains(_questions[_currentIndex].correctAnswer.toUpperCase());
   }
   
-  PhraseRecognizer? _dynamicSignRecognizer;
-  bool _dynamicModelReady = false;
+  /// J / Z: judged like the tutorial practice (fsl_letter_j / z.onnx + the
+  /// server check) from the last seconds of hand frames.
+  final DynamicSignJudge _judge = DynamicSignJudge();
+  int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
+  bool _isJudging = false;
 
   List<dynamic>? _template;
   String _templateLetter = ''; // letter of [_template] (tricky-letter scoring)
+  /// File that [_template] came from (gesture_attempts modelVersion).
+  String _templateSource = '';
+  static final Map<String, String> _templateSourceCache = {};
   static final Map<String, List<dynamic>> _templateCache = {};
 
   // Capture & check judges the recent past, not the single frame under the
   // tap: tapping moves / blurs the hand, so a sign held correctly a moment
   // earlier used to fail. Static letters keep each frame's template score
-  // for [_staticWindowMs]; J / Z keep the hand frames of [_dynamicWindowMs]
-  // so the motion model sees the movement, not one still frame.
+  // for [_staticWindowMs]; J / Z keep the last seconds of hand frames
+  // ([_judge]) so the J / Z models see the movement, not one still frame.
   static const int _staticWindowMs = 1500;
-  static const int _dynamicWindowMs = 3000;
   final List<({int t, double score})> _recentScores = [];
-  final List<({int t, Float32List f})> _recentMotion = [];
   double _liveScore = 0.0; // best score in the window (shown live)
   double _currentScore = 0.0;
   final double successThreshold = 70.0; 
@@ -508,7 +512,6 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _cameraController?.stopImageStream();
     _cameraController?.dispose();
     _landmarkerPlugin?.dispose();
-    _dynamicSignRecognizer?.dispose();
     _feedbackAnimController.dispose();
     super.dispose();
   }
@@ -603,17 +606,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         await _cameraController!.startImageStream(_processCameraFrame);
       }
 
-      try {
-        _dynamicSignRecognizer = PhraseRecognizer(
-          modelAssetPath: 'assets/alphabet/model.tflite', 
-          labelAssetPath: 'assets/alphabet/label_map.json', 
-        );
-        await _dynamicSignRecognizer!.initialize();
-        _dynamicModelReady = true;
-      } catch (e) {
-        debugPrint("Dynamic-sign model failed to load: $e");
-        _dynamicModelReady = false;
-      }
+      // J / Z models (assets/alphabet/fsl_letter_j.onnx, fsl_letter_z.onnx).
+      DynamicSignJudge.prepare(letters: true).catchError((e) => debugPrint("J / Z models failed to load: $e"));
 
       if (mounted) {
         setState(() {
@@ -632,30 +626,42 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     letter = letter.toUpperCase();
     _templateLetter = letter;
     _template = _templateCache[letter];
+    _templateSource = _templateSourceCache[letter] ?? '';
     if (_template != null) {
       if (mounted) setState(() {});
       return;
     }
     List<dynamic>? loaded;
+    String source = '';
     try {
       final bytes = await FirebaseStorage.instance
-          .ref('alphabet/$letter.json')
+          .ref('models/alphabet/$letter.json') // Storage: models/alphabet/<L>.json
           .getData()
           .timeout(const Duration(seconds: 4));
-      if (bytes != null) loaded = jsonDecode(utf8.decode(bytes)) as List<dynamic>;
+      if (bytes != null) {
+        loaded = jsonDecode(utf8.decode(bytes)) as List<dynamic>;
+        source = 'models/alphabet/$letter.json';
+      }
     } catch (e) {
       debugPrint("Cloud gesture template for $letter unavailable ($e), using the bundled one.");
     }
     if (loaded == null) {
       try {
         loaded = jsonDecode(await rootBundle.loadString('assets/alphabet/$letter.json')) as List<dynamic>;
+        source = 'assets/alphabet/$letter.json';
       } catch (e) {
         debugPrint("Could not find gesture resource profile for: $letter");
       }
     }
-    if (loaded != null) _templateCache[letter] = loaded;
+    if (loaded != null) {
+      _templateCache[letter] = loaded;
+      _templateSourceCache[letter] = source;
+    }
     if (!mounted || _templateLetter != letter) return; // question changed meanwhile
-    setState(() => _template = loaded);
+    setState(() {
+      _template = loaded;
+      _templateSource = source;
+    });
   }
 
   final FrameGate _frameGate = FrameGate();
@@ -666,6 +672,9 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
     try {
       final int sensorOrientation = _cameraImageRotation(_cameraController); // live device rotation
+      _imageWidth = image.width;
+      _imageHeight = image.height;
+      _imageRotation = sensorOrientation;
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
@@ -689,17 +698,15 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   void _clearRecentFrames() {
     _recentScores.clear();
-    _recentMotion.clear();
+    _judge.clear();
     _liveScore = 0.0;
   }
 
   void _recordRecentFrame(List<Hand> hands) {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (_isDynamicLetter) {
-      if (hands.isNotEmpty && _dynamicModelReady && _dynamicSignRecognizer != null) {
-        _recentMotion.add((t: now, f: _dynamicSignRecognizer!.extractFrameFeatures(hands)));
-      }
-      _recentMotion.removeWhere((e) => now - e.t > _dynamicWindowMs);
+      // The movement of the last seconds (one frame cannot show a J / Z).
+      _judge.addFrame(hands, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
       return;
     }
     final template = _template;
@@ -940,38 +947,34 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     }
   }
 
-  void _verifyCurrentAnswer() {
-    if (_isAnswered) return;
+  Future<void> _verifyCurrentAnswer() async {
+    if (_isAnswered || _isJudging) return;
     final q = _questions[_currentIndex];
     bool isCorrect = false;
     // Analytics for this attempt (gesture_attempts).
     String? predictedLabel;
     double? modelConfidence;
-    final bool handsInView = _latestDetectedHands.isNotEmpty;
-    final bool usedDynamicModel = _isCameraLevel && _isDynamicLetter && _dynamicModelReady && _dynamicSignRecognizer != null;
+    String? usedModel = _templateSource.isEmpty ? null : _templateSource;
+    final bool handsInView = _latestDetectedHands.isNotEmpty || _judge.hasFrames;
+    final bool usedDynamicModel = _isCameraLevel && _isDynamicLetter;
 
     if (_isCameraLevel) {
       final now = DateTime.now().millisecondsSinceEpoch;
       final recentStatic = _recentScores.where((e) => now - e.t <= _staticWindowMs).toList();
-      final recentMotion = _recentMotion.where((e) => now - e.t <= _dynamicWindowMs).toList();
       final bool sawHand = _latestDetectedHands.isNotEmpty ||
-          (_isDynamicLetter ? recentMotion.isNotEmpty : recentStatic.isNotEmpty);
+          (_isDynamicLetter ? _judge.hasFrames : recentStatic.isNotEmpty);
       if (sawHand) {
-        if (_isDynamicLetter && _dynamicModelReady && _dynamicSignRecognizer != null) {
-          final targetLetter = q.correctAnswer.toUpperCase();
-          // The recorded movement of the last few seconds (one frame cannot show a J / Z).
-          final frames = recentMotion.isNotEmpty
-              ? [for (final e in recentMotion) e.f]
-              : [_dynamicSignRecognizer!.extractFrameFeatures(_latestDetectedHands)];
-          final result = _dynamicSignRecognizer!.predictFromRecording(frames);
-          predictedLabel = result?.label;
-          modelConfidence = result?.confidence;
-          if (result != null && result.label.toUpperCase() == targetLetter) {
-            double rawConf = result.confidence;
-            _currentScore = (rawConf > 1.0 ? rawConf : rawConf * 100.0).clamp(0.0, 100.0);
-          } else {
-            _currentScore = 0.0;
-          }
+        if (_isDynamicLetter) {
+          // Same check as the tutorial practice: J / Z stroke + ONNX model + server.
+          setState(() => _isJudging = true);
+          final v = await _judge.judgeLetter(q.correctAnswer.toUpperCase());
+          if (!mounted) return;
+          _isJudging = false;
+          predictedLabel = v.predicted;
+          modelConfidence = v.confidence;
+          usedModel = v.model;
+          _currentScore = v.isCorrect ? math.max(v.score, successThreshold) : math.min(v.score, successThreshold - 1);
+          debugPrint('[Activity] Letter ${q.correctAnswer}: ${v.isCorrect ? 'PASS' : 'fail'} (${v.feedback}) via ${v.model}');
         } else if (_template != null) {
           // Best match of the last 1.5 s plus the current frame.
           double highestScoreAcrossAllHands =
@@ -1035,6 +1038,9 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         predictedLabel: predictedLabel,
         handsDetected: handsInView,
         trigger: 'check',
+        // The file(s) that actually scored it: fsl_letter_j / z.onnx (+ the
+        // server check) for J / Z, else the letter's template.
+        modelVersion: usedModel,
       );
     }
 
@@ -1248,7 +1254,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     if (q.type == 'matching_type') return !_matchingAnswers.values.contains(null);
     if (_isCameraLevel) {
       // A hand seen in the last moments counts too: the hand often moves away to tap.
-      return _latestDetectedHands.isNotEmpty || _recentScores.isNotEmpty || _recentMotion.isNotEmpty;
+      if (_isJudging) return false;
+      return _latestDetectedHands.isNotEmpty || _recentScores.isNotEmpty || _judge.hasFrames;
     }
 
     return _selectedAnswer != null; 
@@ -1741,7 +1748,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   !handDetected
                       ? "Position your hand in the frame"
                       : (_isDynamicLetter
-                          ? "Sign the letter, then tap 'CAPTURE & CHECK'."
+                          ? (_isJudging ? "Checking your ${_questions[_currentIndex].correctAnswer.toUpperCase()}..." : "Sign the letter, then tap 'CAPTURE & CHECK'.")
                           : (_template == null
                               ? "Loading the reference sign..."
                               : (_liveScore >= successThreshold

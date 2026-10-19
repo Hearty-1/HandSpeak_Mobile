@@ -1,12 +1,23 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'gesture_analytics.dart';
+import 'role_service.dart' show RoleProvider;
 import 'xp_rewards.dart';
 
 class ProgressService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  /// The signed-in student. A Faculty / Parent guest's anonymous session is
+  /// ignored: no progress, XP or mastery is written for it.
+  User? get _studentUser {
+    final u = _auth.currentUser;
+    return u == null || u.isAnonymous ? null : u;
+  }
 
   /// Normalizes and formats level keys/categories dynamically for all modules
   String _normalizeCategory(String key) {
@@ -45,7 +56,7 @@ class ProgressService {
   /// Adds challenge XP to a category's module XP (group challenges); the
   /// global XP is added separately with [addXp].
   Future<void> addModuleXp(String category, int xp) async {
-    final user = _auth.currentUser;
+    final user = _studentUser;
     final field = moduleXpField(category);
     if (user == null || field.isEmpty || xp <= 0) return;
     try {
@@ -82,10 +93,11 @@ class ProgressService {
     required double score,
     String category = 'general',
     bool isCameraGesture = true,
+    String? modelVersion, // file that scored the sign (gesture_attempts)
   }) async {
     if (!isCameraGesture) return;
 
-    User? currentUser = _auth.currentUser;
+    User? currentUser = _studentUser;
     if (currentUser == null) return;
 
     // Same organised layout as the activities: one session document per
@@ -96,6 +108,7 @@ class ProgressService {
       isCorrect: isCorrect,
       score: score,
       handsDetected: score > 0,
+      modelVersion: modelVersion,
     );
   }
 
@@ -113,7 +126,7 @@ class ProgressService {
     required List<Map<String, dynamic>> standings,
     required List<Map<String, dynamic>> questionBreakdown,
   }) async {
-    User? currentUser = _auth.currentUser;
+    User? currentUser = _studentUser;
     if (currentUser == null) return;
 
     try {
@@ -149,7 +162,7 @@ class ProgressService {
     required double accuracy,
     required int peakStreak,
   }) async {
-    User? currentUser = _auth.currentUser;
+    User? currentUser = _studentUser;
     if (currentUser == null) return;
 
     final normalizedCat = _normalizeCategory(category);
@@ -222,7 +235,7 @@ class ProgressService {
     required bool isCompleted,
     required int starsEarned,
   }) async {
-    User? currentUser = _auth.currentUser;
+    User? currentUser = _studentUser;
     if (currentUser == null) return;
 
     try {
@@ -241,7 +254,7 @@ class ProgressService {
 
   /// Track module activity in Firestore when a user opens any category module
   Future<void> trackRecentModule(String moduleKey) async {
-    User? currentUser = _auth.currentUser;
+    User? currentUser = _studentUser;
     if (currentUser == null) return;
 
     DocumentReference userRef = _db.collection('users').doc(currentUser.uid);
@@ -258,7 +271,7 @@ class ProgressService {
 
   /// Update XP for a specific level and register its base category under recentModules
   Future<void> updateLevelXP(String levelName, int xpToAdd) async {
-    User? currentUser = _auth.currentUser;
+    User? currentUser = _studentUser;
     if (currentUser == null) return;
 
     DocumentReference userRef = _db.collection('users').doc(currentUser.uid);
@@ -278,7 +291,7 @@ class ProgressService {
 
   /// Add overall XP to the user's profile
   Future<void> addXp(int xpToAdd) async {
-    User? currentUser = _auth.currentUser;
+    User? currentUser = _studentUser;
     if (currentUser == null) return;
 
     DocumentReference userRef = _db.collection('users').doc(currentUser.uid);
@@ -310,9 +323,15 @@ class ProgressService {
     required String xpField, // module XP field, e.g. 'alphabetXp'
     bool countsAsLesson = true, // completedLessons (daily quests): tutorials only
   }) async {
-    final user = _auth.currentUser;
+    final user = _studentUser;
     final key = itemKey.trim();
-    if (user == null || key.isEmpty) return 0;
+    if (key.isEmpty) return 0;
+    if (user == null) {
+      // Faculty / Parent guest: no XP, but the mastery is kept on the device
+      // so the tutorial lists can show the green "mastered" outline.
+      if (RoleProvider.guestActive) await _saveGuestMastery(moduleKey, key);
+      return 0;
+    }
     final userRef = _db.collection('users').doc(user.uid);
     try {
       return await _db.runTransaction<int>((tx) async {
@@ -362,7 +381,7 @@ class ProgressService {
     required int stars,
     required String xpField,
   }) async {
-    final user = _auth.currentUser;
+    final user = _studentUser;
     if (user == null || levelId.isEmpty) return 0;
     final userRef = _db.collection('users').doc(user.uid);
     final earned = stars.clamp(0, 3);
@@ -443,9 +462,13 @@ class ProgressService {
   /// Records that a tutorial sign was mastered (no XP: modules that award
   /// their own XP call this so their tutorial lists can mark the sign).
   Future<void> markTutorialMastered(String moduleKey, String sign) async {
-    final user = _auth.currentUser;
+    final user = _studentUser;
     final key = masteryKey(sign);
-    if (user == null || key.isEmpty) return;
+    if (key.isEmpty) return;
+    if (user == null) {
+      if (RoleProvider.guestActive) await _saveGuestMastery(moduleKey, key);
+      return;
+    }
     try {
       await _db.collection('users').doc(user.uid).set({
         'tutorialMastery': {
@@ -459,17 +482,55 @@ class ProgressService {
 
   /// Line keys the user has mastered in a tutorial module (live).
   Stream<Set<String>> masteredTutorialLines(String moduleKey) {
-    final user = _auth.currentUser;
-    if (user == null) return Stream.value(const {});
+    final user = _studentUser;
+    if (user == null) {
+      return RoleProvider.guestActive ? _guestMasteryStream(moduleKey) : Stream.value(const {});
+    }
     return _db.collection('users').doc(user.uid).snapshots().map((snap) {
       final mastery = (snap.data()?['tutorialMastery'] as Map?)?[moduleKey];
       return mastery is Map ? mastery.keys.map((k) => k.toString()).toSet() : <String>{};
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Guest (Faculty / Parent) mastery: on the device only (SharedPreferences),
+  // never in Firestore. Same keys as students' tutorialMastery.<module>.
+  // ---------------------------------------------------------------------------
+
+  static String _guestMasteryPref(String moduleKey) => 'guest_mastery_$moduleKey';
+  static final StreamController<String> _guestMasteryChanged = StreamController<String>.broadcast();
+
+  Future<void> _saveGuestMastery(String moduleKey, String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_guestMasteryPref(moduleKey)) ?? <String>[];
+      if (list.contains(key)) return;
+      await prefs.setStringList(_guestMasteryPref(moduleKey), [...list, key]);
+      _guestMasteryChanged.add(moduleKey);
+    } catch (e) {
+      debugPrint('Guest mastery not saved: $e');
+    }
+  }
+
+  static Future<Set<String>> _guestMastery(String moduleKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return (prefs.getStringList(_guestMasteryPref(moduleKey)) ?? const <String>[]).toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  Stream<Set<String>> _guestMasteryStream(String moduleKey) async* {
+    yield await _guestMastery(moduleKey);
+    await for (final changed in _guestMasteryChanged.stream) {
+      if (changed == moduleKey) yield await _guestMastery(moduleKey);
+    }
+  }
+
   /// Stream the user's current progress
   Stream<DocumentSnapshot> getUserProgressStream() {
-    User? currentUser = _auth.currentUser;
+    User? currentUser = _studentUser;
     if (currentUser == null) {
       return const Stream.empty();
     }
