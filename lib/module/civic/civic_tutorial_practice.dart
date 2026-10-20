@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '/services/lighting_monitor.dart';
 import '/services/progress_service.dart';
 import '/services/xp_rewards.dart';
 import 'civic_tutorial_interface.dart' show LupangLines;
@@ -142,6 +143,12 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   };
   static const double _lenientMinConf = 0.15;
   static const double _lenientMinLead = 0.05; // over the next line
+  /// Sa manlulupig (6) passed random hand movement at 15 % / 5 points
+  /// (false positives), so it needs a clearer win: still far below the
+  /// server's own gate, but the model must lean toward the line, and a
+  /// capture the model calls "not a line" (INVALID on top) does not pass.
+  static const Map<int, (double, double)> _lenientPerLine = {6: (0.30, 0.12)};
+  static const Set<int> _rejectInvalidTop = {6};
 
   static const int _mergedIndex = 10;
   static const int _retiredIndex = 11;
@@ -337,6 +344,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       : null;
 
   void _processCameraFrame(CameraImage image) async {
+    LightingMonitor.instance.onImage(image); // low-light warning
     if (!_isManifestLoaded || _isSuccessAchieved || _isEvaluating || _nativeInFlight >= _maxInFlight || _isDisposed) return;
     _nativeInFlight++;
     // Capture time, not result time: results arrive a variable ~100-200 ms later.
@@ -694,8 +702,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             if (_indexOf(p) != -1) (idx: _indexOf(p), conf: p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence),
         ]..sort((a, b) => b.conf.compareTo(a.conf));
         if (lines.isEmpty || lines.first.idx != expected) return false;
+        if (_rejectInvalidTop.contains(expected) && top != null && _isInvalidLabel(top)) return false;
         final next = lines.length > 1 ? lines[1].conf : 0.0;
-        return lines.first.conf >= _lenientMinConf && lines.first.conf - next >= _lenientMinLead;
+        final (minConf, minLead) = _lenientPerLine[expected] ?? (_lenientMinConf, _lenientMinLead);
+        return lines.first.conf >= minConf && lines.first.conf - next >= minLead;
       }
 
       // Pass when the capture is accepted (all v4 gates passed) and its top-1
@@ -997,9 +1007,11 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     final double elapsed = (_isRecording && _recordStart != null)
         ? DateTime.now().difference(_recordStart!).inMilliseconds / 1000.0
         : 0.0;
+    // Same frame colours as the numbers practice: green = correct, soft grey
+    // otherwise; while recording the theme colour (no alarming red).
     final Color borderColor = _isSuccessAchieved
         ? Colors.greenAccent
-        : (_isRecording ? Colors.redAccent : theme.dividerColor.withOpacity(0.6));
+        : (_isRecording || _isEvaluating ? theme.primaryColor : theme.dividerColor.withOpacity(0.6));
 
     final Widget cameraPane = Stack(
       alignment: Alignment.center,
@@ -1393,7 +1405,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           width: 4,
           color: _isSuccessAchieved || isPassing
               ? Colors.green
-              : (_isRecording ? Colors.redAccent : theme.dividerColor),
+              : (_isRecording || _isEvaluating ? theme.primaryColor : theme.dividerColor),
         ),
         borderRadius: BorderRadius.circular(20),
       ),

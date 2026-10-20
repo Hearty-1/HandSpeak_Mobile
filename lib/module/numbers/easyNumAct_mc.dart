@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import '/services/offline_sync.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,6 +14,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
 import '/providers/sound_provider.dart';
+import '/services/lighting_monitor.dart';
 import '/services/progress_service.dart';
 import '/providers/theme_provider.dart' show GalaxyPalette;
 import '/services/dynamic_sign_judge.dart';
@@ -509,65 +512,63 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     }
   }
 
+  /// Question / option picture. A picture that cannot load (dead link,
+  /// missing file) shows [fallbackText] or nothing: never a broken-image icon.
   Widget _buildImageWidget(
     String pathOrUrl, {
     BoxFit fit = BoxFit.contain,
     double size = 24,
     String? fallbackText,
   }) {
-    if (pathOrUrl.isEmpty) {
-      return fallbackText != null
-          ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
-          : Icon(Icons.image_not_supported, size: size, color: Colors.grey);
-    }
+    Widget fallback() => fallbackText != null && fallbackText.trim().isNotEmpty
+        ? Center(child: Text(fallbackText, textAlign: TextAlign.center, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
+        : const SizedBox.shrink();
+    final src = pathOrUrl.trim();
+    if (src.isEmpty) return fallback();
 
-    if (pathOrUrl.startsWith('data:image')) {
-      final bytes = _safeBase64Decode(pathOrUrl);
-      if (bytes != null) {
-        return Image.memory(
-          bytes,
-          fit: fit,
-          errorBuilder: (context, error, stackTrace) => fallbackText != null
-              ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
-              : Icon(Icons.broken_image, size: size, color: Colors.grey),
-        );
-      }
+    if (src.startsWith('data:image')) {
+      final bytes = _safeBase64Decode(src);
+      if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, __, ___) => fallback());
+      return fallback();
     }
-
-    if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
-      return Image.network(
-        pathOrUrl,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) => fallbackText != null
-            ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
-            : Icon(Icons.image_not_supported, size: size, color: Colors.grey),
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      return Image.network(src, fit: fit, errorBuilder: (_, __, ___) => fallback());
+    }
+    if (_looksLikeStoragePath(src)) {
+      return FutureBuilder<String?>(
+        future: _storageUrl(src),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)));
+          }
+          final url = snap.data;
+          return url == null ? fallback() : Image.network(url, fit: fit, errorBuilder: (_, __, ___) => fallback());
+        },
       );
     }
 
-    String assetPath = pathOrUrl;
-    if (!pathOrUrl.startsWith('assets/')) {
-      assetPath = 'assets/numbers/$pathOrUrl';
-    }
-
+    final assetPath = src.startsWith('assets/') ? src : 'assets/numbers/$src';
     return Image.asset(
       assetPath,
       fit: fit,
-      errorBuilder: (context, error, stackTrace) {
-        if (!pathOrUrl.startsWith('assets/')) {
-          return Image.asset(
-            'assets/pictures/$pathOrUrl',
-            fit: fit,
-            errorBuilder: (context, error, stackTrace) => fallbackText != null
-                ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
-                : Icon(Icons.image_not_supported, size: size, color: Colors.grey),
-          );
-        }
-        return fallbackText != null
-            ? Center(child: Text(fallbackText, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
-            : Icon(Icons.image_not_supported, size: size, color: Colors.grey);
-      },
+      errorBuilder: (context, error, stackTrace) => src.startsWith('assets/')
+          ? fallback()
+          : Image.asset('assets/pictures/$src', fit: fit, errorBuilder: (_, __, ___) => fallback()),
     );
   }
+
+  /// Firebase Storage paths in question / option images ("activities/x.png",
+  /// "gs://..."), resolved once to download URLs.
+  static final Map<String, Future<String?>> _storageUrls = {};
+  static bool _looksLikeStoragePath(String s) =>
+      s.startsWith('gs://') ||
+      (!s.startsWith('http') && !s.startsWith('assets/') && !s.startsWith('data:') && s.contains('/') && s.length <= 300);
+  static Future<String?> _storageUrl(String path) => _storageUrls[path] ??= (path.startsWith('gs://')
+          ? FirebaseStorage.instance.refFromURL(path)
+          : FirebaseStorage.instance.ref(path))
+      .getDownloadURL()
+      .then<String?>((u) => u)
+      .catchError((_) => null);
 
   Future<void> _initializeCameraPipeline() async {
     if (_isCameraInitialized) return;
@@ -627,6 +628,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   final FrameGate _frameGate = FrameGate();
 
   void _processCameraFrame(CameraImage image) {
+    LightingMonitor.instance.onImage(image); // low-light warning
     if (!_isCameraInitialized || _landmarkerPlugin == null || _isAnswered || _isProcessingFrame) return;
     _isProcessingFrame = true;
 
@@ -1066,7 +1068,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
   await ProgressService().saveActivityStars(levelId: widget.levelId, stars: starsEarned, xpField: 'numbersXp');
 
   try {
-    await db.runTransaction((transaction) async {
+    await OfflineSync.run((transaction) async {
       final snapshotDoc = await transaction.get(userRef);
       final data = snapshotDoc.exists ? (snapshotDoc.data() ?? {}) : <String, dynamic>{};
 
@@ -1332,6 +1334,14 @@ Future<void> _saveUserProgress(int starsEarned) async {
     final currentQuestion = _questions[_currentIndex];
     final progress = (_currentIndex + 1) / _questions.length;
     final feedbackData = _getThemeFeedbackVisuals(context, _isCorrect);
+    
+    final String correctAnswerValue = currentQuestion.correctAnswer.toLowerCase();
+    final bool isImageAnswer = correctAnswerValue.startsWith('data:image') || 
+                               correctAnswerValue.endsWith('.png') || 
+                               correctAnswerValue.endsWith('.jpg') || 
+                               correctAnswerValue.endsWith('.jpeg') || 
+                               correctAnswerValue.startsWith('http') || 
+                               correctAnswerValue.startsWith('gs://');
 
     return SafeArea(
       child: Column(
@@ -1458,12 +1468,35 @@ Future<void> _saveUserProgress(int starsEarned) async {
                                   style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.3),
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  _isCorrect 
-                                      ? (feedbackData['subtitle'] as String)
-                                      : "Correct Answer: ${currentQuestion.correctAnswer}",
-                                  style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
-                                ),
+                                if (_isCorrect)
+                                  Text(
+                                    feedbackData['subtitle'] as String,
+                                    style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                                  )
+                                else if (isImageAnswer)
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        "Correct Answer: ",
+                                        style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                                      ),
+                                      Container(
+                                        height: 28,
+                                        width: 28,
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: _buildImageWidget(currentQuestion.correctAnswer, fit: BoxFit.contain, size: 24),
+                                      ),
+                                    ],
+                                  )
+                                else
+                                  Text(
+                                    "Correct Answer: ${currentQuestion.correctAnswer}",
+                                    style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                                  ),
                               ],
                             ),
                           ),

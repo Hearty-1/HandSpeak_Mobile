@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '/services/offline_sync.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../profile/friend_requests_screen.dart';
@@ -49,7 +50,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _updateNotifications(List<Map<String, dynamic>> Function(List<Map<String, dynamic>> current) change) async {
     if (currentUserId.isEmpty) return;
     try {
-      await FirebaseFirestore.instance.runTransaction((tx) async {
+      await OfflineSync.run((tx) async {
         final snap = await tx.get(_userRef);
         final raw = (snap.data()?['notifications'] as List?) ?? const [];
         final current = [for (final n in raw) if (n is Map) Map<String, dynamic>.from(n)];

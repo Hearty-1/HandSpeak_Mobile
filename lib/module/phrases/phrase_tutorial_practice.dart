@@ -14,6 +14,7 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 
 import 'package:flutter/foundation.dart' show kDebugMode, kReleaseMode;
 
+import '/services/lighting_monitor.dart';
 import '/services/handspeak_api_service.dart';
 import '/services/holistic_capture.dart';
 import 'phrase_recognizer.dart';
@@ -460,6 +461,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   final FrameGate _frameGate = FrameGate();
 
   void _onCameraImage(CameraImage image) {
+    LightingMonitor.instance.onImage(image); // low-light warning
     if (_disposed || !_isInitialized || _isSuccessAchieved) return;
     if (_isCalendar) {
       unawaited(_onCalendarImage(image));
@@ -1522,8 +1524,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     final double recordProgress = (elapsed / _recordingLimit.inSeconds).clamp(0.0, 1.0).toDouble();
 
     Color borderColor;
+    // Same frame colours as the numbers practice: green = correct, soft grey
+    // otherwise; while recording / checking the theme colour (no alarming red).
     if (_isRecording) {
-      borderColor = Colors.redAccent;
+      borderColor = theme.colorScheme.primary;
     } else if (_isEvaluating) {
       borderColor = theme.colorScheme.primary;
     } else if (_resultColor == Colors.greenAccent) {

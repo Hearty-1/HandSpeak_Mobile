@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'gesture_analytics.dart';
+import 'offline_sync.dart';
 import 'role_service.dart' show RoleProvider;
 import 'xp_rewards.dart';
 
@@ -334,7 +335,7 @@ class ProgressService {
     }
     final userRef = _db.collection('users').doc(user.uid);
     try {
-      return await _db.runTransaction<int>((tx) async {
+      return await OfflineSync.run<int>((tx) async {
         final snap = await tx.get(userRef);
         final data = snap.data() ?? const <String, dynamic>{};
         final mastery = (data['tutorialMastery'] as Map?)?[moduleKey];
@@ -386,7 +387,7 @@ class ProgressService {
     final userRef = _db.collection('users').doc(user.uid);
     final earned = stars.clamp(0, 3);
     try {
-      return await _db.runTransaction<int>((tx) async {
+      return await OfflineSync.run<int>((tx) async {
         final snap = await tx.get(userRef);
         final data = snap.data() ?? const <String, dynamic>{};
         final progress = data['progress'];
@@ -432,10 +433,10 @@ class ProgressService {
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
-  /// Repeat XP inside a transaction: [XpRewards.repeat] per repeat, at most
+  /// Repeat XP inside a transaction (or offline batch): [XpRewards.repeat] per repeat, at most
   /// [XpRewards.repeatDailyCap] per category per day. Kept on the user
   /// document as `repeatXp.<xpField> = {date, xp}`.
-  int _awardRepeat(Transaction tx, DocumentReference<Map<String, dynamic>> userRef, Map<String, dynamic> data, String xpField) {
+  int _awardRepeat(SyncTx tx, DocumentReference<Map<String, dynamic>> userRef, Map<String, dynamic> data, String xpField) {
     final today = _today();
     final entry = (data['repeatXp'] as Map?)?[xpField];
     final usedToday = entry is Map && entry['date'] == today ? ((entry['xp'] as num?)?.toInt() ?? 0) : 0;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart'; 
 import 'firebase_options.dart'; 
 import 'providers/theme_provider.dart'; 
@@ -13,12 +14,20 @@ import 'services/role_service.dart';
 // Import the local notification service
 import 'services/local_notification_service.dart';
 import 'services/performance_monitor.dart';
+import 'widgets/app_status_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Offline use: keep the user's data on the phone (no size limit), so the
+  // app works without internet and syncs when it is back (OfflineSync).
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
   // Initialize notifications and timezone setup
@@ -53,7 +62,10 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           // Live lag detection with tips + one-tap Performance Mode, on every screen.
-          builder: (context, child) => PerformanceHintOverlay(child: child ?? const SizedBox.shrink()),
+          // + offline / synced / low-light notices on every screen.
+          builder: (context, child) => AppStatusOverlay(
+            child: PerformanceHintOverlay(child: child ?? const SizedBox.shrink()),
+          ),
           theme: themeProvider.activeTheme, 
           themeMode: themeProvider.activeThemeMode,
           navigatorObservers: [

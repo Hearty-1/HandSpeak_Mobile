@@ -12,6 +12,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
+import '/services/lighting_monitor.dart';
 import '/services/dynamic_sign_judge.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
@@ -515,6 +516,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
   final FrameGate _frameGate = FrameGate();
 
   void _processCameraFrame(CameraImage image) {
+    LightingMonitor.instance.onImage(image); // low-light warning
     if (!_isCameraInitialized || _landmarkerPlugin == null || _hasAnswered || _isProcessingFrame) return;
     _isProcessingFrame = true;
     try {

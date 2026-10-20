@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'progress_service.dart';
+import 'offline_sync.dart';
 
 // =============================================================================
 // CATALOG
@@ -604,7 +605,7 @@ class DailyChallengeService {
     if (_uid.isEmpty) return false;
     final historyRef = _userRef.collection('daily_challenge_history').doc(q.id);
     try {
-      return await _db.runTransaction((tx) async {
+      return await OfflineSync.run<bool>((tx) async {
         final existing = await tx.get(historyRef);
         if (existing.exists) return false; // each quest counts once
         // Module XP: a category quest feeds its category; a general quest feeds

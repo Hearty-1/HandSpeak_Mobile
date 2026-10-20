@@ -17,9 +17,11 @@ import '/module/phrases/phrase_recognizer.dart' show PhraseRecognizer;
 import '/module/phrases/phrase_tutorial_practice.dart' show PhraseTutorialPractice;
 import '/module/phrases/phraseAct.dart' show PhraseActivityInterface;
 import '/services/frame_gate.dart';
+import '/services/lighting_monitor.dart';
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
 import '/services/role_service.dart';
+import '/widgets/practice_feedback.dart';
 
 /// A category added in the web app (Firestore `activity_categories/{id}`):
 /// label, description, cover image, isActive. The four built-in modules have
@@ -990,6 +992,7 @@ class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
       }
       setState(() => _camera = c);
       await c.startImageStream((img) {
+        LightingMonitor.instance.onImage(img); // low-light warning
         if (_landmarker == null || !_gate.tryEnter()) return;
         try {
           _landmarker!.processFrame(img, _rotation(c));
@@ -1059,130 +1062,305 @@ class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
     super.dispose();
   }
 
+  // Same look as the built-in tutorial practices (numbers_tutorial_practice):
+  // blurred app bar, ambient icons, square demo + camera, PracticeFeedback.
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
+    final onSurface = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
     final ready = _handsMs >= _needHandsMs;
+    final hold = (_handsMs / _needHandsMs).clamp(0.0, 1.0);
+    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final paneWidth = MediaQuery.sizeOf(context).width * (landscape ? 0.45 : 1.0);
     final c = _camera;
+    final title = widget.lesson.title;
+
+    final Widget cameraPane = Stack(
+      alignment: Alignment.center,
+      fit: StackFit.expand,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(width: 4.0, color: ready ? Colors.greenAccent : theme.dividerColor.withValues(alpha: 0.6)),
+            boxShadow: [
+              if (ready)
+                BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.6), blurRadius: 25, spreadRadius: 2)
+              else
+                BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4)),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: c != null && c.value.isInitialized
+                ? _MirrorCameraView(controller: c)
+                : Center(
+                    child: _error != null
+                        ? Padding(padding: const EdgeInsets.all(12), child: Text(_error!, textAlign: TextAlign.center))
+                        : CircularProgressIndicator(color: theme.primaryColor),
+                  ),
+          ),
+        ),
+        if (c != null && c.value.isInitialized)
+          Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 110,
+              height: 110,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _handsVisible ? Colors.greenAccent.withValues(alpha: 0.9) : Colors.white54,
+                  width: _handsVisible ? 4.0 : 3.0,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SmartBlur(
+                    filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      color: Colors.black45,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_handsVisible) ...[
+                            const Icon(Icons.stars_rounded, color: Colors.greenAccent, size: 12),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            ready ? 'Great!' : (_handsVisible ? 'Hold!' : 'Frame Hand'),
+                            style: TextStyle(
+                              color: _handsVisible ? Colors.greenAccent : Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
     return Scaffold(
+      extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
-        iconTheme: IconThemeData(color: textColor),
-        title: Text(widget.progressLabel ?? 'Practice',
-            style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.w800)),
+        iconTheme: IconThemeData(color: onSurface),
+        flexibleSpace: ClipRRect(
+          child: SmartBlur(filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), child: Container(color: Colors.transparent)),
+        ),
+        title: Text(
+          widget.progressLabel ?? 'Tutorial Practice',
+          style: TextStyle(color: onSurface, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96),
+        ),
         actions: [
           if (widget.onDone != null) TextButton(onPressed: widget.onDone, child: const Text('Skip')),
         ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: Column(
-            children: [
-              Text(widget.lesson.title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: textColor, fontSize: widget.lesson.title.length > 18 ? 26 : 36, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: AspectRatio(
-                      aspectRatio: 0.8,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: _CloudMedia(source: widget.lesson.media, fit: BoxFit.contain),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: AspectRatio(
-                      aspectRatio: 0.8,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: _handsVisible ? Colors.green : theme.dividerColor, width: 3),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(13),
-                          child: c != null && c.value.isInitialized
-                              ? FittedBox(
-                                  fit: BoxFit.cover,
-                                  clipBehavior: Clip.hardEdge,
-                                  child: SizedBox(
-                                    width: c.value.previewSize?.height ?? 480,
-                                    height: c.value.previewSize?.width ?? 640,
-                                    child: CameraPreview(c),
-                                  ),
-                                )
-                              : Center(
-                                  child: _error != null
-                                      ? Padding(padding: const EdgeInsets.all(8), child: Text(_error!, textAlign: TextAlign.center))
-                                      : CircularProgressIndicator(color: theme.primaryColor)),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(_handsVisible ? Icons.pan_tool_rounded : Icons.pan_tool_outlined,
-                      color: _handsVisible ? Colors.green : textColor.withValues(alpha: 0.5)),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      ready
-                          ? 'Nice! Compare your sign with the demo, then confirm.'
-                          : (_handsVisible ? 'Hold the sign in view…' : 'Show your hands to the camera'),
-                      style: TextStyle(color: textColor.withValues(alpha: 0.8), fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: (_handsMs / _needHandsMs).clamp(0.0, 1.0),
-                  minHeight: 8,
-                  color: Colors.green,
-                  backgroundColor: theme.dividerColor.withValues(alpha: 0.3),
-                ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.primaryColor,
-                    foregroundColor: theme.colorScheme.onPrimary,
-                    disabledBackgroundColor: theme.dividerColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  onPressed: ready ? _confirm : null,
-                  icon: const Icon(Icons.check_rounded),
-                  label: const Text('I signed it', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Automatic checking is not available for this sign yet: watch the demo, sign along, and confirm when it matches.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: textColor.withValues(alpha: 0.55), fontSize: 12.5),
-              ),
-            ],
+      body: Stack(
+        children: [
+          Positioned(
+            top: -20,
+            right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(angle: -0.2, child: Icon(Icons.wb_sunny_rounded, size: 220, color: theme.primaryColor)),
+            ),
           ),
-        ),
+          Positioned(
+            bottom: 40,
+            left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(angle: 0.3, child: Icon(Icons.auto_awesome_rounded, size: 240, color: theme.colorScheme.secondary)),
+            ),
+          ),
+          SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Column(
+                        children: [
+                          Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: onSurface,
+                              fontSize: title.length > 18 ? 28 : 42,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: paneWidth * 0.60,
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.grey.shade900 : Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4)),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: _CloudMedia(source: widget.lesson.media, fit: BoxFit.cover),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          if (!landscape)
+                            SizedBox(width: paneWidth * 0.60, child: AspectRatio(aspectRatio: 1, child: cameraPane)),
+                          const SizedBox(height: 16),
+                          PracticeFeedback(
+                            message: ready
+                                ? 'Nice! Compare your sign with the demo, then tap "I signed it".'
+                                : (_handsVisible ? 'Keep your hands in view…' : 'Show your hands to the camera and sign along with the demo.'),
+                            tone: ready ? FeedbackTone.success : FeedbackTone.info,
+                          ),
+                          const SizedBox(height: 12),
+                          if (!ready && hold > 0) ...[
+                            const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.workspace_premium_rounded, color: Colors.green, size: 20),
+                                SizedBox(width: 6),
+                                Text('Hold steady...', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18)),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: SmartBlur(
+                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                child: Container(
+                                  width: paneWidth * 0.70,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.surface.withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: FractionallySizedBox(
+                                      widthFactor: hold,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
+                                          borderRadius: BorderRadius.circular(12),
+                                          boxShadow: [BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.5), blurRadius: 10)],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          SizedBox(
+                            width: paneWidth * 0.70,
+                            height: 52,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.primaryColor,
+                                foregroundColor: theme.colorScheme.onPrimary,
+                                disabledBackgroundColor: theme.dividerColor,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                              ),
+                              onPressed: ready ? _confirm : null,
+                              icon: const Icon(Icons.check_rounded),
+                              label: const Text('I signed it', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, fontFamily: 'Inter')),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Watch the demo, sign along, and tap the button when your sign matches.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: onSurface.withValues(alpha: 0.55), fontSize: 12.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (landscape)
+                  Expanded(
+                    flex: 6,
+                    child: Padding(padding: const EdgeInsets.fromLTRB(0, 10, 16, 16), child: cameraPane),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+/// Camera preview scaled to cover its box without stretching, with the soft
+/// vignette of the other tutorial practices.
+class _MirrorCameraView extends StatelessWidget {
+  final CameraController controller;
+  const _MirrorCameraView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.05,
+              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
+              stops: const [0.62, 1.0],
+            ),
+          ),
+          child: ColoredBox(
+            color: Colors.black,
+            child: ClipRect(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: landscape ? size.longestSide : size.shortestSide,
+                  height: landscape ? size.shortestSide : size.longestSide,
+                  child: CameraPreview(controller),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

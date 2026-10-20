@@ -8,6 +8,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:firebase_storage/firebase_storage.dart'; // Added Firebase Cloud Storage
 import 'recognizer.dart';
+import '/services/lighting_monitor.dart';
 import '/services/frame_gate.dart';
 import '/services/role_service.dart';
 import '/services/progress_service.dart';
@@ -231,6 +232,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   final FrameGate _frameGate = FrameGate();
 
   void _processCameraFrame(CameraImage image) {
+    LightingMonitor.instance.onImage(image); // low-light warning
     // NOTE: no longer gated on `_template == null` -- J/Z have no static
     // template at all, so that check would block the pipeline forever
     // whenever a dynamic letter comes up in the rotation.

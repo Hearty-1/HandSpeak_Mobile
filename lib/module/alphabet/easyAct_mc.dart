@@ -13,6 +13,7 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 
 import '/providers/sound_provider.dart';
 import '/providers/theme_provider.dart' show GalaxyPalette;
+import '/services/lighting_monitor.dart';
 import '/services/dynamic_sign_judge.dart';
 import '/services/progress_service.dart';
 import '/services/gesture_analytics.dart';
@@ -547,37 +548,50 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         str.length > 100;
   }
 
-  Widget _buildImageWidget(String pathOrUrl, {BoxFit fit = BoxFit.contain, double size = 24}) {
-    if (pathOrUrl.isEmpty) {
-      return Icon(Icons.image_not_supported, size: size, color: Colors.grey);
-    }
+  /// Question / option picture. A picture that cannot load (dead link,
+  /// missing file) shows [fallbackText] or nothing: never a broken-image icon.
+  Widget _buildImageWidget(String pathOrUrl, {BoxFit fit = BoxFit.contain, double size = 24, String? fallbackText}) {
+    Widget fallback() => fallbackText != null && fallbackText.trim().isNotEmpty
+        ? Center(child: Text(fallbackText, textAlign: TextAlign.center, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
+        : const SizedBox.shrink();
+    final src = pathOrUrl.trim();
+    if (src.isEmpty) return fallback();
 
-    if (pathOrUrl.startsWith('data:image') || (!pathOrUrl.startsWith('http') && !pathOrUrl.startsWith('assets/') && pathOrUrl.length > 100)) {
-      final bytes = _safeBase64Decode(pathOrUrl);
-      if (bytes != null) {
-        return Image.memory(
-          bytes,
-          fit: fit,
-          errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: size, color: Colors.grey),
-        );
-      }
-      return Icon(Icons.broken_image, size: size, color: Colors.grey);
+    if (src.startsWith('data:image') || (!src.startsWith('http') && !src.startsWith('assets/') && src.length > 300)) {
+      final bytes = _safeBase64Decode(src);
+      if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, __, ___) => fallback());
+      return fallback();
     }
-
-    if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
-      return Image.network(
-        pathOrUrl,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) => Icon(Icons.image_not_supported, size: size, color: Colors.grey),
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      return Image.network(src, fit: fit, errorBuilder: (_, __, ___) => fallback());
+    }
+    if (_looksLikeStoragePath(src)) {
+      return FutureBuilder<String?>(
+        future: _storageUrl(src),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)));
+          }
+          final url = snap.data;
+          return url == null ? fallback() : Image.network(url, fit: fit, errorBuilder: (_, __, ___) => fallback());
+        },
       );
     }
-
-    return Image.asset(
-      pathOrUrl,
-      fit: fit,
-      errorBuilder: (context, error, stackTrace) => Icon(Icons.image_not_supported, size: size, color: Colors.grey),
-    );
+    return Image.asset(src, fit: fit, errorBuilder: (_, __, ___) => fallback());
   }
+
+  /// Firebase Storage paths in question / option images ("activities/x.png",
+  /// "gs://..."), resolved once to download URLs.
+  static final Map<String, Future<String?>> _storageUrls = {};
+  static bool _looksLikeStoragePath(String s) =>
+      s.startsWith('gs://') ||
+      (!s.startsWith('http') && !s.startsWith('assets/') && !s.startsWith('data:') && s.contains('/') && s.length <= 300);
+  static Future<String?> _storageUrl(String path) => _storageUrls[path] ??= (path.startsWith('gs://')
+          ? FirebaseStorage.instance.refFromURL(path)
+          : FirebaseStorage.instance.ref(path))
+      .getDownloadURL()
+      .then<String?>((u) => u)
+      .catchError((_) => null);
 
   // ==========================================
   // PIPELINE AND ML LOGIC
@@ -667,6 +681,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   final FrameGate _frameGate = FrameGate();
 
   void _processCameraFrame(CameraImage image) {
+    LightingMonitor.instance.onImage(image); // low-light warning
     if (!_isCameraInitialized || _landmarkerPlugin == null || _isAnswered || _isProcessingFrame) return;
     _isProcessingFrame = true;
 

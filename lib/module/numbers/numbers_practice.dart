@@ -9,6 +9,7 @@ import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:onnxruntime/onnxruntime.dart';
+import '/services/lighting_monitor.dart';
 import '/services/frame_gate.dart';
 import '/services/role_service.dart';
 import '/services/progress_service.dart';
@@ -545,6 +546,7 @@ class _NumbersPracticeState extends State<NumbersPractice> {
   final FrameGate _frameGate = FrameGate();
 
   void _processCameraFrame(CameraImage image) {
+    LightingMonitor.instance.onImage(image); // low-light warning
     if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
     if (_isStaticSign && _template == null) return;
     if (_isProcessingFrame) return;
