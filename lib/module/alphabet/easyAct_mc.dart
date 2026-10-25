@@ -443,6 +443,9 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   /// J / Z: judged like the tutorial practice (fsl_letter_j / z.onnx + the
   /// server check) from the last seconds of hand frames.
   final DynamicSignJudge _judge = DynamicSignJudge();
+  // Look-alike letters (B for C, E for F, M for N, ...): shared checks
+  // with the tutorial practice (services/dynamic_sign_judge.dart).
+  final StaticLetterChecker _shapeChecker = StaticLetterChecker();
   int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
   bool _isJudging = false;
 
@@ -727,8 +730,19 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     final template = _template;
     if (hands.isNotEmpty && template != null) {
       double best = 0.0;
+      Hand? bestHand;
       for (final h in hands) {
-        best = math.max(best, _calculateScore(h.landmarks, template));
+        final sc = _calculateScore(h.landmarks, template);
+        if (sc > best) {
+          best = sc;
+          bestHand = h;
+        }
+      }
+      if (bestHand != null &&
+          _shapeChecker.check(bestHand, _templateLetter,
+                  imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation) !=
+              null) {
+        best = math.min(best, successThreshold - 5);
       }
       _recentScores.add((t: now, score: best));
     }

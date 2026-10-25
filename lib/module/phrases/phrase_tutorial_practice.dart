@@ -698,6 +698,42 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     return probs;
   }
 
+  static final int _haponIndex = PhraseRecognizer.classIndexFor('Magandang Hapon');
+  static final int _mabutiIndex = PhraseRecognizer.classIndexFor('Mabuti');
+  static final Set<int> _haponMabuti = {_haponIndex, _mabutiIndex};
+
+  /// Highest point of the signing wrist, in shoulder widths below the
+  /// shoulder line (smaller = higher). Training clips (GREETINGS zip,
+  /// fsl105_palm_norm): Magandang Hapon reaches the face, median 0.01
+  /// (p10..p90 -0.24..0.31); Mabuti stays at the chest, median 0.57
+  /// (0.47..0.84). The ranges do not overlap; 0.40 sits between them.
+  static const double _haponWristTop = 0.40;
+
+  /// [_haponWristTop] measure for a clip of 96-feature frames (pose points
+  /// 4 / 5 = left / right wrist at [8, 9] / [10, 11]); the wrist that moves
+  /// most is the signing hand. Null without pose data.
+  static double? _signingWristTop(List<Float32List> clip) {
+    double? best;
+    double bestPath = -1;
+    for (final xi in const [8, 10]) {
+      double path = 0, top = double.infinity;
+      double? px, py;
+      for (final f in clip) {
+        if (f.length < 12 || (f[0] == 0 && f[1] == 0)) continue; // no pose
+        final x = f[xi], y = f[xi + 1];
+        if (px != null) path += math.sqrt((x - px) * (x - px) + (y - py!) * (y - py));
+        px = x;
+        py = y;
+        if (y < top) top = y;
+      }
+      if (top.isFinite && path > bestPath) {
+        bestPath = path;
+        best = top;
+      }
+    }
+    return best;
+  }
+
   Future<PredictResponse> _predictCloud(List<double> features) async {
     final api = HandSpeakApiService();
     try {
@@ -805,14 +841,32 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
         minConfidence: _minConfidence,
       );
       
+      // Magandang Hapon vs Mabuti: the greetings model mixes them up (a real
+      // Hapon came back MABUTI 94-100%, 2026-10-23 logs), so between these two
+      // the signing hand's height decides (see _haponWristTop).
+      var top1Index = eval.top1Index;
+      var top1Label = eval.top1Label;
+      var verdict = eval.verdict;
+      final wristTop = _signingWristTop(clip);
+      if (wristTop != null &&
+          _haponMabuti.contains(_targetIndex) &&
+          _haponMabuti.contains(eval.top1Index) &&
+          verdict != PhraseVerdict.rejectedUnknown) {
+        top1Index = wristTop <= _haponWristTop ? _haponIndex : _mabutiIndex;
+        top1Label = _recognizer.labelFor(top1Index);
+        verdict = PhraseVerdict.accepted;
+      }
+      debugPrint('Greeting pair check: wristTop=${wristTop?.toStringAsFixed(2)} '
+          'server=${eval.top1Label} -> $top1Label');
+
       final bool rightSign = _targetIndex != -1
-          ? eval.top1Index == _targetIndex
-          : PhraseRecognizer.compactKey(eval.top1Label) == PhraseRecognizer.compactKey(widget.targetPhrase);
-      final bool isMatch = rightSign && eval.verdict == PhraseVerdict.accepted;
+          ? top1Index == _targetIndex
+          : PhraseRecognizer.compactKey(top1Label) == PhraseRecognizer.compactKey(widget.targetPhrase);
+      final bool isMatch = rightSign && verdict == PhraseVerdict.accepted;
       final double targetPct = _targetIndex != -1
           ? eval.probPercent(_targetIndex)
           : (rightSign ? eval.top1Prob : 0.0);
-      debugPrint('Greeting: top ${eval.top1Label} ${eval.top1Prob.toStringAsFixed(1)}%, margin ${eval.margin.toStringAsFixed(1)}%');
+      debugPrint('Greeting: top $top1Label ${eval.top1Prob.toStringAsFixed(1)}%, margin ${eval.margin.toStringAsFixed(1)}%');
       debugPrint('Greeting target=${widget.targetPhrase} frames=${clip.length} top3=[${([response.prediction, ...response.topK]..sort((x, y) => y.confidence.compareTo(x.confidence))).take(4).map((p) => '${p.label} ${(p.confidence > 1 ? p.confidence : p.confidence * 100).toStringAsFixed(1)}%').toSet().join(', ')}]');
 
       if (isMatch) {
@@ -828,15 +882,15 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       }
 
       final String title;
-      switch (eval.verdict) {
+      switch (verdict) {
         case PhraseVerdict.rejectedUnknown:
           title = 'Subukang muli!';
           break;
         case PhraseVerdict.uncertain:
-          title = rightSign ? 'Malapit na!' : 'Mukhang "${eval.top1Label}" ang naisagawa';
+          title = rightSign ? 'Malapit na!' : 'Mukhang "$top1Label" ang naisagawa';
           break;
         default:
-          title = 'Mukhang "${eval.top1Label}" ang naisagawa';
+          title = 'Mukhang "$top1Label" ang naisagawa';
       }
       _showResult(
         title: title,

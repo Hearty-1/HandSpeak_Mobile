@@ -96,6 +96,9 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
 
   /// J / Z: judged like the alphabet tutorial practice from a recording.
   final DynamicSignJudge _judge = DynamicSignJudge();
+  // Look-alike letters (B for C, E for F, M for N, ...): shared checks
+  // with the tutorial practice (services/dynamic_sign_judge.dart).
+  final StaticLetterChecker _shapeChecker = StaticLetterChecker();
   int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
   bool _isJudging = false;
   static const double _letterRecordSeconds = 2.5;
@@ -377,9 +380,19 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
 
     if (detectedHands.isNotEmpty) {
       double highestScoreAcrossAllHands = 0.0;
+      Hand? bestHand;
       for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
         final double score = _calculateScore(detectedHands[handIdx].landmarks, _template!);
-        if (score > highestScoreAcrossAllHands) highestScoreAcrossAllHands = score;
+        if (score > highestScoreAcrossAllHands) {
+          highestScoreAcrossAllHands = score;
+          bestHand = detectedHands[handIdx];
+        }
+      }
+      if (bestHand != null &&
+          _shapeChecker.check(bestHand, _templateLetter,
+                  imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation) !=
+              null) {
+        highestScoreAcrossAllHands = math.min(highestScoreAcrossAllHands, successThreshold - 5);
       }
 
       _currentScore = highestScoreAcrossAllHands;

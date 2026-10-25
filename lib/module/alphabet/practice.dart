@@ -10,6 +10,7 @@ import 'package:firebase_storage/firebase_storage.dart'; // Added Firebase Cloud
 import 'recognizer.dart';
 import '/services/lighting_monitor.dart';
 import '/services/frame_gate.dart';
+import '/services/dynamic_sign_judge.dart' show StaticLetterChecker;
 import '/services/role_service.dart';
 import '/services/progress_service.dart';
 import '/services/xp_rewards.dart';
@@ -230,6 +231,10 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   }
 
   final FrameGate _frameGate = FrameGate();
+  int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
+  // Look-alike letters (B for C, E for F, M for N, ...): shared checks
+  // with the tutorial practice (services/dynamic_sign_judge.dart).
+  final StaticLetterChecker _shapeChecker = StaticLetterChecker();
 
   void _processCameraFrame(CameraImage image) {
     LightingMonitor.instance.onImage(image); // low-light warning
@@ -240,6 +245,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
     try {
       final int sensorOrientation = _cameraImageRotation(_controller); // live device rotation
+      _imageWidth = image.width;
+      _imageHeight = image.height;
+      _imageRotation = sensorOrientation;
       if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
       _landmarkerPlugin!.processFrame(image, sensorOrientation);
     } catch (e) {
@@ -272,6 +280,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
     if (detectedHands.isNotEmpty) {
       double highestScoreAcrossAllHands = 0.0;
+      Hand? bestHand;
 
       for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
         final double score = _calculateScore(
@@ -280,7 +289,14 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
         );
         if (score > highestScoreAcrossAllHands) {
           highestScoreAcrossAllHands = score;
+          bestHand = detectedHands[handIdx];
         }
+      }
+      if (bestHand != null &&
+          _shapeChecker.check(bestHand, targetLetter,
+                  imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation) !=
+              null) {
+        highestScoreAcrossAllHands = math.min(highestScoreAcrossAllHands, successThreshold - 5);
       }
 
       _updateGameLogic(highestScoreAcrossAllHands);

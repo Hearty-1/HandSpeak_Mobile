@@ -664,7 +664,22 @@ enum _SignPhase { waitBase, baseHeld, moving }
 class NumbersTutorialPractice extends StatefulWidget {
   final String targetNumber;
 
-  const NumbersTutorialPractice({super.key, required this.targetNumber});
+  /// Continuous practice (numbers_practice.dart), like the phrase and civic
+  /// tutorials: practice XP instead of tutorial XP, an inline success card
+  /// instead of the dialog, then [onMastered] moves to the next number.
+  final bool continuous;
+  final VoidCallback? onMastered;
+  final VoidCallback? onSkip;
+  final String? progressLabel; // "Number 3 of 100"
+
+  const NumbersTutorialPractice({
+    super.key,
+    required this.targetNumber,
+    this.continuous = false,
+    this.onMastered,
+    this.onSkip,
+    this.progressLabel,
+  });
 
   @override
   _NumbersTutorialPracticeState createState() => _NumbersTutorialPracticeState();
@@ -732,7 +747,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   final double successThreshold = 70.0;
   final double holdDurationSeconds = 1.0;
   /// XP for the FIRST mastery of this sign (xp_rewards.dart); 0 afterwards.
-  final int xpReward = XpRewards.numbersTutorial;
+  int get xpReward => widget.continuous ? XpRewards.numbersPractice : XpRewards.numbersTutorial;
   int _xpGained = 0;
 
   bool get _isStaticSign {
@@ -1263,10 +1278,83 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     // Once per sign: repeating a mastered sign earns no XP.
     // Faculty / Parent (guest): 0 XP; the mastery is kept on the device.
     _xpGained = await ProgressService().awardFirstMastery(
-      moduleKey: 'numbers',
+      moduleKey: widget.continuous ? XpRewards.practiceKey('numbers') : 'numbers',
       itemKey: ProgressService.masteryKey(widget.targetNumber),
       xp: xpReward,
       xpField: 'numbersXp',
+      countsAsLesson: !widget.continuous,
+    );
+  }
+
+  /// "Number 3 of 100" + Skip, same header as the phrase / civic practice.
+  Widget _buildProgressHeader(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              widget.progressLabel!,
+              style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+          ),
+          if (widget.onSkip != null) ...[
+            const SizedBox(width: 10),
+            TextButton.icon(
+              onPressed: _isSuccessAchieved ? null : widget.onSkip,
+              icon: const Icon(Icons.skip_next_rounded, size: 18),
+              label: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w700)),
+              style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Inline success card in continuous practice (same as phrases / civic).
+  Widget _buildContinuousSuccess(ThemeData theme, _ThemeVisuals visuals) {
+    final title = !context.rolesRead.isStudent
+        ? 'Mahusay! Tumpak ang kumpas'
+        : (_xpGained > 0 ? 'Mahusay! +$_xpGained XP' : 'Mahusay! (naabot na ang XP ngayong araw)');
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.8, end: 1.0),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.elasticOut,
+      builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 1.5),
+        ),
+        child: Column(
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(title,
+                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter')),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text('Susunod na numero...',
+                style: TextStyle(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w600, fontSize: 14)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1282,6 +1370,14 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     await _awardXp();
 
     if (!mounted) return;
+
+    if (widget.continuous) {
+      // Inline success card (build), then the next number.
+      setState(() {});
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted) widget.onMastered?.call();
+      return;
+    }
 
     final theme = Theme.of(context);
     final visuals = _ThemeVisuals.fromTheme(theme);
@@ -1552,7 +1648,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
           ),
         ),
         title: Text(
-          'Tutorial Practice',
+          widget.continuous ? 'Continuous Practice' : 'Tutorial Practice',
           style: TextStyle(
             color: theme.colorScheme.onSurface,
             fontSize: 22,
@@ -1599,6 +1695,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    if (widget.progressLabel != null) _buildProgressHeader(theme),
                     Text(
                       widget.targetNumber,
                       style: TextStyle(
@@ -1648,10 +1745,13 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                       ),
                     const SizedBox(height: 16),
 
-                    PracticeFeedback(
-                      message: _currentFeedback,
-                      tone: isPassing ? FeedbackTone.success : FeedbackTone.info,
-                    ),
+                    if (widget.continuous && _isSuccessAchieved)
+                      _buildContinuousSuccess(theme, visuals)
+                    else
+                      PracticeFeedback(
+                        message: _currentFeedback,
+                        tone: isPassing ? FeedbackTone.success : FeedbackTone.info,
+                      ),
                     const SizedBox(height: 12),
 
                     if (_isStaticSign && _holdProgress > 0.0) ...[

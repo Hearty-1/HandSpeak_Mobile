@@ -15,6 +15,7 @@ import 'package:onnxruntime/onnxruntime.dart';
 import '/services/lighting_monitor.dart';
 import '/services/handspeak_api_service.dart';
 import '/services/frame_gate.dart';
+import '/services/dynamic_sign_judge.dart' show StaticLetterChecker;
 
 import '/widgets/practice_feedback.dart';
 import '/services/performance_monitor.dart';
@@ -79,49 +80,6 @@ class LetterZResult {
 
 /// Mean-frame finger extensions divided by palm length (wrist -> middle MCP),
 /// as in extract_j_features / test_single_j.py.
-/// Hand measurements for the static letter rules (selfie-view points, palm
-/// = wrist -> middle knuckle). Mirror-independent.
-class _HandGeometry {
-  final List<LandmarkPoint> p;
-  late final double palm = p[9].distanceTo(p[0]) + 1e-6;
-  _HandGeometry(this.p);
-
-  /// Where the thumb tip sits across the knuckles: 0 = index knuckle,
-  /// 1 = pinky knuckle, < 0 = beside the index (A). T ~0.2, N ~0.45, M ~0.7.
-  late final double thumbAcross = () {
-    final ax = p[17].x - p[5].x, ay = p[17].y - p[5].y;
-    final len2 = ax * ax + ay * ay + 1e-9;
-    return ((p[4].x - p[5].x) * ax + (p[4].y - p[5].y) * ay) / len2;
-  }();
-
-  /// > 0: the thumb tip is in front of the middle finger (closer to the
-  /// camera, S); < 0: tucked behind the fingers (M, N, T).
-  late final double thumbFront = (p[10].z - p[4].z) / palm;
-
-  /// Angle between the index and middle fingers (degrees): U ~0-8, V 20+.
-  late final double indexMiddleAngle = () {
-    final a = math.atan2(p[8].y - p[5].y, p[8].x - p[5].x);
-    final b = math.atan2(p[12].y - p[9].y, p[12].x - p[9].x);
-    return (_wrapAngle(a - b).abs()) * 180 / math.pi;
-  }();
-
-  /// Index tip minus middle tip along the knuckle line (index -> pinky
-  /// side), in palm units: < 0 means the index tip crossed to the middle
-  /// finger's side (R); U / V are clearly negative of that, i.e. > 0.
-  late final double indexMiddleCross = () {
-    final ax = p[5].x - p[17].x, ay = p[5].y - p[17].y;
-    final len = math.sqrt(ax * ax + ay * ay) + 1e-9;
-    return ((p[8].x - p[12].x) * ax + (p[8].y - p[12].y) * ay) / len / palm;
-  }();
-
-  /// Mean fingertip distance from the wrist: flat B ~1.9, curved C ~1.5.
-  late final double fingerReach = (p[8].distanceTo(p[0]) + p[12].distanceTo(p[0]) + p[16].distanceTo(p[0]) + p[20].distanceTo(p[0])) / 4 / palm;
-
-  /// How far the index middle joint rises past its knuckle (X is raised and
-  /// hooked ~0.4+; T / S fold it down ~0.1).
-  late final double indexRise = (p[6].distanceTo(p[0]) - p[5].distanceTo(p[0])) / palm;
-}
-
 class _HandShape {
   final double palm, thumbOut, index, middle, ring, pinky;
   const _HandShape(this.palm, this.thumbOut, this.index, this.middle, this.ring, this.pinky);
@@ -1275,7 +1233,6 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
 
   Future<void> _loadGestureLibrary() async {
     final letter = widget.targetLetter.toUpperCase();
-    if (_rivalLetters.containsKey(letter)) await _loadRivalTemplates(letter);
 
     if (_templateCache.containsKey(letter)) {
       if (mounted) {
@@ -1320,6 +1277,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
   }
 
   final FrameGate _frameGate = FrameGate();
+  final StaticLetterChecker _shapeChecker = StaticLetterChecker();
 
   void _processCameraFrame(CameraImage image) {
     LightingMonitor.instance.onImage(image); // low-light warning
@@ -1399,239 +1357,6 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       if (score > bestScore) bestScore = score;
     }
     return bestScore;
-  }
-
-  /// The relaxed template match above lets many hands reach 70%. A tricky
-  /// letter therefore also needs its finger states and pointing direction
-  /// (upright view): G = index sideways, others folded; H = index + middle
-  /// sideways; K = index up; P = index down; Q = index down, others folded.
-  /// Ring and pinky are folded in all five. The thumb and K / P's middle
-  /// finger (often pointing at the camera) are left to the template.
-  static const Map<String, ({bool middleUp, bool middleFolded, String dir})> _trickyShapes = {
-    'G': (middleUp: false, middleFolded: true, dir: 'side'),
-    'H': (middleUp: true, middleFolded: false, dir: 'side'),
-    'K': (middleUp: false, middleFolded: false, dir: 'up'),
-    'P': (middleUp: false, middleFolded: false, dir: 'down'),
-    'Q': (middleUp: false, middleFolded: true, dir: 'down'),
-  };
-  final List<bool> _trickyShapeHistory = []; // last frames' verdicts (smoothing)
-  String? _lastTrickyProblem;
-
-  /// Finger states per static letter, index-middle-ring-pinky:
-  /// S = straight, B = bent / folded, C = curved (half bent), - = any.
-  /// The template match alone accepted look-alike hands (B for C / E / F,
-  /// E for F, ...), so the finger states and a thumb rule are checked on top.
-  /// G, H, K, P, Q have their own checks (_trickyShapes). M, N, S, T are
-  /// judged by the template only, as in commit 3f342a8: their thumb
-  /// positions could not be told apart reliably (2026-10-25 logs).
-  static const Map<String, String> _fingerStates = {
-    'A': 'BBBB', 'B': 'SSSS', 'C': 'CCCC', 'D': 'SBBB', 'E': 'BBBB', 'F': 'BSSS',
-    'I': 'BBBS', 'L': 'SBBB', 'O': 'CCCC', 'R': 'SSBB',
-    'U': 'SSBB', 'V': 'SSBB', 'W': 'SSSB', 'X': 'CBBB',
-    'Y': 'BBBS',
-  };
-  static final List<String> _fingerRuleLetters = _fingerStates.keys.toList();
-  int _lastRuleLogMs = 0;
-
-  /// Distances are in palm lengths (wrist -> middle knuckle), so they do not
-  /// depend on hand size or distance to the camera. A finger's bend is
-  /// tip-to-wrist / middle-joint-to-wrist: > 1.10 straight, < 1.0 bent.
-  String? _fingerRuleProblem(List<LandmarkPoint> p, String letter) {
-    final states = _fingerStates[letter];
-    if (states == null) return null;
-    final palm = p[9].distanceTo(p[0]) + 1e-6;
-    double d(int a, int b) => p[a].distanceTo(p[b]) / palm;
-    double ratio(int tip, int pip) => p[tip].distanceTo(p[0]) / (p[pip].distanceTo(p[0]) + 1e-6);
-    const fingers = [(8, 6, 'hintuturo'), (12, 10, 'hinlalato'), (16, 14, 'palasingsingan'), (20, 18, 'kalingkingan')];
-    final thumbIndex = d(4, 8);
-    final thumbOut = d(4, 5); // thumb tip -> index knuckle
-    final g = _HandGeometry(p);
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastRuleLogMs > 700) {
-      _lastRuleLogMs = now;
-      debugPrint('Letter $letter shape: idx=${ratio(8, 6).toStringAsFixed(2)} mid=${ratio(12, 10).toStringAsFixed(2)} '
-          'ring=${ratio(16, 14).toStringAsFixed(2)} pinky=${ratio(20, 18).toStringAsFixed(2)} '
-          'thumb-index=${thumbIndex.toStringAsFixed(2)} thumb-out=${thumbOut.toStringAsFixed(2)} '
-          'thumb-midjoint=${d(4, 10).toStringAsFixed(2)} index-middle=${d(8, 12).toStringAsFixed(2)} '
-          'thumbAcross=${g.thumbAcross.toStringAsFixed(2)} thumbFront=${g.thumbFront.toStringAsFixed(2)} '
-          'spread=${g.indexMiddleAngle.toStringAsFixed(0)}deg cross=${g.indexMiddleCross.toStringAsFixed(2)} '
-          'reach=${g.fingerReach.toStringAsFixed(2)} idxRise=${g.indexRise.toStringAsFixed(2)}');
-    }
-
-    // 1. Finger states.
-    final toStraighten = <String>[], toBend = <String>[], toCurve = <String>[];
-    for (int i = 0; i < 4; i++) {
-      final r = ratio(fingers[i].$1, fingers[i].$2);
-      switch (states[i]) {
-        case 'S':
-          if (r < 1.10) toStraighten.add(fingers[i].$3);
-        case 'B':
-          if (r > 1.0) toBend.add(fingers[i].$3);
-        case 'C':
-          if (r >= 1.18) toCurve.add(fingers[i].$3);
-          if (r < 0.85) toStraighten.add(fingers[i].$3);
-      }
-    }
-    if (toBend.isNotEmpty) return 'Ibaluktot ang ${toBend.join(', ')} para sa Letter $letter.';
-    if (toStraighten.isNotEmpty) return 'Iunat ang ${toStraighten.join(', ')} para sa Letter $letter.';
-    if (toCurve.isNotEmpty) return 'Bahagyang ibaluktot ang ${toCurve.join(', ')} para sa Letter $letter.';
-
-    // 2. Thumb / spacing rules that tell look-alikes apart.
-    switch (letter) {
-      case 'A': // thumb at the side of the index finger, not across / under (S, M, N)
-        if (d(4, 10) < 0.45 || g.thumbAcross > 0.12) return 'Ilagay ang hinlalaki sa gilid ng kamao para sa Letter A.';
-      case 'B': // flat, fully straight fingers (C is curved) and the thumb folded in
-        if (g.fingerReach < 1.70) return 'Iunat nang tuwid ang lahat ng daliri para sa Letter B.';
-        if (d(4, 9) > 0.65) return 'Itiklop ang hinlalaki sa palad para sa Letter B.';
-      case 'X': // index raised and hooked (T folds it down over the thumb)
-        if (g.indexRise < 0.30) return 'Itaas at ikawit ang hintuturo para sa Letter X.';
-      case 'C': // open curve: a gap between thumb and fingers
-        if (thumbIndex < 0.40) return 'Bahagyang ibuka: may puwang dapat ang hinlalaki at mga daliri (Letter C).';
-        if (thumbIndex > 1.50) return 'Ilapit nang kaunti ang hinlalaki sa mga daliri para sa Letter C.';
-      case 'D': // thumb touches the middle finger
-        if (d(4, 12) > 0.55) return 'Idikit ang hinlalaki sa hinlalato para sa Letter D.';
-      case 'E': // tips rest on the thumb, not a tight fist (S)
-        if ([d(4, 8), d(4, 12), d(4, 16)].reduce(math.min) > 0.55) {
-          return 'Ilapit ang dulo ng mga daliri sa hinlalaki para sa Letter E.';
-        }
-        if ((d(8, 0) + d(12, 0) + d(16, 0) + d(20, 0)) / 4 < 0.95) {
-          return 'Huwag isara nang buo ang kamao: nakapatong ang mga daliri sa hinlalaki (Letter E).';
-        }
-      case 'F': // thumb and index tips touch (the circle)
-        if (thumbIndex > 0.35) return 'Pagdikitin ang dulo ng hinlalaki at hintuturo para sa Letter F.';
-      case 'L':
-      case 'Y': // thumb sticks out
-        if (thumbOut < 0.75) return 'Iunat palabas ang hinlalaki para sa Letter $letter.';
-      case 'O': // thumb and fingertips meet
-        if (thumbIndex > 0.40) return 'Pagdikitin ang hinlalaki at mga daliri para bumuo ng bilog (Letter O).';
-      case 'R': // index and middle crossed: the tips swap sides
-        if (g.indexMiddleCross > 0.02) return 'Ipag-krus ang hintuturo at hinlalato para sa Letter R.';
-      case 'U': // index and middle straight, together and not crossed
-        if (g.indexMiddleAngle > 12 || d(8, 12) > 0.40) return 'Pagdikitin ang hintuturo at hinlalato para sa Letter U.';
-        if (g.indexMiddleCross < 0.0) return 'Huwag ipag-krus ang mga daliri para sa Letter U.';
-      case 'V': // index and middle apart
-        if (g.indexMiddleAngle < 18 || d(8, 12) < 0.45) return 'Ibuka ang hintuturo at hinlalato para sa Letter V.';
-    }
-    return null;
-  }
-
-  /// M, N, S, T: no single finger / thumb distance separates them on a
-  /// phone (2026-10-25 logs), but their templates differ as a whole (M-N
-  /// 93.5, S-A 91.7, T vs the rest <= 77 on the template score). So the
-  /// hand must match the target's template better than every look-alike's
-  /// (same 21-point score, [_rivalMargin] points ahead).
-  static const Map<String, List<String>> _rivalLetters = {
-    'M': ['N', 'S', 'A', 'T', 'E'],
-    'N': ['M', 'S', 'A', 'T', 'E'],
-    'S': ['M', 'N', 'A', 'T', 'E', 'O'],
-    'T': ['M', 'N', 'S', 'A', 'O', 'F'],
-  };
-  static const double _rivalMargin = 0.5;
-  static final Map<String, List<dynamic>> _rivalTemplates = {};
-  int _lastRivalLogMs = 0;
-
-  /// Bundled look-alike templates (assets/alphabet/<L>.json), offline.
-  Future<void> _loadRivalTemplates(String letter) async {
-    // The target too, so all templates being compared come from one set.
-    for (final r in [letter, ...?_rivalLetters[letter]]) {
-      if (_rivalTemplates.containsKey(r)) continue;
-      try {
-        _rivalTemplates[r] = jsonDecode(await rootBundle.loadString('assets/alphabet/$r.json')) as List<dynamic>;
-      } catch (e) {
-        debugPrint('No look-alike template for $r: $e');
-      }
-    }
-  }
-
-  String? _rivalProblem(Hand hand, String letter) {
-    final template = _rivalTemplates[letter] ?? _template;
-    if (template == null) return null;
-    final target = _calculateScore(hand.landmarks, template);
-    String? bestRival;
-    double rivalScore = 0;
-    for (final r in _rivalLetters[letter]!) {
-      final t = _rivalTemplates[r];
-      if (t == null) continue;
-      final sc = _calculateScore(hand.landmarks, t);
-      if (sc > rivalScore) {
-        rivalScore = sc;
-        bestRival = r;
-      }
-    }
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastRivalLogMs > 700) {
-      _lastRivalLogMs = now;
-      debugPrint('Letter $letter rivals: target=${target.toStringAsFixed(1)} '
-          'best rival=$bestRival ${rivalScore.toStringAsFixed(1)}');
-    }
-    if (bestRival == null || target >= rivalScore + _rivalMargin) return null;
-    return 'Mukhang Letter $bestRival ito. Tingnan muli ang larawan ng Letter $letter, lalo na ang hinlalaki.';
-  }
-
-  String? _trickyShapeProblem(Hand hand, String letter) {
-    if (_rivalLetters.containsKey(letter)) {
-      if (hand.landmarks.length < 21) return null;
-      return _rivalProblem(hand, letter);
-    }
-    if (_fingerRuleLetters.contains(letter)) {
-      if (hand.landmarks.length < 21) return null;
-      return _fingerRuleProblem(_toSelfieView(hand), letter);
-    }
-    final spec = _trickyShapes[letter];
-    if (spec == null || hand.landmarks.length < 21) return null;
-    final p = _toSelfieView(hand);
-    double ratio(int tip, int pip) => p[tip].distanceTo(p[0]) / (p[pip].distanceTo(p[0]) + 1e-6);
-    bool extended(int tip, int pip) => ratio(tip, pip) >= 1.10;
-    bool folded(int tip, int pip) => ratio(tip, pip) <= 1.05;
-
-    if (!extended(8, 6)) return 'Iunat ang hintuturo para sa Letter $letter.';
-    if (spec.middleUp && !extended(12, 10)) return 'Iunat din ang hinlalato para sa Letter $letter.';
-    final mustFold = [
-      if (spec.middleFolded && !folded(12, 10)) 'hinlalato',
-      if (!folded(16, 14)) 'palasingsingan',
-      if (!folded(20, 18)) 'kalingkingan',
-    ];
-    if (mustFold.isNotEmpty) return 'Itikom ang ${mustFold.join(', ')} para sa Letter $letter.';
-
-    // Pointing direction of the index finger (knuckle -> tip), y points down.
-    final dx = p[8].x - p[5].x, dy = p[8].y - p[5].y;
-    final ax = dx.abs(), ay = dy.abs();
-    const tan50 = 1.19;
-    switch (spec.dir) {
-      case 'side':
-        if (ay > ax * tan50) return 'Itagilid ang kamay: pahalang dapat ang hintuturo.';
-      case 'up':
-        if (!(dy < 0 && ax <= ay * tan50)) return 'Ituro pataas ang hintuturo para sa Letter $letter.';
-      case 'down':
-        if (!(dy > 0 && ax <= ay * tan50)) return 'Ituro pababa ang hintuturo para sa Letter $letter.';
-    }
-
-    // Look-alikes the checks above let through.
-    final palm = p[9].distanceTo(p[0]) + 1e-6;
-    double dd(int a, int b) => p[a].distanceTo(p[b]) / palm;
-    final middleOut = dd(12, 9); // middle tip -> its knuckle: ~0.4 folded, 0.7+ out
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastRuleLogMs > 700) {
-      _lastRuleLogMs = now;
-      debugPrint('Letter $letter shape: middleOut=${middleOut.toStringAsFixed(2)} thumb-midjoint=${dd(4, 10).toStringAsFixed(2)} '
-          'thumb-ringjoint=${dd(4, 14).toStringAsFixed(2)} thumbOut=${dd(4, 5).toStringAsFixed(2)}');
-    }
-    switch (letter) {
-      case 'K': // index up, middle out, thumb between them on the middle finger
-        // (L and D fold the middle, V / peace sign rests the thumb on the ring
-        // finger, B has every finger up)
-        if (middleOut < 0.65) return 'Iunat din ang hinlalato para sa Letter K.';
-        if (dd(4, 10) > 0.60 || dd(4, 10) > dd(4, 14)) {
-          return 'Ilagay ang hinlalaki sa pagitan ng hintuturo at hinlalato para sa Letter K.';
-        }
-      case 'P': // like K pointing down: the middle finger sticks out (Q folds it)
-        if (middleOut < 0.65) return 'Iunat din ang hinlalato pababa para sa Letter P.';
-        if (dd(4, 10) > 0.65) return 'Idikit ang hinlalaki sa hinlalato para sa Letter P.';
-      case 'Q': // index and thumb point down together, middle folded (P sticks it out)
-        if (middleOut > 0.55) return 'Itikom ang hinlalato para sa Letter Q.';
-        if (dd(4, 5) < 0.55 || p[4].y <= p[2].y) return 'Ituro pababa ang hinlalaki kasama ang hintuturo para sa Letter Q.';
-    }
-    return null;
   }
 
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
@@ -2035,18 +1760,14 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                 ? "Tama ang posisyon! Hawakan ang kamay."
                 : "I-adjust ang posisyon para sa Letter $letter.";
 
-            // Tricky letters: the shape must also be right (majority of the
-            // last 5 frames, so one noisy frame does not reset the hold).
-            if ((_trickyLetters.contains(letter) || _fingerRuleLetters.contains(letter) || _rivalLetters.containsKey(letter)) &&
-                bestHand != null) {
-              final problem = _trickyShapeProblem(bestHand, letter);
-              if (problem != null) _lastTrickyProblem = problem;
-              _trickyShapeHistory.add(problem == null);
-              if (_trickyShapeHistory.length > 5) _trickyShapeHistory.removeAt(0);
-              final okFrames = _trickyShapeHistory.where((ok) => ok).length;
-              if (okFrames * 2 <= _trickyShapeHistory.length) {
+            // Look-alike letters: the shape must also be right (shared with
+            // the activities and games, services/dynamic_sign_judge.dart).
+            if (bestHand != null) {
+              final problem = _shapeChecker.check(bestHand, letter,
+                  imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _handRotation);
+              if (problem != null) {
                 score = math.min(score, successThreshold - 5);
-                feedback = _lastTrickyProblem ?? feedback;
+                feedback = problem;
               }
             }
           }
