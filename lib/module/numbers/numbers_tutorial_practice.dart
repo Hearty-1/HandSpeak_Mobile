@@ -595,7 +595,7 @@ static int get debugLoadedGroup => _loadedRangeGroup;
       detectedNumber: targetNumber,
       isCorrect: true,
       accuracyScore: score,
-      feedback: "Mahusay! Wastong kumpas at porma para sa Number $targetNumber (${score.toStringAsFixed(1)}%)",
+      feedback: "Mahusay! Wastong kumpas at porma para sa Number $targetNumber",
       kineticEnergy: kineticEnergy,
     );
   }
@@ -979,11 +979,11 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     if (usable.isEmpty) {
       _prevFrame = null;
       _resetSign();
-      if (mounted && _currentFeedback != "Walang kamay na nakikita") {
+      if (mounted && _currentFeedback != "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.") {
         setState(() {
           _currentScore = 0.0;
           _holdProgress = 0.0;
-          _currentFeedback = "Walang kamay na nakikita";
+          _currentFeedback = "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.";
         });
       }
       return;
@@ -1222,7 +1222,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
             _currentScore = 0.0;
             _holdProgress = 0.0;
             _startHoldTime = null;
-            _currentFeedback = "Walang kamay na nakikita";
+            _currentFeedback = "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.";
           });
         }
       }
@@ -1756,7 +1756,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                           ),
                         ],
                       )
-                    ] else ...[
+                    ] else if (_isStaticSign) ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(30),
                         child: SmartBlur(

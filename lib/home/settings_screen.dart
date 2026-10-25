@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,6 +17,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  static const int _otpValidMinutes = 10;
+
   bool _twoFactorEnabled = false;
 
   @override
@@ -27,12 +30,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadPreferences() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      // Check actual Firebase MFA status instead of just Firestore preference
-      final enrolledFactors = await user.multiFactor.getEnrolledFactors();
-      bool isMfaEnabled = enrolledFactors.isNotEmpty;
-
       final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      if (doc.exists && doc.data()!.containsKey('preferences')) {
+      if (doc.exists) {
+        final data = doc.data()!;
+        bool isMfaEnabled = false;
+
+        if (data.containsKey('twoFactorEnabled')) {
+          isMfaEnabled = data['twoFactorEnabled'] == true;
+        } else if (data.containsKey('preferences') && data['preferences'] is Map) {
+          isMfaEnabled = data['preferences']['twoFactorEnabled'] == true;
+        }
+
         if (mounted) {
           setState(() {
             _twoFactorEnabled = isMfaEnabled;
@@ -48,139 +56,209 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'preferences': {
           key: value,
-        }
+        },
+        'twoFactorEnabled': value,
       }, SetOptions(merge: true));
     }
   }
 
   Future<void> _handle2FAToggle(bool enable) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null || user.email == null || user.email!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No valid email address found on account.")),
+      );
+      setState(() => _twoFactorEnabled = false);
+      return;
+    }
+
+    final email = user.email!;
 
     if (enable) {
-      String? phoneNumber = await _showPhoneNumberPrompt(context);
-      if (phoneNumber == null || phoneNumber.isEmpty) {
-        setState(() => _twoFactorEnabled = false);
-        return;
-      }
+      // 1. Generate a 6-digit verification code
+      // Random.secure: a predictable code is no protection.
+      final String generatedOtp = (100000 + Random.secure().nextInt(900000)).toString();
+      final DateTime expiresAt = DateTime.now().add(const Duration(minutes: _otpValidMinutes));
 
       try {
-        final session = await user.multiFactor.getSession();
+        // Save OTP payload to Firestore for trigger/cloud email dispatch
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'twoFactorOTP': {
+            'code': generatedOtp,
+            'createdAt': FieldValue.serverTimestamp(),
+            'expiresAt': Timestamp.fromDate(expiresAt),
+            'email': email,
+          }
+        }, SetOptions(merge: true));
 
-        await FirebaseAuth.instance.verifyPhoneNumber(
-          multiFactorSession: session,
-          phoneNumber: phoneNumber,
-          verificationCompleted: (_) {},
-          verificationFailed: (FirebaseAuthException e) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? "Verification failed")));
-            setState(() => _twoFactorEnabled = false);
-          },
-          codeSent: (String verificationId, int? resendToken) async {
-            String? smsCode = await _showSmsCodePrompt(context);
-            if (smsCode != null && smsCode.isNotEmpty) {
-              try {
-                final credential = PhoneAuthProvider.credential(
-                  verificationId: verificationId,
-                  smsCode: smsCode,
-                );
-                final assertion = PhoneMultiFactorGenerator.getAssertion(credential);
-                
-                await user.multiFactor.enroll(assertion, displayName: "Primary Phone");
-                
-                setState(() => _twoFactorEnabled = true);
-                await _updatePreference('twoFactorEnabled', true);
-                
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("2FA successfully enabled.")));
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid SMS code.")));
-                }
-                setState(() => _twoFactorEnabled = false);
-              }
-            } else {
-              setState(() => _twoFactorEnabled = false);
-            }
-          },
-          codeAutoRetrievalTimeout: (_) {},
-        );
+        // Send confirmation email & notification
+        await _sendEmailVerificationCode(user, email, generatedOtp);
+
+        if (!mounted) return;
+
+        // Prompt user to enter the 6-digit email code
+        String? enteredCode = await _showEmailCodePrompt(context, email);
+
+        final bool expired = DateTime.now().isAfter(expiresAt);
+        if (enteredCode != null && !expired && enteredCode.trim() == generatedOtp) {
+          setState(() => _twoFactorEnabled = true);
+          await _updatePreference('twoFactorEnabled', true);
+
+          // Clear temporary OTP data after successful verification
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+            'twoFactorOTP': FieldValue.delete(),
+            'twoFactorEnabled': true,
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("2FA via Email successfully enabled.")),
+            );
+          }
+        } else {
+          if (mounted && enteredCode != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(expired
+                  ? "That code has expired. Turn 2FA on again to get a new code."
+                  : "Invalid verification code. 2FA not enabled.")),
+            );
+          }
+          setState(() => _twoFactorEnabled = false);
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to start 2FA enrollment.")));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Failed to enable Email 2FA: $e")),
+          );
+        }
         setState(() => _twoFactorEnabled = false);
       }
     } else {
       try {
-        final enrolledFactors = await user.multiFactor.getEnrolledFactors();
-        for (var factor in enrolledFactors) {
-          await user.multiFactor.unenroll(factorUid: factor.uid);
-        }
         setState(() => _twoFactorEnabled = false);
         await _updatePreference('twoFactorEnabled', false);
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'twoFactorEnabled': false,
+        }, SetOptions(merge: true));
+
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("2FA successfully disabled.")));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("2FA successfully disabled.")),
+          );
         }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to disable 2FA.")));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Failed to disable 2FA.")),
+          );
+        }
         setState(() => _twoFactorEnabled = true);
       }
     }
   }
 
-  Future<String?> _showPhoneNumberPrompt(BuildContext context) async {
-    final controller = TextEditingController();
-    final theme = Theme.of(context);
-    
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: theme.cardColor,
-        title: Text("Enter Phone Number", style: TextStyle(color: theme.colorScheme.onBackground)),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.phone,
-          decoration: InputDecoration(
-            hintText: "+1234567890",
-            hintStyle: TextStyle(color: theme.colorScheme.onBackground.withOpacity(0.5)),
-          ),
-          style: TextStyle(color: theme.colorScheme.onBackground),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800)),
-            child: const Text("Send Code", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+  Future<void> _sendEmailVerificationCode(User user, String email, String code) async {
+  try {
+    await FirebaseFirestore.instance.collection('mail').add({
+      'to': [email], // TOP-LEVEL ARRAY of emails
+      'message': {
+        // Code first in the subject, so it shows in the notification preview.
+        'subject': '$code is your HandSpeak verification code',
+        'text': _otpEmailText(code, email),
+        'html': _otpEmailHtml(code, email),
+      },
+    });
+  } catch (e) {
+    debugPrint("FIREBASE MAIL ERROR: $e");
   }
 
-  Future<String?> _showSmsCodePrompt(BuildContext context) async {
+  // Dispatch in-app notification record
+  await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+    'notifications': FieldValue.arrayUnion([
+      {
+        'title': '2FA Security Code 🔒',
+        'body': 'We sent a 6-digit verification code to $email. It expires in $_otpValidMinutes minutes.',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'isRead': false,
+      }
+    ])
+  }, SetOptions(merge: true));
+}
+
+  Future<String?> _showEmailCodePrompt(BuildContext context, String email) async {
     final controller = TextEditingController();
     final theme = Theme.of(context);
-    
+    final textColor = theme.colorScheme.onBackground;
+
     return showDialog<String>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: theme.cardColor,
-        title: Text("Enter SMS Code", style: TextStyle(color: theme.colorScheme.onBackground)),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            hintText: "123456",
-            hintStyle: TextStyle(color: theme.colorScheme.onBackground.withOpacity(0.5)),
-          ),
-          style: TextStyle(color: theme.colorScheme.onBackground),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            const Icon(CupertinoIcons.mail_solid, color: Color(0xFFFFB800)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Enter Email Code",
+                style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "A 6-digit verification code has been dispatched to:\n$email",
+              style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 18),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 8,
+              ),
+              decoration: InputDecoration(
+                hintText: "123456",
+                counterText: "",
+                hintStyle: TextStyle(color: textColor.withOpacity(0.3), letterSpacing: 8),
+                filled: true,
+                fillColor: theme.disabledColor.withOpacity(0.08),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFFFB800), width: 1.5),
+                ),
+              ),
+            ),
+          ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Cancel", style: TextStyle(color: textColor.withOpacity(0.6))),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800)),
-            child: const Text("Verify", style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFFB800),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: const Text("Verify", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -319,7 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 secondary: Icon(CupertinoIcons.shield_fill, color: textColor.withOpacity(0.6)),
                 title: Text("Two-Factor Authentication", style: TextStyle(color: textColor)),
                 subtitle: Text(
-                  "Add extra security to your account with 2FA",
+                  "Add extra security to your account with Email 2FA",
                   style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 12),
                 ),
                 value: _twoFactorEnabled,
@@ -688,4 +766,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// 2FA email (verification code)
+// ---------------------------------------------------------------------------
+// Industry-standard one-time-code email: table layout with inline CSS (works
+// in Gmail, Outlook, Apple Mail, dark mode), hidden preheader, the code large
+// and copyable, how long it is valid, what to do if it was not you, and no
+// links or buttons to click (codes are typed, which avoids phishing look-alikes).
+
+String _otpEmailText(String code, String email) => '''
+HandSpeak verification code
+
+Your verification code is: $code
+
+Enter this code in the HandSpeak app to turn on 2-step verification.
+It expires in 10 minutes and can only be used once.
+
+Never share this code. HandSpeak will never ask you for it by phone, chat or email.
+
+Didn't request this? Ignore this email: your account stays unchanged. If you
+keep getting codes you didn't ask for, change your HandSpeak password.
+
+This email was sent to $email because a 2-step verification code was requested for your HandSpeak account.
+© ${DateTime.now().year} HandSpeak
+''';
+
+String _otpEmailHtml(String code, String email) {
+  final spaced = code.split('').join('&#8202;'); // hair space: easy to read, still copies as one code
+  final year = DateTime.now().year;
+  return '''
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>Your HandSpeak verification code</title>
+<style>
+  @media (prefers-color-scheme: dark) {
+    .bg { background:#14161a !important; }
+    .card { background:#1f2228 !important; border-color:#2c3038 !important; }
+    .text { color:#e8eaed !important; }
+    .muted { color:#a6abb3 !important; }
+    .codebox { background:#2a2440 !important; border-color:#4b3f80 !important; }
+    .code { color:#c9b8ff !important; }
+  }
+  @media only screen and (max-width:520px) {
+    .card { padding:28px 20px !important; }
+    .code { font-size:32px !important; letter-spacing:6px !important; }
+  }
+</style>
+</head>
+<body class="bg" style="margin:0;padding:0;background:#f3f4f7;">
+  <!-- Preheader: shown next to the subject in the inbox, hidden in the body -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">
+    Your code is $code. It expires in 10 minutes. Never share it with anyone.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bg" style="background:#f3f4f7;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+          <tr>
+            <td align="center" style="padding:0 0 20px 0;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+              <span style="display:inline-block;width:40px;height:40px;line-height:40px;border-radius:12px;background:#6c4ee3;color:#ffffff;font-size:20px;font-weight:800;text-align:center;vertical-align:middle;">H</span>
+              <span class="text" style="font-size:20px;font-weight:800;color:#1d1f24;vertical-align:middle;padding-left:8px;">HandSpeak</span>
+            </td>
+          </tr>
+          <tr>
+            <td class="card" style="background:#ffffff;border:1px solid #e3e5ea;border-radius:16px;padding:36px 32px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+              <h1 class="text" style="margin:0 0 12px 0;font-size:22px;line-height:1.3;color:#1d1f24;font-weight:800;">Your verification code</h1>
+              <p class="muted" style="margin:0 0 24px 0;font-size:15px;line-height:1.55;color:#555b66;">
+                Enter this code in the HandSpeak app to turn on 2-step verification for your account.
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" class="codebox" style="background:#f1edff;border:1px solid #d9d0ff;border-radius:12px;padding:20px 12px;">
+                    <span class="code" style="font-family:'SFMono-Regular',Consolas,'Courier New',monospace;font-size:36px;font-weight:700;letter-spacing:8px;color:#4a2fc2;">$spaced</span>
+                  </td>
+                </tr>
+              </table>
+              <p class="muted" style="margin:20px 0 0 0;font-size:14px;line-height:1.55;color:#555b66;text-align:center;">
+                This code expires in <strong class="text" style="color:#1d1f24;">10 minutes</strong> and can only be used once.
+              </p>
+              <hr style="border:none;border-top:1px solid #e3e5ea;margin:28px 0;">
+              <p class="text" style="margin:0 0 8px 0;font-size:14px;line-height:1.55;color:#1d1f24;font-weight:700;">Didn't request this?</p>
+              <p class="muted" style="margin:0 0 16px 0;font-size:14px;line-height:1.55;color:#555b66;">
+                You can safely ignore this email. Your account stays unchanged. If you keep getting codes you didn't ask for, change your HandSpeak password.
+              </p>
+              <p class="muted" style="margin:0;font-size:13px;line-height:1.55;color:#555b66;">
+                &#128274; Never share this code. HandSpeak will never ask for it by phone, chat or email.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" class="muted" style="padding:20px 8px 0 8px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#8a909b;">
+              This email was sent to $email because a 2-step verification code was requested for your HandSpeak account.<br>
+              &copy; $year HandSpeak &middot; Filipino Sign Language learning
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+''';
 }

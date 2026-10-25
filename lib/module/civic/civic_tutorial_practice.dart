@@ -15,6 +15,7 @@ import '/services/handspeak_api_service.dart';
 import '/services/holistic_capture.dart' show HolisticResult;
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
+import '/widgets/practice_feedback.dart';
 
 
 // =============================================================================
@@ -588,6 +589,13 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   // Evaluation via Cloud Run (/v1/predict_raw: full v4 pipeline server-side)
   // ---------------------------------------------------------------------------
 
+  /// Feedback colour, same scheme as the other tutorial practices.
+  FeedbackTone get _feedbackTone {
+    if (_isSuccessAchieved) return FeedbackTone.success;
+    if (_isRecording || _isEvaluating || _countdown > 0 || _currentScore <= 0) return FeedbackTone.info;
+    return _currentScore >= 0.4 ? FeedbackTone.almost : FeedbackTone.tryAgain;
+  }
+
   void _showFeedback(String text, {double score = 0.0}) {
     if (!mounted || _isDisposed) return;
     setState(() {
@@ -1050,13 +1058,13 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_isRecording) ...[
-                        const Icon(Icons.fiber_manual_record, color: Colors.redAccent, size: 12),
+                        Icon(Icons.fiber_manual_record, color: theme.colorScheme.primary, size: 12),
                         const SizedBox(width: 4),
                       ],
                       Text(
                         _isRecording ? "Recording" : (_isEvaluating ? "Evaluating..." : "Frame Body"),
                         style: TextStyle(
-                          color: _isRecording ? Colors.redAccent : Colors.white,
+                          color: Colors.white,
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
@@ -1181,7 +1189,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                               Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                               const SizedBox(width: 8),
                               Text(
-                                !context.rolesRead.isStudent ? "Success! Correct sign" : (_practiceXpGained > 0 ? "Success! +$_practiceXpGained XP" : "Success! (daily XP limit reached)"),
+                                !context.rolesRead.isStudent ? "Mahusay! Tumpak ang kumpas" : (_practiceXpGained > 0 ? "Mahusay! +$_practiceXpGained XP" : "Mahusay! (naabot na ang XP ngayong araw)"),
                                 style: const TextStyle(
                                     color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
                               ),
@@ -1189,7 +1197,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            "Loading next line...",
+                            "Susunod na linya...",
                             style: TextStyle(
                                 color: theme.colorScheme.onSurface.withOpacity(0.6),
                                 fontWeight: FontWeight.w600,
@@ -1202,60 +1210,20 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 ),
               )
             else ...[
-              if (_countdown > 0)
-                Text('Arms down… $_countdown',
-                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.orange))
-              else if (_isRecording)
-                Text(
-                  "Recording... ${elapsed.toStringAsFixed(1)}s",
-                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900, fontSize: 16),
-                )
-              else
-                Text(
-                  !_poseVisible
-                      ? 'Lumayo nang kaunti para makita ang balikat at mga kamay'
-                      : 'Nakikita ang katawan ✓  Pindutin ang RECORD',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: _poseVisible ? Colors.green : Colors.orange, fontWeight: FontWeight.w600),
-                ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 64,
-                width: 64,
-                child: FloatingActionButton(
-                  heroTag: 'civic_practice_record_button',
-                  backgroundColor: busy ? Colors.red : theme.primaryColor,
-                  foregroundColor: Colors.white,
-                  elevation: 8,
-                  onPressed: (_isEvaluating || !_isInitialized) ? null : _toggleRecording,
-                  child: _isEvaluating
-                      ? const SizedBox(
-                          width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))
-                      : Icon(_countdown > 0 ? Icons.close : (_isRecording ? Icons.stop : Icons.fiber_manual_record),
-                          size: 32),
-                ),
+              _RecordControls(
+                heroTag: 'civic_practice_record_button',
+                countdown: _countdown,
+                isRecording: _isRecording,
+                isEvaluating: _isEvaluating,
+                elapsed: elapsed,
+                recordProgress: elapsed / _maxRecording.inSeconds,
+                bodyVisible: _poseVisible,
+                showButton: _isInitialized,
+                onRecord: _toggleRecording,
+                width: 220,
               ),
               const SizedBox(height: 16),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(30),
-                child: SmartBlur(
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: theme.cardColor.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: theme.colorScheme.surface.withOpacity(0.8), width: 1.5),
-                    ),
-                    child: Text(
-                      _currentFeedback,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.8), fontWeight: FontWeight.w700, fontSize: 14),
-                    ),
-                  ),
-                ),
-              ),
+              PracticeFeedback(message: _currentFeedback, tone: _feedbackTone),
             ],
           ];
 
@@ -1392,7 +1360,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   Widget _buildPracticeUI(ThemeData theme) {
     bool isPassing = _currentScore >= successThreshold;
     final currentItem = _activeQuestions[_currentStep];
-    final bool busy = _isRecording || _countdown > 0;
     final double elapsed = (_isRecording && _recordStart != null)
         ? DateTime.now().difference(_recordStart!).inMilliseconds / 1000.0
         : 0.0;
@@ -1495,63 +1462,20 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           // Camera Preview Box with Dynamic Success Highlight
           if (!landscape) SizedBox(width: 220, height: 220, child: cameraPane),
           const SizedBox(height: 8),
-          if (_countdown > 0)
-            Text(
-              'Ihanda ang sarili… $_countdown',
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-            )
-          else if (_isRecording)
-            Text('Nagre-record… ${_recorded.length} frames • ${elapsed.toStringAsFixed(1)}s'
-                '${elapsed > 0.5 ? ' • ${(_recorded.length / elapsed).toStringAsFixed(1)} fps' : ''}')
-          else
-            Text(
-              !_poseVisible
-                  ? 'Lumayo nang kaunti para makita ang balikat at mga kamay'
-                  : 'Nakikita ang katawan ✓  Pindutin ang RECORD',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: _poseVisible ? Colors.green : Colors.orange),
-            ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 64,
-            width: 64,
-            child: FloatingActionButton(
-              heroTag: 'civic_record_button',
-              backgroundColor: busy ? Colors.red : Colors.white,
-              foregroundColor: busy ? Colors.white : Colors.black,
-              onPressed: (_isSuccessAchieved || _isEvaluating || !_isInitialized) ? null : _toggleRecording,
-              child: _isEvaluating
-                  ? const SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 3))
-                  : Icon(
-                      _countdown > 0 ? Icons.close : (_isRecording ? Icons.stop : Icons.fiber_manual_record),
-                      size: 32,
-                    ),
-            ),
+          _RecordControls(
+            heroTag: 'civic_record_button',
+            countdown: _countdown,
+            isRecording: _isRecording,
+            isEvaluating: _isEvaluating,
+            elapsed: elapsed,
+            recordProgress: elapsed / _maxRecording.inSeconds,
+            bodyVisible: _poseVisible,
+            showButton: _isInitialized && !_isSuccessAchieved,
+            onRecord: _toggleRecording,
+            width: 220,
           ),
           const SizedBox(height: 16),
-          Text(
-            _currentFeedback,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _isSuccessAchieved || isPassing ? Colors.green : theme.primaryColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 12),
-          LinearProgressIndicator(
-            value: _isRecording
-                ? (elapsed / _maxRecording.inSeconds).clamp(0.0, 1.0).toDouble()
-                : _currentScore.clamp(0.0, 1.0).toDouble(),
-            color: _isSuccessAchieved || isPassing ? Colors.green : theme.primaryColor,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            // On a miss this is the model's vote share for the target line.
-            "${_isSuccessAchieved ? 'Katiyakan' : 'Tugma sa linyang ito'}: "
-            "${(_currentScore * 100).toStringAsFixed(1)}%",
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
+          PracticeFeedback(message: _currentFeedback, tone: _feedbackTone),
         ],
       ),
     );
@@ -1727,6 +1651,159 @@ class _CameraView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Record controls under the camera. Kept identical in
+/// phrase_tutorial_practice.dart and civic_tutorial_practice.dart:
+/// one status line (countdown / recording bar / checking bar / body hint)
+/// and the round record button, in the same look on every screen.
+class _RecordControls extends StatelessWidget {
+  final int countdown;
+  final bool isRecording;
+  final bool isEvaluating;
+
+  /// Seconds recorded so far, and how full the recording bar is (0-1).
+  final double elapsed;
+  final double recordProgress;
+
+  /// Body / hands in view (shown while idle).
+  final bool bodyVisible;
+
+  /// null disables the button.
+  final VoidCallback? onRecord;
+  final bool showButton;
+  final double? width;
+  final String heroTag;
+
+  const _RecordControls({
+    required this.countdown,
+    required this.isRecording,
+    required this.isEvaluating,
+    required this.elapsed,
+    required this.recordProgress,
+    required this.bodyVisible,
+    required this.onRecord,
+    required this.heroTag,
+    this.showButton = true,
+    this.width,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final barWidth = width ?? MediaQuery.sizeOf(context).width * 0.70;
+
+    // One animation only (extra spinners made the camera lag): a static
+    // dot + the bar; the record button is hidden while checking.
+    Widget bar(String label, double? value) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.circle, size: 10, color: primary),
+                const SizedBox(width: 8),
+                Text(label, style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SmartBlur(
+                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                child: Container(
+                  width: barWidth,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: AnimatedFractionallySizedBox(
+                      duration: const Duration(milliseconds: 200),
+                      widthFactor: value ?? 0.5,
+                      child: Container(
+                        decoration: BoxDecoration(color: primary, borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+
+    final Widget status;
+    if (countdown > 0) {
+      status = Text(
+        'Ibaba ang mga kamay… $countdown',
+        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF08C00)),
+      );
+    } else if (isRecording) {
+      status = bar('Nagre-record... ${elapsed.toStringAsFixed(1)}s', recordProgress.clamp(0.0, 1.0));
+    } else if (isEvaluating) {
+      status = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Sinusuri ang kumpas...', style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14)),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: barWidth,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: LinearProgressIndicator(minHeight: 14, color: primary, backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.4)),
+            ),
+          ),
+        ],
+      );
+    } else {
+      status = Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(bodyVisible ? Icons.check_circle_rounded : Icons.accessibility_new_rounded,
+              size: 18, color: bodyVisible ? const Color(0xFF2E9E4F) : const Color(0xFFF08C00)),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              bodyVisible ? 'Nakikita ang katawan. Pindutin ang RECORD' : 'Lumayo nang kaunti para makita ang balikat at mga kamay',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: bodyVisible ? const Color(0xFF2E9E4F) : const Color(0xFFF08C00),
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        status,
+        if (showButton && !isEvaluating) ...[
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 64,
+            width: 64,
+            child: FloatingActionButton(
+              heroTag: heroTag,
+              backgroundColor: theme.primaryColor,
+              foregroundColor: Colors.white,
+              disabledElevation: 0,
+              elevation: 8,
+              onPressed: onRecord,
+              child: Icon(countdown > 0 ? Icons.close : (isRecording ? Icons.stop : Icons.fiber_manual_record), size: 32),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

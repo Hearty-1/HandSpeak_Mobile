@@ -2,7 +2,12 @@ package com.example.flutter_application_1
 
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.content.Context
+import android.os.Build
 import android.os.Handler
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.os.Looper
 import android.os.SystemClock
 import io.flutter.embedding.android.FlutterActivity
@@ -67,6 +72,38 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         worker.execute { initMediaPipe() }
+
+        // Deaf-friendly practice feedback: real vibration patterns (Flutter's
+        // HapticFeedback only plays faint touch clicks that many phones skip
+        // when "touch vibration" is off). Args: {"pattern": [off, on, off, on...] ms}.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "handspeak/vibrate").setMethodCallHandler { call, result ->
+            if (call.method != "pattern") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            try {
+                val pattern = (call.argument<List<Int>>("pattern") ?: listOf(0, 80)).map { it.toLong() }.toLongArray()
+                val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= 31) {
+                    (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+                } else {
+                    @Suppress("DEPRECATION")
+                    getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                }
+                if (vibrator == null || !vibrator.hasVibrator()) {
+                    result.success(false)
+                } else {
+                    if (Build.VERSION.SDK_INT >= 26) {
+                        vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(pattern, -1)
+                    }
+                    result.success(true)
+                }
+            } catch (e: Exception) {
+                result.success(false)
+            }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method != "processFrame") {

@@ -238,7 +238,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   int _xpGained = 0; // XP actually awarded (0 when the phrase was mastered before)
 
   // UI text
-  String _status = 'Preparing…';
+  String _status = 'Inihahanda…';
   String _resultTitle = '';
   String _resultDetail = '';
   Color _resultColor = Colors.grey;
@@ -333,7 +333,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
   Future<void> _fetchConfig() async {
     try {
-      _setStatus('Loading training config…');
+      _setStatus('Inihahanda ang pagsusuri…');
       final key = PhraseRecognizer.normalizeKey(widget.targetPhrase);
       final col = FirebaseFirestore.instance.collection('gesture_training_data');
       const timeout = Duration(seconds: 4);
@@ -407,7 +407,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _setStatus('2/3 Opening camera…');
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
-        _fail('No camera found on this device.');
+        _fail('Walang camera sa device na ito.');
         return;
       }
       final cam = cameras.firstWhere(
@@ -441,10 +441,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
       if (!mounted || _disposed) return;
       setState(() {
-        _status = 'Stand back so your upper body is visible,\nthen tap RECORD.';
+        _status = 'Lumayo nang kaunti para makita ang balikat at mga kamay,\nsaka pindutin ang RECORD.';
       });
     } on CameraException catch (e) {
-      _fail('Camera error (${e.code}): ${e.description ?? ''}\nCheck camera permission.');
+      _fail('Camera error (${e.code}): ${e.description ?? ''}\nTingnan ang pahintulot sa camera.');
     } catch (e) {
       _fail('Failed at $stage:\n$e');
     }
@@ -611,7 +611,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _resultTitle = '';
       _resultDetail = '';
       _resultColor = Colors.grey;
-      _status = 'Lower your arms to your sides…';
+      _status = 'Ibaba ang mga kamay at pumwesto...';
     });
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted || _disposed) {
@@ -646,7 +646,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _countdown = 0;
       _isRecording = true;
       _recordStart = DateTime.now();
-      _status = 'Sign now! Lower your hands when finished.';
+      _status = 'Isagawa ang kumpas, saka ibaba ang mga kamay.';
     });
   }
 
@@ -656,7 +656,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     if (_countdown > 0) {
       _countdown = 0;
       if (mounted && !_disposed) {
-        setState(() => _status = 'Cancelled. Tap RECORD to try again.');
+        setState(() => _status = 'Kinansela. Pindutin ang RECORD para ulitin.');
       }
       return;
     }
@@ -666,7 +666,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       setState(() {
         _isRecording = false;
         _recordStart = null;
-        _status = 'Recording cancelled. Tap RECORD to try again.';
+        _status = 'Kinansela. Pindutin ang RECORD para ulitin.';
       });
     } else {
       _isRecording = false;
@@ -726,7 +726,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _resultTitle = title;
       _resultDetail = detail;
       _resultColor = color;
-      _status = 'Tap RECORD to try again.';
+      _status = 'Pindutin ang RECORD para ulitin.';
     });
   }
 
@@ -759,8 +759,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     final window = PhraseRecognizer.trainingWindow(hasHands.sublist(0, usable));
     if (window == null) {
       _showResult(
-        title: "I can't see your hands",
-        detail: 'Start with your arms down, then raise your hands to sign inside the camera.',
+        title: 'Walang nakitang kamay',
+        detail: 'Magsimula nang nakababa ang mga kamay, saka itaas at isagawa ang kumpas sa harap ng camera.',
         color: Colors.red,
       );
       return;
@@ -770,8 +770,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
     if (!PhraseRecognizer.fillMissingPose(clip, clipPose)) {
       _showResult(
-        title: 'Step back a little',
-        detail: 'Show your shoulders, elbows and hands to the camera.',
+        title: 'Lumayo nang kaunti',
+        detail: 'Ipakita ang balikat, siko at mga kamay sa camera.',
         color: Colors.red,
       );
       return;
@@ -779,8 +779,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     
     if (clip.length < PhraseRecognizer.minRecordedFrames) {
       _showResult(
-        title: 'A little too fast!',
-        detail: 'Sign slightly slower so the camera can see every part.',
+        title: 'Medyo mabilis!',
+        detail: 'Bagalan nang kaunti para makita ng camera ang buong kumpas.',
         color: Colors.red,
       );
       return;
@@ -790,7 +790,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _isEvaluating = true;
       _isRecording = false;
       _recordStart = null;
-      _status = 'Analyzing motion...';
+      _status = 'Sinusuri ang kumpas...';
     });
 
     final Float32List seq = _recognizer.prepareStandardSequence(clip, PhraseRecognizer.sequenceLength);
@@ -813,13 +813,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           ? eval.probPercent(_targetIndex)
           : (rightSign ? eval.top1Prob : 0.0);
       debugPrint('Greeting: top ${eval.top1Label} ${eval.top1Prob.toStringAsFixed(1)}%, margin ${eval.margin.toStringAsFixed(1)}%');
+      debugPrint('Greeting target=${widget.targetPhrase} frames=${clip.length} top3=[${([response.prediction, ...response.topK]..sort((x, y) => y.confidence.compareTo(x.confidence))).take(4).map((p) => '${p.label} ${(p.confidence > 1 ? p.confidence : p.confidence * 100).toStringAsFixed(1)}%').toSet().join(', ')}]');
 
       if (isMatch) {
         setState(() {
           _resultColor = Colors.greenAccent;
-          _resultTitle = 'Great job!';
-          _resultDetail = 'You signed "${widget.targetPhrase}" correctly.';
-          _status = 'Great job!';
+          _resultTitle = 'Mahusay!';
+          _resultDetail = 'Tumpak ang kumpas para sa "${widget.targetPhrase}"!';
+          _status = 'Mahusay! Tumpak ang kumpas!';
           _isEvaluating = false;
         });
         _onSuccess();
@@ -829,27 +830,27 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       final String title;
       switch (eval.verdict) {
         case PhraseVerdict.rejectedUnknown:
-          title = "Let's try again!";
+          title = 'Subukang muli!';
           break;
         case PhraseVerdict.uncertain:
-          title = rightSign ? 'Almost there!' : 'That looked like "${eval.top1Label}"';
+          title = rightSign ? 'Malapit na!' : 'Mukhang "${eval.top1Label}" ang naisagawa';
           break;
         default:
-          title = 'That looked like "${eval.top1Label}"';
+          title = 'Mukhang "${eval.top1Label}" ang naisagawa';
       }
       _showResult(
         title: title,
         detail: rightSign
-            ? 'Sign it once more, a little slower and clearer.'
-            : 'Watch the example again, then try "${widget.targetPhrase}".',
+            ? 'Ulitin nang mas mabagal at mas malinaw.'
+            : 'Panoorin muli ang halimbawa, saka subukan ang "${widget.targetPhrase}".',
         color: rightSign ? Colors.orange : Colors.redAccent,
         score: targetPct,
       );
     } catch (e) {
       debugPrint('Cloud Run prediction error: $e');
       _showResult(
-        title: "Couldn't check that one",
-        detail: 'Check your internet connection, then try again.',
+        title: 'Hindi masuri ang kumpas',
+        detail: 'Tingnan ang koneksyon sa internet, saka subukang muli.',
         color: Colors.redAccent,
       );
     }
@@ -958,7 +959,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     }
     if (!frames.any((f) => f.hasHands)) {
       _showResult(
-        title: 'No hands detected',
+        title: 'Walang nakitang kamay',
         detail: HolisticCapture.rejectAdvice['NO_HANDS']!,
         color: Colors.red,
       );
@@ -981,7 +982,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     setState(() {
       _isEvaluating = true;
       _recordStart = null;
-      _status = 'Analyzing motion...';
+      _status = 'Sinusuri ang kumpas...';
     });
 
     final target = _calendarTarget;
@@ -1093,12 +1094,11 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       }
 
       if ((accepted && topIdx == target) || practicePass) {
-        final conf = practicePass ? bestConf : confFor(target);
         setState(() {
           _resultColor = Colors.greenAccent;
-          _resultTitle = 'Match!';
-          _resultDetail = conf > 0 ? 'Confidence: ${(conf * 100).toStringAsFixed(1)}%' : '';
-          _status = 'Great job!';
+          _resultTitle = 'Mahusay!';
+          _resultDetail = 'Tumpak ang kumpas!';
+          _status = 'Mahusay! Tumpak ang kumpas!';
           _isEvaluating = false;
         });
         _onSuccess();
@@ -1106,7 +1106,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       }
       if (accepted && topIdx != -1) {
         _showResult(
-          title: 'Predicted: ${_monthName(top)}',
+          title: 'Mukhang ${_monthName(top)} ang naisagawa',
           detail: 'Subukang muli ang $targetLabel. Sundan ang halimbawa.',
           color: Colors.redAccent,
         );
@@ -1122,8 +1122,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       final close = bestIdx != -1 && !const {'NO_HANDS', 'TOO_SHORT', 'LOW_MOTION'}.contains(code);
       _showResult(
         title: close && bestIdx == target
-            ? 'Almost! Needs more clarity'
-            : (close ? 'Unclear — looks like ${_monthName(best)}' : 'Sign not recognized'),
+            ? 'Malapit na! Gawin nang mas malinaw'
+            : (close ? 'Hindi malinaw — mukhang ${_monthName(best)}' : 'Hindi makilala ang kumpas'),
         detail: advice,
         color: close && topIdx == target ? Colors.orange : Colors.redAccent,
       );
@@ -1131,7 +1131,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       // Rejected by the API client before upload (e.g. no pose in most frames).
       debugPrint('Calendar capture rejected client-side: ${e.message}');
       _showResult(
-        title: 'Body not detected',
+        title: 'Hindi makita ang katawan',
         detail: '${e.message}'.contains('Pose')
             ? 'Hindi makita ang katawan. Ipakita ang balikat, katawan at mga kamay sa camera.'
             : 'Hindi maipadala ang kumpas. Subukang muli.',
@@ -1141,7 +1141,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       debugPrint('Calendar prediction error: $e');
       final text = e.toString();
       _showResult(
-        title: 'Evaluation Failed',
+        title: 'Hindi masuri ang kumpas',
         // 404 only if the deployed server has no calendar route (it does since
         // revision handspeak-inference-00012); every other failure is shown as-is.
         detail: text.contains('[404]')
@@ -1480,14 +1480,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                     Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                     const SizedBox(width: 8),
                     Text(
-                      !context.rolesRead.isStudent ? "Success! Correct sign" : (_xpGained > 0 ? "Success! +$_xpGained XP" : "Success! (daily XP limit reached)"),
+                      !context.rolesRead.isStudent ? "Mahusay! Tumpak ang kumpas" : (_xpGained > 0 ? "Mahusay! +$_xpGained XP" : "Mahusay! (naabot na ang XP ngayong araw)"),
                       style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  "Loading next phrase...",
+                  "Susunod na parirala...",
                   style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600, fontSize: 14),
                 ),
               ],
@@ -1601,7 +1601,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                                             mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
                                               if (_isRecording) ...[
-                                                const Icon(Icons.fiber_manual_record, color: Colors.redAccent, size: 12),
+                                                Icon(Icons.fiber_manual_record, color: theme.colorScheme.primary, size: 12),
                                                 const SizedBox(width: 4),
                                               ],
                                               Text(
@@ -1609,7 +1609,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                                                   ? "Recording" 
                                                   : (_isEvaluating ? "Evaluating..." : "Frame Body"),
                                                 style: TextStyle(
-                                                  color: _isRecording ? Colors.redAccent : Colors.white,
+                                                  color: Colors.white,
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.bold,
                                                 ),
@@ -1736,150 +1736,40 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                       ),
                     const SizedBox(height: 16),
 
-                    // The result card below carries the verdict; this line is
-                    // the instruction / status, in the same card style.
-                    if (_resultTitle.isEmpty || _initFailed)
-                      PracticeFeedback(
-                        message: _status,
-                        tone: _initFailed
-                            ? FeedbackTone.problem
-                            : (_resultColor == Colors.greenAccent ? FeedbackTone.success : FeedbackTone.info),
-                      ),
-                    const SizedBox(height: 12),
 
-                    if (_isEvaluating) ...[
-                      Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "Analyzing motion...",
-                                style: TextStyle(
-                                  color: theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: SmartBlur(
-                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                              child: Container(
-                                width: screenWidth * 0.70,
-                                height: 14,
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface.withOpacity(0.4),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
-                                ),
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: FractionallySizedBox(
-                                    widthFactor: 0.5, // Indeterminate looking
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: theme.colorScheme.primary,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    ] else if (_isRecording) ...[
-                      Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.fiber_manual_record, color: Colors.redAccent, size: 20),
-                              const SizedBox(width: 6),
-                              Text(
-                                "Recording... ${elapsed.toStringAsFixed(1)}s",
-                                style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900, fontSize: 16),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: SmartBlur(
-                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                              child: Container(
-                                width: screenWidth * 0.70,
-                                height: 14,
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface.withOpacity(0.4),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
-                                ),
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: FractionallySizedBox(
-                                    widthFactor: recordProgress,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        gradient: const LinearGradient(colors: [Colors.redAccent, Colors.red]),
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: [
-                                          BoxShadow(color: Colors.redAccent.withOpacity(0.5), blurRadius: 10)
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    ] else if (_countdown > 0) ...[
-                       Text(
-                        'Arms down… $_countdown',
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.orange),
+                    if (!(widget.continuous && _isSuccessAchieved))
+                      _RecordControls(
+                        heroTag: 'record_button',
+                        countdown: _countdown,
+                        isRecording: _isRecording,
+                        isEvaluating: _isEvaluating,
+                        elapsed: elapsed,
+                        recordProgress: recordProgress,
+                        bodyVisible: _poseVisible,
+                        showButton: _isInitialized && !_isSuccessAchieved,
+                        onRecord: _toggleRecording,
+                        width: screenWidth * 0.70,
                       ),
-                    ] else ...[
-                      if (_isInitialized && !_isSuccessAchieved)
-                        SizedBox(
-                          height: 64,
-                          width: 64,
-                          child: FloatingActionButton(
-                            heroTag: 'record_button',
-                            backgroundColor: theme.primaryColor,
-                            foregroundColor: Colors.white,
-                            onPressed: _toggleRecording,
-                            elevation: 8,
-                            child: const Icon(Icons.fiber_manual_record, size: 32),
-                          ),
-                        ),
-                    ],
 
                     if (widget.continuous && _isSuccessAchieved) ...[
                       const SizedBox(height: 24),
                       _buildContinuousSuccess(theme, visuals),
-                    ] else if (_resultTitle.isNotEmpty) ...[
+                    ] else ...[
+                      // One feedback card under the controls, as in the civic
+                      // practice: the verdict after an attempt, else the
+                      // instruction / status.
                       const SizedBox(height: 16),
-                      PracticeFeedback(
-                        title: _resultTitle,
-                        message: _resultDetail,
-                        tone: PracticeFeedback.toneForColor(_resultColor),
-                      ),
+                      if (_resultTitle.isNotEmpty && !_initFailed && !_isRecording && !_isEvaluating)
+                        PracticeFeedback(
+                          title: _resultTitle,
+                          message: _resultDetail,
+                          tone: PracticeFeedback.toneForColor(_resultColor),
+                        )
+                      else
+                        PracticeFeedback(
+                          message: _status,
+                          tone: _initFailed ? FeedbackTone.problem : FeedbackTone.info,
+                        ),
                     ],
                   ],
                 ),
@@ -1964,6 +1854,159 @@ class _CameraView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Record controls under the camera. Kept identical in
+/// phrase_tutorial_practice.dart and civic_tutorial_practice.dart:
+/// one status line (countdown / recording bar / checking bar / body hint)
+/// and the round record button, in the same look on every screen.
+class _RecordControls extends StatelessWidget {
+  final int countdown;
+  final bool isRecording;
+  final bool isEvaluating;
+
+  /// Seconds recorded so far, and how full the recording bar is (0-1).
+  final double elapsed;
+  final double recordProgress;
+
+  /// Body / hands in view (shown while idle).
+  final bool bodyVisible;
+
+  /// null disables the button.
+  final VoidCallback? onRecord;
+  final bool showButton;
+  final double? width;
+  final String heroTag;
+
+  const _RecordControls({
+    required this.countdown,
+    required this.isRecording,
+    required this.isEvaluating,
+    required this.elapsed,
+    required this.recordProgress,
+    required this.bodyVisible,
+    required this.onRecord,
+    required this.heroTag,
+    this.showButton = true,
+    this.width,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final barWidth = width ?? MediaQuery.sizeOf(context).width * 0.70;
+
+    // One animation only (extra spinners made the camera lag): a static
+    // dot + the bar; the record button is hidden while checking.
+    Widget bar(String label, double? value) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.circle, size: 10, color: primary),
+                const SizedBox(width: 8),
+                Text(label, style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SmartBlur(
+                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                child: Container(
+                  width: barWidth,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: AnimatedFractionallySizedBox(
+                      duration: const Duration(milliseconds: 200),
+                      widthFactor: value ?? 0.5,
+                      child: Container(
+                        decoration: BoxDecoration(color: primary, borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+
+    final Widget status;
+    if (countdown > 0) {
+      status = Text(
+        'Ibaba ang mga kamay… $countdown',
+        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF08C00)),
+      );
+    } else if (isRecording) {
+      status = bar('Nagre-record... ${elapsed.toStringAsFixed(1)}s', recordProgress.clamp(0.0, 1.0));
+    } else if (isEvaluating) {
+      status = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Sinusuri ang kumpas...', style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14)),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: barWidth,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: LinearProgressIndicator(minHeight: 14, color: primary, backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.4)),
+            ),
+          ),
+        ],
+      );
+    } else {
+      status = Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(bodyVisible ? Icons.check_circle_rounded : Icons.accessibility_new_rounded,
+              size: 18, color: bodyVisible ? const Color(0xFF2E9E4F) : const Color(0xFFF08C00)),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              bodyVisible ? 'Nakikita ang katawan. Pindutin ang RECORD' : 'Lumayo nang kaunti para makita ang balikat at mga kamay',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: bodyVisible ? const Color(0xFF2E9E4F) : const Color(0xFFF08C00),
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        status,
+        if (showButton && !isEvaluating) ...[
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 64,
+            width: 64,
+            child: FloatingActionButton(
+              heroTag: heroTag,
+              backgroundColor: theme.primaryColor,
+              foregroundColor: Colors.white,
+              disabledElevation: 0,
+              elevation: 8,
+              onPressed: onRecord,
+              child: Icon(countdown > 0 ? Icons.close : (isRecording ? Icons.stop : Icons.fiber_manual_record), size: 32),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
