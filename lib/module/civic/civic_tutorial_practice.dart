@@ -16,6 +16,8 @@ import '/services/holistic_capture.dart' show HolisticResult;
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
 import '/widgets/practice_feedback.dart';
+import '/providers/language_provider.dart';
+import 'civic_tutorial_detail.dart' show CustomVideoPlayer;
 
 
 // =============================================================================
@@ -82,7 +84,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   bool _isDisposed = false;
 
   // Bootup / Loading state tracking
-  String _loadingStatus = "Inihahanda ang pagsasanay...";
+  String _loadingStatus = L.t('Preparing the practice...', 'Inihahanda ang pagsasanay...');
   bool _isBootstrapping = true;
 
   int _currentStep = 0;
@@ -127,7 +129,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
   bool _isSuccessAchieved = false;
   double _currentScore = 0.0;
-  String _currentFeedback = "Maghanda at isagawa ang kumpas...";
+  String _currentFeedback = L.t('Get ready and do the sign...', 'Maghanda at isagawa ang kumpas...');
 
   /// INVALID_GESTURE is the last of the v4 model's 23 classes.
   static const int _invalidIndex = 22;
@@ -173,7 +175,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   }
 
   Future<void> _bootstrapPipeline() async {
-    _updateLoadingStatus("Naglo-load ng manifest at camera...");
+    _updateLoadingStatus(L.t('Loading the line list and camera...', 'Naglo-load ng manifest at camera...'));
 
 
     await Future.wait([
@@ -437,7 +439,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     setState(() {
       _countdown = 3;
       _currentScore = 0.0;
-      _currentFeedback = "Ibaba ang mga kamay at pumwesto...";
+      _currentFeedback = L.t('Lower your hands and get ready...', 'Ibaba ang mga kamay at pumwesto...');
     });
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted || _isDisposed) {
@@ -463,7 +465,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       _countdown = 0;
       _isRecording = true;
       _recordStart = DateTime.now();
-      _currentFeedback = "Isagawa ang buong linya, saka ibaba ang mga kamay.";
+      _currentFeedback = L.t('Sign the whole line, then lower your hands.', 'Isagawa ang buong linya, saka ibaba ang mga kamay.');
     });
   }
 
@@ -476,7 +478,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     _isRecording = false;
     _recordStart = null;
     if (wasActive && mounted && !_isDisposed) {
-      setState(() => _currentFeedback = "Kinansela. Pindutin ang RECORD para ulitin.");
+      setState(() => _currentFeedback = L.t('Cancelled. Tap RECORD to try again.', 'Kinansela. Pindutin ang RECORD para ulitin.'));
     }
   }
 
@@ -568,21 +570,21 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   }
 
   /// v4 rejection codes (lupang_common.REJECT_TEXT) -> what to do differently.
-  static const Map<String, String> _rejectAdvice = {
-    'NO_HANDS': "Walang nakitang kamay. Ipakita ang katawan at mga kamay sa camera.",
-    'TOO_SHORT': "Masyadong maikli ang kumpas. Isagawa ang buong galaw.",
-    'FRAGMENT_DURATION': "Kulang pa ang haba ng kumpas para sa senyas na ito. Isagawa nang buo at huwag magmadali.",
-    'LOW_MOTION': "Kulang ang galaw. Isagawa nang buo ang kumpas.",
-    'PHASE_IMBALANCE': "Simulan sa unang bahagi ng kumpas; huwag magsimula o tumigil sa huling porma.",
-    'SINGLE_STROKE': "Isang galaw lang ang nakita. Isagawa ang lahat ng bahagi ng linya.",
-    'INVALID_CLASS': "Hindi makilala bilang linya ng Lupang Hinirang. Sundan ang halimbawa.",
-    'LOW_CONFIDENCE': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
-    'SMALL_MARGIN': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
-    'HIGH_ENTROPY': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
+  static Map<String, String> get _rejectAdvice => {
+    'NO_HANDS': L.t('No hands detected. Show your body and hands to the camera.', 'Walang nakitang kamay. Ipakita ang katawan at mga kamay sa camera.'),
+    'TOO_SHORT': L.t('The sign was too short. Do the whole movement.', 'Masyadong maikli ang kumpas. Isagawa ang buong galaw.'),
+    'FRAGMENT_DURATION': L.t('The sign was too short for this phrase. Do all of it, without rushing.', 'Kulang pa ang haba ng kumpas para sa senyas na ito. Isagawa nang buo at huwag magmadali.'),
+    'LOW_MOTION': L.t('Not enough movement. Do the whole sign.', 'Kulang ang galaw. Isagawa nang buo ang kumpas.'),
+    'PHASE_IMBALANCE': L.t("Start from the first part of the sign; don't start or stop on the last shape.", 'Simulan sa unang bahagi ng kumpas; huwag magsimula o tumigil sa huling porma.'),
+    'SINGLE_STROKE': L.t('Only one movement was seen. Do every part of the line.', 'Isang galaw lang ang nakita. Isagawa ang lahat ng bahagi ng linya.'),
+    'INVALID_CLASS': L.t('Not recognized as a Lupang Hinirang line. Follow the example.', 'Hindi makilala bilang linya ng Lupang Hinirang. Sundan ang halimbawa.'),
+    'LOW_CONFIDENCE': L.t('Not sure yet. Sign it more clearly and completely.', 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.'),
+    'SMALL_MARGIN': L.t('Not sure yet. Sign it more clearly and completely.', 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.'),
+    'HIGH_ENTROPY': L.t('Not sure yet. Sign it more clearly and completely.', 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.'),
     // Reliability abstention: not enough evidence -> no prediction (never a forced guess).
-    'LOW_LANDMARKS': "Hindi sapat ang nakikitang katawan o kamay. Ipakita ang balikat at parehong kamay sa camera.",
-    'OUT_OF_FRAME': "Lumalabas ang kamay sa camera. Umatras nang kaunti para makita ang buong galaw.",
-    'UNSTABLE': "Hindi pa sapat ang ebidensya para makilala ang senyas. Ulitin nang buo, malinaw, at tuloy-tuloy.",
+    'LOW_LANDMARKS': L.t('Not enough of your body or hands is visible. Show your shoulders and both hands.', 'Hindi sapat ang nakikitang katawan o kamay. Ipakita ang balikat at parehong kamay sa camera.'),
+    'OUT_OF_FRAME': L.t('Your hand leaves the camera view. Step back so the whole movement is visible.', 'Lumalabas ang kamay sa camera. Umatras nang kaunti para makita ang buong galaw.'),
+    'UNSTABLE': L.t('Not enough to recognize the sign yet. Repeat it fully, clearly and smoothly.', 'Hindi pa sapat ang ebidensya para makilala ang senyas. Ulitin nang buo, malinaw, at tuloy-tuloy.'),
   };
 
   // ---------------------------------------------------------------------------
@@ -615,7 +617,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     if (_phrases.isEmpty || _isSuccessAchieved) return;
 
     if (_normalizeCategoryKey(widget.category) != 'lupang_hinirang') {
-      _showFeedback("Wala pang naka-deploy na modelo para sa kategoryang ito.");
+      _showFeedback(L.t('No model is deployed for this category yet.', 'Wala pang naka-deploy na modelo para sa kategoryang ito.'));
       return;
     }
 
@@ -642,7 +644,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
     setState(() {
       _isEvaluating = true;
-      _currentFeedback = "Sinusuri ang kumpas...";
+      _currentFeedback = L.t('Checking your sign...', 'Sinusuri ang kumpas...');
     });
 
     try {
@@ -725,15 +727,15 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       }
 
       if (accepted && topIdx != -1) {
-        _showFeedback("Mukhang \"${_labelForIndex(topIdx)}\" ang naisagawa. Subukang muli.", score: targetConf);
+        _showFeedback(L.t('That looked like \"${_labelForIndex(topIdx)}\". Try again.', 'Mukhang \"${_labelForIndex(topIdx)}\" ang naisagawa. Subukang muli.'), score: targetConf);
         return;
       }
 
       final code = result.failed.firstWhere(_rejectAdvice.containsKey, orElse: () => result.failed.isNotEmpty ? result.failed.first : '');
       var advice = _rejectAdvice[code] ??
           (result.message != null && result.message!.trim().isNotEmpty
-              ? "Hindi tinanggap: ${result.message}"
-              : "Hindi makilala ang kumpas. Ulitin nang mas malinaw.");
+              ? L.t('Not accepted: ${result.message}', 'Hindi tinanggap: ${result.message}')
+              : L.t('The sign was not recognized. Try again more clearly.', 'Hindi makilala ang kumpas. Ulitin nang mas malinaw.'));
       if (topIdx != -1 && !const {'NO_HANDS', 'TOO_SHORT', 'LOW_MOTION'}.contains(code)) {
         advice = topIdx == expected
             ? "Halos tama! $advice"
@@ -744,11 +746,11 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       // Rejected by the API client before upload (e.g. no pose in most frames).
       debugPrint("Civic v4 capture rejected client-side: ${e.message}");
       _showFeedback("${e.message}".contains('Pose')
-          ? "Hindi makita ang katawan. Ipakita ang balikat, katawan at mga kamay sa camera."
-          : "Hindi maipadala ang kumpas. Subukang muli.");
+          ? L.t('Your body is not visible. Show your shoulders, body and hands to the camera.', 'Hindi makita ang katawan. Ipakita ang balikat, katawan at mga kamay sa camera.')
+          : L.t('Could not send your sign. Try again.', 'Hindi maipadala ang kumpas. Subukang muli.'));
     } catch (e, stack) {
       debugPrint("API Inference Error: $e\n$stack");
-      _showFeedback("Error sa server. Subukang muli.");
+      _showFeedback(L.t('Server error. Try again.', 'Error sa server. Subukang muli.'));
     } finally {
       if (mounted) {
         setState(() => _isEvaluating = false);
@@ -767,7 +769,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
     if (widget.continuous) {
       // Inline success card (see _buildContinuousUI), then the next line.
-      setState(() => _currentFeedback = "Mahusay! Tumpak ang kumpas!");
+      setState(() => _currentFeedback = L.t('Great job! Correct sign!', 'Mahusay! Tumpak ang kumpas!'));
       await _awardPracticeXp();
       await Future.delayed(const Duration(milliseconds: 1500));
       if (mounted && !_isDisposed) _advanceContinuous();
@@ -775,7 +777,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     }
 
     final line = '${_activeQuestions[_currentStep]['question'] ?? _labelForIndex(_expectedClassIndex())}';
-    setState(() => _currentFeedback = "Mahusay! Tumpak ang kumpas!");
+    setState(() => _currentFeedback = L.t('Great job! Correct sign!', 'Mahusay! Tumpak ang kumpas!'));
     await Future.delayed(const Duration(milliseconds: 100));
     HapticFeedback.heavyImpact();
 
@@ -874,6 +876,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                     tween: Tween<double>(begin: 0.0, end: 1.0),
                     duration: const Duration(milliseconds: 800),
                     curve: Curves.easeOutBack,
+                    
                     builder: (context, value, child) => Transform.scale(scale: value, child: child),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
@@ -927,18 +930,11 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     _cancelRecording();
     _isSuccessAchieved = false;
     _currentScore = 0.0;
-    _currentFeedback = "Maghanda at isagawa ang kumpas...";
+    _currentFeedback = L.t('Get ready and do the sign...', 'Maghanda at isagawa ang kumpas...');
   }
 
-  void _handlePreviousStep() {
-    if (_currentStep > 0) {
-      setState(() {
-        _resetStepState();
-        _currentStep--;
-        _loadCurrentStepData();
-      });
-    }
-  }
+  /// The line's demo video (passed by the civic tutorial list), if any.
+  static String _lineVideo(Map<String, dynamic> item) => (item['videoUrl'] ?? '').toString().trim();
 
   void _handleNextStep() {
     setState(() {
@@ -1148,7 +1144,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: _isImageLoading
+                    child: _lineVideo(currentItem).isNotEmpty
+                        ? CustomVideoPlayer(key: ValueKey(_lineVideo(currentItem)), videoUrl: _lineVideo(currentItem))
+                        : _isImageLoading
                         ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
                         : _templateImageBytes != null
                             ? Image.memory(_templateImageBytes!, fit: BoxFit.cover)
@@ -1189,7 +1187,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                               Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                               const SizedBox(width: 8),
                               Text(
-                                !context.rolesRead.isStudent ? "Mahusay! Tumpak ang kumpas" : (_practiceXpGained > 0 ? "Mahusay! +$_practiceXpGained XP" : "Mahusay! (naabot na ang XP ngayong araw)"),
+                                !context.rolesRead.isStudent ? L.t('Great job! Correct sign', 'Mahusay! Tumpak ang kumpas') : (_practiceXpGained > 0 ? L.t('Great job! +$_practiceXpGained XP', 'Mahusay! +$_practiceXpGained XP') : L.t('Great job! (daily XP limit reached)', 'Mahusay! (naabot na ang XP ngayong araw)')),
                                 style: const TextStyle(
                                     color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
                               ),
@@ -1197,7 +1195,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            "Susunod na linya...",
+                            L.t('Next line...', 'Susunod na linya...'),
                             style: TextStyle(
                                 color: theme.colorScheme.onSurface.withOpacity(0.6),
                                 fontWeight: FontWeight.w600,
@@ -1387,18 +1385,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     final Widget tutorial = SingleChildScrollView(
       child: Column(
         children: [
-          // Step Counter Header & Test Navigation Bar
+          // Line label (no Prev / Next: the line is chosen in the tutorial list)
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              ElevatedButton.icon(
-                onPressed: _currentStep > 0 ? _handlePreviousStep : null,
-                icon: const Icon(Icons.arrow_back, size: 16),
-                label: const Text("Prev"),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                ),
-              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(
@@ -1407,17 +1397,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 ),
                 child: Text(
                   _activeQuestions.length == 1 && currentItem['line_number'] != null
-                      ? 'Linya ${currentItem['line_number']}${context.rolesRead.isStudent ? ' • +$xpReward XP' : ''}'
-                      : 'Linya ${_currentStep + 1} sa ${_activeQuestions.length}',
+                      ? '${L.t('Line', 'Linya')} ${currentItem['line_number']}${context.rolesRead.isStudent ? ' • +$xpReward XP' : ''}'
+                      : L.t('Line ${_currentStep + 1} of ${_activeQuestions.length}', 'Linya ${_currentStep + 1} sa ${_activeQuestions.length}'),
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.primaryColor),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: _currentStep < _activeQuestions.length - 1 ? _handleNextStep : null,
-                icon: const Icon(Icons.arrow_forward, size: 16),
-                label: const Text("Next"),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
               ),
             ],
@@ -1447,7 +1429,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             height: 220,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: _isImageLoading
+              child: _lineVideo(currentItem).isNotEmpty
+                ? CustomVideoPlayer(key: ValueKey(_lineVideo(currentItem)), videoUrl: _lineVideo(currentItem))
+                : _isImageLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _templateImageBytes != null
                     ? Image.memory(_templateImageBytes!, fit: BoxFit.cover)
@@ -1497,15 +1481,16 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         children: [
           const Icon(Icons.verified, size: 90, color: Colors.green),
           const SizedBox(height: 20),
-          const Text(
-            'Tapos na ang Pagsasanay!',
+          Text(
+            L.t('Practice complete!', 'Tapos na ang Pagsasanay!'),
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           Text(
             _activeQuestions.length == 1
-                ? 'Naisagawa mo nang tama ang "${_activeQuestions.first['question'] ?? ''}".'
-                : 'Lahat ng ${_activeQuestions.length} na linya ay matagumpay mong naisagawa.',
+                ? L.t('You signed "${_activeQuestions.first['question'] ?? ''}" correctly.',
+                    'Naisagawa mo nang tama ang "${_activeQuestions.first['question'] ?? ''}".')
+                : L.t('You signed all ${_activeQuestions.length} lines correctly.', 'Lahat ng ${_activeQuestions.length} na linya ay matagumpay mong naisagawa.'),
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface.withOpacity(0.8)),
           ),
@@ -1518,7 +1503,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             ),
             child: Text(
               !context.rolesRead.isStudent
-                  ? 'Magaling! Natapos mo ang pagsasanay.'
+                  ? L.t('Well done! You finished the practice.', 'Magaling! Natapos mo ang pagsasanay.')
                   : (_xpEarned > 0 ? '+$_xpEarned Civic XP Earned' : 'Na-master na dati (walang dagdag XP)'),
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: theme.primaryColor),
             ),
@@ -1530,7 +1515,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
             ),
             onPressed: () => Navigator.pop(context),
-            child: const Text('Tapusin', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            child: Text(L.t('Finish', 'Tapusin'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -1741,16 +1726,16 @@ class _RecordControls extends StatelessWidget {
     final Widget status;
     if (countdown > 0) {
       status = Text(
-        'Ibaba ang mga kamay… $countdown',
+        L.t('Lower your hands… $countdown', 'Ibaba ang mga kamay… $countdown'),
         style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF08C00)),
       );
     } else if (isRecording) {
-      status = bar('Nagre-record... ${elapsed.toStringAsFixed(1)}s', recordProgress.clamp(0.0, 1.0));
+      status = bar(L.t('Recording... ${elapsed.toStringAsFixed(1)}s', 'Nagre-record... ${elapsed.toStringAsFixed(1)}s'), recordProgress.clamp(0.0, 1.0));
     } else if (isEvaluating) {
       status = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Sinusuri ang kumpas...', style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14)),
+          Text(L.t('Checking your sign...', 'Sinusuri ang kumpas...'), style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14)),
           const SizedBox(height: 10),
           SizedBox(
             width: barWidth,
@@ -1770,7 +1755,7 @@ class _RecordControls extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              bodyVisible ? 'Nakikita ang katawan. Pindutin ang RECORD' : 'Lumayo nang kaunti para makita ang balikat at mga kamay',
+              bodyVisible ? L.t('Body in view. Tap RECORD', 'Nakikita ang katawan. Pindutin ang RECORD') : L.t('Step back a little so your shoulders and hands are visible', 'Lumayo nang kaunti para makita ang balikat at mga kamay'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: bodyVisible ? const Color(0xFF2E9E4F) : const Color(0xFFF08C00),

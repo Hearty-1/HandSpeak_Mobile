@@ -22,6 +22,7 @@ import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
 import '/services/xp_rewards.dart';
 import '/services/role_service.dart';
+import '/providers/language_provider.dart';
 
 
 // =============================================================================
@@ -357,7 +358,7 @@ class LetterJClassifierService {
   static const int _minWindow = 8;
   static const int _maxModelChecks = 8;
 
-  static const String _msgHook = 'Kulang ang kurba sa dulo. Ikurba ang kalingkingan pagkababa (hugis J).';
+  static String get _msgHook => L.t('The hook at the end is missing. Curve your pinky after moving down (J shape).', 'Kulang ang kurba sa dulo. Ikurba ang kalingkingan pagkababa (hugis J).');
 
   LetterJResult _fail(String message, [double confidence = 0.0]) =>
       LetterJResult(isLetterJ: false, confidence: confidence, message: message);
@@ -401,13 +402,13 @@ class LetterJClassifierService {
 
   String? _shapeProblemFromFractions(List<double> frac) {
     if (frac[0] < _minFingerFraction) {
-      return 'Maling porma ng kamay! Itaas ang kalingkingan para sa Letter J.';
+      return L.t('Wrong handshape! Raise your pinky for Letter J.', 'Maling porma ng kamay! Itaas ang kalingkingan para sa Letter J.');
     }
     final open = [
       for (int k = 0; k < 3; k++)
         if (frac[k + 1] < _minFingerFraction) _otherFingers[k].$3
     ];
-    if (open.isNotEmpty) return 'Itikom ang ${open.join(', ')}. Kalingkingan lang ang nakataas.';
+    if (open.isNotEmpty) return L.t('Fold your ${L.fingers(open)}. Only the pinky stays up.', "Itikom ang ${open.join(', ')}. Kalingkingan lang ang nakataas.");
     return null;
   }
 
@@ -444,12 +445,12 @@ class LetterJClassifierService {
       if (a[i].y > a[ib].y) ib = i;
     }
     final drop = a[ib].y;
-    if (drop < _minDrop) return 'Masyadong maliit ang pagbaba. Iguhit ang J nang mas malaki.';
-    if (ib / 47 < 0.25) return 'Simulan ang J sa itaas at bumaba muna.';
+    if (drop < _minDrop) return L.t('The downward stroke is too small. Draw the J bigger.', 'Masyadong maliit ang pagbaba. Iguhit ang J nang mas malaki.');
+    if (ib / 47 < 0.25) return L.t('Start the J at the top and move down first.', 'Simulan ang J sa itaas at bumaba muna.');
 
     final q = a[14] - a[0]; // first 30% of the path
     if (q.y <= 0 || math.atan2(q.x.abs(), q.y) > _maxStartDeg * math.pi / 180) {
-      return 'Simulan ang J nang pababa.';
+      return L.t('Start the J by moving down.', 'Simulan ang J nang pababa.');
     }
 
     final e = a.last - a[35]; // last quarter of the path
@@ -472,9 +473,9 @@ class LetterJClassifierService {
       return _msgHook;
     }
     if (a.last.y < _endBelow * drop) {
-      return 'Huwag ibalik pataas ang kamay. Ang J ay pababa na may kurba sa dulo.';
+      return L.t("Don't move your hand back up. A J goes down with a hook at the end.", 'Huwag ibalik pataas ang kamay. Ang J ay pababa na may kurba sa dulo.');
     }
-    if (_totalTurning(p) > _maxTurn) return 'Isang tuloy-tuloy na J lang ang iguhit.';
+    if (_totalTurning(p) > _maxTurn) return L.t('Draw just one continuous J.', 'Isang tuloy-tuloy na J lang ang iguhit.');
     return null;
   }
 
@@ -522,7 +523,7 @@ class LetterJClassifierService {
   ({List<(int, int)> windows, String? problem}) _findJCandidates(List<List<LandmarkPoint>> stroke) {
     final n = stroke.length;
     if (n < _minWindow) {
-      return (windows: const <(int, int)>[], problem: 'Masyadong maikli ang galaw. Gawin ang buong kumpas ng Letter J.');
+      return (windows: const <(int, int)>[], problem: L.t('The movement was too short. Do the whole Letter J sign.', 'Masyadong maikli ang galaw. Gawin ang buong kumpas ng Letter J.'));
     }
     final palm = _HandShape.of(stroke).palm;
     final full = [for (final f in stroke) math.Point(f[pinkyTip].x / palm, f[pinkyTip].y / palm)];
@@ -569,10 +570,10 @@ class LetterJClassifierService {
 
     String problem;
     if (reasons.isEmpty) {
-      problem = 'Masyadong maikli ang galaw. Gawin ang buong kumpas ng Letter J.';
+      problem = L.t('The movement was too short. Do the whole Letter J sign.', 'Masyadong maikli ang galaw. Gawin ang buong kumpas ng Letter J.');
     } else {
       final top = reasons.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
-      problem = top == 'outside' ? 'Isang J lang ang iguhit: itaas ang kamay, iguhit ang J, saka ibaba.' : top;
+      problem = top == 'outside' ? L.t('Draw just one J: raise your hand, draw the J, then lower it.', 'Isang J lang ang iguhit: itaas ang kamay, iguhit ang J, saka ibaba.') : top;
     }
     // Handshape problems come first: they are what the user must fix first.
     return (windows: const <(int, int)>[], problem: _shapeProblem(stroke) ?? problem);
@@ -606,7 +607,7 @@ class LetterJClassifierService {
 
   LetterJResult classifyStroke(List<List<LandmarkPoint>> recordedFrames) {
     if (!_isInitialized || _session == null) {
-      return _fail('Hindi naka-initialize ang model.');
+      return _fail(L.t('The model is not ready yet.', 'Hindi naka-initialize ang model.'));
     }
 
     lastReport = '';
@@ -635,10 +636,10 @@ class LetterJClassifierService {
       return LetterJResult(
         isLetterJ: true,
         confidence: best,
-        message: 'Mahusay! Wastong kumpas at porma para sa Letter J.',
+        message: L.t('Great job! Correct movement and handshape for Letter J.', 'Mahusay! Wastong kumpas at porma para sa Letter J.'),
       );
     }
-    return _fail('Gawing mas malinaw ang J: kalingkingan lang ang nakataas, pababa, saka ikurba.', best);
+    return _fail(L.t('Make the J clearer: only the pinky up, move down, then curve.', 'Gawing mas malinaw ang J: kalingkingan lang ang nakataas, pababa, saka ikurba.'), best);
   }
 
   void dispose() {
@@ -730,12 +731,12 @@ class LetterZClassifierService {
   }
 
   String? _shapeProblemFromFractions(List<double> frac) {
-    if (frac[0] < _minIndexFraction) return 'Iunat ang hintuturo. Ito ang gamitin sa pagguhit ng Z.';
+    if (frac[0] < _minIndexFraction) return L.t('Straighten your index finger. Use it to draw the Z.', 'Iunat ang hintuturo. Ito ang gamitin sa pagguhit ng Z.');
     final open = [
       for (int k = 0; k < 3; k++)
         if (frac[k + 1] < _minFoldedFraction) _otherFingers[k].$3
     ];
-    if (open.isNotEmpty) return 'Itikom ang ${open.join(', ')}. Hintuturo lang ang nakaunat.';
+    if (open.isNotEmpty) return L.t('Fold your ${L.fingers(open)}. Only the index finger stays straight.', "Itikom ang ${open.join(', ')}. Hintuturo lang ang nakaunat.");
     return null;
   }
 
@@ -768,25 +769,25 @@ class LetterZClassifierService {
       maxY = math.max(maxY, q.y);
     }
     if (maxX - minX < 0.8 || maxY - minY < 0.6) {
-      return 'Masyadong maliit ang iginuhit. Gawing mas malaki ang Z.';
+      return L.t('The drawing is too small. Draw the Z bigger.', 'Masyadong maliit ang iginuhit. Gawing mas malaki ang Z.');
     }
     // Corner 1: right-most point in the first 65% of the path.
     int c1 = 0;
     for (int i = 1; i < 31; i++) {
       if (a[i].x > a[c1].x) c1 = i;
     }
-    if (c1 < 4) return 'Simulan ang Z sa guhit pakanan sa itaas.';
+    if (c1 < 4) return L.t('Start the Z with a stroke to the right at the top.', 'Simulan ang Z sa guhit pakanan sa itaas.');
     // Corner 2: left-most point after corner 1 (before the last 8%).
     int c2 = c1;
     for (int i = c1 + 1; i < 44; i++) {
       if (c2 == c1 || a[i].x < a[c2].x) c2 = i;
     }
-    if (c2 <= c1 + 3 || c2 >= 46) return 'Kulang ang pahilis na guhit pababa-pakaliwa.';
+    if (c2 <= c1 + 3 || c2 >= 46) return L.t('The diagonal stroke down to the left is missing.', 'Kulang ang pahilis na guhit pababa-pakaliwa.');
 
     final s1 = a[c1] - a[0], s2 = a[c2] - a[c1], s3 = a.last - a[c2];
-    if (!(s1.x >= 0.5 && s1.y.abs() <= 0.8 * s1.x)) return 'Ang unang guhit ay dapat pakanan sa itaas.';
+    if (!(s1.x >= 0.5 && s1.y.abs() <= 0.8 * s1.x)) return L.t('The first stroke should go right at the top.', 'Ang unang guhit ay dapat pakanan sa itaas.');
     if (!(s2.x <= -0.3 && s2.y >= 0.5)) return 'Ang gitnang guhit ay dapat pahilis pababa-pakaliwa.';
-    if (!(s3.x >= 0.4 && s3.y.abs() <= 0.8 * s3.x)) return 'Tapusin ang Z sa guhit pakanan sa ibaba.';
+    if (!(s3.x >= 0.4 && s3.y.abs() <= 0.8 * s3.x)) return L.t('Finish the Z with a stroke to the right at the bottom.', 'Tapusin ang Z sa guhit pakanan sa ibaba.');
     double topY = 0, bottomY = 0;
     for (int i = 0; i <= c1; i++) {
       topY += a[i].y;
@@ -795,7 +796,7 @@ class LetterZClassifierService {
       bottomY += a[i].y;
     }
     if (bottomY / (a.length - c2) - topY / (c1 + 1) < 0.4) {
-      return 'Ang huling guhit ay dapat nasa ibaba ng una.';
+      return L.t('The last stroke should be below the first one.', 'Ang huling guhit ay dapat nasa ibaba ng una.');
     }
     return null;
   }
@@ -804,7 +805,7 @@ class LetterZClassifierService {
   /// contains raising the hand before the Z and lowering it afterwards.
   ({List<(int, int)> windows, String? problem}) _findZCandidates(List<List<LandmarkPoint>> stroke) {
     final n = stroke.length;
-    const short = 'Masyadong maikli ang galaw. Gawin ang buong kumpas ng Letter Z.';
+    final short = L.t('The movement was too short. Do the whole Letter Z sign.', 'Masyadong maikli ang galaw. Gawin ang buong kumpas ng Letter Z.');
     if (n < _minWindow) return (windows: const <(int, int)>[], problem: short);
     final palm = _HandShape.of(stroke).palm;
     final full = [for (final f in stroke) math.Point(f[indexTip].x / palm, f[indexTip].y / palm)];
@@ -850,7 +851,7 @@ class LetterZClassifierService {
     final shape = handShapeProblem(stroke);
     return (
       windows: const <(int, int)>[],
-      problem: shape ?? (top == 'outside' ? 'Isang Z lang ang iguhit: itaas ang kamay, iguhit ang Z, saka ibaba.' : top),
+      problem: shape ?? (top == 'outside' ? L.t('Draw just one Z: raise your hand, draw the Z, then lower it.', 'Isang Z lang ang iguhit: itaas ang kamay, iguhit ang Z, saka ibaba.') : top),
     );
   }
 
@@ -997,13 +998,13 @@ class LetterZClassifierService {
     debugPrint('Letter Z: ${found.windows.length} Z-shaped segments in ${recordedFrames.length} frames$lastReport');
 
     if (best != null && best < modelFloor) {
-      return _fail('Gawing mas malinaw ang Z: hintuturo lang ang nakaunat, pakanan, pahilis pababa, saka pakanan.');
+      return _fail(L.t('Make the Z clearer: only the index finger straight, right, diagonally down, then right.', 'Gawing mas malinaw ang Z: hintuturo lang ang nakaunat, pakanan, pahilis pababa, saka pakanan.'));
     }
     final score = best == null ? 85.0 : (75.0 + best * 50.0).clamp(80.0, 98.0).toDouble();
     return LetterZResult(
       isLetterZ: true,
       confidence: score,
-      message: 'Mahusay! Wastong kumpas at porma para sa Letter Z.',
+      message: L.t('Great job! Correct movement and handshape for Letter Z.', 'Mahusay! Wastong kumpas at porma para sa Letter Z.'),
     );
   }
 
@@ -1123,8 +1124,8 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
   // J / Z strokes are judged on Cloud Run (POST /v1/predict_raw/letter_j|z).
   final HandSpeakApiService _api = HandSpeakApiService();
   bool _isEvaluatingStroke = false; // one server request at a time
-  static const String _rejectHintJ = "Iguhit ang buong kurba ng J gamit ang hinliliit.";
-  static const String _rejectHintZ = "Iguhit ang zig-zag ng Z gamit ang hintuturo.";
+  static String get _rejectHintJ => L.t('Draw the whole curve of the J with your pinky.', 'Iguhit ang buong kurba ng J gamit ang hinliliit.');
+  static String get _rejectHintZ => L.t('Draw the zig-zag of the Z with your index finger.', 'Iguhit ang zig-zag ng Z gamit ang hintuturo.');
 
   // Orientation of the landmarks, learned from the hand itself: a raised hand
   // points up (wrist -> middle knuckle), so the rotation that makes it point
@@ -1149,7 +1150,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
   DateTime? _startHoldTime;
-  String _currentFeedback = "Ipuwesto ang kamay sa tapat ng camera";
+  String _currentFeedback = L.t('Place your hand in front of the camera', 'Ipuwesto ang kamay sa tapat ng camera');
 
   int _bufferFrameCount = 0;
   static const int _requiredBufferFrames = 24;
@@ -1521,8 +1522,8 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       _prevTip = null;
       _fastFrames = 0;
       _preRoll.clear();
-      if (mounted && _currentScore == 0.0 && _currentFeedback != "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.") {
-        setState(() => _currentFeedback = "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.");
+      if (mounted && _currentScore == 0.0 && _currentFeedback != L.t('No hand detected. Show your hand in front of the camera.', 'Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.')) {
+        setState(() => _currentFeedback = L.t('No hand detected. Show your hand in front of the camera.', 'Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.'));
       }
       return;
     }
@@ -1561,7 +1562,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
           setState(() {
             _currentScore = 0.0;
             _bufferFrameCount = _frameBuffer.length;
-            _currentFeedback = isJ ? "Ginuguhit ang J..." : "Ginuguhit ang Z...";
+            _currentFeedback = isJ ? L.t('Drawing the J...', 'Ginuguhit ang J...') : L.t('Drawing the Z...', 'Ginuguhit ang Z...');
           });
         }
       } else if (mounted && now - _lastResultMs > 2500) {
@@ -1572,7 +1573,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
           _recentFrames.add(pts);
           if (_recentFrames.length > 8) _recentFrames.removeAt(0);
           final problem = _letterJService.handShapeProblem(_recentFrames);
-          ready = problem == null ? "I-handshape ✓  Iguhit na ang J." : "Porma: $problem";
+          ready = problem == null ? L.t('I-handshape ✓  Now draw the J.', 'I-handshape ✓  Iguhit na ang J.') : "Porma: $problem";
           if (kDebugMode) {
             final live = 'live: ${_letterJService.handShapeSummary(_recentFrames)}\n'
                 'rotation $_handRotation${_lockedRotation == null ? ' (checking)' : ' ✓'}';
@@ -1584,7 +1585,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
           _recentFrames.add(pts);
           if (_recentFrames.length > 8) _recentFrames.removeAt(0);
           final problem = _letterZService.handShapeProblem(_recentFrames);
-          ready = problem == null ? "Hintuturo ✓  Iguhit na ang Z." : "Porma: $problem";
+          ready = problem == null ? L.t('Index finger ✓  Now draw the Z.', 'Hintuturo ✓  Iguhit na ang Z.') : "Porma: $problem";
         }
         if (_currentFeedback != ready || kDebugMode) setState(() => _currentFeedback = ready);
       }
@@ -1659,7 +1660,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     _isEvaluatingStroke = true;
     final letter = isJ ? 'J' : 'Z';
     final hint = isJ ? _rejectHintJ : _rejectHintZ;
-    if (mounted) setState(() => _currentFeedback = "Sinusuri ang Letter $letter...");
+    if (mounted) setState(() => _currentFeedback = L.t('Checking Letter $letter...', 'Sinusuri ang Letter $letter...'));
     double score = 0.0;
     String feedback = hint;
     try {
@@ -1692,7 +1693,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       if (r.accepted) {
         // Display score as before (clip(prob * 100, 75, 99)); >= successThreshold triggers success.
         score = (r.confidence * 100.0).clamp(75.0, 99.0).toDouble();
-        feedback = "Tama ang Letter $letter!";
+        feedback = L.t('Letter $letter is correct!', 'Tama ang Letter $letter!');
       }
       _debugDetails = 'attempt: ${stroke.length} frames (${req.width}x${req.height}), rotation $_handRotation'
           '${_lockedRotation == null ? ' (unconfirmed)' : ''} -> server ${r.accepted ? 'PASS' : 'fail'} '
@@ -1704,14 +1705,14 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       // Rejected by the API client before upload (e.g. too few frames).
       _debugDetails = 'attempt: ${stroke.length} frames, not sent: ${e.message}';
     } on HandSpeakApiException catch (e) {
-      feedback = e.isAuthError ? "Mag-sign in muli para masuri ang kumpas." : "Hindi masuri ang kumpas. Subukang muli.";
+      feedback = e.isAuthError ? L.t('Sign in again so your sign can be checked.', 'Mag-sign in muli para masuri ang kumpas.') : L.t('Could not check your sign. Try again.', 'Hindi masuri ang kumpas. Subukang muli.');
       _debugDetails = 'server error: $e';
     } on SignInRequiredException catch (e) {
       // No Firebase session (guest access not enabled / offline): not a network error.
       feedback = e.message;
       _debugDetails = 'no Firebase session: $e';
     } catch (e) {
-      feedback = "Walang koneksyon sa server. Subukang muli.";
+      feedback = L.t('No connection to the server. Try again.', 'Walang koneksyon sa server. Subukang muli.');
       _debugDetails = 'network error: $e';
     } finally {
       _isEvaluatingStroke = false;
@@ -1736,7 +1737,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       }
       if (detectedHands.isNotEmpty) {
         double score = 0.0;
-        String feedback = "Ipuwesto ang kamay sa tapat ng camera";
+        String feedback = L.t('Place your hand in front of the camera', 'Ipuwesto ang kamay sa tapat ng camera');
         final letter = widget.targetLetter.toUpperCase();
 
         if (!_isDynamicLetter) {
@@ -1757,8 +1758,8 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
 
             score = highestScoreAcrossAllHands;
             feedback = score >= successThreshold
-                ? "Tama ang posisyon! Hawakan ang kamay."
-                : "I-adjust ang posisyon para sa Letter $letter.";
+                ? L.t('Correct position! Hold your hand still.', 'Tama ang posisyon! Hawakan ang kamay.')
+                : L.t('Adjust your hand for Letter $letter.', 'I-adjust ang posisyon para sa Letter $letter.');
 
             // Look-alike letters: the shape must also be right (shared with
             // the activities and games, services/dynamic_sign_judge.dart).
@@ -1782,7 +1783,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
             _currentScore = 0.0;
             _holdProgress = 0.0;
             _startHoldTime = null;
-            _currentFeedback = "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.";
+            _currentFeedback = L.t('No hand detected. Show your hand in front of the camera.', 'Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.');
           });
         }
       }

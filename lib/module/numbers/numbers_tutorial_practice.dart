@@ -20,6 +20,7 @@ import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
 import '/services/xp_rewards.dart';
 import '/services/role_service.dart';
+import '/providers/language_provider.dart';
 
 
 // =============================================================================
@@ -91,17 +92,17 @@ class BaseShapeVerifier {
     return '${n % 10}';
   }
 
-  static const Map<String, String> shapeNames = {
-    'L': "'L' (hinlalaki at hintuturo)",
-    '1': "'1' (hintuturo lang)",
-    '2': "'2' (hintuturo at hinlalato)",
-    '3': "'3' (hinlalaki, hintuturo, hinlalato)",
-    '4': "'4' (apat na daliri, nakatupi ang hinlalaki)",
-    '5': "'5' (bukas ang lahat ng daliri)",
-    '6': "'6' (hinlalaki sa dulo ng kalingkingan)",
-    '7': "'7' (hinlalaki sa dulo ng palasingsingan)",
-    '8': "'8' (hinlalaki sa dulo ng hinlalato)",
-    '9': "'9' (hinlalaki sa dulo ng hintuturo)",
+  static Map<String, String> get shapeNames => {
+    'L': L.t("'L' (thumb and index finger)", "'L' (hinlalaki at hintuturo)"),
+    '1': L.t("'1' (index finger only)", "'1' (hintuturo lang)"),
+    '2': L.t("'2' (index and middle fingers)", "'2' (hintuturo at hinlalato)"),
+    '3': L.t("'3' (thumb, index and middle fingers)", "'3' (hinlalaki, hintuturo, hinlalato)"),
+    '4': L.t("'4' (four fingers, thumb folded)", "'4' (apat na daliri, nakatupi ang hinlalaki)"),
+    '5': L.t("'5' (all fingers open)", "'5' (bukas ang lahat ng daliri)"),
+    '6': L.t("'6' (thumb on the pinky tip)", "'6' (hinlalaki sa dulo ng kalingkingan)"),
+    '7': L.t("'7' (thumb on the ring finger tip)", "'7' (hinlalaki sa dulo ng palasingsingan)"),
+    '8': L.t("'8' (thumb on the middle finger tip)", "'8' (hinlalaki sa dulo ng hinlalato)"),
+    '9': L.t("'9' (thumb on the index finger tip)", "'9' (hinlalaki sa dulo ng hintuturo)"),
   };
 
   static double _d(List<double> f, int a, int b) {
@@ -479,12 +480,14 @@ static int get debugLoadedGroup => _loadedRangeGroup;
     final ringPinkyFolded = ring <= 1.0 && pinky <= 1.0;
     debugPrint('[Numbers] start base $base: ring ${ring.toStringAsFixed(2)}, pinky ${pinky.toStringAsFixed(2)}');
     if (base == '3' && ringPinkyUp) {
-      return "Nagsimula ka sa '9' (nakataas ang palasingsingan at kalingkingan). "
-          "Ang $target ay nagsisimula sa ${BaseShapeVerifier.shapeNames['3']}: itikom ang palasingsingan at kalingkingan.";
+      return L.t(
+          "You started with '9' (ring finger and pinky up). $target starts with ${BaseShapeVerifier.shapeNames['3']}: fold your ring finger and pinky.",
+          "Nagsimula ka sa '9' (nakataas ang palasingsingan at kalingkingan). Ang $target ay nagsisimula sa ${BaseShapeVerifier.shapeNames['3']}: itikom ang palasingsingan at kalingkingan.");
     }
     if (base == '9' && ringPinkyFolded) {
-      return "Ang $target ay nagsisimula sa ${BaseShapeVerifier.shapeNames['9']}, "
-          "nakataas ang hinlalato, palasingsingan at kalingkingan.";
+      return L.t(
+          "$target starts with ${BaseShapeVerifier.shapeNames['9']}, with the middle finger, ring finger and pinky up.",
+          "Ang $target ay nagsisimula sa ${BaseShapeVerifier.shapeNames['9']}, nakataas ang hinlalato, palasingsingan at kalingkingan.");
     }
     return null;
   }
@@ -532,8 +535,8 @@ static int get debugLoadedGroup => _loadedRangeGroup;
         isCorrect: ok,
         accuracyScore: ok ? (72.0 + 27.0 * targetProbability).clamp(72.0, 99.0) : targetProbability * 60.0,
         feedback: ok
-            ? "Mahusay! Wastong kumpas at porma para sa Number $targetNumber"
-            : "Mukhang Number $predicted ang naisagawa. Subukang muli para sa $targetNumber.",
+            ? L.t('Great job! Correct movement and handshape for Number $targetNumber', 'Mahusay! Wastong kumpas at porma para sa Number $targetNumber')
+            : L.t('That looked like Number $predicted. Try again for $targetNumber.', 'Mukhang Number $predicted ang naisagawa. Subukang muli para sa $targetNumber.'),
         kineticEnergy: kineticEnergy,
       );
     }
@@ -573,7 +576,7 @@ static int get debugLoadedGroup => _loadedRangeGroup;
         detectedNumber: best,
         isCorrect: false,
         accuracyScore: (targetProbability * 60.0).clamp(0.0, 60.0),
-        feedback: "Mukhang Number $best ang naisagawa. Subukang muli para sa $targetNumber.",
+        feedback: L.t('That looked like Number $best. Try again for $targetNumber.', 'Mukhang Number $best ang naisagawa. Subukang muli para sa $targetNumber.'),
         kineticEnergy: kineticEnergy,
       );
     }
@@ -583,8 +586,9 @@ static int get debugLoadedGroup => _loadedRangeGroup;
         detectedNumber: null,
         isCorrect: false,
         accuracyScore: 45.0,
-        feedback: "Ang simula ay dapat ${BaseShapeVerifier.shapeNames[base.expected] ?? base.expected}. "
-            "Hawakan muna ito bago gumalaw.",
+        feedback: L.t(
+            "Start with ${BaseShapeVerifier.shapeNames[base.expected] ?? base.expected}. Hold it first before moving.",
+            "Ang simula ay dapat ${BaseShapeVerifier.shapeNames[base.expected] ?? base.expected}. Hawakan muna ito bago gumalaw."),
         kineticEnergy: kineticEnergy,
       );
     }
@@ -595,7 +599,7 @@ static int get debugLoadedGroup => _loadedRangeGroup;
       detectedNumber: targetNumber,
       isCorrect: true,
       accuracyScore: score,
-      feedback: "Mahusay! Wastong kumpas at porma para sa Number $targetNumber",
+      feedback: L.t('Great job! Correct movement and handshape for Number $targetNumber', 'Mahusay! Wastong kumpas at porma para sa Number $targetNumber'),
       kineticEnergy: kineticEnergy,
     );
   }
@@ -739,7 +743,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   double _currentScore = 0.0;
   double _holdProgress = 0.0;
   DateTime? _startHoldTime;
-  String _currentFeedback = "Ipuwesto ang kamay sa tapat ng camera";
+  String _currentFeedback = L.t('Place your hand in front of the camera', 'Ipuwesto ang kamay sa tapat ng camera');
 
   int _bufferFrameCount = 0;
   static const int _requiredBufferFrames = 24;
@@ -994,11 +998,11 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     if (usable.isEmpty) {
       _prevFrame = null;
       _resetSign();
-      if (mounted && _currentFeedback != "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.") {
+      if (mounted && _currentFeedback != L.t('No hand detected. Show your hand in front of the camera.', 'Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.')) {
         setState(() {
           _currentScore = 0.0;
           _holdProgress = 0.0;
-          _currentFeedback = "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.";
+          _currentFeedback = L.t('No hand detected. Show your hand in front of the camera.', 'Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.');
         });
       }
       return;
@@ -1042,15 +1046,15 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
           _phase = _SignPhase.baseHeld;
           _baseStillStartMs = _stillSinceMs;
         }
-        _setStatus("Ipakita at hawakan ang unang porma ng ${widget.targetNumber}...");
+        _setStatus(L.t('Show and hold the first shape of ${widget.targetNumber}...', 'Ipakita at hawakan ang unang porma ng ${widget.targetNumber}...'));
         break;
       case _SignPhase.baseHeld:
         if (_fastFrames >= 2) {
           _phase = _SignPhase.moving;
           _moveStartMs = now;
-          _setStatus("Ginagawa ang galaw...");
+          _setStatus(L.t('Doing the movement...', 'Ginagawa ang galaw...'));
         } else {
-          _setStatus("Handa na ✓ Gawin ang galaw ng ${widget.targetNumber}, saka hawakan ang huling porma.");
+          _setStatus(L.t('Ready ✓ Do the movement of ${widget.targetNumber}, then hold the last shape.', 'Handa na ✓ Gawin ang galaw ng ${widget.targetNumber}, saka hawakan ang huling porma.'));
         }
         break;
       case _SignPhase.moving:
@@ -1085,10 +1089,10 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     String feedback;
     if (clip.length < 12) {
       // extract_*_landmarks.py discards clips with fewer than 12 frames.
-      feedback = "Masyadong mabilis. Hawakan ang unang porma, gumalaw, saka hawakan ang huling porma.";
+      feedback = L.t('Too fast. Hold the first shape, move, then hold the last shape.', 'Masyadong mabilis. Hawakan ang unang porma, gumalaw, saka hawakan ang huling porma.');
     } else if (!FSLOnnxService.isReadyFor(targetInt)) {
       // Never score against a stale model from another decade.
-      feedback = "Naglo-load pa ang modelo para sa Number ${widget.targetNumber}...";
+      feedback = L.t('Still loading the model for Number ${widget.targetNumber}...', 'Naglo-load pa ang modelo para sa Number ${widget.targetNumber}...');
       debugPrint("[DBG] Skipped evaluation: model not ready for target $targetInt "
           "(loaded group=${FSLOnnxService.debugLoadedGroup}, expected=${FSLOnnxService.groupForNumber(targetInt)})");
     } else {
@@ -1203,7 +1207,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
       }
       if (detectedHands.isNotEmpty) {
         double score = 0.0;
-        String feedback = "Ipuwesto ang kamay sa tapat ng camera";
+        String feedback = L.t('Place your hand in front of the camera', 'Ipuwesto ang kamay sa tapat ng camera');
 
         if (_isStaticSign) {
           if (_template != null) {
@@ -1223,8 +1227,8 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
             score = highestScoreAcrossAllHands;
             feedback = score >= successThreshold
-                ? "Tama ang posisyon! Hawakan ang kamay."
-                : "I-adjust ang posisyon para sa Sign ${widget.targetNumber}.";
+                ? L.t('Correct position! Hold your hand still.', 'Tama ang posisyon! Hawakan ang kamay.')
+                : L.t('Adjust your hand for Sign ${widget.targetNumber}.', 'I-adjust ang posisyon para sa Sign ${widget.targetNumber}.');
           }
         }
 
@@ -1237,7 +1241,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
             _currentScore = 0.0;
             _holdProgress = 0.0;
             _startHoldTime = null;
-            _currentFeedback = "Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.";
+            _currentFeedback = L.t('No hand detected. Show your hand in front of the camera.', 'Walang nakitang kamay. Ipakita ang kamay sa harap ng camera.');
           });
         }
       }
@@ -1321,8 +1325,8 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   /// Inline success card in continuous practice (same as phrases / civic).
   Widget _buildContinuousSuccess(ThemeData theme, _ThemeVisuals visuals) {
     final title = !context.rolesRead.isStudent
-        ? 'Mahusay! Tumpak ang kumpas'
-        : (_xpGained > 0 ? 'Mahusay! +$_xpGained XP' : 'Mahusay! (naabot na ang XP ngayong araw)');
+        ? L.t('Great job! Correct sign', 'Mahusay! Tumpak ang kumpas')
+        : (_xpGained > 0 ? L.t('Great job! +$_xpGained XP', 'Mahusay! +$_xpGained XP') : L.t('Great job! (daily XP limit reached)', 'Mahusay! (naabot na ang XP ngayong araw)'));
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.8, end: 1.0),
       duration: const Duration(milliseconds: 400),
@@ -1349,7 +1353,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
               ],
             ),
             const SizedBox(height: 6),
-            Text('Susunod na numero...',
+            Text(L.t('Next number...', 'Susunod na numero...'),
                 style: TextStyle(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w600, fontSize: 14)),
           ],

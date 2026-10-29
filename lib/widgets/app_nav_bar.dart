@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
+import '/providers/language_provider.dart';
 
 /// One tab of [AppNavBar].
 class AppNavItem {
@@ -34,20 +35,22 @@ class AppNavItem {
 class AppNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
-  final List<AppNavItem> items;
+  final List<AppNavItem>? _items;
+  // Built on use, so the labels follow the app language.
+  List<AppNavItem> get items => _items ?? defaultItems;
 
   const AppNavBar({
     super.key,
     required this.currentIndex,
     required this.onTap,
-    this.items = defaultItems,
-  });
+    List<AppNavItem>? items,
+  }) : _items = items;
 
-  static const List<AppNavItem> defaultItems = [
-    AppNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Home'),
-    AppNavItem(icon: Icons.auto_stories_outlined, activeIcon: Icons.auto_stories_rounded, label: 'Learn'),
-    AppNavItem(icon: Icons.sports_esports_outlined, activeIcon: Icons.sports_esports_rounded, label: 'Arena', feature: AppFeature.challenges),
-    AppNavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile', feature: AppFeature.profile),
+  static List<AppNavItem> get defaultItems => [
+    AppNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: L.t('Home', 'Home')),
+    AppNavItem(icon: Icons.auto_stories_outlined, activeIcon: Icons.auto_stories_rounded, label: L.t('Learn', 'Matuto')),
+    AppNavItem(icon: Icons.sports_esports_outlined, activeIcon: Icons.sports_esports_rounded, label: L.t('Arena', 'Arena'), feature: AppFeature.challenges),
+    AppNavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: L.t('Profile', 'Profile'), feature: AppFeature.profile),
   ];
 
   @override

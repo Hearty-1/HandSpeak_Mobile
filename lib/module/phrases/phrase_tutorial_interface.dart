@@ -7,6 +7,7 @@ import 'phrase_tutorial_detail.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
+import '/providers/language_provider.dart';
 
 class PhraseLesson {
   final String id;
@@ -105,7 +106,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                 data['title'] ??
                 data['label'] ??
                 data['name'] ??
-                'Unknown Phrase')
+                L.t('Unknown Phrase', 'Hindi kilalang parirala'))
             .toString();
         if (PhraseCategories.isMonth(title)) return null;
         return PhraseLesson(
@@ -151,7 +152,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
     if (lesson.isLocked) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Complete previous phrases to unlock ${lesson.title}!"),
+          content: Text(L.t('Complete previous phrases to unlock ${lesson.title}!', 'Tapusin ang mga naunang parirala para mabuksan ang ${lesson.title}!')),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -214,7 +215,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
           ),
         ),
         title: Text(
-          'Phrases Tutorial',
+          L.t('Phrases Tutorial', 'Tutorial ng mga Parirala'),
           style: TextStyle(
             color: textColor, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
           ),
@@ -264,7 +265,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                           onChanged: (value) => _runFilter(value), 
                           style: TextStyle(color: textColor),
                           decoration: InputDecoration(
-                            hintText: 'Search phrase...',
+                            hintText: L.t('Search phrase...', 'Maghanap ng parirala...'),
                             hintStyle: TextStyle(color: textColor.withOpacity(0.5), fontWeight: FontWeight.w500),
                             prefixIcon: Icon(Icons.search, color: textColor.withOpacity(0.5)),
                             border: InputBorder.none,
@@ -300,7 +301,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
             Icon(Icons.error_outline, size: 48, color: textColor.withOpacity(0.6)),
             const SizedBox(height: 16),
             Text(
-              "Failed to load phrases.", 
+              L.t('Failed to load phrases.', 'Hindi ma-load ang mga parirala.'), 
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.8)),
             ),
             const SizedBox(height: 8),
@@ -309,7 +310,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                 setState(() => _isLoading = true);
                 _fetchLessons();
               }, 
-              child: const Text("Tap to retry"),
+              child: Text(L.t('Tap to retry', 'Pindutin para subukang muli')),
             )
           ],
         ),
@@ -319,7 +320,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
     if (_filteredLessons.isEmpty) {
       return Center(
         child: Text(
-          "No phrases found.", 
+          L.t('No phrases found.', 'Walang nahanap na parirala.'), 
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
         ),
       );
@@ -338,7 +339,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                   Icon(Icons.cloud_off_rounded, size: 18, color: textColor.withOpacity(0.6)),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text("Hindi ma-load ang ibang aralin mula sa server.",
+                    child: Text(L.t('Some lessons could not be loaded from the server.', 'Hindi ma-load ang ibang aralin mula sa server.'),
                         style: TextStyle(fontSize: 13, color: textColor.withOpacity(0.7))),
                   ),
                   TextButton(
@@ -346,7 +347,7 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
                       setState(() => _isLoading = true);
                       _fetchLessons();
                     },
-                    child: const Text("Retry"),
+                    child: Text(L.t('Retry', 'Subukang muli')),
                   ),
                 ],
               ),

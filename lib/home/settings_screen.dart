@@ -8,6 +8,7 @@ import '/services/performance_monitor.dart';
 import '../services/auth_service.dart';
 import '../providers/theme_provider.dart';
 import '../providers/sound_provider.dart';
+import '/providers/language_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -250,7 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text("Cancel", style: TextStyle(color: textColor.withOpacity(0.6))),
+            child: Text(context.tr(context.tr('Cancel', 'Kanselahin'), 'Kanselahin'), style: TextStyle(color: textColor.withOpacity(0.6))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
@@ -258,7 +259,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               backgroundColor: const Color(0xFFFFB800),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
-            child: const Text("Verify", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text(context.tr(context.tr('Verify', 'I-verify'), 'I-verify'), style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -280,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         iconTheme: theme.appBarTheme.iconTheme,
         centerTitle: true,
         title: Text(
-          "Settings",
+          context.tr(context.tr('Settings', 'Mga Setting'), 'Mga Setting'),
           style: theme.appBarTheme.titleTextStyle,
         ),
       ),
@@ -288,13 +289,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.all(24.0),
         children: [
-          _buildSectionHeader("Account & Profile", textColor),
+          _buildSectionHeader(context.tr(context.tr('Account & Profile', 'Account at Profile'), 'Account at Profile'), textColor),
           _buildSettingsCard(
             context: context,
             children: [
               ListTile(
                 leading: const Icon(CupertinoIcons.person_alt_circle, color: Color(0xFFFFB800)),
-                title: Text("Edit Personal Details", style: TextStyle(color: textColor)),
+                title: Text(context.tr(context.tr('Edit Personal Details', 'I-edit ang Personal na Detalye'), 'I-edit ang Personal na Detalye'), style: TextStyle(color: textColor)),
                 trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
                 onTap: () {
                   _showEditProfileDialog(context);
@@ -303,7 +304,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
 
-          _buildSectionHeader("Game Settings", textColor),
+          _buildSectionHeader(context.tr(context.tr('Game Settings', 'Mga Setting ng Laro'), 'Mga Setting ng Laro'), textColor),
           _buildSettingsCard(
             context: context,
             children: [
@@ -314,9 +315,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   inactiveThumbColor: Colors.grey.shade400,
                   inactiveTrackColor: Colors.grey.withOpacity(0.3),
                   secondary: const Icon(CupertinoIcons.bolt_fill, color: Color(0xFFFFB800)),
-                  title: Text("Performance Mode", style: TextStyle(color: textColor)),
+                  title: Text(context.tr(context.tr('Performance Mode', 'Performance Mode'), context.tr('Performance Mode', 'Performance Mode')), style: TextStyle(color: textColor)),
                   subtitle: Text(
-                    "Turns off blur effects so the camera and app run faster on slower phones.",
+                    context.tr(context.tr('Turns off blur effects so the camera and app run faster on slower phones.', 'Pinapatay ang blur effects para bumilis ang camera at app sa mabagal na phone.'), 'Pinapatay ang blur effects para bumilis ang camera at app sa mabagal na phone.'),
                     style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12),
                   ),
                   value: on,
@@ -334,7 +335,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : CupertinoIcons.music_note_2,
                   color: const Color(0xFFFFB800),
                 ),
-                title: Text("Background Music", style: TextStyle(color: textColor)),
+                title: Text(context.tr(context.tr('Background Music', 'Background na Musika'), 'Background na Musika'), style: TextStyle(color: textColor)),
                 value: !soundProvider.isBgmMuted,
                 onChanged: (val) {
                   soundProvider.toggleBgmMute();
@@ -351,7 +352,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : CupertinoIcons.speaker_2_fill,
                   color: const Color(0xFFFFB800),
                 ),
-                title: Text("Sound Effects", style: TextStyle(color: textColor)),
+                title: Text(context.tr(context.tr('Sound Effects', 'Sound Effects'), context.tr('Sound Effects', 'Sound Effects')), style: TextStyle(color: textColor)),
                 value: !soundProvider.isSfxMuted,
                 onChanged: (val) {
                   soundProvider.toggleSfxMute();
@@ -359,8 +360,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               Divider(height: 1, color: theme.dividerColor),
               ListTile(
+                leading: const Icon(Icons.translate_rounded, color: Color(0xFFFFB800)),
+                title: Text(context.tr(context.tr('Language', 'Wika'), 'Wika'), style: TextStyle(color: textColor)),
+                trailing: DropdownButton<String>(
+                  value: context.watch<LanguageProvider>().code,
+                  dropdownColor: theme.cardColor,
+                  underline: const SizedBox(),
+                  icon: Icon(CupertinoIcons.chevron_down, size: 16, color: textColor),
+                  items: [
+                    DropdownMenuItem(value: LanguageProvider.english, child: Text('English', style: TextStyle(color: textColor))),
+                    DropdownMenuItem(value: LanguageProvider.filipino, child: Text('Filipino', style: TextStyle(color: textColor))),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) context.read<LanguageProvider>().setLanguage(val);
+                  },
+                ),
+              ),
+              Divider(height: 1, color: theme.dividerColor),
+              ListTile(
                 leading: const Icon(CupertinoIcons.paintbrush_fill, color: Color(0xFFFFB800)),
-                title: Text("Theme", style: TextStyle(color: textColor)),
+                title: Text(context.tr(context.tr('Theme', 'Tema'), 'Tema'), style: TextStyle(color: textColor)),
                 trailing: DropdownButton<String>(
                   value: themeProvider.themeString,
                   dropdownColor: theme.cardColor,
@@ -386,7 +405,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
 
-          _buildSectionHeader("Security & Privacy", textColor),
+          _buildSectionHeader(context.tr(context.tr('Security & Privacy', 'Seguridad at Privacy'), 'Seguridad at Privacy'), textColor),
           _buildSettingsCard(
             context: context,
             children: [
@@ -395,9 +414,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.grey.withOpacity(0.3),
                 secondary: Icon(CupertinoIcons.shield_fill, color: textColor.withOpacity(0.6)),
-                title: Text("Two-Factor Authentication", style: TextStyle(color: textColor)),
+                title: Text(context.tr(context.tr('Two-Factor Authentication', 'Two-Factor Authentication'), context.tr('Two-Factor Authentication', 'Two-Factor Authentication')), style: TextStyle(color: textColor)),
                 subtitle: Text(
-                  "Add extra security to your account with Email 2FA",
+                  context.tr(context.tr('Add extra security to your account with Email 2FA', 'Dagdag na seguridad sa account gamit ang Email 2FA'), 'Dagdag na seguridad sa account gamit ang Email 2FA'),
                   style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 12),
                 ),
                 value: _twoFactorEnabled,
@@ -409,7 +428,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Divider(height: 1, color: theme.dividerColor),
               ListTile(
                 leading: Icon(CupertinoIcons.lock_fill, color: textColor.withOpacity(0.6)),
-                title: Text("Change Password", style: TextStyle(color: textColor)),
+                title: Text(context.tr(context.tr('Change Password', 'Palitan ang Password'), 'Palitan ang Password'), style: TextStyle(color: textColor)),
                 trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
                 onTap: () {
                   _showChangePasswordDialog(context);
@@ -418,7 +437,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Divider(height: 1, color: theme.dividerColor),
               ListTile(
                 leading: Icon(CupertinoIcons.device_phone_portrait, color: textColor.withOpacity(0.6)),
-                title: Text("Session & Activity Logs", style: TextStyle(color: textColor)),
+                title: Text(context.tr(context.tr('Session & Activity Logs', 'Session at Activity Logs'), 'Session at Activity Logs'), style: TextStyle(color: textColor)),
                 trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
                 onTap: () {
                   _showSessionHistory(context);
@@ -539,7 +558,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: Text("Error", style: TextStyle(color: textColor)),
               content: Text("Could not load user details.", style: TextStyle(color: textColor)),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
+                TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr(context.tr('Close', 'Isara'), 'Isara'))),
               ],
             );
           }
@@ -573,7 +592,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: const Icon(CupertinoIcons.person_crop_circle_fill, color: Color(0xFFFFB800), size: 48),
                     ),
                     const SizedBox(height: 16),
-                    Text("Personal Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: textColor)),
+                    Text(context.tr(context.tr('Personal Details', 'Personal na Detalye'), 'Personal na Detalye'), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: textColor)),
                   ],
                 ),
                 contentPadding: const EdgeInsets.all(24),
@@ -582,21 +601,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildEnhancedTextField(context: context, controller: emailController, label: "Email Address", icon: CupertinoIcons.mail_solid, readOnly: true),
+                      _buildEnhancedTextField(context: context, controller: emailController, label: context.tr(context.tr('Email Address', 'Email Address'), context.tr('Email Address', 'Email Address')), icon: CupertinoIcons.mail_solid, readOnly: true),
                       const SizedBox(height: 16),
                       _buildEnhancedTextField(context: context, controller: studentIdController, label: "Student ID", icon: CupertinoIcons.doc_text_fill, readOnly: true),
                       const SizedBox(height: 16),
-                      _buildEnhancedTextField(context: context, controller: firstNameController, label: "First Name", icon: CupertinoIcons.person_fill),
+                      _buildEnhancedTextField(context: context, controller: firstNameController, label: context.tr(context.tr('First Name', 'Pangalan'), 'Pangalan'), icon: CupertinoIcons.person_fill),
                       const SizedBox(height: 16),
-                      _buildEnhancedTextField(context: context, controller: middleNameController, label: "Middle Name", icon: CupertinoIcons.person_fill),
+                      _buildEnhancedTextField(context: context, controller: middleNameController, label: context.tr(context.tr('Middle Name', 'Gitnang Pangalan'), 'Gitnang Pangalan'), icon: CupertinoIcons.person_fill),
                       const SizedBox(height: 16),
-                      _buildEnhancedTextField(context: context, controller: lastNameController, label: "Last Name", icon: CupertinoIcons.person_fill),
+                      _buildEnhancedTextField(context: context, controller: lastNameController, label: context.tr(context.tr('Last Name', 'Apelyido'), 'Apelyido'), icon: CupertinoIcons.person_fill),
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          Expanded(child: _buildEnhancedTextField(context: context, controller: gradeController, label: "Grade", icon: CupertinoIcons.chart_bar_alt_fill)),
+                          Expanded(child: _buildEnhancedTextField(context: context, controller: gradeController, label: context.tr(context.tr('Grade', 'Baitang'), 'Baitang'), icon: CupertinoIcons.chart_bar_alt_fill)),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildEnhancedTextField(context: context, controller: sectionController, label: "Section", icon: CupertinoIcons.group_solid)),
+                          Expanded(child: _buildEnhancedTextField(context: context, controller: sectionController, label: context.tr(context.tr('Section', 'Seksyon'), 'Seksyon'), icon: CupertinoIcons.group_solid)),
                         ],
                       ),
                     ],
@@ -609,7 +628,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Expanded(
                         child: TextButton(
                           onPressed: isUpdating ? null : () => Navigator.pop(context), 
-                          child: Text("Cancel", style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.bold)),
+                          child: Text(context.tr(context.tr('Cancel', 'Kanselahin'), 'Kanselahin'), style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.bold)),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -637,7 +656,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           }, 
                           child: isUpdating 
                               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                              : const Text("Save", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              : Text(context.tr(context.tr('Save', 'I-save'), 'I-save'), style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ],
@@ -666,21 +685,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return AlertDialog(
             backgroundColor: theme.cardColor,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            title: Text("Change Password", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: textColor)),
+            title: Text(context.tr(context.tr('Change Password', 'Palitan ang Password'), 'Palitan ang Password'), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: textColor)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildEnhancedTextField(context: context, controller: currentPasswordController, label: "Current Password", icon: CupertinoIcons.lock_fill, obscureText: true),
+                  _buildEnhancedTextField(context: context, controller: currentPasswordController, label: context.tr(context.tr('Current Password', 'Kasalukuyang Password'), 'Kasalukuyang Password'), icon: CupertinoIcons.lock_fill, obscureText: true),
                   const SizedBox(height: 16),
-                  _buildEnhancedTextField(context: context, controller: newPasswordController, label: "New Password", icon: CupertinoIcons.lock_rotation, obscureText: true),
+                  _buildEnhancedTextField(context: context, controller: newPasswordController, label: context.tr(context.tr('New Password', 'Bagong Password'), 'Bagong Password'), icon: CupertinoIcons.lock_rotation, obscureText: true),
                   const SizedBox(height: 16),
-                  _buildEnhancedTextField(context: context, controller: confirmPasswordController, label: "Confirm New Password", icon: CupertinoIcons.checkmark_shield_fill, obscureText: true),
+                  _buildEnhancedTextField(context: context, controller: confirmPasswordController, label: context.tr(context.tr('Confirm New Password', 'Kumpirmahin ang Bagong Password'), 'Kumpirmahin ang Bagong Password'), icon: CupertinoIcons.checkmark_shield_fill, obscureText: true),
                 ],
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr(context.tr('Cancel', 'Kanselahin'), 'Kanselahin'))),
               ElevatedButton(
                 onPressed: () async {
                   if (newPasswordController.text != confirmPasswordController.text) return;
@@ -692,7 +711,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (context.mounted) Navigator.pop(context);
                   }
                 },
-                child: const Text("Update"),
+                child: Text(context.tr(context.tr('Update', 'I-update'), 'I-update')),
               ),
             ],
           );

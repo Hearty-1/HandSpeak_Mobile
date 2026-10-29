@@ -21,6 +21,7 @@ import '/services/role_service.dart';
 import 'custom_category_screen.dart';
 
 import '/services/performance_monitor.dart';
+import '/providers/language_provider.dart';
 
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
@@ -152,7 +153,7 @@ class SnedInterface2 extends StatelessWidget {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Menu',
+                            L.t('Menu', 'Menu'),
                             style: TextStyle(
                               color: theme.colorScheme.onPrimary,
                               fontSize: 24,
@@ -162,7 +163,7 @@ class SnedInterface2 extends StatelessWidget {
                           if (isGuest) ...[
                             const SizedBox(height: 4),
                             Text(
-                              '${roles.roleLabel} access',
+                              L.t('${roles.roleLabel} access', 'Access ng ${roles.roleLabel}'),
                               style: TextStyle(
                                 color: theme.colorScheme.onPrimary.withOpacity(0.85),
                                 fontSize: 14,
@@ -179,7 +180,7 @@ class SnedInterface2 extends StatelessWidget {
                         children: [
                           ListTile(
                             leading: Icon(Icons.settings, color: theme.primaryColor),
-                            title: Text('Settings', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
+                            title: Text(L.t('Settings', 'Mga Setting'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
                               Navigator.pop(context);
                               Navigator.push(context, _fadeRoute(const SettingsScreen()));
@@ -187,25 +188,25 @@ class SnedInterface2 extends StatelessWidget {
                           ),
                           ListTile(
                             leading: Icon(Icons.help_outline, color: theme.primaryColor),
-                            title: Text('Help & Support', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
+                            title: Text(L.t('Help & Support', 'Tulong at Suporta'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
                               Navigator.pop(context);
-                              Navigator.push(context, _fadeRoute(const InfoDetailScreen(
-                                title: 'Help & Support',
+                              Navigator.push(context, _fadeRoute(InfoDetailScreen(
+                                title: L.t('Help & Support', 'Tulong at Suporta'),
                                 sections: [
-                                  InfoSection(title: 'The Learning Loop', body: 'Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.', icon: Icons.loop_rounded),
-                                  InfoSection(title: 'Camera Combat', body: 'Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.', icon: Icons.camera_alt_rounded),
-                                  InfoSection(title: 'Leveling Up & Streaks', body: 'Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.', icon: Icons.local_fire_department_rounded),
-                                  InfoSection(title: 'Multiplayer Challenges', body: 'Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".', icon: Icons.group_rounded),
-                                  InfoSection(title: 'Customizing Experience', body: 'Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.', icon: Icons.palette_rounded),
-                                  InfoSection(title: 'Reporting Bugs', body: 'Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.', icon: Icons.bug_report_rounded),
+                                  InfoSection(title: L.t('The Learning Loop', 'Ang Paraan ng Pag-aaral'), body: L.t('Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.', 'Ang pag-aaral mo ng Filipino Sign Language ay may apat na yugto: Tutorials, Practice, Activities at Challenges. Makakuha ng 1000 XP para mabuksan ang susunod na module.'), icon: Icons.loop_rounded),
+                                  InfoSection(title: L.t('Camera Combat', 'Camera Combat'), body: L.t('Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.', 'Siguraduhing maliwanag ang lugar at gamitin ang Mirror-Mode Camera. Ang berdeng tsek ay tama, at ang pulang "X" ay kailangan pang ayusin ang porma.'), icon: Icons.camera_alt_rounded),
+                                  InfoSection(title: L.t('Leveling Up & Streaks', 'Pag-level Up at Streaks'), body: L.t('Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.', 'Patuloy na magsanay para makakuha ng XP at mapuno ang Level Progress Bar. I-on ang Streak Reminders para tuloy-tuloy ang pag-aaral.'), icon: Icons.local_fire_department_rounded),
+                                  InfoSection(title: L.t('Multiplayer Challenges', 'Multiplayer Challenges'), body: L.t('Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".', 'Hamunin ang mga kaklase: pindutin ang "Join a Room" at ilagay ang Room Code, o maging host sa pagpili ng "Create a Room".'), icon: Icons.group_rounded),
+                                  InfoSection(title: L.t('Customizing Experience', 'Pag-customize ng App'), body: L.t('Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.', 'Pumunta sa Settings para palitan ang Tema (tulad ng Galaxy Explorer o Deep Ocean) at i-on o i-off ang Background Music.'), icon: Icons.palette_rounded),
+                                  InfoSection(title: L.t('Reporting Bugs', 'Pag-uulat ng Problema'), body: L.t('Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.', 'Maaaring magpadala ang mga guro ng bug report sa admin gamit ang "Feedback & Support". Ang mga estudyante ay mag-ulat sa kanilang guro.'), icon: Icons.bug_report_rounded),
                                 ],
                               )));
                             },
                           ),
                           ListTile(
                             leading: Icon(Icons.info_outline, color: theme.primaryColor),
-                            title: Text('About Us', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
+                            title: Text(L.t('About Us', 'Tungkol sa Amin'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
                               Navigator.pop(context);
                               Navigator.push(context, _fadeRoute(const AboutUsScreen()));
@@ -213,10 +214,10 @@ class SnedInterface2 extends StatelessWidget {
                           ),
                           ListTile(
                             leading: Icon(Icons.gavel_rounded, color: theme.primaryColor),
-                            title: Text('Terms & Privacy Policy', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
+                            title: Text(L.t('Terms & Privacy Policy', 'Mga Tuntunin at Privacy Policy'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
                               Navigator.pop(context);
-                              Navigator.push(context, _fadeRoute(const InfoDetailScreen(
+                              Navigator.push(context, _fadeRoute(InfoDetailScreen(
                                 title: 'Terms of Service & Privacy Policy',
                                 sections: [
                                   InfoSection(title: '1. Acceptance of Terms', body: 'By downloading, installing, accessing, or using the HandSpeak application, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service. If you do not agree to these terms, you must discontinue use immediately.', icon: Icons.handshake_rounded),
@@ -234,7 +235,7 @@ class SnedInterface2 extends StatelessWidget {
                           ),
                           ListTile(
   leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: const Color(0xFFF34B1B)), 
-  title: Text(isGuest ? 'Change Role' : 'Sign Out', style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
+  title: Text(isGuest ? L.t('Change Role', 'Palitan ang Role') : L.t('Sign Out', 'Mag-sign Out'), style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
   onTap: () async {
     if (isGuest) {
       // Faculty / Parent have no account: leave guest mode and ask for a role again.
@@ -276,7 +277,7 @@ class SnedInterface2 extends StatelessWidget {
                   ),
                 ),
                 title: Text(
-                  "Modules",
+                  L.t('Modules', 'Mga Module'),
                   style: TextStyle(color: textColor, fontWeight: FontWeight.w800, letterSpacing: -0.5, fontSize: 22),
                 ),
                 actions: [
@@ -366,7 +367,7 @@ class SnedInterface2 extends StatelessWidget {
                               scale: scale,
                               leftOffset: 12,
                               topOffset: 0,
-                              title: "Alphabets",
+                              title: L.t('Alphabets', 'Alpabeto'),
                               imagePath: "assets/pictures/abc.png",
                               currentXp: displayAlpXp,
                               targetXp: targetXp,
@@ -383,7 +384,7 @@ class SnedInterface2 extends StatelessWidget {
                               scale: scale,
                               leftOffset: 201, 
                               topOffset: 0, 
-                              title: "Numbers",
+                              title: L.t('Numbers', 'Mga Numero'),
                               imagePath: "assets/pictures/numbers.png",
                               currentXp: displayNumXp,
                               targetXp: targetXp,
@@ -400,7 +401,7 @@ class SnedInterface2 extends StatelessWidget {
                               scale: scale,
                               leftOffset: 12,
                               topOffset: canProgress ? 330 : 300, 
-                              title: "Words/Phrases",
+                              title: L.t('Words/Phrases', 'Mga Salita/Parirala'),
                               imagePath: "assets/pictures/words.png",
                               currentXp: displayWordsXp,
                               targetXp: targetXp,
@@ -417,7 +418,7 @@ class SnedInterface2 extends StatelessWidget {
                               scale: scale,
                               leftOffset: 201,
                               topOffset: canProgress ? 330 : 300, 
-                              title: "Civic\nObservances",
+                              title: L.t('Civic\nObservances', 'Pagdiriwang\nPansibiko'),
                               imagePath: "assets/pictures/civic.png",
                               currentXp: displayCivicsXp,
                               targetXp: targetXp,
@@ -541,7 +542,7 @@ class SnedInterface2 extends StatelessWidget {
             ),
           ),
           if (!showProgress) ...[
-            // Guests: an "Explore" pill instead of the XP panel (keeps the grid tight).
+            // Guests: an L.t('Explore', 'Tuklasin') pill instead of the XP panel (keeps the grid tight).
             SizedBox(height: 14 * scale),
             GestureDetector(
               onTap: isLocked ? null : onTap,
@@ -555,7 +556,7 @@ class SnedInterface2 extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Explore', style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 14 * scale, fontWeight: FontWeight.w800)),
+                    Text(L.t('Explore', 'Tuklasin'), style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 14 * scale, fontWeight: FontWeight.w800)),
                     SizedBox(width: 4 * scale),
                     Icon(Icons.arrow_forward_rounded, size: 16 * scale, color: theme.colorScheme.onPrimary),
                   ],
@@ -571,9 +572,9 @@ class SnedInterface2 extends StatelessWidget {
             child: _buildProgressPanel(
               context: context,
               scale: scale,
-              title: "Progress",
+              title: L.t('Progress', 'Progreso'),
               xp: "$currentXp XP",
-              xpNext: "${targetXp - currentXp} to next",
+              xpNext: L.t('${targetXp - currentXp} to next', '${targetXp - currentXp} pa sa susunod'),
               progressRatio: currentXp / targetXp,
               progressColor: progressColor,
             ),

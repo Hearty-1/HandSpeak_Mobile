@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 
 import 'performance_monitor.dart';
+import '/providers/language_provider.dart';
 
 /// One captured camera frame in the raw form the v4 server pipeline
 /// (/v1/predict_raw/{model}) expects: pose = 33 x [x, y, visibility],
@@ -151,20 +152,20 @@ class HolisticCapture {
   }
 
   /// v4 rejection codes (lupang_common.REJECT_TEXT) -> what to do differently.
-  static const Map<String, String> rejectAdvice = {
-    'NO_HANDS': "Walang nakitang kamay. Ipakita ang katawan at mga kamay sa camera.",
-    'TOO_SHORT': "Masyadong maikli. Isagawa ang buong senyas.",
-    'FRAGMENT_DURATION': "Kulang pa ang haba ng kumpas. Isagawa nang buo at hindi nagmamadali.",
-    'LOW_MOTION': "Kulang ang galaw. Isagawa nang buo ang kumpas.",
-    'PHASE_IMBALANCE': "Simulan agad ang kumpas at ibaba ang kamay pagkatapos; huwag tumigil nang matagal.",
-    'SINGLE_STROKE': "Isang galaw lang ang nakita. Isagawa ang lahat ng bahagi ng senyas.",
-    'INVALID_CLASS': "Hindi makilala ang senyas. Sundan ang halimbawa.",
-    'LOW_CONFIDENCE': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
-    'SMALL_MARGIN': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
-    'HIGH_ENTROPY': "Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.",
+  static Map<String, String> get rejectAdvice => {
+    'NO_HANDS': L.t('No hands detected. Show your body and hands to the camera.', 'Walang nakitang kamay. Ipakita ang katawan at mga kamay sa camera.'),
+    'TOO_SHORT': L.t('Too short. Do the whole sign.', 'Masyadong maikli. Isagawa ang buong senyas.'),
+    'FRAGMENT_DURATION': L.t('The sign was too short. Do all of it, without rushing.', 'Kulang pa ang haba ng kumpas. Isagawa nang buo at hindi nagmamadali.'),
+    'LOW_MOTION': L.t('Not enough movement. Do the whole sign.', 'Kulang ang galaw. Isagawa nang buo ang kumpas.'),
+    'PHASE_IMBALANCE': L.t("Start the sign right away and lower your hand after; don't pause for long.", 'Simulan agad ang kumpas at ibaba ang kamay pagkatapos; huwag tumigil nang matagal.'),
+    'SINGLE_STROKE': L.t('Only one movement was seen. Do every part of the sign.', 'Isang galaw lang ang nakita. Isagawa ang lahat ng bahagi ng senyas.'),
+    'INVALID_CLASS': L.t('The sign was not recognized. Follow the example.', 'Hindi makilala ang senyas. Sundan ang halimbawa.'),
+    'LOW_CONFIDENCE': L.t('Not sure yet. Sign it more clearly and completely.', 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.'),
+    'SMALL_MARGIN': L.t('Not sure yet. Sign it more clearly and completely.', 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.'),
+    'HIGH_ENTROPY': L.t('Not sure yet. Sign it more clearly and completely.', 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.'),
     // Reliability checks (calendar v2, Lupang Hinirang v9).
-    'LOW_LANDMARKS': "Hindi sapat ang nakikitang katawan o kamay. Ipakita ang balikat at parehong kamay sa camera.",
-    'OUT_OF_FRAME': "Lumalabas ang kamay sa camera. Umatras nang kaunti para makita ang buong galaw.",
-    'UNSTABLE': "Hindi pa sapat ang ebidensya para makilala ang senyas. Ulitin nang buo, malinaw, at tuloy-tuloy.",
+    'LOW_LANDMARKS': L.t('Not enough of your body or hands is visible. Show your shoulders and both hands.', 'Hindi sapat ang nakikitang katawan o kamay. Ipakita ang balikat at parehong kamay sa camera.'),
+    'OUT_OF_FRAME': L.t('Your hand leaves the camera view. Step back so the whole movement is visible.', 'Lumalabas ang kamay sa camera. Umatras nang kaunti para makita ang buong galaw.'),
+    'UNSTABLE': L.t('Not enough to recognize the sign yet. Repeat it fully, clearly and smoothly.', 'Hindi pa sapat ang ebidensya para makilala ang senyas. Ulitin nang buo, malinaw, at tuloy-tuloy.'),
   };
 }

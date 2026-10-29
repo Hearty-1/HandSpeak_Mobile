@@ -28,6 +28,7 @@ import '/services/xp_rewards.dart';
 
 import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
 import '/services/role_service.dart';
+import '/providers/language_provider.dart';
 
 // =============================================================================
 // THEME VISUAL MAPPING (Imported from Numbers UI/UX)
@@ -238,7 +239,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   int _xpGained = 0; // XP actually awarded (0 when the phrase was mastered before)
 
   // UI text
-  String _status = 'Inihahanda…';
+  String _status = L.t('Preparing…', 'Inihahanda…');
   String _resultTitle = '';
   String _resultDetail = '';
   Color _resultColor = Colors.grey;
@@ -333,7 +334,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
   Future<void> _fetchConfig() async {
     try {
-      _setStatus('Inihahanda ang pagsusuri…');
+      _setStatus(L.t('Preparing the checker…', 'Inihahanda ang pagsusuri…'));
       final key = PhraseRecognizer.normalizeKey(widget.targetPhrase);
       final col = FirebaseFirestore.instance.collection('gesture_training_data');
       const timeout = Duration(seconds: 4);
@@ -407,7 +408,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _setStatus('2/3 Opening camera…');
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
-        _fail('Walang camera sa device na ito.');
+        _fail(L.t('No camera found on this device.', 'Walang camera sa device na ito.'));
         return;
       }
       final cam = cameras.firstWhere(
@@ -441,10 +442,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
       if (!mounted || _disposed) return;
       setState(() {
-        _status = 'Lumayo nang kaunti para makita ang balikat at mga kamay,\nsaka pindutin ang RECORD.';
+        _status = L.t('Step back a little so your shoulders and hands are visible,\nthen tap RECORD.', 'Lumayo nang kaunti para makita ang balikat at mga kamay,\nsaka pindutin ang RECORD.');
       });
     } on CameraException catch (e) {
-      _fail('Camera error (${e.code}): ${e.description ?? ''}\nTingnan ang pahintulot sa camera.');
+      _fail(L.t("Camera error (${e.code}): ${e.description ?? ''}\nCheck the camera permission.", "Camera error (${e.code}): ${e.description ?? ''}\nTingnan ang pahintulot sa camera."));
     } catch (e) {
       _fail('Failed at $stage:\n$e');
     }
@@ -611,7 +612,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _resultTitle = '';
       _resultDetail = '';
       _resultColor = Colors.grey;
-      _status = 'Ibaba ang mga kamay at pumwesto...';
+      _status = L.t('Lower your hands and get ready...', 'Ibaba ang mga kamay at pumwesto...');
     });
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted || _disposed) {
@@ -646,7 +647,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _countdown = 0;
       _isRecording = true;
       _recordStart = DateTime.now();
-      _status = 'Isagawa ang kumpas, saka ibaba ang mga kamay.';
+      _status = L.t('Do the sign, then lower your hands.', 'Isagawa ang kumpas, saka ibaba ang mga kamay.');
     });
   }
 
@@ -656,7 +657,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     if (_countdown > 0) {
       _countdown = 0;
       if (mounted && !_disposed) {
-        setState(() => _status = 'Kinansela. Pindutin ang RECORD para ulitin.');
+        setState(() => _status = L.t('Cancelled. Tap RECORD to try again.', 'Kinansela. Pindutin ang RECORD para ulitin.'));
       }
       return;
     }
@@ -666,7 +667,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       setState(() {
         _isRecording = false;
         _recordStart = null;
-        _status = 'Kinansela. Pindutin ang RECORD para ulitin.';
+        _status = L.t('Cancelled. Tap RECORD to try again.', 'Kinansela. Pindutin ang RECORD para ulitin.');
       });
     } else {
       _isRecording = false;
@@ -762,7 +763,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _resultTitle = title;
       _resultDetail = detail;
       _resultColor = color;
-      _status = 'Pindutin ang RECORD para ulitin.';
+      _status = L.t('Tap RECORD to try again.', 'Pindutin ang RECORD para ulitin.');
     });
   }
 
@@ -795,8 +796,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     final window = PhraseRecognizer.trainingWindow(hasHands.sublist(0, usable));
     if (window == null) {
       _showResult(
-        title: 'Walang nakitang kamay',
-        detail: 'Magsimula nang nakababa ang mga kamay, saka itaas at isagawa ang kumpas sa harap ng camera.',
+        title: L.t('No hands detected', 'Walang nakitang kamay'),
+        detail: L.t('Start with your hands down, then raise them and sign in front of the camera.', 'Magsimula nang nakababa ang mga kamay, saka itaas at isagawa ang kumpas sa harap ng camera.'),
         color: Colors.red,
       );
       return;
@@ -806,8 +807,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
     if (!PhraseRecognizer.fillMissingPose(clip, clipPose)) {
       _showResult(
-        title: 'Lumayo nang kaunti',
-        detail: 'Ipakita ang balikat, siko at mga kamay sa camera.',
+        title: L.t('Step back a little', 'Lumayo nang kaunti'),
+        detail: L.t('Show your shoulders, elbows and hands to the camera.', 'Ipakita ang balikat, siko at mga kamay sa camera.'),
         color: Colors.red,
       );
       return;
@@ -815,8 +816,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     
     if (clip.length < PhraseRecognizer.minRecordedFrames) {
       _showResult(
-        title: 'Medyo mabilis!',
-        detail: 'Bagalan nang kaunti para makita ng camera ang buong kumpas.',
+        title: L.t('A little too fast!', 'Medyo mabilis!'),
+        detail: L.t('Sign a little slower so the camera can see the whole sign.', 'Bagalan nang kaunti para makita ng camera ang buong kumpas.'),
         color: Colors.red,
       );
       return;
@@ -826,7 +827,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       _isEvaluating = true;
       _isRecording = false;
       _recordStart = null;
-      _status = 'Sinusuri ang kumpas...';
+      _status = L.t('Checking your sign...', 'Sinusuri ang kumpas...');
     });
 
     final Float32List seq = _recognizer.prepareStandardSequence(clip, PhraseRecognizer.sequenceLength);
@@ -872,9 +873,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       if (isMatch) {
         setState(() {
           _resultColor = Colors.greenAccent;
-          _resultTitle = 'Mahusay!';
-          _resultDetail = 'Tumpak ang kumpas para sa "${widget.targetPhrase}"!';
-          _status = 'Mahusay! Tumpak ang kumpas!';
+          _resultTitle = L.t('Great job!', 'Mahusay!');
+          _resultDetail = L.t('You signed "${widget.targetPhrase}" correctly!', 'Tumpak ang kumpas para sa "${widget.targetPhrase}"!');
+          _status = L.t('Great job! Correct sign!', 'Mahusay! Tumpak ang kumpas!');
           _isEvaluating = false;
         });
         _onSuccess();
@@ -884,27 +885,27 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       final String title;
       switch (verdict) {
         case PhraseVerdict.rejectedUnknown:
-          title = 'Subukang muli!';
+          title = L.t("Let's try again!", 'Subukang muli!');
           break;
         case PhraseVerdict.uncertain:
-          title = rightSign ? 'Malapit na!' : 'Mukhang "$top1Label" ang naisagawa';
+          title = rightSign ? L.t('Almost there!', 'Malapit na!') : L.t('That looked like "$top1Label"', 'Mukhang "$top1Label" ang naisagawa');
           break;
         default:
-          title = 'Mukhang "$top1Label" ang naisagawa';
+          title = L.t('That looked like "$top1Label"', 'Mukhang "$top1Label" ang naisagawa');
       }
       _showResult(
         title: title,
         detail: rightSign
-            ? 'Ulitin nang mas mabagal at mas malinaw.'
-            : 'Panoorin muli ang halimbawa, saka subukan ang "${widget.targetPhrase}".',
+            ? L.t('Sign it once more, a little slower and clearer.', 'Ulitin nang mas mabagal at mas malinaw.')
+            : L.t('Watch the example again, then try "${widget.targetPhrase}".', 'Panoorin muli ang halimbawa, saka subukan ang "${widget.targetPhrase}".'),
         color: rightSign ? Colors.orange : Colors.redAccent,
         score: targetPct,
       );
     } catch (e) {
       debugPrint('Cloud Run prediction error: $e');
       _showResult(
-        title: 'Hindi masuri ang kumpas',
-        detail: 'Tingnan ang koneksyon sa internet, saka subukang muli.',
+        title: L.t('Could not check that one', 'Hindi masuri ang kumpas'),
+        detail: L.t('Check your internet connection, then try again.', 'Tingnan ang koneksyon sa internet, saka subukang muli.'),
         color: Colors.redAccent,
       );
     }
@@ -938,12 +939,12 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
   /// Gate codes from /v1/predict_raw/calendar -> Tagalog guidance. Takes
   /// precedence over HolisticCapture.rejectAdvice for these codes.
-  static const Map<String, String> _calendarAdvice = {
-    'FRAGMENT_DURATION': 'Kulang pa ang haba ng kumpas para sa senyas na ito. Isagawa nang buo at huwag magmadali.',
-    'NO_HANDS': 'Walang nakitang kamay. Ipakita ang katawan at mga kamay sa camera.',
-    'TOO_SHORT': 'Masyadong maikli ang kumpas. Isagawa ang buong galaw.',
-    'LOW_CONFIDENCE': 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.',
-    'SMALL_MARGIN': 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.',
+  static Map<String, String> get _calendarAdvice => {
+    'FRAGMENT_DURATION': L.t('The sign was too short for this phrase. Do all of it, without rushing.', 'Kulang pa ang haba ng kumpas para sa senyas na ito. Isagawa nang buo at huwag magmadali.'),
+    'NO_HANDS': L.t('No hands detected. Show your body and hands to the camera.', 'Walang nakitang kamay. Ipakita ang katawan at mga kamay sa camera.'),
+    'TOO_SHORT': L.t('The sign was too short. Do the whole movement.', 'Masyadong maikli ang kumpas. Isagawa ang buong galaw.'),
+    'LOW_CONFIDENCE': L.t('Not sure yet. Sign it more clearly and completely.', 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.'),
+    'SMALL_MARGIN': L.t('Not sure yet. Sign it more clearly and completely.', 'Hindi pa tiyak ang kumpas. Gawin nang mas malinaw at buo.'),
   };
 
   static String? _adviceFor(String code) => _calendarAdvice[code] ?? HolisticCapture.rejectAdvice[code];
@@ -1013,7 +1014,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     }
     if (!frames.any((f) => f.hasHands)) {
       _showResult(
-        title: 'Walang nakitang kamay',
+        title: L.t('No hands detected', 'Walang nakitang kamay'),
         detail: HolisticCapture.rejectAdvice['NO_HANDS']!,
         color: Colors.red,
       );
@@ -1036,7 +1037,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     setState(() {
       _isEvaluating = true;
       _recordStart = null;
-      _status = 'Sinusuri ang kumpas...';
+      _status = L.t('Checking your sign...', 'Sinusuri ang kumpas...');
     });
 
     final target = _calendarTarget;
@@ -1150,9 +1151,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       if ((accepted && topIdx == target) || practicePass) {
         setState(() {
           _resultColor = Colors.greenAccent;
-          _resultTitle = 'Mahusay!';
-          _resultDetail = 'Tumpak ang kumpas!';
-          _status = 'Mahusay! Tumpak ang kumpas!';
+          _resultTitle = L.t('Great job!', 'Mahusay!');
+          _resultDetail = L.t('Correct sign!', 'Tumpak ang kumpas!');
+          _status = L.t('Great job! Correct sign!', 'Mahusay! Tumpak ang kumpas!');
           _isEvaluating = false;
         });
         _onSuccess();
@@ -1160,8 +1161,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       }
       if (accepted && topIdx != -1) {
         _showResult(
-          title: 'Mukhang ${_monthName(top)} ang naisagawa',
-          detail: 'Subukang muli ang $targetLabel. Sundan ang halimbawa.',
+          title: L.t('That looked like ${_monthName(top)}', 'Mukhang ${_monthName(top)} ang naisagawa'),
+          detail: L.t('Try $targetLabel again. Follow the example.', 'Subukang muli ang $targetLabel. Sundan ang halimbawa.'),
           color: Colors.redAccent,
         );
         return;
@@ -1170,14 +1171,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           orElse: () => result.failed.isNotEmpty ? result.failed.first : '');
       final advice = _adviceFor(code) ??
           (result.message?.trim().isNotEmpty == true
-              ? 'Hindi tinanggap: ${result.message}'
-              : 'Hindi makilala ang kumpas. Ulitin nang mas malinaw.');
+              ? L.t('Not accepted: ${result.message}', 'Hindi tinanggap: ${result.message}')
+              : L.t('The sign was not recognized. Try again more clearly.', 'Hindi makilala ang kumpas. Ulitin nang mas malinaw.'));
       // A rejected answer has no prediction: use the model's top guess.
       final close = bestIdx != -1 && !const {'NO_HANDS', 'TOO_SHORT', 'LOW_MOTION'}.contains(code);
       _showResult(
         title: close && bestIdx == target
-            ? 'Malapit na! Gawin nang mas malinaw'
-            : (close ? 'Hindi malinaw — mukhang ${_monthName(best)}' : 'Hindi makilala ang kumpas'),
+            ? L.t('Almost! Make it clearer', 'Malapit na! Gawin nang mas malinaw')
+            : (close ? L.t('Unclear — looks like ${_monthName(best)}', 'Hindi malinaw — mukhang ${_monthName(best)}') : L.t('Sign not recognized', 'Hindi makilala ang kumpas')),
         detail: advice,
         color: close && topIdx == target ? Colors.orange : Colors.redAccent,
       );
@@ -1185,21 +1186,21 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       // Rejected by the API client before upload (e.g. no pose in most frames).
       debugPrint('Calendar capture rejected client-side: ${e.message}');
       _showResult(
-        title: 'Hindi makita ang katawan',
+        title: L.t('Body not detected', 'Hindi makita ang katawan'),
         detail: '${e.message}'.contains('Pose')
-            ? 'Hindi makita ang katawan. Ipakita ang balikat, katawan at mga kamay sa camera.'
-            : 'Hindi maipadala ang kumpas. Subukang muli.',
+            ? L.t('Your body is not visible. Show your shoulders, body and hands to the camera.', 'Hindi makita ang katawan. Ipakita ang balikat, katawan at mga kamay sa camera.')
+            : L.t('Could not send your sign. Try again.', 'Hindi maipadala ang kumpas. Subukang muli.'),
         color: Colors.redAccent,
       );
     } catch (e) {
       debugPrint('Calendar prediction error: $e');
       final text = e.toString();
       _showResult(
-        title: 'Hindi masuri ang kumpas',
+        title: L.t('Could not check that one', 'Hindi masuri ang kumpas'),
         // 404 only if the deployed server has no calendar route (it does since
         // revision handspeak-inference-00012); every other failure is shown as-is.
         detail: text.contains('[404]')
-            ? 'Hindi mahanap sa server ang calendar model (/v1/predict_raw/calendar). I-update ang app o subukang muli mamaya.'
+            ? L.t('The calendar model was not found on the server (/v1/predict_raw/calendar). Update the app or try again later.', 'Hindi mahanap sa server ang calendar model (/v1/predict_raw/calendar). I-update ang app o subukang muli mamaya.')
             : text.replaceAll('Exception: ', ''),
         color: Colors.redAccent,
       );
@@ -1534,14 +1535,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                     Icon(visuals.mainBadgeIcon, color: Colors.green, size: 24),
                     const SizedBox(width: 8),
                     Text(
-                      !context.rolesRead.isStudent ? "Mahusay! Tumpak ang kumpas" : (_xpGained > 0 ? "Mahusay! +$_xpGained XP" : "Mahusay! (naabot na ang XP ngayong araw)"),
+                      !context.rolesRead.isStudent ? L.t('Great job! Correct sign', 'Mahusay! Tumpak ang kumpas') : (_xpGained > 0 ? L.t('Great job! +$_xpGained XP', 'Mahusay! +$_xpGained XP') : L.t('Great job! (daily XP limit reached)', 'Mahusay! (naabot na ang XP ngayong araw)')),
                       style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Inter'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  "Susunod na parirala...",
+                  L.t('Next phrase...', 'Susunod na parirala...'),
                   style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600, fontSize: 14),
                 ),
               ],
@@ -1998,16 +1999,16 @@ class _RecordControls extends StatelessWidget {
     final Widget status;
     if (countdown > 0) {
       status = Text(
-        'Ibaba ang mga kamay… $countdown',
+        L.t('Lower your hands… $countdown', 'Ibaba ang mga kamay… $countdown'),
         style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF08C00)),
       );
     } else if (isRecording) {
-      status = bar('Nagre-record... ${elapsed.toStringAsFixed(1)}s', recordProgress.clamp(0.0, 1.0));
+      status = bar(L.t('Recording... ${elapsed.toStringAsFixed(1)}s', 'Nagre-record... ${elapsed.toStringAsFixed(1)}s'), recordProgress.clamp(0.0, 1.0));
     } else if (isEvaluating) {
       status = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Sinusuri ang kumpas...', style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14)),
+          Text(L.t('Checking your sign...', 'Sinusuri ang kumpas...'), style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14)),
           const SizedBox(height: 10),
           SizedBox(
             width: barWidth,
@@ -2027,7 +2028,7 @@ class _RecordControls extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              bodyVisible ? 'Nakikita ang katawan. Pindutin ang RECORD' : 'Lumayo nang kaunti para makita ang balikat at mga kamay',
+              bodyVisible ? L.t('Body in view. Tap RECORD', 'Nakikita ang katawan. Pindutin ang RECORD') : L.t('Step back a little so your shoulders and hands are visible', 'Lumayo nang kaunti para makita ang balikat at mga kamay'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: bodyVisible ? const Color(0xFF2E9E4F) : const Color(0xFFF08C00),

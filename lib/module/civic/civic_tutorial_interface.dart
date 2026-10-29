@@ -8,6 +8,7 @@ import 'civic_tutorial_detail.dart';
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
 import '/services/xp_rewards.dart';
+import '/providers/language_provider.dart';
 
 class CivicLesson {
   final String id;
@@ -115,8 +116,22 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
     return [for (final doc in snapshot.docs) doc.data()];
   }
 
-  static String _video(Map m) =>
-      (m['videoUrl'] ?? m['video_url'] ?? m['mediaUrl'] ?? '').toString().trim();
+  static String _video(Map m) {
+    final v = (m['videoUrl'] ?? m['video_url'] ?? m['mediaUrl'] ?? '').toString().trim();
+    if (v.isNotEmpty) return v;
+    // The web dashboard's "Add Sign" form saves an uploaded video in
+    // imageUrl too; use it when the file is a video.
+    final img = (m['imageUrl'] ?? m['image_url'] ?? '').toString().trim();
+    return _isVideoFile(img) ? img : '';
+  }
+
+  /// mp4 / mov / webm / m4v, also inside a Firebase Storage download link
+  /// (".../o/folder%2Fclip.mp4?alt=media&token=...").
+  static bool _isVideoFile(String url) {
+    if (url.isEmpty) return false;
+    final path = Uri.decodeComponent(url.split('?').first).toLowerCase();
+    return RegExp(r'\.(mp4|mov|webm|m4v|3gp)$').hasMatch(path);
+  }
 
   Future<void> _fetchLessons() async {
     List<Map<String, dynamic>> phrases;
@@ -183,6 +198,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
             'folder_code': p['folder_code'] ?? '',
             'index': index,
             'line_number': i + 1,
+            'videoUrl': lineVideo, // demo video in the practice screen
           }
         ],
       ));
@@ -203,7 +219,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
     final k = keyword.trim().toLowerCase();
     if (k.isEmpty) return lessons;
     return lessons
-        .where((l) => l.title.toLowerCase().contains(k) || '${l.lineNumber}' == k || 'linya ${l.lineNumber}'.contains(k))
+        .where((l) => l.title.toLowerCase().contains(k) || '${l.lineNumber}' == k || L.t('line ${l.lineNumber}', 'linya ${l.lineNumber}').contains(k))
         .toList();
   }
 
@@ -244,7 +260,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, fontFamily: 'Inter', color: textColor),
                 ),
               ),
-              Text('$mastered / $total linya',
+              Text(L.t('$mastered / $total lines', '$mastered / $total linya'),
                   style: TextStyle(fontWeight: FontWeight.w700, color: textColor.withOpacity(0.6))),
             ],
           ),
@@ -292,7 +308,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
           ),
         ),
         title: Text(
-          'Civic Tutorial',
+          L.t('Civic Tutorial', 'Tutorial na Pansibiko'),
           style: TextStyle(
             color: textColor, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96
           ),
@@ -342,7 +358,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                           onChanged: (value) => _runFilter(value),
                           style: TextStyle(color: textColor),
                           decoration: InputDecoration(
-                            hintText: 'Search line...',
+                            hintText: L.t('Search line...', 'Maghanap ng linya...'),
                             hintStyle: TextStyle(color: textColor.withOpacity(0.5), fontWeight: FontWeight.w500),
                             prefixIcon: Icon(Icons.search, color: textColor.withOpacity(0.5)),
                             border: InputBorder.none,
@@ -378,7 +394,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
             Icon(Icons.error_outline, size: 48, color: textColor.withOpacity(0.6)),
             const SizedBox(height: 16),
             Text(
-              "Failed to load the lines.",
+              L.t('Failed to load the lines.', 'Hindi ma-load ang mga linya.'),
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.8)),
             ),
             const SizedBox(height: 8),
@@ -387,7 +403,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                 setState(() => _isLoading = true);
                 _fetchLessons();
               },
-              child: const Text("Tap to retry"),
+              child: Text(L.t('Tap to retry', 'Pindutin para subukang muli')),
             )
           ],
         ),
@@ -410,7 +426,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                   Icon(Icons.cloud_off_rounded, size: 18, color: textColor.withOpacity(0.6)),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text("Hindi ma-load ang mga video mula sa server.",
+                    child: Text(L.t('The videos could not be loaded from the server.', 'Hindi ma-load ang mga video mula sa server.'),
                         style: TextStyle(fontSize: 13, color: textColor.withOpacity(0.7))),
                   ),
                   TextButton(
@@ -418,7 +434,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                       setState(() => _isLoading = true);
                       _fetchLessons();
                     },
-                    child: const Text("Retry"),
+                    child: Text(L.t('Retry', 'Subukang muli')),
                   ),
                 ],
               ),
@@ -429,7 +445,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
               padding: const EdgeInsets.only(top: 40),
               child: Center(
                 child: Text(
-                  "No lines found.",
+                  L.t('No lines found.', 'Walang nahanap na linya.'),
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
                 ),
               ),

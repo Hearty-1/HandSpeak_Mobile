@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '/providers/language_provider.dart';
 
 /// How a practice feedback message should feel.
 enum FeedbackTone {
@@ -28,7 +29,7 @@ enum FeedbackTone {
 ///
 /// Universal Design for Learning (UDL), multiple means of representation:
 /// every result is shown at once as a colour, a distinct icon shape, a word
-/// label ("Tama!", "Malapit na") and a short plain sentence, so it is clear
+/// label ("Correct!" / "Tama!", "Almost" / "Malapit na") and a short plain sentence, so it is clear
 /// without colour vision, without reading much, or without sound. Messages
 /// say what to do next (action), never only what went wrong, and there are
 /// no percentages or test details. Screen readers announce the card.
@@ -41,11 +42,11 @@ class PracticeFeedback extends StatefulWidget {
   const PracticeFeedback({super.key, required this.message, this.title, this.tone = FeedbackTone.info, this.width});
 
   static ({Color color, IconData icon, String label}) styleOf(FeedbackTone tone, ThemeData theme) => switch (tone) {
-        FeedbackTone.success => (color: const Color(0xFF2E9E4F), icon: Icons.check_circle_rounded, label: 'Tama!'),
-        FeedbackTone.almost => (color: const Color(0xFFF08C00), icon: Icons.thumb_up_alt_rounded, label: 'Malapit na'),
-        FeedbackTone.tryAgain => (color: const Color(0xFFE8590C), icon: Icons.replay_circle_filled_rounded, label: 'Subukang muli'),
-        FeedbackTone.problem => (color: const Color(0xFFE03131), icon: Icons.warning_rounded, label: 'Ayusin muna'),
-        FeedbackTone.info => (color: theme.primaryColor, icon: Icons.sign_language_rounded, label: 'Gabay'),
+        FeedbackTone.success => (color: const Color(0xFF2E9E4F), icon: Icons.check_circle_rounded, label: L.t('Correct!', 'Tama!')),
+        FeedbackTone.almost => (color: const Color(0xFFF08C00), icon: Icons.thumb_up_alt_rounded, label: L.t('Almost', 'Malapit na')),
+        FeedbackTone.tryAgain => (color: const Color(0xFFE8590C), icon: Icons.replay_circle_filled_rounded, label: L.t('Try again', 'Subukang muli')),
+        FeedbackTone.problem => (color: const Color(0xFFE03131), icon: Icons.warning_rounded, label: L.t('Fix this first', 'Ayusin muna')),
+        FeedbackTone.info => (color: theme.primaryColor, icon: Icons.sign_language_rounded, label: L.t('Guide', 'Gabay')),
       };
 
   /// Maps the old result colours (green / orange / red) to a tone.

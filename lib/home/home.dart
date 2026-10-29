@@ -22,6 +22,7 @@ import '/auth/login_screen.dart';
 import '/auth/role_selection_screen.dart';
 import '/services/role_service.dart';
 import '/module/alphabet/tutorial_practice.dart' show TutorialPractice;
+import '/providers/language_provider.dart';
 
 import '../home/notification_bell.dart'; // Added import for the standardized bell
 
@@ -165,26 +166,26 @@ class SnedInterafce1 extends StatelessWidget {
   }
 
   static String _timeAgo(DateTime? t) {
-    if (t == null) return 'Start learning';
+    if (t == null) return L.t('Start learning', 'Simulan ang pag-aaral');
     final d = DateTime.now().difference(t);
-    if (d.inMinutes < 1) return 'Just now';
-    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-    if (d.inHours < 24) return '${d.inHours}h ago';
-    if (d.inDays == 1) return 'Yesterday';
-    if (d.inDays < 7) return '${d.inDays} days ago';
+    if (d.inMinutes < 1) return L.t('Just now', 'Ngayon lang');
+    if (d.inMinutes < 60) return L.t('${d.inMinutes}m ago', '${d.inMinutes}m na ang nakalipas');
+    if (d.inHours < 24) return L.t('${d.inHours}h ago', '${d.inHours}h na ang nakalipas');
+    if (d.inDays == 1) return L.t('Yesterday', 'Kahapon');
+    if (d.inDays < 7) return L.t('${d.inDays} days ago', '${d.inDays} araw na ang nakalipas');
     return '${t.month}/${t.day}/${t.year}';
   }
 
-  /// "Continue Learning" shortcut: module art, name, last opened and the
+  /// L.t('Continue Learning', 'Ipagpatuloy ang Pag-aaral') shortcut: module art, name, last opened and the
   /// module's XP progress; tapping resumes the module.
   Widget _buildContinueCard(BuildContext context, String moduleKey, int xp, DateTime? opened, double scale) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final (String title, String imagePath, Widget Function(int) screen) = switch (moduleKey) {
-      'numbers' => ('Numbers', 'assets/pictures/numbers.png', (int x) => NumbersInterface(currentXp: x, targetXp: _moduleTargetXp)),
-      'common words' => ('Words/Phrases', 'assets/pictures/words.png', (int x) => PhraseInterface(currentXp: x, targetXp: _moduleTargetXp)),
-      'civic' => ('Civic Observances', 'assets/pictures/civic.png', (int x) => CivicInterface(currentXp: x, targetXp: _moduleTargetXp)),
-      _ => ('Alphabet', 'assets/pictures/abc.png', (int x) => AlphabetInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      'numbers' => (L.t('Numbers', 'Mga Numero'), 'assets/pictures/numbers.png', (int x) => NumbersInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      'common words' => (L.t('Words/Phrases', 'Mga Salita/Parirala'), 'assets/pictures/words.png', (int x) => PhraseInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      'civic' => (L.t('Civic Observances', 'Pagdiriwang Pansibiko'), 'assets/pictures/civic.png', (int x) => CivicInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      _ => (L.t('Alphabet', 'Alpabeto'), 'assets/pictures/abc.png', (int x) => AlphabetInterface(currentXp: x, targetXp: _moduleTargetXp)),
     };
     final shownXp = math.min(xp, _moduleTargetXp);
     final progress = shownXp / _moduleTargetXp;
@@ -269,7 +270,7 @@ class SnedInterafce1 extends StatelessWidget {
                   ),
                   SizedBox(height: 6 * scale),
                   Text(
-                    complete ? 'Completed' : '$shownXp / $_moduleTargetXp XP',
+                    complete ? L.t('Completed', 'Tapos na') : '$shownXp / $_moduleTargetXp XP',
                     style: TextStyle(color: complete ? Colors.green : textColor.withOpacity(0.6), fontSize: 11.5 * scale, fontWeight: FontWeight.w700),
                   ),
                 ],
@@ -286,11 +287,11 @@ class SnedInterafce1 extends StatelessWidget {
   // of the day to practise, every module's tutorials, and a role tip.
   // ---------------------------------------------------------------------------
 
-  static const _guestModules = <({String key, String title, String blurb, String image, IconData icon})>[
-    (key: 'alphabet', title: 'Alphabet', blurb: 'A–Z hand signs', image: 'assets/pictures/abc.png', icon: Icons.abc_rounded),
-    (key: 'numbers', title: 'Numbers', blurb: 'Counting signs', image: 'assets/pictures/numbers.png', icon: Icons.pin_rounded),
-    (key: 'common words', title: 'Words/Phrases', blurb: 'Everyday greetings', image: 'assets/pictures/words.png', icon: Icons.forum_rounded),
-    (key: 'civic', title: 'Civic Observances', blurb: 'Lupang Hinirang', image: 'assets/pictures/civic.png', icon: Icons.flag_rounded),
+  static List<({String key, String title, String blurb, String image, IconData icon})> get _guestModules => [
+    (key: 'alphabet', title: L.t('Alphabet', 'Alpabeto'), blurb: L.t('A–Z hand signs', 'Mga senyas ng A–Z'), image: 'assets/pictures/abc.png', icon: Icons.abc_rounded),
+    (key: 'numbers', title: L.t('Numbers', 'Mga Numero'), blurb: L.t('Counting signs', 'Mga senyas sa pagbilang'), image: 'assets/pictures/numbers.png', icon: Icons.pin_rounded),
+    (key: 'common words', title: L.t('Words/Phrases', 'Mga Salita/Parirala'), blurb: L.t('Everyday greetings', 'Pang-araw-araw na pagbati'), image: 'assets/pictures/words.png', icon: Icons.forum_rounded),
+    (key: 'civic', title: L.t('Civic Observances', 'Pagdiriwang Pansibiko'), blurb: 'Lupang Hinirang', image: 'assets/pictures/civic.png', icon: Icons.flag_rounded),
   ];
 
   static Widget _moduleScreen(String key) => switch (key) {
@@ -354,12 +355,12 @@ class SnedInterafce1 extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Letter $letter',
+                    L.t('Letter $letter', 'Letra $letter'),
                     style: TextStyle(color: textColor, fontSize: 24 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.6),
                   ),
                   SizedBox(height: 2 * scale),
                   Text(
-                    'Copy the handshape, then try it on camera.',
+                    L.t('Copy the handshape, then try it on camera.', 'Gayahin ang porma ng kamay, saka subukan sa camera.'),
                     style: TextStyle(color: textColor.withOpacity(0.65), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.3),
                   ),
                   SizedBox(height: 10 * scale),
@@ -367,7 +368,7 @@ class SnedInterafce1 extends StatelessWidget {
                     children: [
                       Icon(Icons.videocam_rounded, size: 16 * scale, color: theme.primaryColor),
                       SizedBox(width: 6 * scale),
-                      Text('Practice this sign',
+                      Text(L.t('Practice this sign', 'Sanayin ang senyas na ito'),
                           style: TextStyle(color: theme.primaryColor, fontSize: 13.5 * scale, fontWeight: FontWeight.w800)),
                       SizedBox(width: 2 * scale),
                       Icon(Icons.chevron_right_rounded, size: 18 * scale, color: theme.primaryColor),
@@ -449,13 +450,13 @@ class SnedInterafce1 extends StatelessWidget {
     final (IconData icon, String title, String body) = role == UserRole.parent
         ? (
             Icons.family_restroom_rounded,
-            'Learn together',
-            'Pick one sign a day and practise it with your child. Let them teach it back to you. It is the fastest way to remember.',
+            L.t('Learn together', 'Sabay na matuto'),
+            L.t('Pick one sign a day and practise it with your child. Let them teach it back to you. It is the fastest way to remember.', 'Pumili ng isang senyas araw-araw at sanayin ito kasama ang anak mo. Hayaan siyang ituro ito pabalik sa iyo. Ito ang pinakamabilis na paraan para matandaan.'),
           )
         : (
             Icons.co_present_rounded,
-            'Teaching tip',
-            'Use the tutorial videos to introduce a sign in class. Students log in with their own accounts to play activities and earn XP.',
+            L.t('Teaching tip', 'Tip sa pagtuturo'),
+            L.t('Use the tutorial videos to introduce a sign in class. Students log in with their own accounts to play activities and earn XP.', 'Gamitin ang mga tutorial video para ipakilala ang senyas sa klase. Mag-log in ang mga estudyante sa sarili nilang account para maglaro at makakuha ng XP.'),
           );
     return _buildGlassContainer(
       context: context,
@@ -486,10 +487,10 @@ class SnedInterafce1 extends StatelessWidget {
   }
 
   List<Widget> _buildGuestSections(BuildContext context, UserRole role, double scale) => [
-        _sectionTitle(context, 'Sign of the Day', scale),
+        _sectionTitle(context, L.t('Sign of the Day', 'Senyas ng Araw'), scale),
         _buildSignOfTheDay(context, scale),
         SizedBox(height: 28 * scale),
-        _sectionTitle(context, 'Explore the Modules', scale, subtitle: 'Watch the tutorials and practise each sign on camera.'),
+        _sectionTitle(context, L.t('Explore the Modules', 'Tuklasin ang mga Module'), scale, subtitle: L.t('Watch the tutorials and practise each sign on camera.', 'Panoorin ang mga tutorial at sanayin ang bawat senyas sa camera.')),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -532,7 +533,7 @@ class SnedInterafce1 extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Daily Challenges!', 
+                    L.t('Daily Challenges!', 'Mga Hamon Ngayong Araw!'), 
                     style: TextStyle(
                       color: Colors.white, 
                       fontSize: 18 * scale, 
@@ -592,7 +593,7 @@ class SnedInterafce1 extends StatelessWidget {
         int stars = 0; 
         String? avatarUrl; 
         List<String> recentModules = [];
-        String questSubtitle = 'Your personalised quests are ready!';
+        String questSubtitle = L.t('Your personalised quests are ready!', 'Handa na ang mga quest para sa iyo!');
 
         // Continue Learning: per-module XP + when each module was last opened.
         final moduleXp = <String, int>{for (final m in ProgressService.modules) m: 0};
@@ -607,10 +608,10 @@ class SnedInterafce1 extends StatelessWidget {
               final claimedToday = quests.where((q) => q is Map && done.contains(q['id'])).length;
               final lp = userData['learnerProfile'];
               final pace = lp is Map
-                  ? const {'starter': 'Getting Started', 'steady': 'Steady Pace', 'balanced': 'Balanced', 'fast': 'Fast Track'}[lp['pace']]
+                  ? {'starter': L.t('Getting Started', 'Nagsisimula'), 'steady': L.t('Steady Pace', 'Tuloy-tuloy'), 'balanced': L.t('Balanced', 'Balanse'), 'fast': L.t('Fast Track', 'Mabilis')}[lp['pace']]
                   : null;
               questSubtitle = claimedToday >= quests.length
-                  ? 'All ${quests.length} quests done today. Great work!'
+                  ? L.t('All ${quests.length} quests done today. Great work!', 'Tapos na ang lahat ng ${quests.length} quest ngayong araw. Magaling!')
                   : '$claimedToday of ${quests.length} quests done${pace != null ? ' · $pace' : ''}';
             }
             studentName = userData['name'] ?? userData['displayName'] ?? studentName; 
@@ -660,7 +661,7 @@ class SnedInterafce1 extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Menu', 
+                        L.t('Menu', 'Menu'), 
                         style: TextStyle(
                           color: theme.colorScheme.onPrimary,
                           fontSize: 24,
@@ -670,7 +671,7 @@ class SnedInterafce1 extends StatelessWidget {
                       if (isGuest) ...[
                         const SizedBox(height: 4),
                         Text(
-                          '${roles.roleLabel} access',
+                          L.t('${roles.roleLabel} access', 'Access ng ${roles.roleLabel}'),
                           style: TextStyle(
                             color: theme.colorScheme.onPrimary.withOpacity(0.85),
                             fontSize: 14,
@@ -687,7 +688,7 @@ class SnedInterafce1 extends StatelessWidget {
                     children: [
                       ListTile(
                         leading: Icon(Icons.settings, color: theme.primaryColor), 
-                        title: Text('Settings', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        title: Text(L.t('Settings', 'Mga Setting'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context); 
                           Navigator.push(context, _fadeRoute(const SettingsScreen()));
@@ -695,40 +696,40 @@ class SnedInterafce1 extends StatelessWidget {
                       ),
                       ListTile(
                         leading: Icon(Icons.help_outline, color: theme.primaryColor), 
-                        title: Text('Help & Support', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        title: Text(L.t('Help & Support', 'Tulong at Suporta'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, _fadeRoute(const InfoDetailScreen(
-                            title: 'Help & Support',
+                          Navigator.push(context, _fadeRoute(InfoDetailScreen(
+                            title: L.t('Help & Support', 'Tulong at Suporta'),
                             sections: [
                               InfoSection(
-                                title: 'The Learning Loop',
-                                body: 'Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.',
+                                title: L.t('The Learning Loop', 'Ang Paraan ng Pag-aaral'),
+                                body: L.t('Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.', 'Ang pag-aaral mo ng Filipino Sign Language ay may apat na yugto: Tutorials, Practice, Activities at Challenges. Makakuha ng 1000 XP para mabuksan ang susunod na module.'),
                                 icon: Icons.loop_rounded,
                               ),
                               InfoSection(
-                                title: 'Camera Combat',
-                                body: 'Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.',
+                                title: L.t('Camera Combat', 'Camera Combat'),
+                                body: L.t('Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.', 'Siguraduhing maliwanag ang lugar at gamitin ang Mirror-Mode Camera. Ang berdeng tsek ay tama, at ang pulang "X" ay kailangan pang ayusin ang porma.'),
                                 icon: Icons.camera_alt_rounded,
                               ),
                               InfoSection(
-                                title: 'Leveling Up & Streaks',
-                                body: 'Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.',
+                                title: L.t('Leveling Up & Streaks', 'Pag-level Up at Streaks'),
+                                body: L.t('Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.', 'Patuloy na magsanay para makakuha ng XP at mapuno ang Level Progress Bar. I-on ang Streak Reminders para tuloy-tuloy ang pag-aaral.'),
                                 icon: Icons.local_fire_department_rounded,
                               ),
                               InfoSection(
-                                title: 'Multiplayer Challenges',
-                                body: 'Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".',
+                                title: L.t('Multiplayer Challenges', 'Multiplayer Challenges'),
+                                body: L.t('Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".', 'Hamunin ang mga kaklase: pindutin ang "Join a Room" at ilagay ang Room Code, o maging host sa pagpili ng "Create a Room".'),
                                 icon: Icons.group_rounded,
                               ),
                               InfoSection(
-                                title: 'Customizing Experience',
-                                body: 'Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.',
+                                title: L.t('Customizing Experience', 'Pag-customize ng App'),
+                                body: L.t('Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.', 'Pumunta sa Settings para palitan ang Tema (tulad ng Galaxy Explorer o Deep Ocean) at i-on o i-off ang Background Music.'),
                                 icon: Icons.palette_rounded,
                               ),
                               InfoSection(
-                                title: 'Reporting Bugs',
-                                body: 'Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.',
+                                title: L.t('Reporting Bugs', 'Pag-uulat ng Problema'),
+                                body: L.t('Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.', 'Maaaring magpadala ang mga guro ng bug report sa admin gamit ang "Feedback & Support". Ang mga estudyante ay mag-ulat sa kanilang guro.'),
                                 icon: Icons.bug_report_rounded,
                               ),
                             ],
@@ -737,7 +738,7 @@ class SnedInterafce1 extends StatelessWidget {
                       ),
                       ListTile(
                         leading: Icon(Icons.info_outline, color: theme.primaryColor), 
-                        title: Text('About Us', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        title: Text(L.t('About Us', 'Tungkol sa Amin'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context);
                           Navigator.push(context, _fadeRoute(const AboutUsScreen()));
@@ -745,10 +746,10 @@ class SnedInterafce1 extends StatelessWidget {
                       ),
                       ListTile(
                         leading: Icon(Icons.gavel_rounded, color: theme.primaryColor), 
-                        title: Text('Terms & Privacy Policy', style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
+                        title: Text(L.t('Terms & Privacy Policy', 'Mga Tuntunin at Privacy Policy'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, _fadeRoute(const InfoDetailScreen(
+                          Navigator.push(context, _fadeRoute(InfoDetailScreen(
                             title: 'Terms of Service & Privacy Policy',
                             sections: [
                               InfoSection(
@@ -802,7 +803,7 @@ class SnedInterafce1 extends StatelessWidget {
                       ),
                       ListTile(
   leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: const Color(0xFFF34B1B)), 
-  title: Text(isGuest ? 'Change Role' : 'Sign Out', style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
+  title: Text(isGuest ? L.t('Change Role', 'Palitan ang Role') : L.t('Sign Out', 'Mag-sign Out'), style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
   onTap: () async {
     if (isGuest) {
       // Faculty / Parent have no account: just leave guest mode and ask for a role again.
@@ -929,7 +930,7 @@ class SnedInterafce1 extends StatelessWidget {
                     if (isGuest)
                       Align(
                         alignment: Alignment.centerLeft,
-                        child: _buildGlassStatBadge(context, roles.role!.icon, '${roles.roleLabel} · Guest', theme.primaryColor, scale),
+                        child: _buildGlassStatBadge(context, roles.role!.icon, L.t('${roles.roleLabel} · Guest', '${roles.roleLabel} · Bisita'), theme.primaryColor, scale),
                       )
                     else
                     Row(
@@ -976,7 +977,7 @@ class SnedInterafce1 extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start, 
                               children: [
                                 Text(
-                                  'Mabuhay,', 
+                                  L.t('Mabuhay,', 'Mabuhay,'), 
                                   style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 18 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.5), 
                                 ),
                                 Text(
@@ -987,8 +988,8 @@ class SnedInterafce1 extends StatelessWidget {
                                   SizedBox(height: 10 * scale),
                                   Text(
                                     roles.role == UserRole.parent
-                                        ? 'Learn Filipino Sign Language with your child, one sign at a time.'
-                                        : 'Explore the lessons your students learn, sign by sign.',
+                                        ? L.t('Learn Filipino Sign Language with your child, one sign at a time.', 'Matuto ng Filipino Sign Language kasama ang anak mo, isang senyas sa bawat araw.')
+                                        : L.t('Explore the lessons your students learn, sign by sign.', 'Tingnan ang mga aralin ng iyong mga estudyante, senyas sa senyas.'),
                                     style: TextStyle(color: theme.colorScheme.onPrimary.withOpacity(0.9), fontSize: 14 * scale, fontWeight: FontWeight.w600, height: 1.3),
                                   ),
                                   SizedBox(height: 12 * scale),
@@ -997,8 +998,8 @@ class SnedInterafce1 extends StatelessWidget {
                                     runSpacing: 6 * scale,
                                     children: [
                                       for (final (icon, label) in [
-                                        (Icons.play_circle_rounded, 'Tutorials'),
-                                        (Icons.videocam_rounded, 'Camera practice'),
+                                        (Icons.play_circle_rounded, L.t('Tutorials', 'Mga Tutorial')),
+                                        (Icons.videocam_rounded, L.t('Camera practice', 'Pagsasanay sa camera')),
                                       ])
                                         Container(
                                           padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 5 * scale),
@@ -1021,7 +1022,7 @@ class SnedInterafce1 extends StatelessWidget {
                                 ] else ...[
                                 SizedBox(height: 12 * scale), 
                                 Text(
-                                  'Level $currentLevel', 
+                                  L.t('Level $currentLevel', 'Level $currentLevel'), 
                                   style: TextStyle(color: theme.colorScheme.onPrimary.withOpacity(0.9), fontSize: 16 * scale, fontWeight: FontWeight.w700), 
                                 ),
                                 SizedBox(height: 6 * scale), 
@@ -1101,7 +1102,7 @@ class SnedInterafce1 extends StatelessWidget {
                       ..._buildGuestSections(context, roles.role!, scale)
                     else ...[
                     Text(
-                      'Continue Learning',
+                      L.t('Continue Learning', 'Ipagpatuloy ang Pag-aaral'),
                       style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5),
                     ),
                     SizedBox(height: 16 * scale),
@@ -1292,7 +1293,7 @@ class AboutUsScreen extends StatelessWidget {
         centerTitle: true,
         iconTheme: theme.iconTheme.copyWith(color: textColor),
         title: Text(
-          "About Us",
+          L.t('About Us', 'Tungkol sa Amin'),
           style: TextStyle(
             color: textColor,
             fontWeight: FontWeight.w700,
@@ -1333,19 +1334,19 @@ class AboutUsScreen extends StatelessWidget {
           ),
           SizedBox(height: 32 * scale),
 
-          Text("Our Mission", style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+          Text(L.t('Our Mission', 'Ang Aming Misyon'), style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
           SizedBox(height: 8 * scale),
           Text(
-            "HandSpeak is a gamified Filipino Sign Language (FSL) learning adventure equipped with real-time gesture recognition. Our goal is to level up foundational literacy and boost school-wide inclusivity at Sto. Tomas North Central School (STNCS).",
+            L.t('HandSpeak is a gamified Filipino Sign Language (FSL) learning adventure equipped with real-time gesture recognition. Our goal is to level up foundational literacy and boost school-wide inclusivity at Sto. Tomas North Central School (STNCS).', 'Ang HandSpeak ay isang larong pag-aaral ng Filipino Sign Language (FSL) na may real-time na pagkilala ng senyas. Layunin naming paunlarin ang batayang literasiya at ang inklusibong pag-aaral sa Sto. Tomas North Central School (STNCS).'),
             style: TextStyle(color: textColor.withOpacity(0.85), fontSize: 14 * scale, height: 1.6),
             textAlign: TextAlign.justify,
           ),
           SizedBox(height: 28 * scale),
 
-          Text("The Developers", style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+          Text(L.t('The Developers', 'Ang mga Developer'), style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
           SizedBox(height: 8 * scale),
           Text(
-            "This digital learning world was forged as a Capstone Project by developers from the College of Informatics and Computing Sciences at Batangas State University - JPLPC Malvar Campus.",
+            L.t('This digital learning world was forged as a Capstone Project by developers from the College of Informatics and Computing Sciences at Batangas State University - JPLPC Malvar Campus.', 'Ang digital na mundong ito ng pag-aaral ay ginawa bilang Capstone Project ng mga developer mula sa College of Informatics and Computing Sciences ng Batangas State University - JPLPC Malvar Campus.'),
             style: TextStyle(color: textColor.withOpacity(0.85), fontSize: 14 * scale, height: 1.6),
             textAlign: TextAlign.justify,
           ),

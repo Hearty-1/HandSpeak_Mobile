@@ -10,6 +10,7 @@ import '/module/alphabet/tutorial_practice.dart'
     show LandmarkPoint, LetterJClassifierService, LetterZClassifierService;
 import '/module/numbers/numbers_tutorial_practice.dart' show FSLOnnxService, BaseShapeVerifier;
 import 'handspeak_api_service.dart';
+import '/providers/language_provider.dart';
 
 /// Result of judging one recorded moving sign.
 class DynamicVerdict {
@@ -147,10 +148,10 @@ class DynamicSignJudge {
     final isJ = letter.toUpperCase() == 'J';
     final model = isJ ? 'assets/alphabet/fsl_letter_j.onnx' : 'assets/alphabet/fsl_letter_z.onnx';
     final hint = isJ
-        ? 'Gawing mas malinaw ang J: kalingkingan lang ang nakataas, pababa, saka ikurba.'
-        : 'Iguhit ang Z gamit ang hintuturo: pakanan, pababang pahilis, saka pakanan.';
+        ? L.t('Make the J clearer: only the pinky up, move down, then curve.', 'Gawing mas malinaw ang J: kalingkingan lang ang nakataas, pababa, saka ikurba.')
+        : L.t('Draw the Z with your index finger: right, diagonally down, then right.', 'Iguhit ang Z gamit ang hintuturo: pakanan, pababang pahilis, saka pakanan.');
     if (_frames.length < 8) {
-      return DynamicVerdict(isCorrect: false, score: 0, feedback: 'Gawin ang buong galaw ng Letter $letter sa harap ng camera.', model: model, frames: _frames.length);
+      return DynamicVerdict(isCorrect: false, score: 0, feedback: L.t('Do the whole movement of Letter $letter in front of the camera.', 'Gawin ang buong galaw ng Letter $letter sa harap ng camera.'), model: model, frames: _frames.length);
     }
     await prepare(letters: true);
     final rotation = _rotation();
@@ -187,7 +188,7 @@ class DynamicSignJudge {
       return DynamicVerdict(
         isCorrect: r.accepted,
         score: r.accepted ? (r.confidence * 100).clamp(75.0, 99.0).toDouble() : r.confidence * 60,
-        feedback: r.accepted ? 'Tama ang Letter $letter!' : hint,
+        feedback: r.accepted ? L.t('Letter $letter is correct!', 'Tama ang Letter $letter!') : hint,
         model: '$model + server letter_${letter.toLowerCase()}',
         predicted: r.accepted ? letter.toUpperCase() : null,
         confidence: r.confidence,
@@ -199,7 +200,7 @@ class DynamicSignJudge {
       return DynamicVerdict(
         isCorrect: true,
         score: (localConf * 100).clamp(75.0, 99.0).toDouble(),
-        feedback: 'Tama ang Letter $letter!',
+        feedback: L.t('Letter $letter is correct!', 'Tama ang Letter $letter!'),
         model: model,
         predicted: letter.toUpperCase(),
         confidence: localConf,
@@ -244,12 +245,12 @@ class DynamicSignJudge {
     final model = modelFileFor(number);
     if (_frames.length < 12) {
       return DynamicVerdict(isCorrect: false, score: 0, model: model, frames: _frames.length,
-          feedback: 'Masyadong mabilis. Hawakan ang unang porma, gumalaw, saka hawakan ang huling porma.');
+          feedback: L.t('Too fast. Hold the first shape, move, then hold the last shape.', 'Masyadong mabilis. Hawakan ang unang porma, gumalaw, saka hawakan ang huling porma.'));
     }
     await prepare(number: number);
     if (!FSLOnnxService.isReadyFor(number)) {
       return DynamicVerdict(isCorrect: false, score: 0, model: model, frames: _frames.length,
-          feedback: 'Hindi ma-load ang modelo para sa Number $number. Subukang muli.');
+          feedback: L.t('Could not load the model for Number $number. Try again.', 'Hindi ma-load ang modelo para sa Number $number. Subukang muli.'));
     }
     try {
       final clip24 = FSLOnnxService.resampleTo24(_trainingClip(_rotation()));
@@ -269,7 +270,7 @@ class DynamicSignJudge {
     } catch (e) {
       debugPrint('[DynamicSignJudge] number $number: $e');
       return DynamicVerdict(isCorrect: false, score: 0, model: model, frames: _frames.length,
-          feedback: 'Hindi masuri ang kumpas. Subukang muli.');
+          feedback: L.t('Could not check your sign. Try again.', 'Hindi masuri ang kumpas. Subukang muli.'));
     }
   }
 }
@@ -439,14 +440,14 @@ class StaticLetterChecker {
     if (spec != null) {
       bool extended(int tip, int pip) => ratio(tip, pip) >= 1.10;
       bool folded(int tip, int pip) => ratio(tip, pip) <= 1.05;
-      if (!extended(8, 6)) return 'Iunat ang hintuturo para sa Letter $letter.';
-      if (spec.middleUp && !extended(12, 10)) return 'Iunat din ang hinlalato para sa Letter $letter.';
+      if (!extended(8, 6)) return L.t('Straighten your index finger for Letter $letter.', 'Iunat ang hintuturo para sa Letter $letter.');
+      if (spec.middleUp && !extended(12, 10)) return L.t('Straighten your middle finger too for Letter $letter.', 'Iunat din ang hinlalato para sa Letter $letter.');
       final mustFold = [
         if (spec.middleFolded && !folded(12, 10)) 'hinlalato',
         if (!folded(16, 14)) 'palasingsingan',
         if (!folded(20, 18)) 'kalingkingan',
       ];
-      if (mustFold.isNotEmpty) return 'Itikom ang ${mustFold.join(', ')} para sa Letter $letter.';
+      if (mustFold.isNotEmpty) return L.t('Fold your ${L.fingers(mustFold)} for Letter $letter.', "Itikom ang ${mustFold.join(', ')} para sa Letter $letter.");
 
       // Pointing direction of the index finger (knuckle -> tip), y points down.
       final dx = p[8].x - p[5].x, dy = p[8].y - p[5].y;
@@ -454,11 +455,11 @@ class StaticLetterChecker {
       const tan50 = 1.19;
       switch (spec.dir) {
         case 'side':
-          if (ay > ax * tan50) return 'Itagilid ang kamay: pahalang dapat ang hintuturo.';
+          if (ay > ax * tan50) return L.t('Turn your hand sideways: the index finger should point sideways.', 'Itagilid ang kamay: pahalang dapat ang hintuturo.');
         case 'up':
-          if (!(dy < 0 && ax <= ay * tan50)) return 'Ituro pataas ang hintuturo para sa Letter $letter.';
+          if (!(dy < 0 && ax <= ay * tan50)) return L.t('Point your index finger up for Letter $letter.', 'Ituro pataas ang hintuturo para sa Letter $letter.');
         case 'down':
-          if (!(dy > 0 && ax <= ay * tan50)) return 'Ituro pababa ang hintuturo para sa Letter $letter.';
+          if (!(dy > 0 && ax <= ay * tan50)) return L.t('Point your index finger down for Letter $letter.', 'Ituro pababa ang hintuturo para sa Letter $letter.');
       }
 
       final middleOut = d(12, 9); // middle tip -> its knuckle: ~0.4 folded, 0.7+ out
@@ -466,16 +467,16 @@ class StaticLetterChecker {
           'thumb-ringjoint=${d(4, 14).toStringAsFixed(2)} thumbOut=${d(4, 5).toStringAsFixed(2)}');
       switch (letter) {
         case 'K': // middle out (L, D fold it), thumb on the middle finger (peace sign: on the ring)
-          if (middleOut < 0.65) return 'Iunat din ang hinlalato para sa Letter K.';
+          if (middleOut < 0.65) return L.t('Straighten your middle finger too for Letter K.', 'Iunat din ang hinlalato para sa Letter K.');
           if (d(4, 10) > 0.60 || d(4, 10) > d(4, 14)) {
-            return 'Ilagay ang hinlalaki sa pagitan ng hintuturo at hinlalato para sa Letter K.';
+            return L.t('Put your thumb between your index and middle fingers for Letter K.', 'Ilagay ang hinlalaki sa pagitan ng hintuturo at hinlalato para sa Letter K.');
           }
         case 'P': // the middle finger sticks out downward (Q folds it)
-          if (middleOut < 0.65) return 'Iunat din ang hinlalato pababa para sa Letter P.';
-          if (d(4, 10) > 0.65) return 'Idikit ang hinlalaki sa hinlalato para sa Letter P.';
+          if (middleOut < 0.65) return L.t('Point your middle finger down too for Letter P.', 'Iunat din ang hinlalato pababa para sa Letter P.');
+          if (d(4, 10) > 0.65) return L.t('Touch your thumb to your middle finger for Letter P.', 'Idikit ang hinlalaki sa hinlalato para sa Letter P.');
         case 'Q': // index and thumb point down together, middle folded (P sticks it out)
-          if (middleOut > 0.55) return 'Itikom ang hinlalato para sa Letter Q.';
-          if (d(4, 5) < 0.55 || p[4].y <= p[2].y) return 'Ituro pababa ang hinlalaki kasama ang hintuturo para sa Letter Q.';
+          if (middleOut > 0.55) return L.t('Fold your middle finger for Letter Q.', 'Itikom ang hinlalato para sa Letter Q.');
+          if (d(4, 5) < 0.55 || p[4].y <= p[2].y) return L.t('Point your thumb down together with your index finger for Letter Q.', 'Ituro pababa ang hinlalaki kasama ang hintuturo para sa Letter Q.');
       }
       return null;
     }
@@ -509,45 +510,45 @@ class StaticLetterChecker {
           if (r < 0.85) toStraighten.add(fingers[i].$3);
       }
     }
-    if (toBend.isNotEmpty) return 'Ibaluktot ang ${toBend.join(', ')} para sa Letter $letter.';
-    if (toStraighten.isNotEmpty) return 'Iunat ang ${toStraighten.join(', ')} para sa Letter $letter.';
-    if (toCurve.isNotEmpty) return 'Bahagyang ibaluktot ang ${toCurve.join(', ')} para sa Letter $letter.';
+    if (toBend.isNotEmpty) return L.t('Bend your ${L.fingers(toBend)} for Letter $letter.', "Ibaluktot ang ${toBend.join(', ')} para sa Letter $letter.");
+    if (toStraighten.isNotEmpty) return L.t('Straighten your ${L.fingers(toStraighten)} for Letter $letter.', "Iunat ang ${toStraighten.join(', ')} para sa Letter $letter.");
+    if (toCurve.isNotEmpty) return L.t('Slightly bend your ${L.fingers(toCurve)} for Letter $letter.', "Bahagyang ibaluktot ang ${toCurve.join(', ')} para sa Letter $letter.");
 
     // 2. Thumb / spacing rules that tell look-alikes apart.
     switch (letter) {
       case 'A': // thumb at the side of the index finger, not across / under (S, M, N)
-        if (d(4, 10) < 0.45 || g.thumbAcross > 0.12) return 'Ilagay ang hinlalaki sa gilid ng kamao para sa Letter A.';
+        if (d(4, 10) < 0.45 || g.thumbAcross > 0.12) return L.t('Put your thumb at the side of your fist for Letter A.', 'Ilagay ang hinlalaki sa gilid ng kamao para sa Letter A.');
       case 'B': // flat, fully straight fingers (C is curved) and the thumb folded in
-        if (g.fingerReach < 1.70) return 'Iunat nang tuwid ang lahat ng daliri para sa Letter B.';
-        if (d(4, 9) > 0.65) return 'Itiklop ang hinlalaki sa palad para sa Letter B.';
+        if (g.fingerReach < 1.70) return L.t('Keep all fingers straight for Letter B.', 'Iunat nang tuwid ang lahat ng daliri para sa Letter B.');
+        if (d(4, 9) > 0.65) return L.t('Fold your thumb across your palm for Letter B.', 'Itiklop ang hinlalaki sa palad para sa Letter B.');
       case 'X': // index raised and hooked (T folds it down over the thumb)
-        if (g.indexRise < 0.30) return 'Itaas at ikawit ang hintuturo para sa Letter X.';
+        if (g.indexRise < 0.30) return L.t('Raise and hook your index finger for Letter X.', 'Itaas at ikawit ang hintuturo para sa Letter X.');
       case 'C': // open curve: a gap between thumb and fingers
-        if (thumbIndex < 0.40) return 'Bahagyang ibuka: may puwang dapat ang hinlalaki at mga daliri (Letter C).';
-        if (thumbIndex > 1.50) return 'Ilapit nang kaunti ang hinlalaki sa mga daliri para sa Letter C.';
+        if (thumbIndex < 0.40) return L.t('Open a little: leave a gap between thumb and fingers (Letter C).', 'Bahagyang ibuka: may puwang dapat ang hinlalaki at mga daliri (Letter C).');
+        if (thumbIndex > 1.50) return L.t('Bring your thumb a little closer to your fingers for Letter C.', 'Ilapit nang kaunti ang hinlalaki sa mga daliri para sa Letter C.');
       case 'D': // thumb touches the middle finger
-        if (d(4, 12) > 0.55) return 'Idikit ang hinlalaki sa hinlalato para sa Letter D.';
+        if (d(4, 12) > 0.55) return L.t('Touch your thumb to your middle finger for Letter D.', 'Idikit ang hinlalaki sa hinlalato para sa Letter D.');
       case 'E': // tips rest on the thumb, not a tight fist (S)
         if ([d(4, 8), d(4, 12), d(4, 16)].reduce(math.min) > 0.55) {
-          return 'Ilapit ang dulo ng mga daliri sa hinlalaki para sa Letter E.';
+          return L.t('Bring your fingertips down to your thumb for Letter E.', 'Ilapit ang dulo ng mga daliri sa hinlalaki para sa Letter E.');
         }
         if ((d(8, 0) + d(12, 0) + d(16, 0) + d(20, 0)) / 4 < 0.95) {
-          return 'Huwag isara nang buo ang kamao: nakapatong ang mga daliri sa hinlalaki (Letter E).';
+          return L.t("Don't close a full fist: rest your fingertips on your thumb (Letter E).", 'Huwag isara nang buo ang kamao: nakapatong ang mga daliri sa hinlalaki (Letter E).');
         }
       case 'F': // thumb and index tips touch (the circle)
-        if (thumbIndex > 0.35) return 'Pagdikitin ang dulo ng hinlalaki at hintuturo para sa Letter F.';
+        if (thumbIndex > 0.35) return L.t('Touch the tips of your thumb and index finger for Letter F.', 'Pagdikitin ang dulo ng hinlalaki at hintuturo para sa Letter F.');
       case 'L':
       case 'Y': // thumb sticks out
-        if (thumbOut < 0.75) return 'Iunat palabas ang hinlalaki para sa Letter $letter.';
+        if (thumbOut < 0.75) return L.t('Stick your thumb out for Letter $letter.', 'Iunat palabas ang hinlalaki para sa Letter $letter.');
       case 'O': // thumb and fingertips meet
-        if (thumbIndex > 0.40) return 'Pagdikitin ang hinlalaki at mga daliri para bumuo ng bilog (Letter O).';
+        if (thumbIndex > 0.40) return L.t('Touch your thumb and fingertips to make a circle (Letter O).', 'Pagdikitin ang hinlalaki at mga daliri para bumuo ng bilog (Letter O).');
       case 'R': // index and middle crossed: the tips swap sides
-        if (g.indexMiddleCross > 0.02) return 'Ipag-krus ang hintuturo at hinlalato para sa Letter R.';
+        if (g.indexMiddleCross > 0.02) return L.t('Cross your index and middle fingers for Letter R.', 'Ipag-krus ang hintuturo at hinlalato para sa Letter R.');
       case 'U': // index and middle straight, together and not crossed
-        if (g.indexMiddleAngle > 12 || d(8, 12) > 0.40) return 'Pagdikitin ang hintuturo at hinlalato para sa Letter U.';
-        if (g.indexMiddleCross < 0.0) return 'Huwag ipag-krus ang mga daliri para sa Letter U.';
+        if (g.indexMiddleAngle > 12 || d(8, 12) > 0.40) return L.t('Keep your index and middle fingers together for Letter U.', 'Pagdikitin ang hintuturo at hinlalato para sa Letter U.');
+        if (g.indexMiddleCross < 0.0) return L.t("Don't cross your fingers for Letter U.", 'Huwag ipag-krus ang mga daliri para sa Letter U.');
       case 'V': // index and middle apart
-        if (g.indexMiddleAngle < 18 || d(8, 12) < 0.45) return 'Ibuka ang hintuturo at hinlalato para sa Letter V.';
+        if (g.indexMiddleAngle < 18 || d(8, 12) < 0.45) return L.t('Spread your index and middle fingers for Letter V.', 'Ibuka ang hintuturo at hinlalato para sa Letter V.');
     }
     return null;
   }
@@ -586,7 +587,7 @@ class StaticLetterChecker {
     }
     _log(() => 'Letter $letter rivals: target=${target.toStringAsFixed(1)} best rival=$bestRival ${rivalScore.toStringAsFixed(1)}');
     if (bestRival == null || target >= rivalScore + _rivalMargin) return null;
-    return 'Mukhang Letter $bestRival ito. Tingnan muli ang larawan ng Letter $letter, lalo na ang hinlalaki.';
+    return L.t('This looks like Letter $bestRival. Check the picture of Letter $letter again, especially the thumb.', 'Mukhang Letter $bestRival ito. Tingnan muli ang larawan ng Letter $letter, lalo na ang hinlalaki.');
   }
 
   /// The regular (non G / H / K / P / Q) template score, as in every

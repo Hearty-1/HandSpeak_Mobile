@@ -9,6 +9,7 @@ import 'tutorial_practice.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
+import '/providers/language_provider.dart';
 
 class TutorialSign {
   final String label;
@@ -57,7 +58,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Earn 3 stars in Practice mode to unlock the next letter!'),
+            content: Text(L.t('Earn 3 stars in Practice mode to unlock the next letter!', 'Makakuha ng 3 bituin sa Practice para mabuksan ang susunod na letra!')),
             backgroundColor: Theme.of(context).primaryColor,
           ),
         );
@@ -161,8 +162,8 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
   @override
   Widget build(BuildContext context) {
     if (_alphabetList.isEmpty) {
-      return const Scaffold(
-        body: Center(child: Text("No tutorials loaded.")),
+      return Scaffold(
+        body: Center(child: Text(L.t('No tutorials loaded.', 'Walang na-load na tutorial.'))),
       );
     }
 
@@ -198,7 +199,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
           ),
         ),
         title: Text(
-          'Tutorial',
+          L.t('Tutorial', 'Tutorial'),
           style: TextStyle(
             color: theme.colorScheme.onSurface,
             fontSize: 22,
@@ -378,7 +379,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                             child: TextButton.icon(
                               onPressed: _goToPrevious,
                               icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface, size: 18 * scale),
-                              label: Text('Previous', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                              label: Text(L.t('Previous', 'Nakaraan'), style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
                             ),
                           ),
                           Positioned(
@@ -388,7 +389,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                               onPressed: _goToNext,
                               child: Row(
                                 children: [
-                                  Text('Next', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                                  Text(L.t('Next', 'Susunod'), style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
                                   SizedBox(width: 8 * scale),
                                   Icon(Icons.arrow_forward, color: theme.colorScheme.onSurface, size: 18 * scale),
                                 ],
@@ -428,7 +429,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                                     ),
                                   );
                                 },
-                                child: Text('Practice', style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                                child: Text(L.t('Practice', 'Pagsasanay'), style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
                               ),
                             ),
                           ),

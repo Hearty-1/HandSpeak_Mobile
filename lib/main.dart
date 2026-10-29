@@ -15,6 +15,7 @@ import 'services/role_service.dart';
 import 'services/local_notification_service.dart';
 import 'services/performance_monitor.dart';
 import 'widgets/app_status_overlay.dart';
+import 'providers/language_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +46,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => SoundProvider()), 
+        ChangeNotifierProvider(create: (_) => LanguageProvider()),
         ChangeNotifierProvider<RoleProvider>.value(value: roleProvider),
       ],
       child: const MyApp(),

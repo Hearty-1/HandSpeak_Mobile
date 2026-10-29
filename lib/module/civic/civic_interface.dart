@@ -10,6 +10,7 @@ import '/leaderboard/arena.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
+import '/providers/language_provider.dart';
 
 class CivicInterface extends StatelessWidget {
   final int currentXp; 
@@ -93,7 +94,7 @@ class CivicInterface extends StatelessWidget {
               ),
             ),
             title: Text(
-              'Civic Observances', 
+              L.t('Civic Observances', 'Pagdiriwang Pansibiko'), 
               style: TextStyle(
                 color: textColor, 
                 fontSize: 22, 
@@ -166,7 +167,7 @@ class CivicInterface extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Tutorial',
+                                      L.t('Tutorial', 'Tutorial'),
                                       style: TextStyle(color: textColor, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5),
                                     ),
                                     SizedBox(height: 8 * scale),
@@ -174,7 +175,7 @@ class CivicInterface extends StatelessWidget {
                                       context: context,
                                       scale: scale,
                                       icon: Icons.play_arrow_rounded,
-                                      label: 'Start Learn',
+                                      label: L.t('Start Learn', 'Simulang Matuto'),
                                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CivicTutorialInterface())),
                                     ),
                                   ],
@@ -197,7 +198,7 @@ class CivicInterface extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Practice',
+                                      L.t('Practice', 'Pagsasanay'),
                                       style: TextStyle(color: textColor, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5),
                                     ),
                                     SizedBox(height: 8 * scale),
@@ -205,7 +206,7 @@ class CivicInterface extends StatelessWidget {
                                       context: context,
                                       scale: scale,
                                       icon: Icons.camera_alt_rounded,
-                                      label: 'Train Sign',
+                                      label: L.t('Train Sign', 'Sanayin ang Senyas'),
                                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CivicPractice())),
                                     ),
                                   ],
@@ -228,7 +229,7 @@ class CivicInterface extends StatelessWidget {
                                 child: Column(
                                   children: [
                                     Text(
-                                      'Activity',
+                                      L.t('Activity', 'Aktibidad'),
                                       style: TextStyle(color: textColor, fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44),
                                     ),
                                     SizedBox(height: 12 * scale),
@@ -244,7 +245,7 @@ class CivicInterface extends StatelessWidget {
                                 child: Column(
                                   children: [
                                     Text(
-                                      'Challenges',
+                                      L.t('Challenges', 'Mga Hamon'),
                                       style: TextStyle(color: textColor, fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44),
                                     ),
                                     SizedBox(height: 12 * scale),
@@ -267,7 +268,7 @@ class CivicInterface extends StatelessWidget {
                                 child: _buildSubMetricPanel(
                                   context: context,
                                   scale: scale,
-                                  valueDisplay: "$civicStars Stars",
+                                  valueDisplay: L.t('$civicStars Stars', '$civicStars Bituin'),
                                   progress: (civicStars / maxStars).clamp(0.0, 1.0),
                                   icon: Icons.star_rounded,
                                   iconColor: Colors.amber.shade500,
@@ -348,7 +349,7 @@ class CivicInterface extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Category Level $level', style: TextStyle(color: textColor, fontSize: 13 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w700)),
+                  Text(L.t('Category Level $level', 'Level $level ng Kategorya'), style: TextStyle(color: textColor, fontSize: 13 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w700)),
                   Text('$currentXp / $targetXp XP', style: TextStyle(color: theme.primaryColor, fontSize: 15 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400)),
                 ],
               ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '/services/lighting_monitor.dart';
 import '/services/offline_sync.dart';
+import '/providers/language_provider.dart';
 
 /// App-wide notices on top of every screen (MaterialApp.builder):
 ///  * offline: progress is kept on the phone and synced later;
@@ -49,28 +50,28 @@ class _AppStatusOverlayState extends State<AppStatusOverlay> {
               builder: (context, _) {
                 final notices = <Widget>[
                   if (!conn.online.value)
-                    const _Notice(
+                    _Notice(
                       key: ValueKey('offline'),
                       icon: Icons.cloud_off_rounded,
                       color: Color(0xFF5C6BC0),
-                      title: "You're offline",
-                      text: 'Keep learning! Your progress is saved on this phone and will sync when you are back online.',
+                      title: L.t("You're offline", 'Offline ka'),
+                      text: L.t('Keep learning! Your progress is saved on this phone and will sync when you are back online.', 'Tuloy lang ang pag-aaral! Naka-save sa phone ang progreso mo at maise-sync pagbalik ng internet.'),
                     ),
                   if (conn.online.value && conn.justSynced.value)
-                    const _Notice(
+                    _Notice(
                       key: ValueKey('synced'),
                       icon: Icons.cloud_done_rounded,
                       color: Color(0xFF2E9E4F),
-                      title: 'All caught up!',
-                      text: 'Your progress from offline has been saved.',
+                      title: L.t('All caught up!', 'Naka-sync na lahat!'),
+                      text: L.t('Your progress from offline has been saved.', 'Na-save na ang progreso mo noong offline.'),
                     ),
                   if (LightingMonitor.instance.isDark.value)
-                    const _Notice(
+                    _Notice(
                       key: ValueKey('dark'),
                       icon: Icons.light_mode_rounded,
                       color: Color(0xFFF08C00),
-                      title: "It's a bit dark",
-                      text: 'Turn on a light or face a window so the camera can see your hands.',
+                      title: L.t("It's a bit dark", 'Medyo madilim'),
+                      text: L.t('Turn on a light or face a window so the camera can see your hands.', 'Magbukas ng ilaw o humarap sa bintana para makita ng camera ang mga kamay mo.'),
                     ),
                 ];
                 return AnimatedSwitcher(
