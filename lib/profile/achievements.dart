@@ -170,7 +170,7 @@ List<BadgeData> highlightBadges(List<BadgeData> all, {int count = 3}) {
 // WIDGETS
 // =============================================================================
 
-/// Badge artwork uploaded to Firebase Storage: badges/<snake_case title>.png
+/// Badge artwork uploaded to Firebase Storage: `badges/<snake_case title>.png`
 /// ("Alphabet Explorer" -> badges/alphabet_explorer.png). Download URLs are
 /// resolved once per badge and cached for the session; a badge without an
 /// uploaded file keeps its bundled illustration / icon.
@@ -231,7 +231,7 @@ class BadgeMedallion extends StatelessWidget {
             width: size,
             height: size,
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => _iconMedal(c),
+            errorBuilder: (_, _, _) => _iconMedal(c),
           )
         : _iconMedal(c);
     Widget remote(String url) => Image.network(
@@ -241,7 +241,7 @@ class BadgeMedallion extends StatelessWidget {
           fit: BoxFit.contain,
           // Bundled art until the download finishes (or if it fails).
           frameBuilder: (_, child, frame, sync) => sync || frame != null ? child : localArt,
-          errorBuilder: (_, __, ___) => localArt,
+          errorBuilder: (_, _, _) => localArt,
         );
     final cached = BadgeArt.cachedUrl(badge.title);
     final Widget art = cached != null

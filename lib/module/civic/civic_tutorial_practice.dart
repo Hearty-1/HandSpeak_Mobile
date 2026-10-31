@@ -684,7 +684,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       final top = result.prediction;
       final topIdx = top == null ? -1 : _indexOf(top);
       double confFor(int idx) {
-        for (final p in [if (top != null) top, ...result.topK]) {
+        for (final p in [?top, ...result.topK]) {
           if (_indexOf(p) == idx) return p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
         }
         return 0.0;
@@ -727,7 +727,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       }
 
       if (accepted && topIdx != -1) {
-        _showFeedback(L.t('That looked like \"${_labelForIndex(topIdx)}\". Try again.', 'Mukhang \"${_labelForIndex(topIdx)}\" ang naisagawa. Subukang muli.'), score: targetConf);
+        _showFeedback(L.t('That looked like "${_labelForIndex(topIdx)}". Try again.', 'Mukhang "${_labelForIndex(topIdx)}" ang naisagawa. Subukang muli.'), score: targetConf);
         return;
       }
 
@@ -801,7 +801,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   Future<void> _showMasteredDialog(String line, int gained) {
     final theme = Theme.of(context);
     final visuals = _ThemeVisuals.fromTheme(theme);
-    final rewardColor = gained > 0 ? Colors.green : theme.colorScheme.onSurface.withOpacity(0.6);
+    final rewardColor = gained > 0 ? Colors.green : theme.colorScheme.onSurface.withValues(alpha: 0.6);
 
     return showDialog<void>(
       context: context,
@@ -821,10 +821,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: theme.primaryColor.withOpacity(0.6), width: 2),
+                border: Border.all(color: theme.primaryColor.withValues(alpha: 0.6), width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.primaryColor.withOpacity(0.35),
+                    color: theme.primaryColor.withValues(alpha: 0.35),
                     blurRadius: 40,
                     spreadRadius: 8,
                   )
@@ -839,14 +839,14 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.15),
+                          color: theme.primaryColor.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(visuals.mainBadgeIcon, color: theme.primaryColor, size: 64),
                       ),
                       Positioned(
                         right: 0, top: 0,
-                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withOpacity(0.7), size: 22),
+                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withValues(alpha: 0.7), size: 22),
                       ),
                     ],
                   ),
@@ -866,7 +866,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                         : "Outstanding job! You have successfully mastered the line \"$line\"!",
                     style: TextStyle(
                       fontSize: 16,
-                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
@@ -883,9 +883,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         decoration: BoxDecoration(
-                          color: rewardColor.withOpacity(0.15),
+                          color: rewardColor.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: rewardColor.withOpacity(0.4), width: 2),
+                          border: Border.all(color: rewardColor.withValues(alpha: 0.4), width: 2),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -910,7 +910,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                       backgroundColor: theme.primaryColor,
                       foregroundColor: theme.colorScheme.onPrimary,
                       elevation: 4,
-                      shadowColor: theme.primaryColor.withOpacity(0.5),
+                      shadowColor: theme.primaryColor.withValues(alpha: 0.5),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       minimumSize: const Size(double.infinity, 54),
                     ),
@@ -1015,7 +1015,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     // otherwise; while recording the theme colour (no alarming red).
     final Color borderColor = _isSuccessAchieved
         ? Colors.greenAccent
-        : (_isRecording || _isEvaluating ? theme.primaryColor : theme.dividerColor.withOpacity(0.6));
+        : (_isRecording || _isEvaluating ? theme.primaryColor : theme.dividerColor.withValues(alpha: 0.6));
 
     final Widget cameraPane = Stack(
       alignment: Alignment.center,
@@ -1029,9 +1029,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             border: Border.all(width: 4.0, color: borderColor),
             boxShadow: [
               if (_isSuccessAchieved || _isRecording)
-                BoxShadow(color: borderColor.withOpacity(0.6), blurRadius: 25, spreadRadius: 2)
+                BoxShadow(color: borderColor.withValues(alpha: 0.6), blurRadius: 25, spreadRadius: 2)
               else
-                BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4)),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4)),
             ],
           ),
           child: ClipRRect(
@@ -1080,7 +1080,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             CircularProgressIndicator(color: theme.primaryColor),
             const SizedBox(height: 20),
             Text(_loadingStatus,
-                style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.8))),
+                style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withValues(alpha: 0.8))),
           ]
         : [
             // Progress chip + Skip (same header as the other continuous practices).
@@ -1092,7 +1092,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
-                      color: theme.primaryColor.withOpacity(0.12),
+                      color: theme.primaryColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -1105,7 +1105,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                     onPressed: (busy || _isEvaluating || _isSuccessAchieved) ? null : _advanceContinuous,
                     icon: const Icon(Icons.skip_next_rounded, size: 18),
                     label: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w700)),
-                    style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7)),
+                    style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
                   ),
                 ],
               ),
@@ -1127,7 +1127,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 '${currentItem['instruction']}',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                    fontSize: 13, color: theme.colorScheme.onSurface.withOpacity(0.7), fontStyle: FontStyle.italic),
+                    fontSize: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.7), fontStyle: FontStyle.italic),
               ),
             ],
             const SizedBox(height: 12),
@@ -1139,7 +1139,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))
                     ],
                   ),
                   child: ClipRRect(
@@ -1175,9 +1175,9 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                       decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.15),
+                        color: Colors.green.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
+                        border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 1.5),
                       ),
                       child: Column(
                         children: [
@@ -1197,7 +1197,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                           Text(
                             L.t('Next line...', 'Susunod na linya...'),
                             style: TextStyle(
-                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                 fontWeight: FontWeight.w600,
                                 fontSize: 14),
                           ),
@@ -1229,7 +1229,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -1339,7 +1339,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface.withOpacity(0.8)
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8)
                     ),
                   ),
                 ],
@@ -1392,7 +1392,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.1),
+                  color: theme.primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -1417,7 +1417,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               child: Text(
                 currentItem['instruction'],
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withOpacity(0.8), fontStyle: FontStyle.italic),
+                style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withValues(alpha: 0.8), fontStyle: FontStyle.italic),
               ),
             ),
           ],
@@ -1492,13 +1492,13 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                     'Naisagawa mo nang tama ang "${_activeQuestions.first['question'] ?? ''}".')
                 : L.t('You signed all ${_activeQuestions.length} lines correctly.', 'Lahat ng ${_activeQuestions.length} na linya ay matagumpay mong naisagawa.'),
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface.withOpacity(0.8)),
+            style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
           ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.15),
+              color: theme.primaryColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(30),
             ),
             child: Text(
@@ -1543,14 +1543,14 @@ class _ThemeVisuals {
     final primary = theme.primaryColor;
     final isDark = theme.brightness == Brightness.dark;
 
-    if (primary.blue > 160 && primary.red < 120) {
+    if ((primary.b * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.water_drop_rounded,
         secondaryIcon: Icons.waves_rounded,
         ambientIcon1: Icons.bubble_chart_rounded,
         ambientIcon2: Icons.sailing_rounded,
       );
-    } else if (primary.green > 160 && primary.red < 120) {
+    } else if ((primary.g * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.eco_rounded,
         secondaryIcon: Icons.forest_rounded,

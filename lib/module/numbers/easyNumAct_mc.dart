@@ -1,7 +1,7 @@
+// ignore_for_file: file_names
 import 'dart:convert';
 import 'dart:async'; 
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -237,13 +237,13 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
   }
 
   LinearGradient _getDialogGradient(Color bgColor) {
-    if (bgColor.value == 0xFF080928) { 
+    if (bgColor.toARGB32() == 0xFF080928) { 
       return const LinearGradient(colors: [Color(0xFF1B1A4B), Color(0xFF7C4DFF)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFF1D3D3A) { 
+    } else if (bgColor.toARGB32() == 0xFF1D3D3A) { 
       return const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFF001B3A) { 
+    } else if (bgColor.toARGB32() == 0xFF001B3A) { 
       return const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.value == 0xFFE0EAFC) { 
+    } else if (bgColor.toARGB32() == 0xFFE0EAFC) { 
       return const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], begin: Alignment.topLeft, end: Alignment.bottomRight);
     }
     return const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
@@ -264,7 +264,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 20,
               offset: const Offset(0, 10),
             )
@@ -413,6 +413,10 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   /// Moving numbers (11-100): judged like the numbers tutorial practice
   /// (assets/numbers/fsl_numbers_*.onnx decade models) from the recording.
   final DynamicSignJudge _judge = DynamicSignJudge();
+  // Static letters / numbers: the server's static model confirms a pass
+  // (services/dynamic_sign_judge.dart StaticServerCheck); offline the
+  // on-phone verdict stands.
+  final StaticServerCheck _serverCheck = StaticServerCheck();
   int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
   bool _isJudging = false;
   /// A moving number needs its first handshape, the movement and the final
@@ -528,11 +532,11 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
     if (src.startsWith('data:image')) {
       final bytes = _safeBase64Decode(src);
-      if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, __, ___) => fallback());
+      if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, _, _) => fallback());
       return fallback();
     }
     if (src.startsWith('http://') || src.startsWith('https://')) {
-      return Image.network(src, fit: fit, errorBuilder: (_, __, ___) => fallback());
+      return Image.network(src, fit: fit, errorBuilder: (_, _, _) => fallback());
     }
     if (_looksLikeStoragePath(src)) {
       return FutureBuilder<String?>(
@@ -542,7 +546,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
             return const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)));
           }
           final url = snap.data;
-          return url == null ? fallback() : Image.network(url, fit: fit, errorBuilder: (_, __, ___) => fallback());
+          return url == null ? fallback() : Image.network(url, fit: fit, errorBuilder: (_, _, _) => fallback());
         },
       );
     }
@@ -553,7 +557,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       fit: fit,
       errorBuilder: (context, error, stackTrace) => src.startsWith('assets/')
           ? fallback()
-          : Image.asset('assets/pictures/$src', fit: fit, errorBuilder: (_, __, ___) => fallback()),
+          : Image.asset('assets/pictures/$src', fit: fit, errorBuilder: (_, _, _) => fallback()),
     );
   }
 
@@ -611,10 +615,12 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
   Future<void> _loadGestureLibrary(String letter) async {
     try {
-      String jsonString = await rootBundle.loadString('assets/numbers/$letter.json');
+      // Storage models/numbers/<n>.json first, bundled copy as fallback.
+      final t = await TemplateStore.load('numbers', letter);
+      if (t == null) throw StateError('no template');
       if (!mounted) return;
       setState(() {
-        _template = jsonDecode(jsonString);
+        _template = t;
       });
     } catch (e) {
       debugPrint("Could not find gesture resource profile for: $letter");
@@ -692,9 +698,16 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
     if (detectedHands.isNotEmpty) {
       double highestScoreAcrossAllHands = 0.0;
+      Hand? bestHand;
       for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
         final double score = _calculateScore(detectedHands[handIdx].landmarks, _template!);
-        if (score > highestScoreAcrossAllHands) highestScoreAcrossAllHands = score;
+        if (score > highestScoreAcrossAllHands) {
+          highestScoreAcrossAllHands = score;
+          bestHand = detectedHands[handIdx];
+        }
+      }
+      if (bestHand != null) {
+        _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
       }
 
       _currentScore = highestScoreAcrossAllHands;
@@ -939,8 +952,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     }
   }
 
-  void _verifyCurrentAnswer() {
-    if (_isAnswered || !mounted) return;
+  Future<void> _verifyCurrentAnswer() async {
+    if (_isAnswered || !mounted || _isJudging) return;
     final q = _questions[_currentIndex];
     // How this attempt was triggered: CHECK button unless set by an auto pass.
     final String triggerForThis = _pendingTrigger;
@@ -984,6 +997,20 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       isCorrect = allMatched;
     } else if (_isCameraQuestion(q)) {
       isCorrect = _currentScore >= successThreshold;
+      String? serverModel;
+      if (isCorrect && !_isDynamicLetter) {
+        setState(() => _isJudging = true);
+        final v = await _serverCheck.verify(q.correctAnswer.trim(), number: true);
+        if (!mounted) return;
+        _isJudging = false;
+        if (_isAnswered) return;
+        serverModel = v?.model ?? 'server static_numbers (unreachable)';
+        if (v == null || !v.ok) {
+          // Server only: no pass without its confirmation.
+          isCorrect = false;
+          _currentScore = math.min(_currentScore, successThreshold - 1);
+        }
+      }
       _selectedAnswer = isCorrect ? q.correctAnswer : null; 
       final trigger = triggerForThis;
       _gestureTracker?.recordAttempt(
@@ -1000,7 +1027,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         trigger: trigger,
         // The file that actually scored it: the motion model, else the
         // number's bundled template.
-        modelVersion: _isDynamicLetter ? _lastModelFile : 'assets/numbers/${q.correctAnswer.trim()}.json',
+        modelVersion: _isDynamicLetter ? _lastModelFile : (serverModel ?? TemplateStore.sourceOf('numbers', q.correctAnswer) ?? 'models/numbers/${q.correctAnswer.trim()}.json'),
       );
     } else {
       isCorrect = _selectedAnswer == q.correctAnswer;
@@ -1162,7 +1189,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
   }
 
   Map<String, dynamic> _getThemeFeedbackVisuals(BuildContext context, bool isCorrect) {
-    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor.toARGB32();
     final IconData feedbackIcon = isCorrect ? Icons.check_rounded : Icons.close_rounded;
 
     if (bgColor == 0xFF080928) { 
@@ -1229,7 +1256,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
   }
 
   Color _getButtonColor(String option, String correctAnswer, ThemeData theme) {
-    if (!_isAnswered) return option == _selectedAnswer ? theme.primaryColor.withOpacity(0.2) : theme.cardColor;
+    if (!_isAnswered) return option == _selectedAnswer ? theme.primaryColor.withValues(alpha: 0.2) : theme.cardColor;
     if (option == correctAnswer) return const Color(0xFF58CC02);
     if (option == _selectedAnswer && option != correctAnswer) return const Color(0xFFEA2B2B);
     return theme.cardColor;
@@ -1270,7 +1297,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
       backgroundColor: theme.scaffoldBackgroundColor,
       
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.5),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.5),
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.close, color: textColor),
@@ -1376,7 +1403,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
+                            color: Colors.black.withValues(alpha: 0.06),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           )
@@ -1435,7 +1462,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 gradient: _isAnswered ? (feedbackData['gradient'] as LinearGradient) : null,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                 border: Border(top: BorderSide(color: theme.dividerColor, width: 2)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, -4))]
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, -4))]
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1453,7 +1480,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                               decoration: BoxDecoration(
                                 color: (feedbackData['badgeColor'] as Color),
                                 shape: BoxShape.circle,
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 6, offset: const Offset(0, 2))],
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2))],
                               ),
                               child: Icon(feedbackData['icon'] as IconData, color: Colors.white, size: 32),
                             ),
@@ -1485,7 +1512,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                                         width: 28,
                                         padding: const EdgeInsets.all(2),
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.2),
+                                          color: Colors.white.withValues(alpha: 0.2),
                                           borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: _buildImageWidget(currentQuestion.correctAnswer, fit: BoxFit.contain, size: 24),
@@ -1512,9 +1539,9 @@ Future<void> _saveUserProgress(int starsEarned) async {
                       height: 54,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: theme.primaryColor.withOpacity(0.12),
+                        color: theme.primaryColor.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: theme.primaryColor.withOpacity(0.3)),
+                        border: Border.all(color: theme.primaryColor.withValues(alpha: 0.3)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -1604,7 +1631,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 width: 70,
                 height: 70,
                 decoration: BoxDecoration(
-                  color: isSelected ? theme.primaryColor.withOpacity(0.3) : theme.cardColor,
+                  color: isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isSelected ? theme.primaryColor : theme.dividerColor,
@@ -1644,7 +1671,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 onTap: () => _removeFromSequence(option),
                 child: Chip(
                   label: Text(option, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  backgroundColor: theme.primaryColor.withOpacity(0.2),
+                  backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
                   side: BorderSide(color: theme.primaryColor),
                 ),
               );
@@ -1705,7 +1732,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                   height: 80,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: isMatched ? Colors.green.withOpacity(0.2) : (isSelected ? theme.primaryColor.withOpacity(0.3) : theme.cardColor),
+                    color: isMatched ? Colors.green.withValues(alpha: 0.2) : (isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.dividerColor), width: 2),
                   ),
@@ -1730,7 +1757,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                   height: 80,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: isMatched ? Colors.green.withOpacity(0.2) : theme.cardColor,
+                    color: isMatched ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: isMatched ? Colors.green : theme.dividerColor, width: 2),
                   ),
@@ -1757,10 +1784,10 @@ Future<void> _saveUserProgress(int starsEarned) async {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 width: 4.0,
-                color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
+                color: isPassing ? Colors.greenAccent : theme.dividerColor.withValues(alpha: 0.6),
               ),
               boxShadow: [
-                if (isPassing) BoxShadow(color: Colors.greenAccent.withOpacity(0.6), blurRadius: 25, spreadRadius: 2)
+                if (isPassing) BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.6), blurRadius: 25, spreadRadius: 2)
               ],
             ),
             child: ClipRRect(
@@ -1778,7 +1805,14 @@ Future<void> _saveUserProgress(int starsEarned) async {
     return Column(
       children: [
         if (!_isLandscape(context))
-          AspectRatio(aspectRatio: 1 / 1.1, child: _buildCameraBox(theme)),
+          // Same size as the tutorial practice cameras: a centered square,
+          // 60% of the screen width.
+          Center(
+            child: SizedBox(
+              width: MediaQuery.sizeOf(context).width * 0.60,
+              child: AspectRatio(aspectRatio: 1, child: _buildCameraBox(theme)),
+            ),
+          ),
         if (!_isLandscape(context))
         const SizedBox(height: 24),
 
@@ -1820,10 +1854,10 @@ Future<void> _saveUserProgress(int starsEarned) async {
             duration: const Duration(milliseconds: 300),
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
-              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor,
+              color: isPassing ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
-                color: isPassing ? Colors.greenAccent.withOpacity(0.6) : theme.dividerColor,
+                color: isPassing ? Colors.greenAccent.withValues(alpha: 0.6) : theme.dividerColor,
                 width: 2
               ),
             ),
@@ -1896,7 +1930,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 width: 52,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: char != null ? (givenItem != null ? theme.primaryColor.withOpacity(0.08) : theme.primaryColor.withOpacity(0.18)) : theme.cardColor,
+                  color: char != null ? (givenItem != null ? theme.primaryColor.withValues(alpha: 0.08) : theme.primaryColor.withValues(alpha: 0.18)) : theme.cardColor,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: char != null ? theme.primaryColor : theme.dividerColor, width: 2),
                 ),
@@ -1930,7 +1964,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: isUsed ? theme.dividerColor.withOpacity(0.3) : theme.cardColor,
+                  color: isUsed ? theme.dividerColor.withValues(alpha: 0.3) : theme.cardColor,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: isUsed ? Colors.transparent : theme.primaryColor, width: 1.5),
                 ),

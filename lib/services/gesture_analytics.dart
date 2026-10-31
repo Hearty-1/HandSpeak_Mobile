@@ -251,7 +251,7 @@ class GestureAttemptTracker {
         'model': {
           if (conf != null) 'confidencePercent': _round(conf * 100),
           if (predictedLabel != null && predictedLabel.isNotEmpty) 'recognizedAs': predictedLabel,
-          if (framesRecorded != null) 'framesRecorded': framesRecorded,
+          'framesRecorded': ?framesRecorded,
         },
     };
 
@@ -310,7 +310,7 @@ class GestureAttemptTracker {
       },
       'mistakes': Map<String, int>.from(_mistakes),
       'signs': {for (final e in _signs.entries) _fieldKey(e.key): e.value.toMap()},
-      if (needsAttention != null) 'needsAttention': needsAttention,
+      'needsAttention': ?needsAttention,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }

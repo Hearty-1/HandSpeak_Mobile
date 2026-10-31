@@ -48,7 +48,7 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -79,7 +79,7 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.primaryColor.withOpacity(0.25),
+                color: theme.primaryColor.withValues(alpha: 0.25),
               ),
             ),
           ),
@@ -91,7 +91,7 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
               height: 280,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.colorScheme.secondary.withOpacity(0.15),
+                color: theme.colorScheme.secondary.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -107,17 +107,17 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                       child: Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: theme.cardColor.withOpacity(0.6),
+                          color: theme.cardColor.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: theme.colorScheme.surface.withOpacity(0.7), width: 1.5),
+                          border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.7), width: 1.5),
                         ),
                         child: TextField(
                           onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
                           style: TextStyle(color: theme.colorScheme.onSurface),
                           decoration: InputDecoration(
                             hintText: 'Search number...',
-                            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.w500),
-                            prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w500),
+                            prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(vertical: 12),
                           ),
@@ -142,7 +142,9 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                             'id': doc.id,
                             'title': data['displayTitle']?.toString() ?? data['gestureKey']?.toString() ?? '',
                             'gestureKey': data['gestureKey']?.toString() ?? '',
-                            'imageUrl': data['imageUrl']?.toString() ?? data['imagePath']?.toString() ?? '',
+                            'imageUrl': (data['videoUrl'] ?? data['video_url'] ?? '').toString().trim().isNotEmpty
+                                ? (data['videoUrl'] ?? data['video_url']).toString().trim()
+                                : data['imageUrl']?.toString() ?? data['imagePath']?.toString() ?? '',
                           };
                         }).toList();
 
@@ -182,7 +184,7 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                             ),
                           ),
                         );
@@ -244,7 +246,7 @@ class LessonCard extends StatelessWidget {
 
   /// Green outline for a sign already mastered in tutorial practice.
   static Color _outline(ThemeData theme, bool isMastered) =>
-      isMastered ? Colors.green.withOpacity(0.75) : theme.primaryColor.withOpacity(0.5);
+      isMastered ? Colors.green.withValues(alpha: 0.75) : theme.primaryColor.withValues(alpha: 0.5);
 
   @override
   Widget build(BuildContext context) {
@@ -261,7 +263,7 @@ class LessonCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
               decoration: BoxDecoration(
-                color: theme.cardColor.withOpacity(0.7),
+                color: theme.cardColor.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: _outline(theme, isMastered),
@@ -287,7 +289,7 @@ class LessonCard extends StatelessWidget {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: theme.primaryColor.withOpacity(0.3),
+                          color: theme.primaryColor.withValues(alpha: 0.3),
                           blurRadius: 8,
                           spreadRadius: 1,
                         )

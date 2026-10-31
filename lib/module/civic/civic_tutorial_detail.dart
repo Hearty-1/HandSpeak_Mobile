@@ -97,7 +97,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
       backgroundColor: theme.scaffoldBackgroundColor,
       
       appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6), 
+        backgroundColor: theme.scaffoldBackgroundColor.withValues(alpha: 0.6), 
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: textColor),
@@ -109,7 +109,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                 color: Colors.transparent,
                 border: Border(
                   bottom: BorderSide(
-                    color: theme.dividerColor.withOpacity(0.1),
+                    color: theme.dividerColor.withValues(alpha: 0.1),
                     width: 0.5,
                   ),
                 ),
@@ -144,9 +144,9 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: theme.cardColor.withOpacity(0.75),
+                          color: theme.cardColor.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: theme.primaryColor.withOpacity(0.5), width: 1.5),
+                          border: Border.all(color: theme.primaryColor.withValues(alpha: 0.5), width: 1.5),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -176,7 +176,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
               width: 250, height: 250, 
               decoration: BoxDecoration(
                 shape: BoxShape.circle, 
-                color: theme.primaryColor.withOpacity(0.2),
+                color: theme.primaryColor.withValues(alpha: 0.2),
               ),
             ),
           ),
@@ -186,7 +186,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
               width: 300, height: 300, 
               decoration: BoxDecoration(
                 shape: BoxShape.circle, 
-                color: const Color(0xFF4CAF50).withOpacity(0.15),
+                color: const Color(0xFF4CAF50).withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -234,7 +234,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                                 borderRadius: BorderRadius.circular(16 * scale),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(isDark ? 0.3 : 0.06), 
+                                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06), 
                                     blurRadius: 15, 
                                     offset: const Offset(0, 8),
                                   ),
@@ -257,7 +257,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                                 width: 299 * scale,
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: theme.cardColor.withOpacity(0.5),
+                                  color: theme.cardColor.withValues(alpha: 0.5),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
@@ -265,7 +265,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontSize: 13 * scale,
-                                    color: textColor.withOpacity(0.8),
+                                    color: textColor.withValues(alpha: 0.8),
                                   ),
                                 ),
                               ),
@@ -280,9 +280,9 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                                 child: Container(
                                   width: maxProgressWidth * scale, height: 14 * scale,
                                   decoration: BoxDecoration(
-                                    color: theme.cardColor.withOpacity(0.5), 
+                                    color: theme.cardColor.withValues(alpha: 0.5), 
                                     borderRadius: BorderRadius.circular(25 * scale),
-                                    border: Border.all(color: theme.dividerColor.withOpacity(0.2), width: 1.0)
+                                    border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2), width: 1.0)
                                   ),
                                   child: Stack(
                                     children: [
@@ -292,7 +292,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                                         decoration: BoxDecoration(
                                           color: const Color(0xFF4CAF50), 
                                           borderRadius: BorderRadius.circular(25 * scale),
-                                          boxShadow: [BoxShadow(color: const Color(0xFF4CAF50).withOpacity(0.4), blurRadius: 4)]
+                                          boxShadow: [BoxShadow(color: const Color(0xFF4CAF50).withValues(alpha: 0.4), blurRadius: 4)]
                                         ),
                                       ),
                                     ],
@@ -329,7 +329,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                             child: Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(25 * scale),
-                                boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 5))],
+                                boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 5))],
                               ),
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(

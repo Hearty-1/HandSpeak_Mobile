@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'numbers_tutorial_practice.dart';
+import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
 
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
@@ -86,6 +87,14 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
     }
   }
 
+  /// mp4 / mov / webm / m4v / 3gp, also inside a Firebase Storage link
+  /// (".../o/folder%2Fclip.mp4?alt=media&token=...").
+  static bool _isVideoFile(String url) {
+    if (url.isEmpty) return false;
+    final path = Uri.decodeComponent(url.split('?').first).toLowerCase();
+    return RegExp(r'\.(mp4|mov|webm|m4v|3gp)$').hasMatch(path);
+  }
+
   Widget _buildDynamicImage(String path, double width, double height) {
     return FutureBuilder<String>(
       future: _resolveImageUrl(path),
@@ -100,6 +109,15 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
         }
 
         final resolvedUrl = snapshot.data ?? '';
+
+        // A video uploaded from the web dashboard (saved in videoUrl or imageUrl).
+        if (_isVideoFile(resolvedUrl)) {
+          return SizedBox(
+            width: width,
+            height: height,
+            child: CustomVideoPlayer(key: ValueKey(resolvedUrl), videoUrl: resolvedUrl),
+          );
+        }
 
         if (resolvedUrl.startsWith('data:image')) {
           try {
@@ -171,7 +189,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -211,9 +229,9 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: theme.cardColor.withOpacity(0.6),
+                          color: theme.cardColor.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: theme.primaryColor.withOpacity(0.5), width: 1.5),
+                          border: Border.all(color: theme.primaryColor.withValues(alpha: 0.5), width: 1.5),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -245,7 +263,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.primaryColor.withOpacity(0.2),
+                color: theme.primaryColor.withValues(alpha: 0.2),
               ),
             ),
           ),
@@ -257,7 +275,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.colorScheme.secondary.withOpacity(0.15),
+                color: theme.colorScheme.secondary.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -304,7 +322,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                                 borderRadius: BorderRadius.circular(16 * scale),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.06),
+                                    color: Colors.black.withValues(alpha: 0.06),
                                     blurRadius: 15,
                                     offset: const Offset(0, 8),
                                   )
@@ -327,9 +345,9 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                                   width: maxProgressWidth * scale,
                                   height: 14 * scale,
                                   decoration: BoxDecoration(
-                                    color: theme.cardColor.withOpacity(0.4),
+                                    color: theme.cardColor.withValues(alpha: 0.4),
                                     borderRadius: BorderRadius.circular(25 * scale),
-                                    border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1.0),
+                                    border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1.0),
                                   ),
                                   child: Stack(
                                     children: [
@@ -342,7 +360,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                                           borderRadius: BorderRadius.circular(25 * scale),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: theme.colorScheme.secondary.withOpacity(0.4),
+                                              color: theme.colorScheme.secondary.withValues(alpha: 0.4),
                                               blurRadius: 4,
                                             )
                                           ],
@@ -385,7 +403,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
                                 borderRadius: BorderRadius.circular(25 * scale),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: theme.primaryColor.withOpacity(0.3),
+                                    color: theme.primaryColor.withValues(alpha: 0.3),
                                     blurRadius: 12,
                                     offset: const Offset(0, 5),
                                   )

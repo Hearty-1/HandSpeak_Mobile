@@ -10,7 +10,8 @@ import '/services/role_service.dart';
 import '/providers/language_provider.dart';
 
 class PhraseDifficultySelectionScreen extends StatefulWidget {
-  const PhraseDifficultySelectionScreen({super.key});
+  final ActivityCategoryConfig config;
+  const PhraseDifficultySelectionScreen({super.key, this.config = ActivityCategoryConfig.phrases});
 
   @override
   State<PhraseDifficultySelectionScreen> createState() => _PhraseDifficultySelectionScreenState();
@@ -44,7 +45,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
   }
 
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
-    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor.toARGB32();
 
     if (bgColor == 0xFF080928) { // Galaxy Explorer
       return {
@@ -75,7 +76,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
         'primary': const Color(0xFF5C7CFA), 
         'text': const Color(0xFF1E1E1E),
         'appBarIcon': const Color(0xFF322144),
-        'cardBg': Colors.white.withOpacity(0.9),
+        'cardBg': Colors.white.withValues(alpha: 0.9),
       };
     }
     
@@ -84,7 +85,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
       'primary': const Color(0xFFFF6B8B),
       'text': const Color(0xFF332050),
       'appBarIcon': const Color(0xFF332050),
-      'cardBg': Colors.white.withOpacity(0.92),
+      'cardBg': Colors.white.withValues(alpha: 0.92),
     };
   }
 
@@ -93,7 +94,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PhrasesActivityInterface(difficulty: difficulty),
+        builder: (context) => PhrasesActivityInterface(difficulty: difficulty, config: widget.config),
       ),
     );
   }
@@ -141,7 +142,7 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('activity_questions')
-                      .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
+                      .where('category', whereIn: widget.config.aliases)
                       .snapshots(),
                   builder: (context, questionsSnapshot) {
                     if (userProgressSnapshot.connectionState == ConnectionState.waiting ||
@@ -158,12 +159,22 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                       if (data != null) {
                         final progressMap = Map<String, dynamic>.from(data['progress'] ?? data['activityProgress'] ?? {});
                         
-                        progressMap.forEach((key, value) {
-                          final String keyLower = key.toLowerCase();
-                          if (keyLower.startsWith('phrases_easy_')) easyStars += (value as num).toInt();
-                          if (keyLower.startsWith('phrases_medium_')) mediumStars += (value as num).toInt();
-                          if (keyLower.startsWith('phrases_hard_')) hardStars += (value as num).toInt();
-                        });
+                        // Stars of this category's own levels (difficulty from the level id).
+                        final levelIds = <String>{
+                          for (final doc in questionsSnapshot.data?.docs ?? const [])
+                            ((doc.data() as Map<String, dynamic>)['level'] ?? '').toString()
+                        }..remove('');
+                        for (final id in levelIds) {
+                          final stars = ((progressMap[id] as num?) ?? 0).toInt();
+                          switch (ActivityCategoryConfig.difficultyOf(id)) {
+                            case 'easy':
+                              easyStars += stars;
+                            case 'medium':
+                              mediumStars += stars;
+                            default:
+                              hardStars += stars;
+                          }
+                        }
                       }
                     }
 
@@ -180,10 +191,14 @@ class _PhraseDifficultySelectionScreenState extends State<PhraseDifficultySelect
                         if (cat.contains('alphabet')) continue;
 
                         if (levelId != null) {
-                          final String lvlLower = levelId.toLowerCase();
-                          if (lvlLower.startsWith('phrases_easy_')) easyLevels.add(levelId);
-                          if (lvlLower.startsWith('phrases_medium_')) mediumLevels.add(levelId);
-                          if (lvlLower.startsWith('phrases_hard_')) hardLevels.add(levelId);
+                          switch (ActivityCategoryConfig.difficultyOf(levelId)) {
+                            case 'easy':
+                              easyLevels.add(levelId);
+                            case 'medium':
+                              mediumLevels.add(levelId);
+                            default:
+                              hardLevels.add(levelId);
+                          }
                         }
                       }
                     }

@@ -131,7 +131,7 @@ class SnedInterface2 extends StatelessWidget {
               backgroundColor: theme.scaffoldBackgroundColor, 
               
               drawer: Drawer(
-                backgroundColor: theme.cardColor.withOpacity(0.95), 
+                backgroundColor: theme.cardColor.withValues(alpha: 0.95), 
                 elevation: 0,
                 child: Column(
                   children: [
@@ -165,7 +165,7 @@ class SnedInterface2 extends StatelessWidget {
                             Text(
                               L.t('${roles.roleLabel} access', 'Access ng ${roles.roleLabel}'),
                               style: TextStyle(
-                                color: theme.colorScheme.onPrimary.withOpacity(0.85),
+                                color: theme.colorScheme.onPrimary.withValues(alpha: 0.85),
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -265,7 +265,7 @@ class SnedInterface2 extends StatelessWidget {
 
               appBar: AppBar(
                 toolbarHeight: 65,
-                backgroundColor: theme.cardColor.withOpacity(0.4),
+                backgroundColor: theme.cardColor.withValues(alpha: 0.4),
                 elevation: 0,
                 centerTitle: true,
                 iconTheme: theme.iconTheme.copyWith(color: textColor),
@@ -287,7 +287,7 @@ class SnedInterface2 extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
                       ),
                       child: ClipOval(
                         child: Image.asset(
@@ -331,7 +331,7 @@ class SnedInterface2 extends StatelessWidget {
                       height: 250,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: theme.primaryColor.withOpacity(0.20),
+                        color: theme.primaryColor.withValues(alpha: 0.20),
                       ),
                     ),
                   ),
@@ -343,7 +343,7 @@ class SnedInterface2 extends StatelessWidget {
                       height: 300,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: theme.colorScheme.secondary.withOpacity(0.15),
+                        color: theme.colorScheme.secondary.withValues(alpha: 0.15),
                       ),
                     ),
                   ),
@@ -518,7 +518,7 @@ class SnedInterface2 extends StatelessWidget {
                         ),
                         boxShadow: isLocked ? [] : [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
+                            color: Colors.black.withValues(alpha: 0.08),
                             blurRadius: 12,
                             offset: const Offset(0, 6),
                           )
@@ -551,7 +551,7 @@ class SnedInterface2 extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: theme.primaryColor,
                   borderRadius: BorderRadius.circular(20 * scale),
-                  boxShadow: [BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+                  boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -605,12 +605,12 @@ class SnedInterface2 extends StatelessWidget {
         child: Container(
           width: 178 * scale, height: 76 * scale,
           decoration: BoxDecoration(
-            color: theme.cardColor.withOpacity(0.75), 
+            color: theme.cardColor.withValues(alpha: 0.75), 
             borderRadius: BorderRadius.circular(16 * scale),
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.0),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.0),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06), 
+                color: Colors.black.withValues(alpha: 0.06), 
                 blurRadius: 12, 
                 offset: const Offset(0, 4),
               )
@@ -660,7 +660,7 @@ class SnedInterface2 extends StatelessWidget {
                 child: Container(
                   width: 154 * scale, height: 6 * scale,
                   decoration: BoxDecoration(
-                    color: theme.dividerColor.withOpacity(0.2), 
+                    color: theme.dividerColor.withValues(alpha: 0.2), 
                     borderRadius: BorderRadius.circular(25 * scale),
                   ),
                 ),
@@ -673,7 +673,7 @@ class SnedInterface2 extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: progressColor, 
                     borderRadius: BorderRadius.circular(25 * scale),
-                    boxShadow: [BoxShadow(color: progressColor.withOpacity(0.4), blurRadius: 4)],
+                    boxShadow: [BoxShadow(color: progressColor.withValues(alpha: 0.4), blurRadius: 4)],
                   ),
                 ),
               ),
@@ -683,7 +683,7 @@ class SnedInterface2 extends StatelessWidget {
                 child: Text(
                   xpNext, 
                   style: TextStyle(
-                    color: textColor.withOpacity(0.5), 
+                    color: textColor.withValues(alpha: 0.5), 
                     fontSize: 9 * scale, 
                     fontFamily: 'Inter', 
                     fontWeight: FontWeight.w600,

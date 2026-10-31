@@ -230,8 +230,8 @@ class ThemeProvider extends ChangeNotifier {
     const Color(0xFF7DC579),
     Colors.white,
     const Color(0xFF322144),
-    glassBorder: Colors.white.withOpacity(0.6),
-    glassHighlight: Colors.white.withOpacity(0.8),
+    glassBorder: Colors.white.withValues(alpha: 0.6),
+    glassHighlight: Colors.white.withValues(alpha: 0.8),
   );
   
   // GALAXY EXPLORER: see GalaxyPalette.
@@ -434,8 +434,8 @@ class ThemeProvider extends ChangeNotifier {
     const Color(0xFFB8D4CF), 
     const Color(0xFF4D7C73), 
     const Color(0xFFF2F5F4), 
-    glassBorder: Colors.white.withOpacity(0.15),
-    glassHighlight: Colors.white.withOpacity(0.30),
+    glassBorder: Colors.white.withValues(alpha: 0.15),
+    glassHighlight: Colors.white.withValues(alpha: 0.30),
   );
   
   static final ThemeData oceanTheme = _buildTheme(
@@ -445,8 +445,8 @@ class ThemeProvider extends ChangeNotifier {
     const Color(0xFF00B4D8), 
     const Color(0xFF00305A), 
     Colors.white,
-    glassBorder: Colors.white.withOpacity(0.18),
-    glassHighlight: Colors.white.withOpacity(0.35),
+    glassBorder: Colors.white.withValues(alpha: 0.18),
+    glassHighlight: Colors.white.withValues(alpha: 0.35),
   );
   
   static final ThemeData cloudyTheme = _buildTheme(
@@ -456,8 +456,8 @@ class ThemeProvider extends ChangeNotifier {
     const Color(0xFF38BDF8), 
     Colors.white, 
     const Color(0xFF2C3E50),
-    glassBorder: Colors.white.withOpacity(0.65),
-    glassHighlight: Colors.white.withOpacity(0.90),
+    glassBorder: Colors.white.withValues(alpha: 0.65),
+    glassHighlight: Colors.white.withValues(alpha: 0.90),
   );
 
   static ThemeData _buildTheme(
@@ -481,7 +481,7 @@ class ThemeProvider extends ChangeNotifier {
       extensions: [
         GlassThemeExtension(
           glassBorder: glassBorder,
-          glassCard: card.withOpacity(isDark ? 0.45 : 0.65),
+          glassCard: card.withValues(alpha: isDark ? 0.45 : 0.65),
           glassHighlight: glassHighlight,
         ),
       ],

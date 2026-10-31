@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '/widgets/lesson_demo_media.dart';
 import '/providers/sound_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
@@ -15,7 +16,7 @@ import 'package:onnxruntime/onnxruntime.dart';
 import '/services/lighting_monitor.dart';
 import '/services/handspeak_api_service.dart';
 import '/services/frame_gate.dart';
-import '/services/dynamic_sign_judge.dart' show StaticLetterChecker;
+import '/services/dynamic_sign_judge.dart' show StaticLetterChecker, StaticServerCheck, TemplateStore;
 
 import '/widgets/practice_feedback.dart';
 import '/services/performance_monitor.dart';
@@ -1041,14 +1042,14 @@ class _ThemeVisuals {
     final primary = theme.primaryColor;
     final isDark = theme.brightness == Brightness.dark;
 
-    if (primary.blue > 160 && primary.red < 120) {
+    if ((primary.b * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.water_drop_rounded,
         secondaryIcon: Icons.waves_rounded,
         ambientIcon1: Icons.bubble_chart_rounded,
         ambientIcon2: Icons.sailing_rounded,
       );
-    } else if (primary.green > 160 && primary.red < 120) {
+    } else if ((primary.g * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.eco_rounded,
         secondaryIcon: Icons.forest_rounded,
@@ -1083,7 +1084,7 @@ class TutorialPractice extends StatefulWidget {
   const TutorialPractice({super.key, required this.targetLetter});
 
   @override
-  _TutorialPracticeState createState() => _TutorialPracticeState();
+  State<TutorialPractice> createState() => _TutorialPracticeState();
 }
 
 class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBindingObserver {
@@ -1279,6 +1280,35 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
 
   final FrameGate _frameGate = FrameGate();
   final StaticLetterChecker _shapeChecker = StaticLetterChecker();
+
+  // Static signs: the server's static model confirms the held handshape
+  // before success, server only (POST /v1/predict_raw/static_letters).
+  final StaticServerCheck _serverCheck = StaticServerCheck();
+  bool _isConfirming = false;
+  int _lastScoreLogMs = 0;
+  String? get _templateSource => TemplateStore.sourceOf('alphabet', widget.targetLetter) ?? 'models/alphabet (Storage)';
+  int _confirmCooldownUntilMs = 0;
+
+  Future<void> _confirmStaticThenSucceed(String target, {required bool number}) async {
+    if (_isConfirming || _isSuccessAchieved) return;
+    _isConfirming = true;
+    if (mounted) setState(() => _currentFeedback = L.t('Checking your sign...', 'Sinusuri ang kumpas...'));
+    final v = await _serverCheck.verify(target, number: number);
+    _isConfirming = false;
+    if (!mounted || _isSuccessAchieved) return;
+    if (v != null && v.ok) {
+      _onSuccess();
+      return;
+    }
+    _confirmCooldownUntilMs = DateTime.now().millisecondsSinceEpoch + 1500;
+    _serverCheck.clear();
+    setState(() {
+      _startHoldTime = null;
+      _holdProgress = 0.0;
+      _currentScore = math.min(_currentScore, successThreshold - 5);
+      _currentFeedback = v?.feedback ?? L.t('Could not reach the server. Check your internet connection and try again.', 'Hindi maabot ang server. Tingnan ang koneksyon sa internet at subukang muli.');
+    });
+  }
 
   void _processCameraFrame(CameraImage image) {
     LightingMonitor.instance.onImage(image); // low-light warning
@@ -1757,6 +1787,12 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
             }
 
             score = highestScoreAcrossAllHands;
+            final logNow = DateTime.now().millisecondsSinceEpoch;
+            if (logNow - _lastScoreLogMs > 700) {
+              _lastScoreLogMs = logNow;
+              debugPrint('Letter $letter template score ${score.toStringAsFixed(1)} (pass $successThreshold, '
+                  'template ${_templateSource ?? '?'})');
+            }
             feedback = score >= successThreshold
                 ? L.t('Correct position! Hold your hand still.', 'Tama ang posisyon! Hawakan ang kamay.')
                 : L.t('Adjust your hand for Letter $letter.', 'I-adjust ang posisyon para sa Letter $letter.');
@@ -1764,6 +1800,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
             // Look-alike letters: the shape must also be right (shared with
             // the activities and games, services/dynamic_sign_judge.dart).
             if (bestHand != null) {
+              _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _handRotation);
               final problem = _shapeChecker.check(bestHand, letter,
                   imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _handRotation);
               if (problem != null) {
@@ -1794,6 +1831,9 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
 
   void _updateGameLogic(double score, String feedback) {
     if (!mounted) return;
+    // While the server confirms a hold (and shortly after a "not yet"), keep
+    // its message on screen.
+    if (_isConfirming || DateTime.now().millisecondsSinceEpoch < _confirmCooldownUntilMs) return;
     final now = DateTime.now();
 
     setState(() {
@@ -1807,7 +1847,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
           _holdProgress = (difference / holdDurationSeconds).clamp(0.0, 1.0);
 
           if (difference >= holdDurationSeconds) {
-            _onSuccess();
+            _confirmStaticThenSucceed(widget.targetLetter, number: false);
           }
         } else {
           _holdProgress = 1.0;
@@ -1870,10 +1910,10 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: theme.primaryColor.withOpacity(0.6), width: 2),
+                border: Border.all(color: theme.primaryColor.withValues(alpha: 0.6), width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.primaryColor.withOpacity(0.35),
+                    color: theme.primaryColor.withValues(alpha: 0.35),
                     blurRadius: 40,
                     spreadRadius: 8,
                   )
@@ -1888,14 +1928,14 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.15),
+                          color: theme.primaryColor.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(visuals.mainBadgeIcon, color: theme.primaryColor, size: 64),
                       ),
                       Positioned(
                         right: 0, top: 0,
-                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withOpacity(0.7), size: 22),
+                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withValues(alpha: 0.7), size: 22),
                       ),
                     ],
                   ),
@@ -1915,7 +1955,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                         : "Outstanding job! You have successfully mastered the letter ${widget.targetLetter.toUpperCase()}!",
                     style: TextStyle(
                       fontSize: 16,
-                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
@@ -1936,9 +1976,9 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.15),
+                          color: Colors.green.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.green.withOpacity(0.4), width: 2),
+                          border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 2),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1960,7 +2000,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                       backgroundColor: theme.primaryColor,
                       foregroundColor: theme.colorScheme.onPrimary,
                       elevation: 4,
-                      shadowColor: theme.primaryColor.withOpacity(0.5),
+                      shadowColor: theme.primaryColor.withValues(alpha: 0.5),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       minimumSize: const Size(double.infinity, 54),
                     ),
@@ -2023,18 +2063,18 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   width: 4.0,
-                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
+                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withValues(alpha: 0.6),
                                 ),
                                 boxShadow: [
                                   if (isPassing)
                                     BoxShadow(
-                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      color: Colors.greenAccent.withValues(alpha: 0.6),
                                       blurRadius: 25,
                                       spreadRadius: 2,
                                     )
                                   else
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.06),
+                                      color: Colors.black.withValues(alpha: 0.06),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     )
@@ -2058,7 +2098,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                                   height: 110,
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: isPassing ? Colors.greenAccent.withOpacity(0.9) : Colors.white54,
+                                      color: isPassing ? Colors.greenAccent.withValues(alpha: 0.9) : Colors.white54,
                                       width: isPassing ? 4.0 : 3.0,
                                     ),
                                     shape: BoxShape.circle,
@@ -2104,7 +2144,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -2182,7 +2222,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
+                                color: Colors.black.withValues(alpha: 0.06),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               )
@@ -2190,13 +2230,11 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                              "assets/pictures/$currentLetter.jpg",
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-                                child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
-                              ),
+                            // Video / picture uploaded from the web app, else the bundled picture.
+                            child: LessonDemoMedia(
+                              category: 'alphabet',
+                              gestureKey: currentLetter,
+                              fallbackAsset: "assets/pictures/$currentLetter.jpg",
                             ),
                           ),
                         ),
@@ -2240,9 +2278,9 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                                 width: screenWidth * 0.70,
                                 height: 20,
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface.withOpacity(0.4),
+                                  color: theme.colorScheme.surface.withValues(alpha: 0.4),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
+                                  border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -2253,7 +2291,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                                         gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
                                         borderRadius: BorderRadius.circular(12),
                                         boxShadow: [
-                                          BoxShadow(color: Colors.greenAccent.withOpacity(0.5), blurRadius: 10)
+                                          BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.5), blurRadius: 10)
                                         ],
                                       ),
                                     ),
@@ -2298,9 +2336,9 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                                 width: screenWidth * 0.70,
                                 height: 14,
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface.withOpacity(0.4),
+                                  color: theme.colorScheme.surface.withValues(alpha: 0.4),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
+                                  border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -2328,17 +2366,17 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                             duration: const Duration(milliseconds: 300),
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.6),
+                              color: isPassing ? Colors.green.withValues(alpha: 0.2) : theme.cardColor.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(30),
                               border: Border.all(
-                                color: isPassing ? Colors.greenAccent.withOpacity(0.6) : theme.colorScheme.surface.withOpacity(0.8),
+                                color: isPassing ? Colors.greenAccent.withValues(alpha: 0.6) : theme.colorScheme.surface.withValues(alpha: 0.8),
                                 width: 1.5,
                               ),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
-                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withOpacity(0.7),
+                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16,
                                 fontFamily: 'Inter',

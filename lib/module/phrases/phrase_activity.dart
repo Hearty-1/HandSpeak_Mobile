@@ -5,12 +5,45 @@ import '../../providers/sound_provider.dart';
 import '../../services/progress_service.dart';
 import 'phraseAct.dart';
 
+/// Which category the activity screens show: phrases by default, or a
+/// category added in the web app (custom_category_screen.dart), so every
+/// category uses the same difficulty and level screens.
+class ActivityCategoryConfig {
+  final List<String> aliases; // activity_questions.category values
+  final String title; // "Phrases", "Calendar", ...
+  final String? categoryId; // null = phrases (PhraseActivityInterface defaults)
+  final String? moduleKey;
+  final String? xpField;
+
+  const ActivityCategoryConfig({
+    required this.aliases,
+    required this.title,
+    this.categoryId,
+    this.moduleKey,
+    this.xpField,
+  });
+
+  static const phrases = ActivityCategoryConfig(aliases: ['phrase', 'phrases', 'Phrase', 'Phrases'], title: 'Phrases');
+
+  /// easy / medium / hard from a level id ("phrases_easy_3",
+  /// "calendar_hard_2"); a level without one counts as easy.
+  static String difficultyOf(String levelId) {
+    final m = RegExp(r'(?:^|_)(easy|medium|hard)(?:_|$)').firstMatch(levelId.toLowerCase());
+    return m?.group(1) ?? 'easy';
+  }
+
+  static int levelNumber(String levelId) =>
+      int.tryParse(RegExp(r'(\d+)(?!.*\d)').firstMatch(levelId)?.group(1) ?? '') ?? 0;
+}
+
 class PhrasesActivityInterface extends StatefulWidget {
   final String difficulty;
+  final ActivityCategoryConfig config;
 
   const PhrasesActivityInterface({
     super.key,
     required this.difficulty,
+    this.config = ActivityCategoryConfig.phrases,
   });
 
   @override
@@ -56,15 +89,15 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
   }
 
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
-    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor.toARGB32();
 
     if (bgColor == 0xFF080928) { // Galaxy Explorer
       const nodeColor = Color(0xFFB9A6FF);
       return {
         'primary': const Color(0xFF7C4DFF),
         'text': const Color(0xFFB9A6FF),
-        'line': nodeColor.withOpacity(0.6),
-        'dividerText': const Color(0xFFB9A6FF).withOpacity(0.7),
+        'line': nodeColor.withValues(alpha: 0.6),
+        'dividerText': const Color(0xFFB9A6FF).withValues(alpha: 0.7),
         'appBarIcon': const Color(0xFFB9A6FF),
         'cardBg': const Color(0xFF1B1A4B),
         'nodeColor': nodeColor,
@@ -76,8 +109,8 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
       return {
         'primary': const Color(0xFFD7B3A1),
         'text': const Color(0xFFF2F5F4),
-        'line': nodeColor.withOpacity(0.6),
-        'dividerText': const Color(0xFFF2F5F4).withOpacity(0.7),
+        'line': nodeColor.withValues(alpha: 0.6),
+        'dividerText': const Color(0xFFF2F5F4).withValues(alpha: 0.7),
         'appBarIcon': const Color(0xFFF2F5F4),
         'cardBg': const Color(0xFF4D7C73),
         'nodeColor': nodeColor,
@@ -89,7 +122,7 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
       return {
         'primary': const Color(0xFF00E5FF),
         'text': Colors.white,
-        'line': nodeColor.withOpacity(0.7),
+        'line': nodeColor.withValues(alpha: 0.7),
         'dividerText': Colors.white70,
         'appBarIcon': Colors.white,
         'cardBg': Colors.black54,
@@ -102,10 +135,10 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
       return {
         'primary': const Color(0xFF5C7CFA),
         'text': const Color(0xFF1E1E1E),
-        'line': nodeColor.withOpacity(0.6),
+        'line': nodeColor.withValues(alpha: 0.6),
         'dividerText': Colors.black54,
         'appBarIcon': const Color(0xFF322144),
-        'cardBg': Colors.white.withOpacity(0.9),
+        'cardBg': Colors.white.withValues(alpha: 0.9),
         'nodeColor': nodeColor,
         'nodeLightColor': const Color(0xFF91A7FF),
       };
@@ -116,10 +149,10 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
     return {
       'primary': const Color(0xFFFF6B8B),
       'text': const Color(0xFF332050),
-      'line': defaultNodeYellow.withOpacity(0.6),
+      'line': defaultNodeYellow.withValues(alpha: 0.6),
       'dividerText': const Color(0xFF6E5686),
       'appBarIcon': const Color(0xFF332050),
-      'cardBg': Colors.white.withOpacity(0.92),
+      'cardBg': Colors.white.withValues(alpha: 0.92),
       'nodeColor': defaultNodeYellow,
       'nodeLightColor': const Color(0xFFFFE082),
     };
@@ -140,7 +173,7 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
               color: nodeColor,
               shape: BoxShape.circle,
               boxShadow: [
-                BoxShadow(color: nodeColor.withOpacity(0.4), blurRadius: 4, spreadRadius: 1)
+                BoxShadow(color: nodeColor.withValues(alpha: 0.4), blurRadius: 4, spreadRadius: 1)
               ],
             ),
           ),
@@ -150,8 +183,8 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
   }
 
   String get _appBarTitle {
-    if (widget.difficulty.isEmpty) return 'Phrase Activity';
-    return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} Phrases';
+    if (widget.difficulty.isEmpty) return '${widget.config.title} Activity';
+    return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} ${widget.config.title}';
   }
 
   @override
@@ -205,28 +238,14 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                   if (data != null) {
                     progressMap = Map<String, dynamic>.from(data['progress'] ?? data['activityProgress'] ?? {});
 
-                    final String prefix = 'phrases_${currentDifficulty}_';
-                    progressMap.forEach((key, value) {
-                      final int stars = (value as num).toInt();
-                      final String keyLower = key.toLowerCase();
-                      if (keyLower.startsWith(prefix)) totalCategoryStars += stars;
-                      if (keyLower.startsWith('phrases_easy_')) totalEasyStars += stars;
-                      if (keyLower.startsWith('phrases_medium_')) totalMediumStars += stars;
-                    });
+                    // Stars are summed below, over this category's own levels.
                   }
-                }
-
-                bool isTierUnlocked = true;
-                if (currentDifficulty == 'medium') {
-                  isTierUnlocked = totalEasyStars >= 5;
-                } else if (currentDifficulty == 'hard') {
-                  isTierUnlocked = totalMediumStars >= 5;
                 }
 
                 return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('activity_questions')
-                      .where('category', whereIn: ['phrase', 'phrases', 'Phrase', 'Phrases'])
+                      .where('category', whereIn: widget.config.aliases)
                       .snapshots(),
                   builder: (context, questionsSnapshot) {
                     if (questionsSnapshot.connectionState == ConnectionState.waiting) {
@@ -235,6 +254,7 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
 
                     final docs = questionsSnapshot.data?.docs ?? [];
                     final Map<String, Map<String, dynamic>> levelsMap = {};
+                    final Set<String> seenLevels = {};
 
                     for (var doc in docs) {
                       final data = doc.data() as Map<String, dynamic>;
@@ -244,9 +264,17 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                       // Strict alphabet leakage filter
                       if (cat.contains('alphabet')) continue;
 
-                      if (levelId != null && levelId.toLowerCase().startsWith('phrases_${currentDifficulty}_')) {
+                      if (levelId != null && levelId.isNotEmpty) {
+                        final int stars = ((progressMap[levelId] as num?) ?? 0).toInt();
+                        final String diff = ActivityCategoryConfig.difficultyOf(levelId);
+                        if (!seenLevels.add(levelId)) continue;
+                        if (diff == 'easy') totalEasyStars += stars;
+                        if (diff == 'medium') totalMediumStars += stars;
+                        if (diff == currentDifficulty) totalCategoryStars += stars;
+                      }
+                      if (levelId != null && ActivityCategoryConfig.difficultyOf(levelId) == currentDifficulty) {
                         if (!levelsMap.containsKey(levelId)) {
-                          final levelNum = levelId.split('_').last;
+                          final levelNum = ActivityCategoryConfig.levelNumber(levelId);
                           levelsMap[levelId] = {
                             'levelId': levelId,
                             'type': data['type'] ?? 'Multiple Choice',
@@ -256,12 +284,16 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                       }
                     }
 
+                    bool isTierUnlocked = true;
+                    if (currentDifficulty == 'medium') {
+                      isTierUnlocked = totalEasyStars >= 5;
+                    } else if (currentDifficulty == 'hard') {
+                      isTierUnlocked = totalMediumStars >= 5;
+                    }
+
                     final levelKeys = levelsMap.keys.toList();
-                    levelKeys.sort((a, b) {
-                      final int numA = int.tryParse(a.split('_').last) ?? 0;
-                      final int numB = int.tryParse(b.split('_').last) ?? 0;
-                      return numA.compareTo(numB);
-                    });
+                    levelKeys.sort((a, b) =>
+                        ActivityCategoryConfig.levelNumber(a).compareTo(ActivityCategoryConfig.levelNumber(b)));
 
                     if (levelKeys.isEmpty) {
                       return Center(
@@ -325,7 +357,7 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
 
                               final unlockMsg = !isTierUnlocked
                                   ? 'Earn at least 5 ⭐ in the previous difficulty to unlock!'
-                                  : 'Earn 2 ⭐ in Level ${levelKeys[unlockedUpTo].split('_').last} to unlock!';
+                                  : 'Earn 2 ⭐ in Level ${ActivityCategoryConfig.levelNumber(levelKeys[unlockedUpTo])} to unlock!';
 
                               return Column(
                                 children: [
@@ -358,10 +390,15 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                                                   Navigator.push(
                                                     context,
                                                     MaterialPageRoute(
-                                                      builder: (context) => PhraseActivityInterface(
-                                                        levelId: levelId,
-                                                        title: title,
-                                                      ),
+                                                      builder: (context) => widget.config.categoryId == null
+                                                          ? PhraseActivityInterface(levelId: levelId, title: title)
+                                                          : PhraseActivityInterface(
+                                                              levelId: levelId,
+                                                              title: '${widget.config.title} · $title',
+                                                              category: widget.config.categoryId!,
+                                                              moduleKey: widget.config.moduleKey ?? widget.config.categoryId!,
+                                                              xpField: widget.config.xpField ?? 'xp',
+                                                            ),
                                                     ),
                                                   );
                                                 }
@@ -381,7 +418,7 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                                                 height: 104,
                                                 decoration: BoxDecoration(
                                                   shape: BoxShape.circle,
-                                                  color: isUnlocked ? nodeColor.withOpacity(0.3) : Colors.black12,
+                                                  color: isUnlocked ? nodeColor.withValues(alpha: 0.3) : Colors.black12,
                                                 ),
                                               ),
                                               Container(
@@ -398,7 +435,7 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                                                   ),
                                                   boxShadow: [
                                                     BoxShadow(
-                                                      color: (isUnlocked ? nodeColor : Colors.black).withOpacity(0.5),
+                                                      color: (isUnlocked ? nodeColor : Colors.black).withValues(alpha: 0.5),
                                                       blurRadius: 10,
                                                       offset: const Offset(0, 6),
                                                     )

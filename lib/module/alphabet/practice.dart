@@ -7,10 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 import 'package:firebase_storage/firebase_storage.dart'; // Added Firebase Cloud Storage
-import 'recognizer.dart';
 import '/services/lighting_monitor.dart';
 import '/services/frame_gate.dart';
-import '/services/dynamic_sign_judge.dart' show StaticLetterChecker;
+import '/services/dynamic_sign_judge.dart' show DynamicSignJudge, StaticLetterChecker, StaticServerCheck;
+import '/providers/language_provider.dart';
 import '/services/role_service.dart';
 import '/services/progress_service.dart';
 import '/services/xp_rewards.dart';
@@ -37,7 +37,7 @@ class _ThemeVisuals {
     final isDark = theme.brightness == Brightness.dark;
 
     // 1. DEEP OCEAN THEME (Blue Primary)
-    if (primary.blue > 160 && primary.red < 120) {
+    if ((primary.b * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.water_drop_rounded,
         secondaryIcon: Icons.waves_rounded,
@@ -46,7 +46,7 @@ class _ThemeVisuals {
       );
     } 
     // 2. FOREST NATURE THEME (Green Primary)
-    else if (primary.green > 160 && primary.red < 120) {
+    else if ((primary.g * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.eco_rounded,
         secondaryIcon: Icons.forest_rounded,
@@ -79,7 +79,7 @@ class PracticeInterface extends StatefulWidget {
   const PracticeInterface({super.key});
 
   @override
-  _PracticeInterfaceState createState() => _PracticeInterfaceState();
+  State<PracticeInterface> createState() => _PracticeInterfaceState();
 }
 
 class _PracticeInterfaceState extends State<PracticeInterface> {
@@ -104,8 +104,17 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
   // matching used for every other letter.
   static const List<String> _dynamicLetters = ['J', 'Z'];
   bool get _isDynamicLetter => _dynamicLetters.contains(targetLetter);
-  PhraseRecognizer? _dynamicSignRecognizer;
-  bool _dynamicModelReady = false;
+  // J / Z: the shared judge (stroke check + fsl_letter_j / z.onnx + the
+  // server's letter_j / letter_z), as in the tutorial, activities and games.
+  // The old recognizer needed assets/alphabet/model.tflite, which does not
+  // exist, so J and Z could never pass here.
+  final DynamicSignJudge _judge = DynamicSignJudge();
+  bool _isRecordingMotion = false;
+  bool _isJudgingMotion = false;
+  DateTime? _motionStart;
+  DateTime? _lastHandsSeen;
+  static const double _letterRecordSeconds = 2.5;
+  static const Duration _dropoutGrace = Duration(milliseconds: 400);
 
   List<dynamic>? _template;
   double _currentScore = 0.0;
@@ -138,20 +147,8 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
 
       _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
 
-      // Loaded once up front (not per-letter) since the continuous A-Z
-      // loop revisits J and Z repeatedly -- keeping it warm avoids
-      // reloading the model every lap through the alphabet.
-      try {
-        _dynamicSignRecognizer = PhraseRecognizer(
-          modelAssetPath: 'assets/alphabet/model.tflite',
-          labelAssetPath: 'assets/alphabet/label_map.json',
-        );
-        await _dynamicSignRecognizer!.initialize();
-        _dynamicModelReady = true;
-      } catch (e) {
-        debugPrint("J/Z dynamic-sign model failed to load: $e");
-        _dynamicModelReady = false;
-      }
+      // J / Z models, loaded once for the whole A-Z loop.
+      DynamicSignJudge.prepare(letters: true).catchError((e) => debugPrint('J / Z models failed to load: $e'));
 
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
@@ -260,19 +257,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     if (_isSuccessAchieved) return;
 
     if (_isDynamicLetter) {
-      if (!_dynamicModelReady || _dynamicSignRecognizer == null) return;
-
-      final result = _dynamicSignRecognizer!.processFrame(detectedHands);
-      final bool handsPresent = _dynamicSignRecognizer!.handsPresentInLastFrame;
-      // Only count it if hands are actually in frame right now AND the
-      // model's current top prediction is the letter being practiced --
-      // otherwise a stale window (hands just left frame) could keep
-      // reporting a lingering high-confidence match.
-      final double score = (handsPresent && result != null && result.label == targetLetter)
-          ? result.confidence
-          : 0.0;
-
-      _updateGameLogic(score);
+      _trackMovingLetter(detectedHands);
       return;
     }
 
@@ -291,6 +276,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
           highestScoreAcrossAllHands = score;
           bestHand = detectedHands[handIdx];
         }
+      }
+      if (bestHand != null) {
+        _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
       }
       if (bestHand != null &&
           _shapeChecker.check(bestHand, targetLetter,
@@ -465,8 +453,93 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     }
   }
 
+  // Static letters: the server's static model confirms the hold before
+  // success, as in the tutorial (server only: no pass without it).
+  final StaticServerCheck _serverCheck = StaticServerCheck();
+  bool _isConfirming = false;
+  int _confirmCooldownUntilMs = 0;
+
+  Future<void> _confirmStaticThenSucceed() async {
+    if (_isConfirming || _isSuccessAchieved) return;
+    _isConfirming = true;
+    final letter = targetLetter;
+    final v = await _serverCheck.verify(letter, number: false);
+    _isConfirming = false;
+    if (!mounted || _isSuccessAchieved || letter != targetLetter) return;
+    if (v != null && v.ok) {
+      _onSuccess();
+      return;
+    }
+    _confirmCooldownUntilMs = DateTime.now().millisecondsSinceEpoch + 1500;
+    _serverCheck.clear();
+    setState(() {
+      _startHoldTime = null;
+      _holdProgress = 0.0;
+      _currentScore = math.min(_currentScore, successThreshold - 5);
+    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        duration: const Duration(seconds: 2),
+        content: Text(v?.feedback ??
+            L.t('Could not reach the server. Check your internet connection and try again.',
+                'Hindi maabot ang server. Tingnan ang koneksyon sa internet at subukang muli.')),
+      ));
+  }
+
+  /// J / Z: record ~2.5 s while a hand is in view, then judge the movement.
+  void _trackMovingLetter(List<Hand> hands) {
+    if (_isJudgingMotion) return;
+    final now = DateTime.now();
+    if (hands.isNotEmpty) {
+      _lastHandsSeen = now;
+      if (!_isRecordingMotion) {
+        _isRecordingMotion = true;
+        _motionStart = now;
+        _judge.clear();
+      }
+      _judge.addFrame(hands, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
+      final elapsed = now.difference(_motionStart!).inMilliseconds / 1000.0;
+      if (mounted) setState(() => _holdProgress = (elapsed / _letterRecordSeconds).clamp(0.0, 1.0));
+      if (elapsed >= _letterRecordSeconds) {
+        _isRecordingMotion = false;
+        unawaited(_judgeMovingLetter(targetLetter));
+      }
+    } else if (_isRecordingMotion) {
+      final last = _lastHandsSeen;
+      if (last == null || now.difference(last) > _dropoutGrace) {
+        _isRecordingMotion = false;
+        _judge.clear();
+        if (mounted) setState(() => _holdProgress = 0.0);
+      }
+    }
+  }
+
+  Future<void> _judgeMovingLetter(String letter) async {
+    _isJudgingMotion = true;
+    final v = await _judge.judgeLetter(letter);
+    _isJudgingMotion = false;
+    _judge.clear();
+    if (!mounted || _isSuccessAchieved || letter != targetLetter) return;
+    debugPrint('[Practice] Letter $letter: ${v.isCorrect ? 'PASS' : 'fail'} (${v.feedback}) via ${v.model}');
+    if (v.isCorrect) {
+      setState(() => _currentScore = math.max(v.score, successThreshold));
+      _onSuccess();
+      return;
+    }
+    setState(() {
+      _holdProgress = 0.0;
+      _currentScore = math.min(v.score, successThreshold - 1);
+    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text(v.feedback)));
+  }
+
   void _updateGameLogic(double score) {
     if (!mounted) return;
+    // While the server confirms a hold (and shortly after a "not yet").
+    if (_isConfirming || DateTime.now().millisecondsSinceEpoch < _confirmCooldownUntilMs) return;
     final now = DateTime.now();
 
     setState(() {
@@ -478,7 +551,11 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
         _holdProgress = (difference / holdDurationSeconds).clamp(0.0, 1.0);
 
         if (difference >= holdDurationSeconds) {
-          _onSuccess();
+          if (_isDynamicLetter) {
+            _onSuccess();
+          } else {
+            _confirmStaticThenSucceed();
+          }
         }
       } else {
         _startHoldTime = null;
@@ -533,11 +610,12 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
       _holdProgress = 0.0;
       _startHoldTime = null;
       _template = null; // the next letter's template is loaded below
+      _serverCheck.clear();
     });
 
-    // Clear leftover frames so a fresh J/Z attempt (or the transition
-    // away from one) doesn't start from a stale window.
-    _dynamicSignRecognizer?.resetBuffer();
+    // Fresh J / Z attempt for the next letter.
+    _judge.clear();
+    _isRecordingMotion = false;
 
     try {
       await _loadGestureLibrary(targetLetter);
@@ -557,7 +635,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.12),
+              color: theme.primaryColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -570,7 +648,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
             onPressed: (_isSuccessAchieved || _isAdvancing) ? null : _skip,
             icon: const Icon(Icons.skip_next_rounded, size: 18),
             label: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w700)),
-            style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7)),
+            style: TextButton.styleFrom(foregroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
           ),
         ],
       ),
@@ -592,7 +670,6 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
     _controller?.stopImageStream();
     _controller?.dispose();
     _landmarkerPlugin?.dispose();
-    _dynamicSignRecognizer?.dispose();
     super.dispose();
   }
 
@@ -628,18 +705,18 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   width: 4.0,
-                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
+                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withValues(alpha: 0.6),
                                 ),
                                 boxShadow: [
                                   if (isPassing)
                                     BoxShadow(
-                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      color: Colors.greenAccent.withValues(alpha: 0.6),
                                       blurRadius: 25,
                                       spreadRadius: 2,
                                     )
                                   else
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.06),
+                                      color: Colors.black.withValues(alpha: 0.06),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     )
@@ -662,7 +739,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                   height: 110,
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: isPassing ? Colors.greenAccent.withOpacity(0.8) : Colors.white54,
+                                      color: isPassing ? Colors.greenAccent.withValues(alpha: 0.8) : Colors.white54,
                                       width: 3.0,
                                     ),
                                     shape: BoxShape.circle,
@@ -708,7 +785,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
       
       // --- GLASSMORPHISM APP BAR ---
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4), 
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4), 
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -790,7 +867,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
+                                color: Colors.black.withValues(alpha: 0.06),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               )
@@ -839,9 +916,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                               decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.15),
+                                color: Colors.green.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
+                                border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 1.5),
                               ),
                               child: Column(
                                 children: [
@@ -865,7 +942,7 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                   Text(
                                     "Loading next letter...",
                                     style: TextStyle(
-                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                       fontWeight: FontWeight.w600,
                                       fontSize: 14,
                                     ),
@@ -899,9 +976,9 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                                 width: screenWidth * 0.70, 
                                 height: 16,
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface.withOpacity(0.4), 
+                                  color: theme.colorScheme.surface.withValues(alpha: 0.4), 
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1)
+                                  border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1)
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -929,17 +1006,17 @@ class _PracticeInterfaceState extends State<PracticeInterface> {
                             duration: const Duration(milliseconds: 300),
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.6),
+                              color: isPassing ? Colors.green.withValues(alpha: 0.2) : theme.cardColor.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(30),
                               border: Border.all(
-                                color: isPassing ? Colors.greenAccent.withOpacity(0.4) : theme.colorScheme.surface.withOpacity(0.8),
+                                color: isPassing ? Colors.greenAccent.withValues(alpha: 0.4) : theme.colorScheme.surface.withValues(alpha: 0.8),
                                 width: 1.5
                               ),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
-                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withOpacity(0.7),
+                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16,
                                 fontFamily: 'Inter',

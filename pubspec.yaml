@@ -65,19 +65,13 @@ dev_dependencies:
     sdk: flutter
 
   flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^6.0.0
 
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
   image_path: "assets/pictures/image 66.png"
   min_sdk_android: 21
-
-  # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
-  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -92,24 +86,6 @@ flutter:
     - assets/alphabet/labels_letter_j.json
     - assets/alphabet/labels_letter_z.json
     - assets/numbers/
-    - assets/numbers/fsl_numbers_11_20.onnx
-    - assets/numbers/fsl_numbers_20_30.onnx
-    - assets/numbers/fsl_numbers_31_40.onnx
-    - assets/numbers/fsl_numbers_41_50.onnx
-    - assets/numbers/fsl_numbers_51_60.onnx
-    - assets/numbers/fsl_numbers_61_70.onnx
-    - assets/numbers/fsl_numbers_71_80.onnx
-    - assets/numbers/fsl_numbers_81_90.onnx
-    - assets/numbers/fsl_numbers_91_100.onnx
-    - assets/numbers/labels_11_20.json
-    - assets/numbers/labels_20_30.json
-    - assets/numbers/labels_31_40.json
-    - assets/numbers/labels_41_50.json
-    - assets/numbers/labels_51_60.json
-    - assets/numbers/labels_61_70.json
-    - assets/numbers/labels_71_80.json
-    - assets/numbers/labels_81_90.json
-    - assets/numbers/labels_91_100.json
     # Greetings model (runs on the phone). The calendar model
     # (calendar_v1.json + fsl_calendar_v2.onnx) runs on the server
     # (POST /v1/predict_raw/calendar), so it and the reference zips in this

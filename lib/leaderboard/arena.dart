@@ -67,7 +67,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
     Widget fallback = CircleAvatar(
       radius: radius,
-      backgroundColor: theme.disabledColor.withOpacity(0.2),
+      backgroundColor: theme.disabledColor.withValues(alpha: 0.2),
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : "?",
         style: TextStyle(fontWeight: FontWeight.bold, color: fallbackTextColor, fontSize: radius * 0.8),
@@ -206,10 +206,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               decoration: BoxDecoration(
-                color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+                color: theme.scaffoldBackgroundColor.withValues(alpha: 0.5),
                 border: Border(
                   bottom: BorderSide(
-                    color: textColor.withOpacity(0.08),
+                    color: textColor.withValues(alpha: 0.08),
                     width: 1.0,
                   ),
                 ),
@@ -234,7 +234,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
               ),
               child: ClipOval(
                 child: Image.asset(
@@ -280,8 +280,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        theme.primaryColor.withOpacity(0.35),
-                        theme.primaryColor.withOpacity(0.0),
+                        theme.primaryColor.withValues(alpha: 0.35),
+                        theme.primaryColor.withValues(alpha: 0.0),
                       ]
                     ),
                   ),
@@ -295,8 +295,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        const Color(0xFFF34B1B).withOpacity(0.2),
-                        const Color(0xFFF34B1B).withOpacity(0.0),
+                        const Color(0xFFF34B1B).withValues(alpha: 0.2),
+                        const Color(0xFFF34B1B).withValues(alpha: 0.0),
                       ]
                     ),
                   ),
@@ -344,9 +344,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       height: 52 * scale,
       padding: EdgeInsets.all(4 * scale),
       decoration: BoxDecoration(
-        color: textColor.withOpacity(0.05),
+        color: textColor.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(22 * scale),
-        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
+        border: Border.all(color: textColor.withValues(alpha: 0.08), width: 1.0),
       ),
       child: Row(
         children: [
@@ -358,13 +358,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 curve: Curves.easeOutCubic,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: _mainHubTab == 'rankings' ? theme.cardColor.withOpacity(0.85) : Colors.transparent,
+                  color: _mainHubTab == 'rankings' ? theme.cardColor.withValues(alpha: 0.85) : Colors.transparent,
                   borderRadius: BorderRadius.circular(18 * scale),
                   border: _mainHubTab == 'rankings'
-                      ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.0)
+                      ? Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.0)
                       : null,
                   boxShadow: _mainHubTab == 'rankings'
-                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 3))]
+                    ? [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 6, offset: const Offset(0, 3))]
                     : null,
                 ),
                 child: FittedBox(
@@ -375,7 +375,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       fontSize: 14.5 * scale,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'Inter',
-                      color: _mainHubTab == 'rankings' ? textColor : textColor.withOpacity(0.5),
+                      color: _mainHubTab == 'rankings' ? textColor : textColor.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -390,13 +390,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 curve: Curves.easeOutCubic,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: _mainHubTab == 'challenges' ? theme.cardColor.withOpacity(0.85) : Colors.transparent,
+                  color: _mainHubTab == 'challenges' ? theme.cardColor.withValues(alpha: 0.85) : Colors.transparent,
                   borderRadius: BorderRadius.circular(18 * scale),
                   border: _mainHubTab == 'challenges'
-                      ? Border.all(color: Colors.white.withOpacity(0.2), width: 1.0)
+                      ? Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.0)
                       : null,
                   boxShadow: _mainHubTab == 'challenges'
-                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 3))]
+                    ? [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 6, offset: const Offset(0, 3))]
                     : null,
                 ),
                 child: FittedBox(
@@ -407,7 +407,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       fontSize: 14.5 * scale,
                       fontWeight: FontWeight.w900,
                       fontFamily: 'Inter',
-                      color: _mainHubTab == 'challenges' ? textColor : textColor.withOpacity(0.5),
+                      color: _mainHubTab == 'challenges' ? textColor : textColor.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -424,9 +424,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       height: 44 * scale,
       padding: EdgeInsets.all(4 * scale),
       decoration: BoxDecoration(
-        color: theme.cardColor.withOpacity(0.5),
+        color: theme.cardColor.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16 * scale),
-        border: Border.all(color: theme.colorScheme.onSurface.withOpacity(0.08), width: 1.0),
+        border: Border.all(color: theme.colorScheme.onSurface.withValues(alpha: 0.08), width: 1.0),
       ),
       child: Row(
         children: [
@@ -456,7 +456,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               style: TextStyle(
                 fontSize: 13 * scale,
                 fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface.withOpacity(0.5),
+                color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface.withValues(alpha: 0.5),
                 fontFamily: 'Inter',
               ),
             ),
@@ -486,12 +486,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             return Container(
               padding: EdgeInsets.all(16 * scale),
               decoration: BoxDecoration(
-                color: theme.cardColor.withOpacity(0.7),
+                color: theme.cardColor.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(24 * scale),
-                border: Border.all(color: theme.primaryColor.withOpacity(0.25), width: 1.0 * scale),
+                border: Border.all(color: theme.primaryColor.withValues(alpha: 0.25), width: 1.0 * scale),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.primaryColor.withOpacity(0.1),
+                    color: theme.primaryColor.withValues(alpha: 0.1),
                     blurRadius: 16,
                     offset: const Offset(0, 8),
                   )
@@ -660,12 +660,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         width: double.infinity,
         padding: EdgeInsets.all(18 * scale),
         decoration: BoxDecoration(
-          color: theme.cardColor.withOpacity(0.7),
+          color: theme.cardColor.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(24 * scale),
-          border: Border.all(color: textColor.withOpacity(0.08), width: 1.0 * scale),
+          border: Border.all(color: textColor.withValues(alpha: 0.08), width: 1.0 * scale),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 16,
               offset: const Offset(0, 6),
             )
@@ -677,7 +677,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               width: 60 * scale,
               height: 60 * scale,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
+                color: iconColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(18 * scale),
               ),
               child: Icon(icon, color: iconColor, size: 30 * scale),
@@ -704,7 +704,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     style: TextStyle(
                       fontSize: 12 * scale,
                       fontWeight: FontWeight.w600,
-                      color: textColor.withOpacity(0.6),
+                      color: textColor.withValues(alpha: 0.6),
                     ),
                   ),
                   SizedBox(height: 8 * scale),
@@ -729,13 +729,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             Container(
               padding: EdgeInsets.all(8 * scale),
               decoration: BoxDecoration(
-                color: textColor.withOpacity(0.05),
+                color: textColor.withValues(alpha: 0.05),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.arrow_forward_ios_rounded,
                 size: 14 * scale,
-                color: textColor.withOpacity(0.5),
+                color: textColor.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -750,9 +750,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 10 * scale),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16 * scale),
-        border: Border.all(color: color.withOpacity(0.2), width: 1.0 * scale),
+        border: Border.all(color: color.withValues(alpha: 0.2), width: 1.0 * scale),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -760,9 +760,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           Container(
             padding: EdgeInsets.all(6 * scale),
             decoration: BoxDecoration(
-              color: theme.cardColor.withOpacity(0.8),
+              color: theme.cardColor.withValues(alpha: 0.8),
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: color.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))],
+              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 4, offset: const Offset(0, 2))],
             ),
             child: Icon(icon, color: color, size: 20 * scale),
           ),
@@ -829,8 +829,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: color.withOpacity(0.8), width: 2 * scale),
-            boxShadow: rank == 1 ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 15, spreadRadius: 1)] : [],
+            border: Border.all(color: color.withValues(alpha: 0.8), width: 2 * scale),
+            boxShadow: rank == 1 ? [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 15, spreadRadius: 1)] : [],
           ),
           child: _buildSafeAvatar(
             context: context,
@@ -854,12 +854,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                color.withOpacity(0.25),
-                color.withOpacity(0.05),
+                color.withValues(alpha: 0.25),
+                color.withValues(alpha: 0.05),
               ],
             ),
             borderRadius: BorderRadius.vertical(top: Radius.circular(12 * scale)),
-            border: Border.all(color: color.withOpacity(0.3), width: 1.0),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1.0),
           ),
           alignment: Alignment.topCenter,
           padding: EdgeInsets.only(top: 8 * scale),
@@ -878,16 +878,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       margin: EdgeInsets.only(bottom: 12 * scale),
       padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 14 * scale),
       decoration: BoxDecoration(
-        color: theme.cardColor.withOpacity(0.7),
+        color: theme.cardColor.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(20 * scale),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.04),
+            color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
+        border: Border.all(color: textColor.withValues(alpha: 0.08), width: 1.0),
       ),
       child: Row(
         children: [
@@ -895,12 +895,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             width: 32 * scale, height: 32 * scale,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: textColor.withOpacity(0.05),
+              color: textColor.withValues(alpha: 0.05),
               shape: BoxShape.circle,
             ),
             child: Text(
               "$rank",
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16 * scale, color: textColor.withOpacity(0.6)),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16 * scale, color: textColor.withValues(alpha: 0.6)),
             ),
           ),
           SizedBox(width: 14 * scale),
@@ -916,7 +916,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15 * scale, color: textColor)),
-                Text(grade, style: TextStyle(fontSize: 12 * scale, color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
+                Text(grade, style: TextStyle(fontSize: 12 * scale, color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -971,7 +971,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
 
     Widget fallback = CircleAvatar(
       radius: radius,
-      backgroundColor: theme.disabledColor.withOpacity(0.2),
+      backgroundColor: theme.disabledColor.withValues(alpha: 0.2),
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : "?",
         style: TextStyle(fontWeight: FontWeight.bold, color: fallbackTextColor, fontSize: radius * 0.8),
@@ -991,7 +991,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           width: radius * 2,
           height: radius * 2,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => fallback,
+          errorBuilder: (_, _, _) => fallback,
         );
       } catch (e) {
         return fallback; 
@@ -1002,7 +1002,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         width: radius * 2,
         height: radius * 2,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
+        errorBuilder: (_, _, _) => fallback,
       );
     } else {
       imageWidget = Image.asset(
@@ -1010,7 +1010,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         width: radius * 2,
         height: radius * 2,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
+        errorBuilder: (_, _, _) => fallback,
       );
     }
 
@@ -1213,7 +1213,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                               trailing: IconButton(
                                 icon: Icon(
                                   isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
-                                  color: isSelected ? const Color(0xFF4CAF50) : textColor.withOpacity(0.3),
+                                  color: isSelected ? const Color(0xFF4CAF50) : textColor.withValues(alpha: 0.3),
                                 ),
                                 onPressed: () {
                                   setModalState(() {
@@ -1293,7 +1293,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                           children: [
                             const Text("Classroom Challenge", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)),
                             const SizedBox(height: 6),
-                            Text("Join your teacher's room or create one for your group.", style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7), fontWeight: FontWeight.w600)),
+                            Text("Join your teacher's room or create one for your group.", style: TextStyle(fontSize: 12, color: Colors.black.withValues(alpha: 0.7), fontWeight: FontWeight.w600)),
                             const SizedBox(height: 16),
                             Row(
                               children: [
@@ -1308,7 +1308,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                       const SizedBox(width: 12),
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), shape: BoxShape.circle),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.3), shape: BoxShape.circle),
                         child: const Icon(Icons.groups_rounded, size: 36, color: Colors.black87),
                       ),
                     ],
@@ -1322,9 +1322,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               height: 48,
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: textColor.withOpacity(0.05),
+                color: textColor.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
+                border: Border.all(color: textColor.withValues(alpha: 0.08), width: 1.0),
               ),
               child: Row(
                 children: [
@@ -1335,9 +1335,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         duration: const Duration(milliseconds: 200),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: isJoinMode ? theme.cardColor.withOpacity(0.9) : Colors.transparent,
+                          color: isJoinMode ? theme.cardColor.withValues(alpha: 0.9) : Colors.transparent,
                           borderRadius: BorderRadius.circular(16),
-                          boxShadow: isJoinMode ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4)] : null,
+                          boxShadow: isJoinMode ? [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 4)] : null,
                         ),
                         child: Text("Join a Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
                       ),
@@ -1350,9 +1350,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                         duration: const Duration(milliseconds: 200),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: !isJoinMode ? theme.cardColor.withOpacity(0.9) : Colors.transparent,
+                          color: !isJoinMode ? theme.cardColor.withValues(alpha: 0.9) : Colors.transparent,
                           borderRadius: BorderRadius.circular(16),
-                          boxShadow: !isJoinMode ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4)] : null,
+                          boxShadow: !isJoinMode ? [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 4)] : null,
                         ),
                         child: Text("Create Room", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
                       ),
@@ -1374,13 +1374,13 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.4),
+        color: Colors.white.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         children: [
           Text(val, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Colors.black)),
-          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black.withOpacity(0.7))),
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black.withValues(alpha: 0.7))),
         ],
       ),
     );
@@ -1398,9 +1398,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: theme.cardColor.withOpacity(0.7),
+                  color: theme.cardColor.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: textColor.withOpacity(0.08)),
+                  border: Border.all(color: textColor.withValues(alpha: 0.08)),
                 ),
                 child: TextField(
                   controller: _codeController,
@@ -1408,7 +1408,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                   style: TextStyle(color: textColor),
                   decoration: InputDecoration(
                     hintText: "e.g. FSL001",
-                    hintStyle: TextStyle(color: textColor.withOpacity(0.4), fontWeight: FontWeight.bold),
+                    hintStyle: TextStyle(color: textColor.withValues(alpha: 0.4), fontWeight: FontWeight.bold),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   ),
@@ -1447,9 +1447,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               return Container(
                 padding: const EdgeInsets.all(20),
                 width: double.infinity,
-                decoration: BoxDecoration(color: theme.cardColor.withOpacity(0.5), borderRadius: BorderRadius.circular(16)),
+                decoration: BoxDecoration(color: theme.cardColor.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(16)),
                 child: Center(
-                  child: Text("No active public rooms available.", style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
+                  child: Text("No active public rooms available.", style: TextStyle(color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.w600)),
                 ),
               );
             }
@@ -1469,15 +1469,15 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: theme.cardColor.withOpacity(0.8),
+                    color: theme.cardColor.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: textColor.withOpacity(0.08)),
+                    border: Border.all(color: textColor.withValues(alpha: 0.08)),
                   ),
                   child: Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.12), shape: BoxShape.circle),
+                        decoration: BoxDecoration(color: theme.primaryColor.withValues(alpha: 0.12), shape: BoxShape.circle),
                         child: Icon(Icons.groups_rounded, color: theme.primaryColor, size: 22),
                       ),
                       const SizedBox(width: 12),
@@ -1487,7 +1487,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                           children: [
                             Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: textColor)),
                             const SizedBox(height: 2),
-                            Text("${playerUids.length}/$maxPlayers players · $category", style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
+                            Text("${playerUids.length}/$maxPlayers players · $category", style: TextStyle(fontSize: 12, color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -1504,7 +1504,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                               const Text("Live", style: TextStyle(color: Color(0xFF2E7D32), fontWeight: FontWeight.bold, fontSize: 11)),
                               const SizedBox(width: 6),
                               Text(code, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: textColor)),
-                              Icon(Icons.chevron_right_rounded, size: 16, color: textColor.withOpacity(0.6)),
+                              Icon(Icons.chevron_right_rounded, size: 16, color: textColor.withValues(alpha: 0.6)),
                             ],
                           ),
                         ),
@@ -1525,9 +1525,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: theme.cardColor.withOpacity(0.7),
+        color: theme.cardColor.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
+        border: Border.all(color: textColor.withValues(alpha: 0.08), width: 1.0),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1537,13 +1537,13 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: const Color(0xFFF34B1B).withOpacity(0.1), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: const Color(0xFFF34B1B).withValues(alpha: 0.1), shape: BoxShape.circle),
                   child: const Icon(Icons.add_circle_rounded, size: 36, color: Color(0xFFF34B1B)),
                 ),
                 const SizedBox(height: 10),
                 Text("Host a Challenge", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Inter', color: textColor)),
                 const SizedBox(height: 4),
-                Text("Configure your game settings and choose topics.", textAlign: TextAlign.center, style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12.5)),
+                Text("Configure your game settings and choose topics.", textAlign: TextAlign.center, style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12.5)),
               ],
             ),
           ),
@@ -1554,9 +1554,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
-              color: textColor.withOpacity(0.04),
+              color: textColor.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: textColor.withOpacity(0.1)),
+              border: Border.all(color: textColor.withValues(alpha: 0.1)),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
@@ -1586,9 +1586,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: isSelected ? theme.primaryColor : textColor.withOpacity(0.04),
+                      color: isSelected ? theme.primaryColor : textColor.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: isSelected ? theme.primaryColor : textColor.withOpacity(0.1)),
+                      border: Border.all(color: isSelected ? theme.primaryColor : textColor.withValues(alpha: 0.1)),
                     ),
                     child: Text(
                       "$rounds",
@@ -1615,9 +1615,9 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFFF34B1B) : textColor.withOpacity(0.04),
+                      color: isSelected ? const Color(0xFFF34B1B) : textColor.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: isSelected ? const Color(0xFFF34B1B) : textColor.withOpacity(0.1)),
+                      border: Border.all(color: isSelected ? const Color(0xFFF34B1B) : textColor.withValues(alpha: 0.1)),
                     ),
                     child: Text(
                       label,
@@ -1636,8 +1636,8 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: textColor.withOpacity(0.03),
-                border: Border.all(color: textColor.withOpacity(0.1)),
+                color: textColor.withValues(alpha: 0.03),
+                border: Border.all(color: textColor.withValues(alpha: 0.1)),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -1650,11 +1650,11 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                   if (_invitedFriendUids.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: const Color(0xFF4CAF50).withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                      decoration: BoxDecoration(color: const Color(0xFF4CAF50).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
                       child: Text("${_invitedFriendUids.length} Selected", style: const TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold, fontSize: 11)),
                     )
                   else
-                    Icon(Icons.arrow_forward_ios_rounded, size: 14, color: textColor.withOpacity(0.4)),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 14, color: textColor.withValues(alpha: 0.4)),
                 ],
               ),
             ),
@@ -1748,10 +1748,10 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
     final theme = Theme.of(context);
     Widget fallback = CircleAvatar(
       radius: radius,
-      backgroundColor: theme.disabledColor.withOpacity(0.2),
+      backgroundColor: theme.disabledColor.withValues(alpha: 0.2),
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : "?",
-        style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withOpacity(0.6), fontSize: radius * 0.8),
+        style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontSize: radius * 0.8),
       ),
     );
 
@@ -1769,7 +1769,7 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
           width: radius * 2,
           height: radius * 2,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => fallback,
+          errorBuilder: (_, _, _) => fallback,
         );
       } catch (e) {
         return fallback; 
@@ -1780,7 +1780,7 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
         width: radius * 2,
         height: radius * 2,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
+        errorBuilder: (_, _, _) => fallback,
       );
     } else {
       imageWidget = Image.asset(
@@ -1788,7 +1788,7 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
         width: radius * 2,
         height: radius * 2,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
+        errorBuilder: (_, _, _) => fallback,
       );
     }
 
@@ -1840,10 +1840,10 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: theme.cardColor.withOpacity(0.7),
+                      color: theme.cardColor.withValues(alpha: 0.7),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 5))],
+                      border: Border.all(color: textColor.withValues(alpha: 0.08), width: 1.0),
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 15, offset: const Offset(0, 5))],
                     ),
                     child: Column(
                       children: [
@@ -1877,7 +1877,7 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
 
                   Expanded(
                     child: playerUids.isEmpty
-                        ? Center(child: Text("Waiting for players to join...", style: TextStyle(color: textColor.withOpacity(0.6))))
+                        ? Center(child: Text("Waiting for players to join...", style: TextStyle(color: textColor.withValues(alpha: 0.6))))
                         : StreamBuilder<QuerySnapshot>(
                             stream: FirebaseFirestore.instance
                                 .collection('users')
@@ -1951,13 +1951,13 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: textColor.withOpacity(0.05),
+          color: textColor.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: textColor.withOpacity(0.06), width: 1.0),
+          border: Border.all(color: textColor.withValues(alpha: 0.06), width: 1.0),
         ),
         child: Column(
           children: [
-            Text(topText, style: TextStyle(fontSize: 11, color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
+            Text(topText, style: TextStyle(fontSize: 11, color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(bottomText, style: TextStyle(fontSize: 16, color: textColor, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
           ],
@@ -1972,9 +1972,9 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.cardColor.withOpacity(0.7),
+        color: theme.cardColor.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: textColor.withOpacity(0.08), width: 1.0),
+        border: Border.all(color: textColor.withValues(alpha: 0.08), width: 1.0),
       ),
       child: Row(
         children: [
@@ -1995,7 +1995,7 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: theme.primaryColor.withOpacity(0.15),
+                color: theme.primaryColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text("HOST", style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 11)),

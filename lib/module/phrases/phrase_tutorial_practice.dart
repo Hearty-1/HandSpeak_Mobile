@@ -50,14 +50,14 @@ class _ThemeVisuals {
     final primary = theme.primaryColor;
     final isDark = theme.brightness == Brightness.dark;
 
-    if (primary.blue > 160 && primary.red < 120) {
+    if ((primary.b * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.water_drop_rounded,
         secondaryIcon: Icons.waves_rounded,
         ambientIcon1: Icons.bubble_chart_rounded,
         ambientIcon2: Icons.sailing_rounded,
       );
-    } else if (primary.green > 160 && primary.red < 120) {
+    } else if ((primary.g * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.eco_rounded,
         secondaryIcon: Icons.forest_rounded,
@@ -255,7 +255,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   static const int _maxInFlight = 2;
   int _imageWidth = 0, _imageHeight = 0;
   String _engine = '';
-  String _debug = '';
+  /// Debug details of the last check (debug builds), printed to the log.
+  set _debug(String v) => debugPrint(v);
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -950,7 +951,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   static String? _adviceFor(String code) => _calendarAdvice[code] ?? HolisticCapture.rejectAdvice[code];
 
   /// Released calendar models (source_checkpoint; responses report
-  /// "<feature_version>/<checkpoint>"). v1 = palm_calendar_best.pt is the model
+  /// `<feature_version>/<checkpoint>`). v1 = palm_calendar_best.pt is the model
   /// the training team recommends for production (calendar kit REPORT.md,
   /// 2026-10-13: 64 % of live attempts accepted vs 30 % for v2).
   /// Practice check (see _evaluateCalendar): failed server checks that only
@@ -1099,13 +1100,6 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
       final top = result.prediction;
       final topIdx = top == null ? -1 : _monthIndexOf(top);
-      double confFor(int idx) {
-        for (final p in [if (top != null) top, ...result.topK]) {
-          if (_monthIndexOf(p) == idx) return p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
-        }
-        return 0.0;
-      }
-
       final accepted = result.accepted;
 
       // Practice check. The server gate is built for open recognition (any of
@@ -1268,10 +1262,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: theme.primaryColor.withOpacity(0.6), width: 2),
+                border: Border.all(color: theme.primaryColor.withValues(alpha: 0.6), width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.primaryColor.withOpacity(0.35),
+                    color: theme.primaryColor.withValues(alpha: 0.35),
                     blurRadius: 40,
                     spreadRadius: 8,
                   )
@@ -1286,14 +1280,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.15),
+                          color: theme.primaryColor.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(visuals.mainBadgeIcon, color: theme.primaryColor, size: 64),
                       ),
                       Positioned(
                         right: 0, top: 0,
-                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withOpacity(0.7), size: 22),
+                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withValues(alpha: 0.7), size: 22),
                       ),
                     ],
                   ),
@@ -1313,7 +1307,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                         : "Outstanding job! You have successfully mastered the phrase \"${widget.targetPhrase}\"!",
                     style: TextStyle(
                       fontSize: 16,
-                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
@@ -1334,9 +1328,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.15),
+                          color: Colors.green.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.green.withOpacity(0.4), width: 2),
+                          border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 2),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1358,7 +1352,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                       backgroundColor: theme.primaryColor,
                       foregroundColor: theme.colorScheme.onPrimary,
                       elevation: 4,
-                      shadowColor: theme.primaryColor.withOpacity(0.5),
+                      shadowColor: theme.primaryColor.withValues(alpha: 0.5),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       minimumSize: const Size(double.infinity, 54),
                     ),
@@ -1413,7 +1407,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
         ? Image.memory(_templateImage!, fit: BoxFit.cover)
         : _buildPlaceholder(theme);
     if (url.startsWith('assets/')) {
-      return Image.asset(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+      return Image.asset(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback);
     }
     if (url.isEmpty) return fallback;
     return FutureBuilder<String>(
@@ -1424,7 +1418,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
         final u = snap.data;
         if (u == null) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
         if (u.isEmpty) return fallback;
-        return Image.network(u, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+        return Image.network(u, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback);
       },
     );
   }
@@ -1449,8 +1443,8 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.14),
-              border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+              color: Colors.white.withValues(alpha: 0.14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 2),
             ),
             child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 36),
           ),
@@ -1465,7 +1459,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           const SizedBox(height: 2),
           Text(
             'Demo video coming soon',
-            style: TextStyle(color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w600, fontSize: 11),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontWeight: FontWeight.w600, fontSize: 11),
           ),
         ],
       ),
@@ -1487,7 +1481,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              color: theme.primaryColor.withOpacity(0.12),
+              color: theme.primaryColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -1501,7 +1495,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
               onPressed: (_isRecording || _isEvaluating || _isSuccessAchieved || _countdown > 0) ? null : widget.onSkip,
               icon: const Icon(Icons.skip_next_rounded, size: 18),
               label: const Text('Skip', style: TextStyle(fontWeight: FontWeight.w700)),
-              style: TextButton.styleFrom(foregroundColor: onSurface.withOpacity(0.7)),
+              style: TextButton.styleFrom(foregroundColor: onSurface.withValues(alpha: 0.7)),
             ),
           ],
         ],
@@ -1523,9 +1517,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.15),
+              color: Colors.green.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.green.withOpacity(0.3), width: 1.5),
+              border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 1.5),
             ),
             child: Column(
               children: [
@@ -1543,7 +1537,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                 const SizedBox(height: 6),
                 Text(
                   L.t('Next phrase...', 'Susunod na parirala...'),
-                  style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600, fontSize: 14),
+                  style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w600, fontSize: 14),
                 ),
               ],
             ),
@@ -1588,7 +1582,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     } else if (_resultColor == Colors.greenAccent) {
       borderColor = Colors.greenAccent;
     } else {
-      borderColor = theme.dividerColor.withOpacity(0.6);
+      borderColor = theme.dividerColor.withValues(alpha: 0.6);
     }
 
     // Camera box (with its overlays): inline in portrait, right pane in landscape.
@@ -1608,13 +1602,13 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                                 boxShadow: [
                                   if (_isRecording || _resultColor == Colors.greenAccent)
                                     BoxShadow(
-                                      color: borderColor.withOpacity(0.6),
+                                      color: borderColor.withValues(alpha: 0.6),
                                       blurRadius: 25,
                                       spreadRadius: 2,
                                     )
                                   else
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.06),
+                                      color: Colors.black.withValues(alpha: 0.06),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     )
@@ -1638,7 +1632,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                                   height: 110,
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: borderColor.withOpacity(0.9),
+                                      color: borderColor.withValues(alpha: 0.9),
                                       width: _isRecording ? 4.0 : 3.0,
                                     ),
                                     shape: BoxShape.circle,
@@ -1684,7 +1678,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -1756,7 +1750,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                     if (_isCalendar)
                       Text(
                         CalendarSigns.classNames[_calendarTarget],
-                        style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600),
+                        style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w600),
                       ),
                     const SizedBox(height: 12),
 
@@ -1769,7 +1763,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
+                                color: Colors.black.withValues(alpha: 0.06),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               )

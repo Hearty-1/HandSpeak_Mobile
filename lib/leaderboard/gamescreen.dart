@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -99,6 +97,10 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   // Look-alike letters (B for C, E for F, M for N, ...): shared checks
   // with the tutorial practice (services/dynamic_sign_judge.dart).
   final StaticLetterChecker _shapeChecker = StaticLetterChecker();
+  // Static letters / numbers: the server's static model confirms a pass
+  // (services/dynamic_sign_judge.dart StaticServerCheck); offline the
+  // on-phone verdict stands.
+  final StaticServerCheck _serverCheck = StaticServerCheck();
   int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
   bool _isJudging = false;
   static const double _letterRecordSeconds = 2.5;
@@ -280,10 +282,12 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   Future<void> _loadGestureLibrary(String letter) async {
     _templateLetter = letter.toUpperCase();
     try {
-      String jsonString = await rootBundle.loadString('assets/alphabet/${letter.toUpperCase()}.json');
+      // Storage models/alphabet/<L>.json first, bundled copy as fallback.
+      final t = await TemplateStore.load('alphabet', letter);
+      if (t == null) throw StateError('no template');
       if (mounted) {
         setState(() {
-          _template = jsonDecode(jsonString);
+          _template = t;
         });
       }
     } catch (e) {
@@ -388,6 +392,9 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
           bestHand = detectedHands[handIdx];
         }
       }
+      if (bestHand != null) {
+        _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
+      }
       if (bestHand != null &&
           _shapeChecker.check(bestHand, _templateLetter,
                   imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation) !=
@@ -405,7 +412,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         if (holdSecs >= _requiredHoldSeconds) {
           _staticHoldStartTime = null;
           _holdProgress = 1.0;
-          _submitAnswer(correctAnswer);
+          _confirmThenSubmit(correctAnswer);
           return;
         }
       } else {
@@ -753,6 +760,25 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     }
   }
 
+  /// Static sign held long enough: the server's static model confirms it
+  /// before the answer is submitted (server only: no submit without it).
+  Future<void> _confirmThenSubmit(String correctAnswer) async {
+    if (_isJudging) return;
+    final target = correctAnswer.trim();
+    setState(() => _isJudging = true);
+    final v = await _serverCheck.verify(target, number: RegExp(r'^\d+$').hasMatch(target));
+    if (!mounted) return;
+    setState(() => _isJudging = false);
+    if (v != null && v.ok) {
+      _submitAnswer(correctAnswer);
+    } else {
+      _serverCheck.clear();
+      _staticHoldStartTime = null;
+      _holdProgress = 0.0;
+      _currentScore = math.min(_currentScore, successThreshold - 1);
+    }
+  }
+
   void _submitAnswer(String answer) {
     if (_hasAnswered) return;
 
@@ -781,7 +807,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         // is loaded, else the letter's bundled template.
         modelVersion: _isDynamicLetter
             ? (_lastDynamicModel ?? 'assets/alphabet/fsl_letter_${correctAnswer.trim().toLowerCase()}.onnx')
-            : 'assets/alphabet/${correctAnswer.trim().toUpperCase()}.json',
+            : (TemplateStore.sourceOf('alphabet', correctAnswer) ?? 'models/alphabet/${correctAnswer.trim().toUpperCase()}.json'),
       );
     } else if (type == 'typing') {
       isCorrect = answer.trim().toLowerCase() == correctAnswer;
@@ -1080,7 +1106,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
             height: height,
             width: width,
             fit: fit,
-            errorBuilder: (_, __, ___) => _buildErrorBox("Asset Missing"),
+            errorBuilder: (_, _, _) => _buildErrorBox("Asset Missing"),
           );
         }
         return _buildErrorBox("Image Error");

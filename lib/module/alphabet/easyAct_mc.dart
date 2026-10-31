@@ -1,7 +1,7 @@
+// ignore_for_file: file_names
 import 'dart:convert';
 import 'dart:async'; 
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -238,10 +238,10 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
   }
 
   LinearGradient _getDialogGradient(Color bgColor) {
-    final hex = bgColor.value & 0xFFFFFF;
-    final r = bgColor.red;
-    final g = bgColor.green;
-    final b = bgColor.blue;
+    final hex = bgColor.toARGB32() & 0xFFFFFF;
+    final r = (bgColor.r * 255).round();
+    final g = (bgColor.g * 255).round();
+    final b = (bgColor.b * 255).round();
 
     if (hex == 0x080928 || (r <= 15 && g <= 15 && b >= 30 && b <= 50)) { 
       return const LinearGradient(
@@ -297,7 +297,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 20,
               offset: const Offset(0, 10),
             )
@@ -446,6 +446,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   // Look-alike letters (B for C, E for F, M for N, ...): shared checks
   // with the tutorial practice (services/dynamic_sign_judge.dart).
   final StaticLetterChecker _shapeChecker = StaticLetterChecker();
+  // Static letters / numbers: the server's static model confirms a pass
+  // (services/dynamic_sign_judge.dart StaticServerCheck); offline the
+  // on-phone verdict stands.
+  final StaticServerCheck _serverCheck = StaticServerCheck();
   int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
   bool _isJudging = false;
 
@@ -562,11 +566,11 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
     if (src.startsWith('data:image') || (!src.startsWith('http') && !src.startsWith('assets/') && src.length > 300)) {
       final bytes = _safeBase64Decode(src);
-      if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, __, ___) => fallback());
+      if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, _, _) => fallback());
       return fallback();
     }
     if (src.startsWith('http://') || src.startsWith('https://')) {
-      return Image.network(src, fit: fit, errorBuilder: (_, __, ___) => fallback());
+      return Image.network(src, fit: fit, errorBuilder: (_, _, _) => fallback());
     }
     if (_looksLikeStoragePath(src)) {
       return FutureBuilder<String?>(
@@ -576,11 +580,11 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
             return const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)));
           }
           final url = snap.data;
-          return url == null ? fallback() : Image.network(url, fit: fit, errorBuilder: (_, __, ___) => fallback());
+          return url == null ? fallback() : Image.network(url, fit: fit, errorBuilder: (_, _, _) => fallback());
         },
       );
     }
-    return Image.asset(src, fit: fit, errorBuilder: (_, __, ___) => fallback());
+    return Image.asset(src, fit: fit, errorBuilder: (_, _, _) => fallback());
   }
 
   /// Firebase Storage paths in question / option images ("activities/x.png",
@@ -637,7 +641,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   /// Same templates as the tutorial practice (Firebase Storage
-  /// alphabet/<L>.json, the bundled asset as fallback), so a sign that passes
+  /// `alphabet/<L>.json`, the bundled asset as fallback), so a sign that passes
   /// there is scored against the same reference here.
   Future<void> _loadGestureLibrary(String letter) async {
     letter = letter.toUpperCase();
@@ -737,6 +741,9 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           best = sc;
           bestHand = h;
         }
+      }
+      if (bestHand != null) {
+        _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
       }
       if (bestHand != null &&
           _shapeChecker.check(bestHand, _templateLetter,
@@ -891,6 +898,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _currentScore = 0.0;
     _template = null; // the next letter's template is loading
     _clearRecentFrames();
+    _serverCheck.clear();
 
     if (q.type == 'typing') {
       final String target = q.correctAnswer.toUpperCase();
@@ -1019,6 +1027,20 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       }
 
       isCorrect = _currentScore >= successThreshold;
+      if (isCorrect && !_isDynamicLetter) {
+        setState(() => _isJudging = true);
+        final v = await _serverCheck.verify(q.correctAnswer.trim(), number: false);
+        if (!mounted) return;
+        _isJudging = false;
+        usedModel = v?.model ?? 'server static_letters (unreachable)';
+        predictedLabel = v?.predicted;
+        modelConfidence = v?.confidence;
+        if (v == null || !v.ok) {
+          // Server only: no pass without its confirmation.
+          isCorrect = false;
+          _currentScore = math.min(_currentScore, successThreshold - 1);
+        }
+      }
       _selectedAnswer = isCorrect ? q.correctAnswer : null;
     } else if (q.type == 'typing') {
       final userWord = _userAnswerSlots.join('');
@@ -1177,10 +1199,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     final color = Theme.of(context).scaffoldBackgroundColor;
     final IconData feedbackIcon = isCorrect ? Icons.check_rounded : Icons.close_rounded;
 
-    final hex = color.value & 0xFFFFFF;
-    final r = color.red;
-    final g = color.green;
-    final b = color.blue;
+    final hex = color.toARGB32() & 0xFFFFFF;
+    final r = (color.r * 255).round();
+    final g = (color.g * 255).round();
+    final b = (color.b * 255).round();
 
     if (hex == 0x080928 || (r <= 15 && g <= 15 && b >= 30 && b <= 50)) { 
       return {
@@ -1256,7 +1278,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   Color _getButtonColor(String option, String correctAnswer, ThemeData theme) {
-    if (!_isAnswered) return option == _selectedAnswer ? theme.primaryColor.withOpacity(0.2) : theme.cardColor;
+    if (!_isAnswered) return option == _selectedAnswer ? theme.primaryColor.withValues(alpha: 0.2) : theme.cardColor;
     if (option == correctAnswer) return const Color(0xFF58CC02);
     if (option == _selectedAnswer && option != correctAnswer) return const Color(0xFFEA2B2B);
     return theme.cardColor;
@@ -1300,7 +1322,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       backgroundColor: theme.scaffoldBackgroundColor,
       
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.5),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.5),
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.close, color: textColor),
@@ -1398,7 +1420,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
+                            color: Colors.black.withValues(alpha: 0.06),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           )
@@ -1457,7 +1479,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                 gradient: _isAnswered ? (feedbackData['gradient'] as LinearGradient) : null,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                 border: Border(top: BorderSide(color: theme.dividerColor, width: 2)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, -4))]
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, -4))]
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1475,7 +1497,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                               decoration: BoxDecoration(
                                 color: (feedbackData['badgeColor'] as Color),
                                 shape: BoxShape.circle,
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 6, offset: const Offset(0, 2))],
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2))],
                               ),
                               child: Icon(feedbackData['icon'] as IconData, color: Colors.white, size: 32),
                             ),
@@ -1575,7 +1597,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                 width: 70,
                 height: 70,
                 decoration: BoxDecoration(
-                  color: isSelected ? theme.primaryColor.withOpacity(0.3) : theme.cardColor,
+                  color: isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isSelected ? theme.primaryColor : theme.dividerColor,
@@ -1615,7 +1637,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                 onTap: () => _removeFromSequence(option),
                 child: Chip(
                   label: Text(option, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  backgroundColor: theme.primaryColor.withOpacity(0.2),
+                  backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
                   side: BorderSide(color: theme.primaryColor),
                 ),
               );
@@ -1676,7 +1698,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   height: 80,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: isMatched ? Colors.green.withOpacity(0.2) : (isSelected ? theme.primaryColor.withOpacity(0.3) : theme.cardColor),
+                    color: isMatched ? Colors.green.withValues(alpha: 0.2) : (isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.dividerColor), width: 2),
                   ),
@@ -1701,7 +1723,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   height: 80,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: isMatched ? Colors.green.withOpacity(0.2) : theme.cardColor,
+                    color: isMatched ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: isMatched ? Colors.green : theme.dividerColor, width: 2),
                   ),
@@ -1728,10 +1750,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 width: 4.0,
-                color: handDetected ? theme.primaryColor : theme.dividerColor.withOpacity(0.6),
+                color: handDetected ? theme.primaryColor : theme.dividerColor.withValues(alpha: 0.6),
               ),
               boxShadow: [
-                if (handDetected) BoxShadow(color: theme.primaryColor.withOpacity(0.3), blurRadius: 15, spreadRadius: 1)
+                if (handDetected) BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 15, spreadRadius: 1)
               ],
             ),
             child: ClipRRect(
@@ -1749,14 +1771,21 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     return Column(
       children: [
         if (!_isLandscape(context))
-          AspectRatio(aspectRatio: 1 / 1.1, child: _buildCameraBox(theme)),
+          // Same size as the tutorial practice cameras: a centered square,
+          // 60% of the screen width.
+          Center(
+            child: SizedBox(
+              width: MediaQuery.sizeOf(context).width * 0.60,
+              child: AspectRatio(aspectRatio: 1, child: _buildCameraBox(theme)),
+            ),
+          ),
         if (!_isLandscape(context)) const SizedBox(height: 20),
 
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
-            color: handDetected ? theme.primaryColor.withOpacity(0.12) : theme.cardColor,
+            color: handDetected ? theme.primaryColor.withValues(alpha: 0.12) : theme.cardColor,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: handDetected ? theme.primaryColor : theme.dividerColor,
@@ -1784,7 +1813,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                                   ? "Match ${_liveScore.toStringAsFixed(0)}% - tap 'CAPTURE & CHECK'."
                                   : "Match ${_liveScore.toStringAsFixed(0)}%: adjust your hand."))),
                   style: TextStyle(
-                    color: handDetected ? theme.primaryColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: handDetected ? theme.primaryColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
@@ -1849,7 +1878,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                 width: 52,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: char != null ? (givenItem != null ? theme.primaryColor.withOpacity(0.08) : theme.primaryColor.withOpacity(0.18)) : theme.cardColor,
+                  color: char != null ? (givenItem != null ? theme.primaryColor.withValues(alpha: 0.08) : theme.primaryColor.withValues(alpha: 0.18)) : theme.cardColor,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: char != null ? theme.primaryColor : theme.dividerColor, width: 2),
                 ),
@@ -1883,7 +1912,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: isUsed ? theme.dividerColor.withOpacity(0.3) : theme.cardColor,
+                  color: isUsed ? theme.dividerColor.withValues(alpha: 0.3) : theme.cardColor,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: isUsed ? Colors.transparent : theme.primaryColor, width: 1.5),
                 ),

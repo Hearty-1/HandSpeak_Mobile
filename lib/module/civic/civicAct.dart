@@ -1,3 +1,4 @@
+// ignore_for_file: file_names
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -29,7 +30,7 @@ class ThemedBackground extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: RadialGradient(
-            colors: [color.withOpacity(0.6), color.withOpacity(0.0)],
+            colors: [color.withValues(alpha: 0.6), color.withValues(alpha: 0.0)],
           ),
         ),
       ),
@@ -47,9 +48,9 @@ class ThemedBackground extends StatelessWidget {
           height: 80,
           child: Stack(
             children: [
-              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
-              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.8)))),
-              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
+              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.65)))),
+              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.8)))),
+              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.65)))),
             ],
           ),
         ),
@@ -72,8 +73,8 @@ class ThemedBackground extends StatelessWidget {
         gradient: LinearGradient(
           colors: [
             bgColor,
-            bgColor.withOpacity(0.85),
-            bgColor.withOpacity(0.70),
+            bgColor.withValues(alpha: 0.85),
+            bgColor.withValues(alpha: 0.70),
           ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -81,9 +82,9 @@ class ThemedBackground extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          _buildGlowingOrb(350, const Color(0xFFFFCA28).withOpacity(0.4), -100, -80),
-          _buildGlowingOrb(300, const Color(0xFFFF80AB).withOpacity(0.3), 450, 180),
-          _buildGlowingOrb(250, const Color(0xFF4DD0E1).withOpacity(0.3), 700, -60),
+          _buildGlowingOrb(350, const Color(0xFFFFCA28).withValues(alpha: 0.4), -100, -80),
+          _buildGlowingOrb(300, const Color(0xFFFF80AB).withValues(alpha: 0.3), 450, 180),
+          _buildGlowingOrb(250, const Color(0xFF4DD0E1).withValues(alpha: 0.3), 700, -60),
 
           _buildCloud(70, -30, 1.1),
           _buildCloud(380, 190, 1.0),
@@ -99,7 +100,7 @@ class ThemedBackground extends StatelessWidget {
                 angle: random.nextDouble() * 3.14,
                 child: Icon(
                   random.nextBool() ? Icons.account_balance_rounded : Icons.gavel_rounded,
-                  color: color.withOpacity(random.nextDouble() * 0.35 + 0.15),
+                  color: color.withValues(alpha: random.nextDouble() * 0.35 + 0.15),
                   size: random.nextDouble() * 18 + 14,
                 ),
               ),
@@ -621,7 +622,7 @@ class _QuestionViewState extends State<_QuestionView> {
   List<String> _pieces = [];
 
   // Sequence
-  List<int> _sequence = [];
+  final List<int> _sequence = [];
   late final List<String> _sequencePool;
 
   // Matching
@@ -1327,14 +1328,14 @@ class _Media extends StatelessWidget {
       return Image.network(
         s,
         fit: fit,
-        errorBuilder: (_, __, ___) => broken,
+        errorBuilder: (_, _, _) => broken,
         loadingBuilder: (_, child, progress) =>
             progress == null ? child : const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
       );
     }
-    if (s.startsWith('assets/')) return Image.asset(s, fit: fit, errorBuilder: (_, __, ___) => broken);
+    if (s.startsWith('assets/')) return Image.asset(s, fit: fit, errorBuilder: (_, _, _) => broken);
     final bytes = _decodeBase64(s);
-    if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, __, ___) => broken);
+    if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, _, _) => broken);
     return broken;
   }
 }

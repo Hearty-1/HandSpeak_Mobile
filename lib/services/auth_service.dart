@@ -95,7 +95,7 @@ class AuthService {
         deviceId = iosInfo.identifierForVendor ?? "ios_device";
       }
 
-      print("Attempting to write device session: $deviceName ($deviceId) for UID: $uid");
+      debugPrint("Attempting to write device session: $deviceName ($deviceId) for UID: $uid");
 
       // Path: users -> [UID] -> device_sessions -> [deviceId]
       await _db
@@ -110,10 +110,10 @@ class AuthService {
         'lastLogin': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      print("Device session successfully written to Firestore!");
+      debugPrint("Device session successfully written to Firestore!");
     } catch (e, stack) {
-      print("Error registering device session: $e");
-      print(stack);
+      debugPrint("Error registering device session: $e");
+      debugPrint(stack.toString());
     }
   }
 

@@ -68,7 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           );
         },
-        errorBuilder: (_, __, ___) => Icon(Icons.person_rounded, size: size * 0.55 * scale, color: theme.primaryColor),
+        errorBuilder: (_, _, _) => Icon(Icons.person_rounded, size: size * 0.55 * scale, color: theme.primaryColor),
       );
     }
   }
@@ -119,7 +119,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       
       appBar: AppBar(
         toolbarHeight: 65,
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
@@ -142,7 +142,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: Colors.transparent,
                 border: Border(
                   bottom: BorderSide(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.15),
                     width: 1.0,
                   ),
                 ),
@@ -167,7 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
               ),
               child: ClipOval(
                 child: Image.asset(
@@ -209,7 +209,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               width: 200 * scale, height: 200 * scale,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.primaryColor.withOpacity(0.2),
+                color: theme.primaryColor.withValues(alpha: 0.2),
               ),
             ),
           ),
@@ -219,7 +219,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               width: 220 * scale, height: 220 * scale,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.colorScheme.secondary.withOpacity(0.12),
+                color: theme.colorScheme.secondary.withValues(alpha: 0.12),
               ),
             ),
           ),
@@ -307,7 +307,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               border: Border.all(color: theme.cardColor, width: 4 * scale),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.08),
+                                  color: Colors.black.withValues(alpha: 0.08),
                                   blurRadius: 16,
                                   offset: const Offset(0, 4),
                                 )
@@ -315,7 +315,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             child: CircleAvatar(
                               radius: 50 * scale,
-                              backgroundColor: theme.primaryColor.withOpacity(0.2),
+                              backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
                               child: ClipOval(
                                 child: _buildAvatarImage(context, avatarUrl, scale),
                               ),
@@ -330,9 +330,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 color: theme.cardColor,
                                 shape: BoxShape.circle,
                                 boxShadow: [
-                                  BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, offset: const Offset(0, 2))
+                                  BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6, offset: const Offset(0, 2))
                                 ],
-                                border: Border.all(color: theme.dividerColor.withOpacity(0.3), width: 0.5)
+                                border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3), width: 0.5)
                               ),
                               child: Icon(Icons.edit_rounded, size: 16 * scale, color: textColor),
                             ),
@@ -355,7 +355,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(
                         email,
                         style: TextStyle(
-                          color: textColor.withOpacity(0.6),
+                          color: textColor.withValues(alpha: 0.6),
                           fontSize: 14 * scale,
                           fontFamily: 'Inter',
                           fontWeight: FontWeight.w500
@@ -374,14 +374,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               children: [
                                 Text('$followersCount', style: TextStyle(color: textColor, fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
                                 SizedBox(height: 2 * scale),
-                                Text('Followers', style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+                                Text('Followers', style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
                               ],
                             ),
                           ),
                           Container(
                             height: 24 * scale,
                             width: 1,
-                            color: theme.dividerColor.withOpacity(0.4),
+                            color: theme.dividerColor.withValues(alpha: 0.4),
                             margin: EdgeInsets.symmetric(horizontal: 30 * scale),
                           ),
                           GestureDetector(
@@ -391,7 +391,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               children: [
                                 Text('$followingCount', style: TextStyle(color: textColor, fontSize: 18 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
                                 SizedBox(height: 2 * scale),
-                                Text('Following', style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+                                Text('Following', style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
                               ],
                             ),
                           ),
@@ -408,9 +408,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Container(
                             padding: EdgeInsets.symmetric(vertical: 16 * scale),
                             decoration: BoxDecoration(
-                              color: theme.cardColor.withOpacity(0.6),
+                              color: theme.cardColor.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(24 * scale),
-                              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -460,7 +460,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Text(
                                   "See All",
                                   style: TextStyle(
-                                    color: textColor.withOpacity(0.6),
+                                    color: textColor.withValues(alpha: 0.6),
                                     fontSize: 14 * scale,
                                     fontWeight: FontWeight.w700,
                                     fontFamily: 'Inter',
@@ -480,9 +480,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Container(
                             padding: EdgeInsets.all(20 * scale),
                             decoration: BoxDecoration(
-                              color: theme.cardColor.withOpacity(0.5),
+                              color: theme.cardColor.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(24 * scale),
-                              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
                             ),
                             child: GridView.builder(
                               padding: EdgeInsets.zero,
@@ -533,7 +533,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             color: theme.cardColor,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28 * scale)),
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1)),
+            border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -542,7 +542,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 width: 40 * scale,
                 height: 4 * scale,
                 decoration: BoxDecoration(
-                  color: textColor.withOpacity(0.2),
+                  color: textColor.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
@@ -553,7 +553,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   boxShadow: badge.isUnlocked ? [
-                    BoxShadow(color: badge.themeColor.withOpacity(0.3), blurRadius: 30, spreadRadius: 5)
+                    BoxShadow(color: badge.themeColor.withValues(alpha: 0.3), blurRadius: 30, spreadRadius: 5)
                   ] : [],
                 ),
                 child: BadgeMedallion(badge: badge, size: 100 * scale),
@@ -573,7 +573,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 badge.description,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: textColor.withOpacity(0.7),
+                  color: textColor.withValues(alpha: 0.7),
                   fontSize: 14 * scale,
                   fontFamily: 'Inter',
                   height: 1.4,
@@ -583,7 +583,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Container(
                 padding: EdgeInsets.all(16 * scale),
                 decoration: BoxDecoration(
-                  color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+                  color: theme.scaffoldBackgroundColor.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16 * scale),
                 ),
                 child: Column(
@@ -602,7 +602,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Text(
                           "${badge.shownProgress} / ${badge.targetProgress}",
                           style: TextStyle(
-                            color: badge.isUnlocked ? badge.themeColor : textColor.withOpacity(0.5),
+                            color: badge.isUnlocked ? badge.themeColor : textColor.withValues(alpha: 0.5),
                             fontWeight: FontWeight.w900,
                             fontSize: 14 * scale,
                           ),
@@ -615,9 +615,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: LinearProgressIndicator(
                         value: badge.progressPercent,
                         minHeight: 8 * scale,
-                        backgroundColor: textColor.withOpacity(0.1),
+                        backgroundColor: textColor.withValues(alpha: 0.1),
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          badge.isUnlocked ? badge.themeColor : badge.themeColor.withOpacity(0.6),
+                          badge.isUnlocked ? badge.themeColor : badge.themeColor.withValues(alpha: 0.6),
                         ),
                       ),
                     ),
@@ -667,7 +667,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Container(
                       width: 40 * scale, 
                       height: 5 * scale, 
-                      decoration: BoxDecoration(color: textColor.withOpacity(0.2), borderRadius: BorderRadius.circular(10))
+                      decoration: BoxDecoration(color: textColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10))
                     ),
                   ),
                   SizedBox(height: 20 * scale),
@@ -687,13 +687,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ? Center(
                             child: Text(
                               "No $title yet.",
-                              style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 14 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')
+                              style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 14 * scale, fontWeight: FontWeight.w600, fontFamily: 'Inter')
                             )
                           )
                         : ListView.separated(
                             physics: const BouncingScrollPhysics(),
                             itemCount: uids.length,
-                            separatorBuilder: (_, __) => SizedBox(height: 12 * scale),
+                            separatorBuilder: (_, _) => SizedBox(height: 12 * scale),
                             itemBuilder: (context, index) {
                               String targetUid = uids[index];
 
@@ -713,13 +713,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     decoration: BoxDecoration(
                                       color: theme.cardColor,
                                       borderRadius: BorderRadius.circular(16 * scale),
-                                      border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
+                                      border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2)),
                                     ),
                                     child: Row(
                                       children: [
                                         CircleAvatar(
                                           radius: 20 * scale,
-                                          backgroundColor: theme.primaryColor.withOpacity(0.2),
+                                          backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
                                           child: ClipOval(child: _buildAvatarImage(context, avatar, scale, size: 40)),
                                         ),
                                         SizedBox(width: 12 * scale),
@@ -783,12 +783,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           child: Container(
                                             padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 8 * scale),
                                             decoration: BoxDecoration(
-                                              color: textColor.withOpacity(0.08),
+                                              color: textColor.withValues(alpha: 0.08),
                                               borderRadius: BorderRadius.circular(12 * scale),
                                             ),
                                             child: Text(
                                               isFollowingList ? "Unfollow" : "Remove",
-                                              style: TextStyle(color: textColor.withOpacity(0.7), fontWeight: FontWeight.w700, fontSize: 12 * scale, fontFamily: 'Inter')
+                                              style: TextStyle(color: textColor.withValues(alpha: 0.7), fontWeight: FontWeight.w700, fontSize: 12 * scale, fontFamily: 'Inter')
                                             ),
                                           ),
                                         )
@@ -833,7 +833,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Container(
                     padding: EdgeInsets.all(6 * scale),
-                    decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.15), shape: BoxShape.circle),
+                    decoration: BoxDecoration(color: theme.primaryColor.withValues(alpha: 0.15), shape: BoxShape.circle),
                     child: Icon(Icons.photo_camera_rounded, color: theme.primaryColor, size: 22 * scale)
                   ),
                   SizedBox(width: 10 * scale),
@@ -866,7 +866,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       width: 80 * scale,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: textColor.withOpacity(0.05),
+                        color: textColor.withValues(alpha: 0.05),
                         border: Border.all(color: theme.primaryColor, width: 2),
                       ),
                       child: ClipOval(
@@ -874,18 +874,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ? Image.memory(pickedImageBytes!, width: 80 * scale, height: 80 * scale, fit: BoxFit.cover)
                             : existingAvatarUrl.isNotEmpty
                                 ? _buildAvatarImage(context, existingAvatarUrl, scale, size: 80)
-                                : Icon(Icons.add_a_photo_rounded, color: textColor.withOpacity(0.4), size: 30 * scale),
+                                : Icon(Icons.add_a_photo_rounded, color: textColor.withValues(alpha: 0.4), size: 30 * scale),
                       ),
                     ),
                   ),
                   SizedBox(height: 8 * scale),
-                  Text("Tap to upload photo", style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 11 * scale, fontWeight: FontWeight.w600)),
+                  Text("Tap to upload photo", style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 11 * scale, fontWeight: FontWeight.w600)),
                 ],
               ),
               actions: [
                 TextButton(
                   onPressed: isSaving ? null : () => Navigator.pop(context),
-                  child: Text("Cancel", style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+                  child: Text("Cancel", style: TextStyle(color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.w700, fontFamily: 'Inter')),
                 ),
                 ElevatedButton(
                   onPressed: isSaving 
@@ -960,7 +960,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         Text(
           label, 
-          style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 11 * scale, fontWeight: FontWeight.w700, fontFamily: 'Inter')
+          style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 11 * scale, fontWeight: FontWeight.w700, fontFamily: 'Inter')
         ),
       ],
     );

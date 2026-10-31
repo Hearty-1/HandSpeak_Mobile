@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -10,7 +11,7 @@ class DataService {
       final data = await json.decode(response);
       return data['items']; // Assuming your JSON has an 'items' key
     } catch (e) {
-      print("Error loading local data: $e");
+      debugPrint("Error loading local data: $e");
       return [];
     }
   }

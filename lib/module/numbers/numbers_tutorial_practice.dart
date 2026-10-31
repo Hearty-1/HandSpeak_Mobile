@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '/widgets/lesson_demo_media.dart';
 import '/providers/sound_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
@@ -14,6 +15,7 @@ import 'package:onnxruntime/onnxruntime.dart';
 import '../civic/onnx_env_manager.dart';
 import '/services/lighting_monitor.dart';
 import '/services/frame_gate.dart';
+import '/services/dynamic_sign_judge.dart' show DynamicSignJudge, DynamicVerdict, StaticServerCheck;
 
 import '/widgets/practice_feedback.dart';
 import '/services/performance_monitor.dart';
@@ -626,14 +628,14 @@ class _ThemeVisuals {
     final primary = theme.primaryColor;
     final isDark = theme.brightness == Brightness.dark;
 
-    if (primary.blue > 160 && primary.red < 120) {
+    if ((primary.b * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.water_drop_rounded,
         secondaryIcon: Icons.waves_rounded,
         ambientIcon1: Icons.bubble_chart_rounded,
         ambientIcon2: Icons.sailing_rounded,
       );
-    } else if (primary.green > 160 && primary.red < 120) {
+    } else if ((primary.g * 255).round() > 160 && (primary.r * 255).round() < 120) {
       return const _ThemeVisuals(
         mainBadgeIcon: Icons.eco_rounded,
         secondaryIcon: Icons.forest_rounded,
@@ -686,7 +688,7 @@ class NumbersTutorialPractice extends StatefulWidget {
   });
 
   @override
-  _NumbersTutorialPracticeState createState() => _NumbersTutorialPracticeState();
+  State<NumbersTutorialPractice> createState() => _NumbersTutorialPracticeState();
 }
 
 class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with WidgetsBindingObserver {
@@ -882,6 +884,33 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
   final FrameGate _frameGate = FrameGate();
 
+  // Static signs: the server's static model confirms the held handshape
+  // before success, server only (POST /v1/predict_raw/static_numbers).
+  final StaticServerCheck _serverCheck = StaticServerCheck();
+  bool _isConfirming = false;
+  int _confirmCooldownUntilMs = 0;
+
+  Future<void> _confirmStaticThenSucceed(String target, {required bool number}) async {
+    if (_isConfirming || _isSuccessAchieved) return;
+    _isConfirming = true;
+    if (mounted) setState(() => _currentFeedback = L.t('Checking your sign...', 'Sinusuri ang kumpas...'));
+    final v = await _serverCheck.verify(target, number: number);
+    _isConfirming = false;
+    if (!mounted || _isSuccessAchieved) return;
+    if (v != null && v.ok) {
+      _onSuccess();
+      return;
+    }
+    _confirmCooldownUntilMs = DateTime.now().millisecondsSinceEpoch + 1500;
+    _serverCheck.clear();
+    setState(() {
+      _startHoldTime = null;
+      _holdProgress = 0.0;
+      _currentScore = math.min(_currentScore, successThreshold - 5);
+      _currentFeedback = v?.feedback ?? L.t('Could not reach the server. Check your internet connection and try again.', 'Hindi maabot ang server. Tingnan ang koneksyon sa internet at subukang muli.');
+    });
+  }
+
   void _processCameraFrame(CameraImage image) {
     LightingMonitor.instance.onImage(image); // low-light warning
     if (!_isInitialized || _landmarkerPlugin == null || _isSuccessAchieved) return;
@@ -1073,7 +1102,19 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     }
   }
 
-  void _evaluateSign(int now) {
+  bool _evaluatingSign = false; // one server check at a time
+
+  Future<void> _evaluateSign(int now) async {
+    if (_evaluatingSign) return;
+    _evaluatingSign = true;
+    try {
+      await _evaluateSignInner(now);
+    } finally {
+      _evaluatingSign = false;
+    }
+  }
+
+  Future<void> _evaluateSignInner(int now) async {
     // The sign: the held base just before the movement, the movement, and
     // the final hold.
     final startMs = math.max(_baseStillStartMs, _moveStartMs - _preMotionMs);
@@ -1090,30 +1131,25 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     if (clip.length < 12) {
       // extract_*_landmarks.py discards clips with fewer than 12 frames.
       feedback = L.t('Too fast. Hold the first shape, move, then hold the last shape.', 'Masyadong mabilis. Hawakan ang unang porma, gumalaw, saka hawakan ang huling porma.');
-    } else if (!FSLOnnxService.isReadyFor(targetInt)) {
-      // Never score against a stale model from another decade.
-      feedback = L.t('Still loading the model for Number ${widget.targetNumber}...', 'Naglo-load pa ang modelo para sa Number ${widget.targetNumber}...');
-      debugPrint("[DBG] Skipped evaluation: model not ready for target $targetInt "
-          "(loaded group=${FSLOnnxService.debugLoadedGroup}, expected=${FSLOnnxService.groupForNumber(targetInt)})");
+    } else if (await (() {
+      if (mounted) setState(() => _currentFeedback = L.t('Checking your sign...', 'Sinusuri ang kumpas...'));
+      return _serverNumberVerdict(targetInt, clip);
+    })() case final v?) {
+      score = v.isCorrect ? math.max(v.score, successThreshold) : math.min(v.score, successThreshold - 1);
+      feedback = v.feedback;
+      debugPrint('[Numbers] server ${v.model}: ${v.isCorrect ? 'PASS' : 'fail'} (${v.predicted})');
     } else {
-      try {
-        final clip24 = FSLOnnxService.resampleTo24(clip);
-        final evalResult = FSLOnnxService.evaluateWithModel(
-          targetNumber: targetInt,
-          window24Frames: clip24,
-          kineticEnergy: FSLOnnxService.computeKineticEnergy(clip24),
-        );
-        score = evalResult.accuracyScore;
-        feedback = evalResult.feedback;
-        debugPrint('[Numbers] clip ${clip.length} frames, rotation $_handRotation -> '
-            '${evalResult.isCorrect ? 'PASS' : 'fail'} (${evalResult.detectedNumber})');
-      } catch (e) {
-        debugPrint("ONNX Inference Error: $e");
-        feedback = "Model Inference Error.";
-      }
+      // Server only (for now): no on-phone verdict when it cannot be reached.
+      // The on-phone decade model (FSLOnnxService.evaluateWithModel) stays
+      // in this file for when the offline fallback returns.
+      feedback = L.t('Could not reach the server. Check your internet connection and try again.', 'Hindi maabot ang server. Tingnan ang koneksyon sa internet at subukang muli.');
     }
     _updateGameLogic(score, feedback);
   }
+
+  /// Server verdict for the recorded moving number (null when offline).
+  Future<DynamicVerdict?> _serverNumberVerdict(int target, List<List<double>> clip) =>
+      DynamicSignJudge.serverNumberVerdict(target, FSLOnnxService.resampleTo24(clip), frames: clip.length);
 
   double _calculateScore(List<Landmark> liveLms, List<dynamic> template, Size imageSize) {
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
@@ -1212,6 +1248,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
         if (_isStaticSign) {
           if (_template != null) {
             double highestScoreAcrossAllHands = 0.0;
+            Hand? bestHand;
             Size imageSize = _controller?.value.previewSize ?? const Size(480, 640);
 
             for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
@@ -1222,7 +1259,11 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
               );
               if (handScore > highestScoreAcrossAllHands) {
                 highestScoreAcrossAllHands = handScore;
+                bestHand = detectedHands[handIdx];
               }
+            }
+            if (bestHand != null) {
+              _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _handRotation);
             }
 
             score = highestScoreAcrossAllHands;
@@ -1252,6 +1293,9 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
   void _updateGameLogic(double score, String feedback) {
     if (!mounted) return;
+    // While the server confirms a hold (and shortly after a "not yet"), keep
+    // its message on screen.
+    if (_isConfirming || DateTime.now().millisecondsSinceEpoch < _confirmCooldownUntilMs) return;
     final now = DateTime.now();
 
     setState(() {
@@ -1265,7 +1309,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
           _holdProgress = (difference / holdDurationSeconds).clamp(0.0, 1.0);
 
           if (difference >= holdDurationSeconds) {
-            _onSuccess();
+            _confirmStaticThenSucceed(widget.targetNumber, number: true);
           }
         } else {
           _holdProgress = 1.0;
@@ -1409,10 +1453,10 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: theme.primaryColor.withOpacity(0.6), width: 2),
+                border: Border.all(color: theme.primaryColor.withValues(alpha: 0.6), width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.primaryColor.withOpacity(0.35),
+                    color: theme.primaryColor.withValues(alpha: 0.35),
                     blurRadius: 40,
                     spreadRadius: 8,
                   )
@@ -1427,14 +1471,14 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withOpacity(0.15),
+                          color: theme.primaryColor.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(visuals.mainBadgeIcon, color: theme.primaryColor, size: 64),
                       ),
                       Positioned(
                         right: 0, top: 0,
-                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withOpacity(0.7), size: 22),
+                        child: Icon(visuals.secondaryIcon, color: theme.primaryColor.withValues(alpha: 0.7), size: 22),
                       ),
                     ],
                   ),
@@ -1454,7 +1498,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                         : "Outstanding job! You have successfully mastered the number ${widget.targetNumber}!",
                     style: TextStyle(
                       fontSize: 16,
-                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
@@ -1475,9 +1519,9 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.15),
+                          color: Colors.green.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.green.withOpacity(0.4), width: 2),
+                          border: Border.all(color: Colors.green.withValues(alpha: 0.4), width: 2),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1499,7 +1543,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                       backgroundColor: theme.primaryColor,
                       foregroundColor: theme.colorScheme.onPrimary,
                       elevation: 4,
-                      shadowColor: theme.primaryColor.withOpacity(0.5),
+                      shadowColor: theme.primaryColor.withValues(alpha: 0.5),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       minimumSize: const Size(double.infinity, 54),
                     ),
@@ -1560,18 +1604,18 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   width: 4.0,
-                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withOpacity(0.6),
+                                  color: isPassing ? Colors.greenAccent : theme.dividerColor.withValues(alpha: 0.6),
                                 ),
                                 boxShadow: [
                                   if (isPassing)
                                     BoxShadow(
-                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      color: Colors.greenAccent.withValues(alpha: 0.6),
                                       blurRadius: 25,
                                       spreadRadius: 2,
                                     )
                                   else
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.06),
+                                      color: Colors.black.withValues(alpha: 0.06),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     )
@@ -1595,7 +1639,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                                   height: 110,
                                   decoration: BoxDecoration(
                                     border: Border.all(
-                                      color: isPassing ? Colors.greenAccent.withOpacity(0.9) : Colors.white54,
+                                      color: isPassing ? Colors.greenAccent.withValues(alpha: 0.9) : Colors.white54,
                                       width: isPassing ? 4.0 : 3.0,
                                     ),
                                     shape: BoxShape.circle,
@@ -1641,7 +1685,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -1720,7 +1764,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
+                                color: Colors.black.withValues(alpha: 0.06),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               )
@@ -1728,13 +1772,11 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                              "assets/pictures/${widget.targetNumber}.png",
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-                                child: const Icon(Icons.broken_image, color: Colors.grey, size: 50),
-                              ),
+                            // Video / picture uploaded from the web app, else the bundled picture.
+                            child: LessonDemoMedia(
+                              category: 'numbers',
+                              gestureKey: widget.targetNumber,
+                              fallbackAsset: "assets/pictures/${widget.targetNumber}.png",
                             ),
                           ),
                         ),
@@ -1781,9 +1823,9 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                                 width: screenWidth * 0.70,
                                 height: 20,
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface.withOpacity(0.4),
+                                  color: theme.colorScheme.surface.withValues(alpha: 0.4),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
+                                  border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -1794,7 +1836,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                                         gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
                                         borderRadius: BorderRadius.circular(12),
                                         boxShadow: [
-                                          BoxShadow(color: Colors.greenAccent.withOpacity(0.5), blurRadius: 10)
+                                          BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.5), blurRadius: 10)
                                         ],
                                       ),
                                     ),
@@ -1839,9 +1881,9 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                                 width: screenWidth * 0.70,
                                 height: 14,
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface.withOpacity(0.4),
+                                  color: theme.colorScheme.surface.withValues(alpha: 0.4),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: theme.colorScheme.surface.withOpacity(0.5), width: 1),
+                                  border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -1869,17 +1911,17 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                             duration: const Duration(milliseconds: 300),
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isPassing ? Colors.green.withOpacity(0.2) : theme.cardColor.withOpacity(0.6),
+                              color: isPassing ? Colors.green.withValues(alpha: 0.2) : theme.cardColor.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(30),
                               border: Border.all(
-                                color: isPassing ? Colors.greenAccent.withOpacity(0.6) : theme.colorScheme.surface.withOpacity(0.8),
+                                color: isPassing ? Colors.greenAccent.withValues(alpha: 0.6) : theme.colorScheme.surface.withValues(alpha: 0.8),
                                 width: 1.5,
                               ),
                             ),
                             child: Text(
                               "Score: ${_currentScore.toStringAsFixed(1)}%",
                               style: TextStyle(
-                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withOpacity(0.7),
+                                color: isPassing ? (isDark ? Colors.greenAccent : Colors.green.shade700) : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16,
                                 fontFamily: 'Inter',

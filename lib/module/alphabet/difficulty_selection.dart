@@ -37,7 +37,7 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
   }
 
   Map<String, dynamic> _getThemeStyles(BuildContext context) {
-    final bgColor = Theme.of(context).scaffoldBackgroundColor.value;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor.toARGB32();
 
     if (bgColor == 0xFF080928) { // Galaxy
       return {
@@ -68,7 +68,7 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
         'primary': const Color(0xFF5C7CFA), 
         'text': const Color(0xFF1E1E1E),
         'appBarIcon': const Color(0xFF322144),
-        'cardBg': Colors.white.withOpacity(0.9),
+        'cardBg': Colors.white.withValues(alpha: 0.9),
       };
     }
     
@@ -77,7 +77,7 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
       'primary': const Color(0xFFFF6B8B),
       'text': const Color(0xFF332050),
       'appBarIcon': const Color(0xFF332050),
-      'cardBg': Colors.white.withOpacity(0.92),
+      'cardBg': Colors.white.withValues(alpha: 0.92),
     };
   }
 

@@ -85,7 +85,7 @@ class PhraseInterface extends StatelessWidget {
           backgroundColor: theme.scaffoldBackgroundColor, 
           
           appBar: AppBar(
-            backgroundColor: theme.cardColor.withOpacity(0.4),
+            backgroundColor: theme.cardColor.withValues(alpha: 0.4),
             elevation: 0, 
             centerTitle: true, 
             iconTheme: IconThemeData(color: textColor), 
@@ -126,14 +126,14 @@ class PhraseInterface extends StatelessWidget {
                     top: -50, left: -50,
                     child: Container(
                       width: 250, height: 250,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: theme.primaryColor.withOpacity(0.3)),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: theme.primaryColor.withValues(alpha: 0.3)),
                     ),
                   ),
                   Positioned(
                     top: 400, right: -100,
                     child: Container(
                       width: 300, height: 300,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.secondary.withOpacity(0.2)),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.secondary.withValues(alpha: 0.2)),
                     ),
                   ),
 
@@ -311,7 +311,7 @@ class PhraseInterface extends StatelessWidget {
         backgroundColor: theme.primaryColor,
         foregroundColor: theme.colorScheme.onPrimary,
         elevation: 4,
-        shadowColor: theme.primaryColor.withOpacity(0.5),
+        shadowColor: theme.primaryColor.withValues(alpha: 0.5),
         padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20 * scale)),
       ),
@@ -339,10 +339,10 @@ class PhraseInterface extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
           decoration: BoxDecoration(
-            color: theme.cardColor.withOpacity(0.65), 
+            color: theme.cardColor.withValues(alpha: 0.65), 
             borderRadius: BorderRadius.circular(16 * scale), 
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5), 
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5), 
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
           ),
           child: Row(
             children: [
@@ -360,7 +360,7 @@ class PhraseInterface extends StatelessWidget {
                 child: Stack(
                   alignment: Alignment.centerLeft,
                   children: [
-                    Container(height: 8 * scale, decoration: BoxDecoration(color: theme.colorScheme.onSurface.withOpacity(0.1), borderRadius: BorderRadius.circular(25 * scale))),
+                    Container(height: 8 * scale, decoration: BoxDecoration(color: theme.colorScheme.onSurface.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(25 * scale))),
                     FractionallySizedBox(
                       widthFactor: progressRatio,
                       child: Container(
@@ -368,7 +368,7 @@ class PhraseInterface extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: theme.colorScheme.secondary, 
                           borderRadius: BorderRadius.circular(25 * scale),
-                          boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withOpacity(0.5), blurRadius: 4)],
+                          boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withValues(alpha: 0.5), blurRadius: 4)],
                         ),
                       ),
                     ),
@@ -398,10 +398,10 @@ class PhraseInterface extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.all(12 * scale),
           decoration: BoxDecoration(
-            color: theme.cardColor.withOpacity(0.65), 
+            color: theme.cardColor.withValues(alpha: 0.65), 
             borderRadius: BorderRadius.circular(16 * scale), 
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -423,7 +423,7 @@ class PhraseInterface extends StatelessWidget {
               Stack(
                 alignment: Alignment.centerLeft,
                 children: [
-                  Container(height: 6 * scale, decoration: BoxDecoration(color: theme.colorScheme.onSurface.withOpacity(0.1), borderRadius: BorderRadius.circular(25 * scale))),
+                  Container(height: 6 * scale, decoration: BoxDecoration(color: theme.colorScheme.onSurface.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(25 * scale))),
                   FractionallySizedBox(
                     widthFactor: progress,
                     child: Container(
@@ -431,7 +431,7 @@ class PhraseInterface extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: theme.colorScheme.secondary, 
                         borderRadius: BorderRadius.circular(25 * scale),
-                        boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withOpacity(0.5), blurRadius: 4)],
+                        boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withValues(alpha: 0.5), blurRadius: 4)],
                       ), 
                     ),
                   ),
@@ -449,9 +449,9 @@ class PhraseInterface extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(6 * scale),
       decoration: BoxDecoration(
-        color: theme.cardColor.withOpacity(0.8),
+        color: theme.cardColor.withValues(alpha: 0.8),
         shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: color.withOpacity(0.25), blurRadius: 8, spreadRadius: 1)],
+        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 8, spreadRadius: 1)],
       ),
       child: Icon(icon, color: color, size: size),
     );

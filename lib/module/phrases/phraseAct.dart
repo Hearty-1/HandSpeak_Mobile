@@ -1,3 +1,4 @@
+// ignore_for_file: file_names
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -29,7 +30,7 @@ class ThemedBackground extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: RadialGradient(
-            colors: [color.withOpacity(0.6), color.withOpacity(0.0)],
+            colors: [color.withValues(alpha: 0.6), color.withValues(alpha: 0.0)],
           ),
         ),
       ),
@@ -48,10 +49,10 @@ class ThemedBackground extends StatelessWidget {
               width: 40,
               height: 26,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.75),
+                color: color.withValues(alpha: 0.75),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [
-                  BoxShadow(color: color.withOpacity(0.4), blurRadius: 8, spreadRadius: 2)
+                  BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 8, spreadRadius: 2)
                 ],
               ),
             ),
@@ -62,7 +63,7 @@ class ThemedBackground extends StatelessWidget {
                 width: 3,
                 height: 16,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.6),
+                  color: color.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(2),
                 ),
               )),
@@ -82,7 +83,7 @@ class ThemedBackground extends StatelessWidget {
         scaleY: scale,
         child: Icon(
           Icons.set_meal_rounded,
-          color: color.withOpacity(0.8),
+          color: color.withValues(alpha: 0.8),
           size: 34,
         ),
       ),
@@ -99,7 +100,7 @@ class ThemedBackground extends StatelessWidget {
           scale: scale,
           child: Icon(
             Icons.star_rounded,
-            color: color.withOpacity(0.85),
+            color: color.withValues(alpha: 0.85),
             size: 38,
           ),
         ),
@@ -156,9 +157,9 @@ class ThemedBackground extends StatelessWidget {
           height: 80,
           child: Stack(
             children: [
-              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
-              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.8)))),
-              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.65)))),
+              Positioned(bottom: 0, left: 10, child: Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.65)))),
+              Positioned(bottom: 12, left: 35, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.8)))),
+              Positioned(bottom: 0, left: 75, child: Container(width: 45, height: 45, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.65)))),
             ],
           ),
         ),
@@ -182,7 +183,7 @@ class ThemedBackground extends StatelessWidget {
                 color: balloonColor,
                 borderRadius: const BorderRadius.all(Radius.elliptical(44, 52)),
                 boxShadow: [
-                  BoxShadow(color: balloonColor.withOpacity(0.4), blurRadius: 8, spreadRadius: 1)
+                  BoxShadow(color: balloonColor.withValues(alpha: 0.4), blurRadius: 8, spreadRadius: 1)
                 ],
               ),
               child: Stack(
@@ -192,7 +193,7 @@ class ThemedBackground extends StatelessWidget {
                       width: 16,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.35),
+                        color: Colors.white.withValues(alpha: 0.35),
                         borderRadius: const BorderRadius.all(Radius.elliptical(16, 52)),
                       ),
                     ),
@@ -226,7 +227,7 @@ class ThemedBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (bgColor.value == 0xFF080928) {
+    if (bgColor.toARGB32() == 0xFF080928) {
       return Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -250,7 +251,7 @@ class ThemedBackground extends StatelessWidget {
                 left: random.nextDouble() * 380,
                 child: Icon(
                   Icons.auto_awesome, 
-                  color: const Color(0xFFB9A6FF).withOpacity(random.nextDouble() * 0.5 + 0.2),
+                  color: const Color(0xFFB9A6FF).withValues(alpha: random.nextDouble() * 0.5 + 0.2),
                   size: random.nextDouble() * 18 + 10,
                 ),
               );
@@ -260,7 +261,7 @@ class ThemedBackground extends StatelessWidget {
       );
     }
     
-    if (bgColor.value == 0xFF1D3D3A) {
+    if (bgColor.toARGB32() == 0xFF1D3D3A) {
       return Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -276,8 +277,8 @@ class ThemedBackground extends StatelessWidget {
             _buildMushroom(220, 25, 1.2),
             _buildMushroom(540, 320, 1.1),
             _buildMushroom(780, 50, 1.3),
-            Positioned(top: 140, right: 40, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFFD7B3A1).withOpacity(0.8), size: 36)),
-            Positioned(top: 410, left: 30, child: Icon(Icons.eco_rounded, color: const Color(0xFFB8D4CF).withOpacity(0.7), size: 32)),
+            Positioned(top: 140, right: 40, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFFD7B3A1).withValues(alpha: 0.8), size: 36)),
+            Positioned(top: 410, left: 30, child: Icon(Icons.eco_rounded, color: const Color(0xFFB8D4CF).withValues(alpha: 0.7), size: 32)),
             ...List.generate(15, (index) {
               final random = Random(index + 50);
               return _buildGlowingOrb(
@@ -292,7 +293,7 @@ class ThemedBackground extends StatelessWidget {
       );
     }
     
-    if (bgColor.value == 0xFF001B3A) {
+    if (bgColor.toARGB32() == 0xFF001B3A) {
       return Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -320,7 +321,7 @@ class ThemedBackground extends StatelessWidget {
                 left: random.nextDouble() * 380,
                 child: Icon(
                   Icons.bubble_chart_rounded,
-                  color: Colors.white.withOpacity(random.nextDouble() * 0.35 + 0.15),
+                  color: Colors.white.withValues(alpha: random.nextDouble() * 0.35 + 0.15),
                   size: random.nextDouble() * 30 + 12,
                 ),
               );
@@ -330,7 +331,7 @@ class ThemedBackground extends StatelessWidget {
       );
     }
     
-    if (bgColor.value == 0xFFE0EAFC) {
+    if (bgColor.toARGB32() == 0xFFE0EAFC) {
       return Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -344,14 +345,14 @@ class ThemedBackground extends StatelessWidget {
             Positioned(
               top: 40, 
               right: 30, 
-              child: Icon(Icons.wb_sunny_rounded, color: const Color(0xFFFFD700).withOpacity(0.85), size: 70)
+              child: Icon(Icons.wb_sunny_rounded, color: const Color(0xFFFFD700).withValues(alpha: 0.85), size: 70)
             ),
             _buildCloud(80, -30, 1.2),
             _buildCloud(280, 200, 0.9),
             _buildCloud(520, -40, 1.4),
             _buildCloud(720, 160, 1.1),
-            Positioned(top: 190, left: 60, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFF5C7CFA).withOpacity(0.5), size: 30)),
-            Positioned(top: 430, right: 50, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFF5C7CFA).withOpacity(0.5), size: 26)),
+            Positioned(top: 190, left: 60, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFF5C7CFA).withValues(alpha: 0.5), size: 30)),
+            Positioned(top: 430, right: 50, child: Icon(Icons.flutter_dash_rounded, color: const Color(0xFF5C7CFA).withValues(alpha: 0.5), size: 26)),
           ],
         ),
       );
@@ -375,14 +376,14 @@ class ThemedBackground extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          _buildGlowingOrb(350, const Color(0xFFFFCA28).withOpacity(0.5), -100, -80),
-          _buildGlowingOrb(300, const Color(0xFFFF80AB).withOpacity(0.35), 450, 180),
-          _buildGlowingOrb(250, const Color(0xFF4DD0E1).withOpacity(0.35), 700, -60),
+          _buildGlowingOrb(350, const Color(0xFFFFCA28).withValues(alpha: 0.5), -100, -80),
+          _buildGlowingOrb(300, const Color(0xFFFF80AB).withValues(alpha: 0.35), 450, 180),
+          _buildGlowingOrb(250, const Color(0xFF4DD0E1).withValues(alpha: 0.35), 700, -60),
 
           Positioned(
             top: 45,
             right: 25,
-            child: Icon(Icons.wb_sunny_rounded, color: const Color(0xFFFFB300).withOpacity(0.9), size: 72),
+            child: Icon(Icons.wb_sunny_rounded, color: const Color(0xFFFFB300).withValues(alpha: 0.9), size: 72),
           ),
 
           _buildCloud(70, -30, 1.1),
@@ -398,7 +399,7 @@ class ThemedBackground extends StatelessWidget {
             left: 45,
             child: Transform.rotate(
               angle: -0.2,
-              child: Icon(Icons.extension_rounded, color: const Color(0xFFBA68C8).withOpacity(0.7), size: 36),
+              child: Icon(Icons.extension_rounded, color: const Color(0xFFBA68C8).withValues(alpha: 0.7), size: 36),
             ),
           ),
           Positioned(
@@ -406,13 +407,13 @@ class ThemedBackground extends StatelessWidget {
             right: 40,
             child: Transform.rotate(
               angle: 0.3,
-              child: Icon(Icons.pets_rounded, color: const Color(0xFFFF6B8B).withOpacity(0.65), size: 38),
+              child: Icon(Icons.pets_rounded, color: const Color(0xFFFF6B8B).withValues(alpha: 0.65), size: 38),
             ),
           ),
           Positioned(
             top: 190,
             left: 170,
-            child: Icon(Icons.music_note_rounded, color: const Color(0xFF4DD0E1).withOpacity(0.7), size: 30),
+            child: Icon(Icons.music_note_rounded, color: const Color(0xFF4DD0E1).withValues(alpha: 0.7), size: 30),
           ),
 
           ...List.generate(24, (index) {
@@ -425,7 +426,7 @@ class ThemedBackground extends StatelessWidget {
                 angle: random.nextDouble() * 3.14,
                 child: Icon(
                   random.nextBool() ? Icons.star_rounded : Icons.auto_awesome_rounded,
-                  color: color.withOpacity(random.nextDouble() * 0.5 + 0.3),
+                  color: color.withValues(alpha: random.nextDouble() * 0.5 + 0.3),
                   size: random.nextDouble() * 18 + 10,
                 ),
               ),
@@ -957,7 +958,7 @@ class _QuestionViewState extends State<_QuestionView> {
   List<String> _pieces = [];
 
   // Sequence
-  List<int> _sequence = [];
+  final List<int> _sequence = [];
   late final List<String> _sequencePool;
 
   // Matching
@@ -1663,14 +1664,14 @@ class _Media extends StatelessWidget {
       return Image.network(
         s,
         fit: fit,
-        errorBuilder: (_, __, ___) => broken,
+        errorBuilder: (_, _, _) => broken,
         loadingBuilder: (_, child, progress) =>
             progress == null ? child : const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
       );
     }
-    if (s.startsWith('assets/')) return Image.asset(s, fit: fit, errorBuilder: (_, __, ___) => broken);
+    if (s.startsWith('assets/')) return Image.asset(s, fit: fit, errorBuilder: (_, _, _) => broken);
     final bytes = _decodeBase64(s);
-    if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, __, ___) => broken);
+    if (bytes != null) return Image.memory(bytes, fit: fit, errorBuilder: (_, _, _) => broken);
     return broken;
   }
 }

@@ -8,7 +8,7 @@ import '../profile/friend_requests_screen.dart';
 import '../leaderboard/arena.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({Key? key}) : super(key: key);
+  const NotificationsScreen({super.key});
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -307,7 +307,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return Center(
         child: Text(
           "User not found.",
-          style: TextStyle(color: textColor.withOpacity(0.6)),
+          style: TextStyle(color: textColor.withValues(alpha: 0.6)),
         ),
       );
     }
@@ -317,11 +317,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.notifications_off_outlined, size: 64, color: textColor.withOpacity(0.3)),
+            Icon(Icons.notifications_off_outlined, size: 64, color: textColor.withValues(alpha: 0.3)),
             const SizedBox(height: 16),
             Text(
               "You're all caught up!",
-              style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 16, fontWeight: FontWeight.w600),
+              style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -339,7 +339,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           padding: EdgeInsets.fromLTRB(4, children.isEmpty ? 0 : 12, 4, 10),
           child: Text(
             s,
-            style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w800, fontSize: 14),
+            style: TextStyle(color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.w800, fontSize: 14),
           ),
         ));
       }
@@ -396,15 +396,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isRead ? theme.cardColor : theme.primaryColor.withOpacity(0.12),
+            color: isRead ? theme.cardColor : theme.primaryColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isRead ? theme.dividerColor.withOpacity(0.2) : theme.primaryColor.withOpacity(0.5),
+              color: isRead ? theme.dividerColor.withValues(alpha: 0.2) : theme.primaryColor.withValues(alpha: 0.5),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               )
@@ -416,7 +416,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.15),
+                  color: iconColor.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(iconData, color: iconColor, size: 24),
@@ -439,7 +439,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       body,
                       style: TextStyle(
                         fontSize: 14,
-                        color: isRead ? textColor.withOpacity(0.6) : textColor,
+                        color: isRead ? textColor.withValues(alpha: 0.6) : textColor,
                         height: 1.4,
                       ),
                     ),
@@ -447,7 +447,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       const SizedBox(height: 6),
                       Text(
                         time,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.45)),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor.withValues(alpha: 0.45)),
                       ),
                     ],
                   ],

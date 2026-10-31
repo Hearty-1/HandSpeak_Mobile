@@ -8,7 +8,7 @@ class FriendRequestsScreen extends StatefulWidget {
   /// User to highlight (the one a tapped notification is about).
   final String? highlightUid;
 
-  const FriendRequestsScreen({Key? key, this.highlightUid}) : super(key: key);
+  const FriendRequestsScreen({super.key, this.highlightUid});
 
   @override
   State<FriendRequestsScreen> createState() => _FriendRequestsScreenState();
@@ -110,7 +110,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
             return Center(
               child: Text(
                 "User not found.", 
-                style: TextStyle(color: textColor.withOpacity(0.5))
+                style: TextStyle(color: textColor.withValues(alpha: 0.5))
               ),
             );
           }
@@ -129,7 +129,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
             return Center(
               child: Text(
                 "No new followers.",
-                style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 16, fontWeight: FontWeight.w600),
+                style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 16, fontWeight: FontWeight.w600),
               ),
             );
           }
@@ -138,7 +138,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                 padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
                 child: Text(
                   text,
-                  style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w800, fontSize: 14),
+                  style: TextStyle(color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.w800, fontSize: 14),
                 ),
               );
 
@@ -185,20 +185,20 @@ class _RequestTile extends StatelessWidget {
   final bool highlighted;
 
   const _RequestTile({
-    Key? key,
+    super.key,
     required this.requesterUid,
     this.onAccept,
     this.onDecline,
     this.isFriend = false,
     this.highlighted = false,
-  }) : super(key: key);
+  });
 
   Widget _buildAvatarImage(BuildContext context, String? avatarData, {double size = 48}) {
     final theme = Theme.of(context);
     if (avatarData == null || avatarData.isEmpty) {
       return CircleAvatar(
         radius: size / 2,
-        backgroundColor: theme.primaryColor.withOpacity(0.2),
+        backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
         child: Icon(Icons.person_rounded, color: theme.primaryColor, size: size * 0.5),
       );
     }
@@ -208,12 +208,12 @@ class _RequestTile extends StatelessWidget {
         return CircleAvatar(
           radius: size / 2,
           backgroundImage: MemoryImage(bytes),
-          backgroundColor: theme.primaryColor.withOpacity(0.2),
+          backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
         );
       } catch (e) {
         return CircleAvatar(
           radius: size / 2,
-          backgroundColor: theme.disabledColor.withOpacity(0.2),
+          backgroundColor: theme.disabledColor.withValues(alpha: 0.2),
           child: Icon(Icons.broken_image_rounded, color: theme.disabledColor, size: size * 0.5),
         );
       }
@@ -221,7 +221,7 @@ class _RequestTile extends StatelessWidget {
       return CircleAvatar(
         radius: size / 2,
         backgroundImage: NetworkImage(avatarData),
-        backgroundColor: theme.primaryColor.withOpacity(0.2),
+        backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
       );
     }
   }
@@ -251,7 +251,7 @@ class _RequestTile extends StatelessWidget {
             border: highlighted ? Border.all(color: theme.primaryColor, width: 2) : null,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -320,13 +320,13 @@ class _RequestTile extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: textColor.withOpacity(0.08),
+                    color: textColor.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     "Ignore",
                     style: TextStyle(
-                      color: textColor.withOpacity(0.6),
+                      color: textColor.withValues(alpha: 0.6),
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),

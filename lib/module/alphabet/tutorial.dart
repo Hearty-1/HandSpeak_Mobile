@@ -64,7 +64,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.cardColor.withOpacity(0.4),
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
@@ -95,7 +95,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
               height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.primaryColor.withOpacity(0.25),
+                color: theme.primaryColor.withValues(alpha: 0.25),
               ),
             ),
           ),
@@ -107,7 +107,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
               height: 280,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.colorScheme.secondary.withOpacity(0.15),
+                color: theme.colorScheme.secondary.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -123,12 +123,12 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                       child: Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: theme.cardColor.withOpacity(0.6),
+                          color: theme.cardColor.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: theme.colorScheme.surface.withOpacity(0.7), width: 1.5),
+                          border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.7), width: 1.5),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
+                              color: Colors.black.withValues(alpha: 0.03),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
                             )
@@ -139,8 +139,8 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                           style: TextStyle(color: theme.colorScheme.onSurface),
                           decoration: InputDecoration(
                             hintText: 'Search letter...',
-                            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.w500),
-                            prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                            hintStyle: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w500),
+                            prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(vertical: 12),
                           ),
@@ -165,7 +165,9 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                             'id': doc.id,
                             'title': data['displayTitle']?.toString() ?? data['gestureKey']?.toString() ?? '',
                             'gestureKey': data['gestureKey']?.toString() ?? '',
-                            'imageUrl': data['imageUrl']?.toString() ?? data['imagePath']?.toString() ?? '',
+                            'imageUrl': (data['videoUrl'] ?? data['video_url'] ?? '').toString().trim().isNotEmpty
+                                ? (data['videoUrl'] ?? data['video_url']).toString().trim()
+                                : data['imageUrl']?.toString() ?? data['imagePath']?.toString() ?? '',
                           };
                         }).toList();
 
@@ -191,7 +193,7 @@ class _TutorialInterfaceState extends State<TutorialInterface> {
                         return Center(
                           child: Text(
                             "No letters found.",
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
                           ),
                         );
                       }
@@ -256,7 +258,7 @@ class LessonCard extends StatelessWidget {
 
   /// Green outline for a sign already mastered in tutorial practice.
   static Color _outline(ThemeData theme, bool isMastered) =>
-      isMastered ? Colors.green.withOpacity(0.75) : theme.primaryColor.withOpacity(0.5);
+      isMastered ? Colors.green.withValues(alpha: 0.75) : theme.primaryColor.withValues(alpha: 0.5);
 
   @override
   Widget build(BuildContext context) {
@@ -276,15 +278,15 @@ class LessonCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
                 decoration: BoxDecoration(
-                  color: isLocked ? theme.cardColor.withOpacity(0.2) : theme.cardColor.withOpacity(0.7),
+                  color: isLocked ? theme.cardColor.withValues(alpha: 0.2) : theme.cardColor.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isLocked ? theme.colorScheme.surface.withOpacity(0.4) : _outline(theme, isMastered),
+                    color: isLocked ? theme.colorScheme.surface.withValues(alpha: 0.4) : _outline(theme, isMastered),
                     width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     )
@@ -302,7 +304,7 @@ class LessonCard extends StatelessWidget {
                           fontSize: 30,
                           fontWeight: FontWeight.w900,
                           fontFamily: 'Inter',
-                          color: isLocked ? theme.colorScheme.onSurface.withOpacity(0.4) : theme.colorScheme.onSurface,
+                          color: isLocked ? theme.colorScheme.onSurface.withValues(alpha: 0.4) : theme.colorScheme.onSurface,
                           letterSpacing: -1.0,
                         ),
                       ),
@@ -312,10 +314,10 @@ class LessonCard extends StatelessWidget {
                         ? Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(Icons.lock_outline, color: theme.colorScheme.onSurface.withOpacity(0.5), size: 22),
+                            child: Icon(Icons.lock_outline, color: theme.colorScheme.onSurface.withValues(alpha: 0.5), size: 22),
                           )
                         : Container(
                             padding: const EdgeInsets.all(6),
@@ -324,7 +326,7 @@ class LessonCard extends StatelessWidget {
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: theme.primaryColor.withOpacity(0.3),
+                                  color: theme.primaryColor.withValues(alpha: 0.3),
                                   blurRadius: 8,
                                   spreadRadius: 1,
                                 )

@@ -139,10 +139,12 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
       phrases = await LupangLines.loadPhrases();
     } catch (e) {
       debugPrint("Lupang Hinirang manifest error: $e");
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _isLoading = false;
         _hasError = true;
       });
+      }
       return;
     }
 
@@ -261,7 +263,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                 ),
               ),
               Text(L.t('$mastered / $total lines', '$mastered / $total linya'),
-                  style: TextStyle(fontWeight: FontWeight.w700, color: textColor.withOpacity(0.6))),
+                  style: TextStyle(fontWeight: FontWeight.w700, color: textColor.withValues(alpha: 0.6))),
             ],
           ),
         ],
@@ -287,7 +289,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
       backgroundColor: theme.scaffoldBackgroundColor,
 
       appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.6),
+        backgroundColor: theme.scaffoldBackgroundColor.withValues(alpha: 0.6),
         elevation: 0,
         centerTitle: true,
         iconTheme: IconThemeData(color: textColor),
@@ -299,7 +301,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                 color: Colors.transparent,
                 border: Border(
                   bottom: BorderSide(
-                    color: theme.dividerColor.withOpacity(0.1),
+                    color: theme.dividerColor.withValues(alpha: 0.1),
                     width: 0.5,
                   ),
                 ),
@@ -323,7 +325,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
               width: 250, height: 250,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.primaryColor.withOpacity(0.25),
+                color: theme.primaryColor.withValues(alpha: 0.25),
               ),
             ),
           ),
@@ -333,7 +335,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
               width: 280, height: 280,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF4CAF50).withOpacity(0.15),
+                color: const Color(0xFF4CAF50).withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -350,17 +352,17 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
                       child: Container(
                         height: 48,
                         decoration: BoxDecoration(
-                          color: theme.cardColor.withOpacity(0.75),
+                          color: theme.cardColor.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: theme.dividerColor.withOpacity(0.15), width: 1.5),
+                          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.15), width: 1.5),
                         ),
                         child: TextField(
                           onChanged: (value) => _runFilter(value),
                           style: TextStyle(color: textColor),
                           decoration: InputDecoration(
                             hintText: L.t('Search line...', 'Maghanap ng linya...'),
-                            hintStyle: TextStyle(color: textColor.withOpacity(0.5), fontWeight: FontWeight.w500),
-                            prefixIcon: Icon(Icons.search, color: textColor.withOpacity(0.5)),
+                            hintStyle: TextStyle(color: textColor.withValues(alpha: 0.5), fontWeight: FontWeight.w500),
+                            prefixIcon: Icon(Icons.search, color: textColor.withValues(alpha: 0.5)),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(vertical: 12),
                           ),
@@ -391,11 +393,11 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 48, color: textColor.withOpacity(0.6)),
+            Icon(Icons.error_outline, size: 48, color: textColor.withValues(alpha: 0.6)),
             const SizedBox(height: 16),
             Text(
               L.t('Failed to load the lines.', 'Hindi ma-load ang mga linya.'),
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.8)),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withValues(alpha: 0.8)),
             ),
             const SizedBox(height: 8),
             TextButton(
@@ -423,11 +425,11 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
                 children: [
-                  Icon(Icons.cloud_off_rounded, size: 18, color: textColor.withOpacity(0.6)),
+                  Icon(Icons.cloud_off_rounded, size: 18, color: textColor.withValues(alpha: 0.6)),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(L.t('The videos could not be loaded from the server.', 'Hindi ma-load ang mga video mula sa server.'),
-                        style: TextStyle(fontSize: 13, color: textColor.withOpacity(0.7))),
+                        style: TextStyle(fontSize: 13, color: textColor.withValues(alpha: 0.7))),
                   ),
                   TextButton(
                     onPressed: () {
@@ -446,7 +448,7 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
               child: Center(
                 child: Text(
                   L.t('No lines found.', 'Walang nahanap na linya.'),
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withOpacity(0.6)),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: textColor.withValues(alpha: 0.6)),
                 ),
               ),
             ),
@@ -501,12 +503,12 @@ class CivicCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
                 decoration: BoxDecoration(
-                  color: theme.cardColor.withOpacity(isLocked ? 0.4 : 0.75),
+                  color: theme.cardColor.withValues(alpha: isLocked ? 0.4 : 0.75),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isLocked
-                        ? theme.dividerColor.withOpacity(0.2)
-                        : (isMastered ? Colors.green.withOpacity(0.6) : theme.primaryColor.withOpacity(0.5)),
+                        ? theme.dividerColor.withValues(alpha: 0.2)
+                        : (isMastered ? Colors.green.withValues(alpha: 0.6) : theme.primaryColor.withValues(alpha: 0.5)),
                     width: 1.5,
                   ),
                 ),
@@ -521,7 +523,7 @@ class CivicCard extends StatelessWidget {
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
                           fontFamily: 'Inter',
-                          color: isLocked ? textColor.withOpacity(0.4) : textColor,
+                          color: isLocked ? textColor.withValues(alpha: 0.4) : textColor,
                           letterSpacing: -0.6,
                           height: 1.15,
                         ),
@@ -532,10 +534,10 @@ class CivicCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: textColor.withOpacity(0.08),
+                          color: textColor.withValues(alpha: 0.08),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(Icons.lock_outline, color: textColor.withOpacity(0.4), size: 22),
+                        child: Icon(Icons.lock_outline, color: textColor.withValues(alpha: 0.4), size: 22),
                       )
                     else
                       Container(
@@ -545,7 +547,7 @@ class CivicCard extends StatelessWidget {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: theme.primaryColor.withOpacity(0.3),
+                              color: theme.primaryColor.withValues(alpha: 0.3),
                               blurRadius: 8,
                               spreadRadius: 1,
                             ),

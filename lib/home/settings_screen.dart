@@ -189,7 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<String?> _showEmailCodePrompt(BuildContext context, String email) async {
     final controller = TextEditingController();
     final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onBackground;
+    final textColor = theme.colorScheme.onSurface;
 
     return showDialog<String>(
       context: context,
@@ -215,7 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text(
               "A 6-digit verification code has been dispatched to:\n$email",
-              style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 13, height: 1.4),
+              style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: 18),
             TextField(
@@ -232,9 +232,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               decoration: InputDecoration(
                 hintText: "123456",
                 counterText: "",
-                hintStyle: TextStyle(color: textColor.withOpacity(0.3), letterSpacing: 8),
+                hintStyle: TextStyle(color: textColor.withValues(alpha: 0.3), letterSpacing: 8),
                 filled: true,
-                fillColor: theme.disabledColor.withOpacity(0.08),
+                fillColor: theme.disabledColor.withValues(alpha: 0.08),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -251,7 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(context.tr(context.tr('Cancel', 'Kanselahin'), 'Kanselahin'), style: TextStyle(color: textColor.withOpacity(0.6))),
+            child: Text(context.tr(context.tr('Cancel', 'Kanselahin'), 'Kanselahin'), style: TextStyle(color: textColor.withValues(alpha: 0.6))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
@@ -271,7 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final soundProvider = Provider.of<SoundProvider>(context);
     final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onBackground;
+    final textColor = theme.colorScheme.onSurface;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -296,7 +296,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: const Icon(CupertinoIcons.person_alt_circle, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Edit Personal Details', 'I-edit ang Personal na Detalye'), 'I-edit ang Personal na Detalye'), style: TextStyle(color: textColor)),
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
+                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
                 onTap: () {
                   _showEditProfileDialog(context);
                 },
@@ -311,9 +311,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ValueListenableBuilder<bool>(
                 valueListenable: PerformanceSettings.reduceEffects,
                 builder: (context, on, _) => SwitchListTile(
-                  activeColor: const Color(0xFFFFB800),
+                  activeThumbColor: const Color(0xFFFFB800),
                   inactiveThumbColor: Colors.grey.shade400,
-                  inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                  inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
                   secondary: const Icon(CupertinoIcons.bolt_fill, color: Color(0xFFFFB800)),
                   title: Text(context.tr(context.tr('Performance Mode', 'Performance Mode'), context.tr('Performance Mode', 'Performance Mode')), style: TextStyle(color: textColor)),
                   subtitle: Text(
@@ -326,9 +326,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               Divider(height: 1, color: theme.dividerColor),
               SwitchListTile(
-                activeColor: const Color(0xFFFFB800),
+                activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
-                inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
                 secondary: Icon(
                   soundProvider.isBgmMuted
                       ? CupertinoIcons.speaker_slash_fill
@@ -343,9 +343,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               Divider(height: 1, color: theme.dividerColor),
               SwitchListTile(
-                activeColor: const Color(0xFFFFB800),
+                activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
-                inactiveTrackColor: Colors.grey.withOpacity(0.3),
+                inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
                 secondary: Icon(
                   soundProvider.isSfxMuted
                       ? CupertinoIcons.speaker_slash
@@ -410,14 +410,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             context: context,
             children: [
               SwitchListTile(
-                activeColor: const Color(0xFFFFB800),
+                activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
-                inactiveTrackColor: Colors.grey.withOpacity(0.3),
-                secondary: Icon(CupertinoIcons.shield_fill, color: textColor.withOpacity(0.6)),
+                inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
+                secondary: Icon(CupertinoIcons.shield_fill, color: textColor.withValues(alpha: 0.6)),
                 title: Text(context.tr(context.tr('Two-Factor Authentication', 'Two-Factor Authentication'), context.tr('Two-Factor Authentication', 'Two-Factor Authentication')), style: TextStyle(color: textColor)),
                 subtitle: Text(
                   context.tr(context.tr('Add extra security to your account with Email 2FA', 'Dagdag na seguridad sa account gamit ang Email 2FA'), 'Dagdag na seguridad sa account gamit ang Email 2FA'),
-                  style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 12),
+                  style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 12),
                 ),
                 value: _twoFactorEnabled,
                 onChanged: (val) {
@@ -427,18 +427,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               Divider(height: 1, color: theme.dividerColor),
               ListTile(
-                leading: Icon(CupertinoIcons.lock_fill, color: textColor.withOpacity(0.6)),
+                leading: Icon(CupertinoIcons.lock_fill, color: textColor.withValues(alpha: 0.6)),
                 title: Text(context.tr(context.tr('Change Password', 'Palitan ang Password'), 'Palitan ang Password'), style: TextStyle(color: textColor)),
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
+                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
                 onTap: () {
                   _showChangePasswordDialog(context);
                 },
               ),
               Divider(height: 1, color: theme.dividerColor),
               ListTile(
-                leading: Icon(CupertinoIcons.device_phone_portrait, color: textColor.withOpacity(0.6)),
+                leading: Icon(CupertinoIcons.device_phone_portrait, color: textColor.withValues(alpha: 0.6)),
                 title: Text(context.tr(context.tr('Session & Activity Logs', 'Session at Activity Logs'), 'Session at Activity Logs'), style: TextStyle(color: textColor)),
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withOpacity(0.5)),
+                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
                 onTap: () {
                   _showSessionHistory(context);
                 },
@@ -460,7 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
-          color: textColor.withOpacity(0.6),
+          color: textColor.withValues(alpha: 0.6),
           fontWeight: FontWeight.bold,
           fontSize: 13,
           letterSpacing: 1.2,
@@ -477,7 +477,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -496,22 +496,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     bool obscureText = false,
   }) {
     final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onBackground;
+    final textColor = theme.colorScheme.onSurface;
 
     return TextFormField(
       controller: controller,
       readOnly: readOnly,
       obscureText: obscureText,
       style: TextStyle(
-        color: readOnly ? textColor.withOpacity(0.5) : textColor,
+        color: readOnly ? textColor.withValues(alpha: 0.5) : textColor,
         fontWeight: FontWeight.w500,
       ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: textColor.withOpacity(0.6), fontSize: 14),
-        prefixIcon: Icon(icon, color: readOnly ? textColor.withOpacity(0.3) : const Color(0xFFFFB800), size: 20),
+        labelStyle: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 14),
+        prefixIcon: Icon(icon, color: readOnly ? textColor.withValues(alpha: 0.3) : const Color(0xFFFFB800), size: 20),
         filled: true,
-        fillColor: readOnly ? theme.disabledColor.withOpacity(0.05) : theme.cardColor,
+        fillColor: readOnly ? theme.disabledColor.withValues(alpha: 0.05) : theme.cardColor,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -540,7 +540,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
         builder: (context, snapshot) {
           final theme = Theme.of(context);
-          final textColor = theme.colorScheme.onBackground;
+          final textColor = theme.colorScheme.onSurface;
 
           if (snapshot.connectionState == ConnectionState.waiting) {
             return AlertDialog(
@@ -628,7 +628,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Expanded(
                         child: TextButton(
                           onPressed: isUpdating ? null : () => Navigator.pop(context), 
-                          child: Text(context.tr(context.tr('Cancel', 'Kanselahin'), 'Kanselahin'), style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.bold)),
+                          child: Text(context.tr(context.tr('Cancel', 'Kanselahin'), 'Kanselahin'), style: TextStyle(color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.bold)),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -680,7 +680,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
           final theme = Theme.of(context);
-          final textColor = theme.colorScheme.onBackground;
+          final textColor = theme.colorScheme.onSurface;
 
           return AlertDialog(
             backgroundColor: theme.cardColor,

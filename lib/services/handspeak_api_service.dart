@@ -19,6 +19,9 @@ class HandSpeakModels {
   /// Mga model sa POST /v1/predict_raw/{model_id} (raw landmarks + server-side gates).
   static const List<String> rawModels = [lupangHinirang, calendar];
 
+  /// A model published from the web app (published_gesture_models): gs_<16 hex>.
+  static bool isPublishedModelId(String id) => RegExp(r'^gs_[0-9a-f]{16}$').hasMatch(id);
+
   /// Model na dapat sumagot para sa isang raw model, at ang tagged Cloud Run
   /// revision na siguradong may ganitong model. Kapag ibang model_version ang
   /// sagot ng live URL (hal. hindi pa nailipat ang traffic sa bagong revision),
@@ -38,7 +41,7 @@ class StagedRawModel {
   final String url;
   const StagedRawModel({required this.checkpoint, required this.url});
 
-  /// model_version = "<feature_version>/<source_checkpoint>", hal. "lupang-v4/palm_lupang_v9_switch".
+  /// model_version = `<feature_version>/<source_checkpoint>`, hal. "lupang-v4/palm_lupang_v9_switch".
   bool servedBy(String modelVersion) => modelVersion.endsWith('/$checkpoint');
 }
 
@@ -504,6 +507,93 @@ class LetterPredictResponse {
 }
 
 // ---------------------------------------------------------------------------
+// POST /v1/predict_raw/static_letters | static_numbers  (one hand, still)
+//   request : {frames: [[21 x [x, y, z]], ...] (1..60), image_width, image_height}
+//   response: {model, accepted, prediction: {label, confidence}, top_k, threshold}
+// POST /v1/predict_raw/numbers  (moving numbers 11-100)
+//   request : {target_number, frames: 24 x [21 x [x, y, z]]}
+//   response: {detected_number, is_correct, accuracy_score, target_probability,
+//              top_k, kinetic_energy, rejection: {code, message}, feedback}
+// (Read from GET /v1/models and the routes' validation replies, 2026-10-29.)
+// ---------------------------------------------------------------------------
+
+/// Server verdict for a still letter (A-Y) or number (1-10).
+class StaticPredictResponse {
+  final String model;
+  final bool accepted; // confidence >= threshold (0.7)
+  final String label;
+  final double confidence;
+  final double threshold;
+  final List<Prediction> topK;
+  final Map<String, dynamic> raw;
+
+  StaticPredictResponse({
+    required this.model,
+    required this.accepted,
+    required this.label,
+    required this.confidence,
+    required this.threshold,
+    required this.topK,
+    this.raw = const {},
+  });
+
+  factory StaticPredictResponse.fromJson(Map<String, dynamic> json) {
+    final pred = json['prediction'] as Map<String, dynamic>? ?? const {};
+    return StaticPredictResponse(
+      model: json['model'] as String? ?? '',
+      accepted: json['accepted'] as bool? ?? false,
+      label: pred['label']?.toString() ?? '',
+      confidence: (pred['confidence'] as num?)?.toDouble() ?? 0.0,
+      threshold: (json['threshold'] as num?)?.toDouble() ?? 0.7,
+      topK: (json['top_k'] as List<dynamic>? ?? const [])
+          .map((e) => Prediction.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      raw: json,
+    );
+  }
+}
+
+/// Server verdict for a moving number (11-100).
+class NumbersPredictResponse {
+  final int targetNumber;
+  final int? detectedNumber;
+  final bool isCorrect;
+  final double accuracyScore;
+  final double? targetProbability;
+  final String? rejectionCode; // e.g. "static_hand"
+  final String feedback;
+  final String range; // model group, e.g. "11_20"
+  final Map<String, dynamic> raw;
+
+  NumbersPredictResponse({
+    required this.targetNumber,
+    required this.detectedNumber,
+    required this.isCorrect,
+    required this.accuracyScore,
+    required this.targetProbability,
+    required this.rejectionCode,
+    required this.feedback,
+    required this.range,
+    this.raw = const {},
+  });
+
+  factory NumbersPredictResponse.fromJson(Map<String, dynamic> json) {
+    final rej = json['rejection'];
+    return NumbersPredictResponse(
+      targetNumber: (json['target_number'] as num?)?.toInt() ?? 0,
+      detectedNumber: (json['detected_number'] as num?)?.toInt(),
+      isCorrect: json['is_correct'] as bool? ?? false,
+      accuracyScore: (json['accuracy_score'] as num?)?.toDouble() ?? 0.0,
+      targetProbability: (json['target_probability'] as num?)?.toDouble(),
+      rejectionCode: rej is Map ? rej['code']?.toString() : null,
+      feedback: json['feedback']?.toString() ?? '',
+      range: json['range']?.toString() ?? '',
+      raw: json,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CaptureFixer: make a phone capture look like the desktop engine's
 // ---------------------------------------------------------------------------
 
@@ -604,7 +694,7 @@ class CaptureFixer {
       var left = rot(f['left_hand']);
       var right = rot(f['right_hand']);
       if (reassignHands && pose != null && pose.length >= 17) {
-        final hands = [if (left != null) left, if (right != null) right];
+        final hands = [?left, ?right];
         final assigned = RawLandmarkFrame.fromDetections(t: 0, pose: pose, hands: hands);
         if (!identical(assigned.leftHand, left) || !identical(assigned.rightHand, right)) reassigned++;
         left = assigned.leftHand;
@@ -798,10 +888,21 @@ class HandSpeakApiService {
     required int imageWidth,
     required int imageHeight,
     int topK = 3,
+    String? serviceUrl,
   }) async {
     // RawLandmarkFrame o JSON map ({'t', 'pose', 'left_hand', 'right_hand'}).
     final fs = frames.map(RawLandmarkFrame.coerce).toList();
-    if (!HandSpeakModels.rawModels.contains(modelId)) {
+    // Published models (published_gesture_models) are served at their own
+    // serviceUrl (https only: the request carries the Firebase ID token).
+    final published = HandSpeakModels.isPublishedModelId(modelId);
+    String? publishedBase;
+    if (published) {
+      final u = Uri.tryParse((serviceUrl ?? '').trim());
+      publishedBase = (u != null && u.scheme == 'https' && u.host.isNotEmpty)
+          ? u.toString().replaceAll(RegExp(r'/+$'), '')
+          : baseUrl;
+    }
+    if (!published && !HandSpeakModels.rawModels.contains(modelId)) {
       throw ArgumentError("Hindi raw model ang '$modelId'. Pagpipilian: ${HandSpeakModels.rawModels}");
     }
     final withPose = fs.where((f) => f.pose != null).length;
@@ -848,6 +949,7 @@ class HandSpeakApiService {
       return RawPredictResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
     }
 
+    if (publishedBase != null) return send(publishedBase);
     final staged = HandSpeakModels.stagedRawModels[modelId];
     final chosen = _rawBaseUrls[modelId];
     if (staged == null) return send(baseUrl);
@@ -880,6 +982,61 @@ class HandSpeakApiService {
 
   /// model id -> base URL na naghahatid ng inaasahang model (per app session).
   static final Map<String, String> _rawBaseUrls = {};
+
+  /// Frames of one hand: each 21 x [x, y, z], finite, rounded for a small body.
+  static List<List<List<double>>> _cleanHandFrames(List<List<List<double>>> frames) {
+    final out = <List<List<double>>>[];
+    for (var i = 0; i < frames.length; i++) {
+      final fr = frames[i];
+      if (fr.length != 21 || fr.any((p) => p.length < 2 || p.take(3).any((v) => !v.isFinite))) {
+        throw ArgumentError("Frame $i ay dapat 21 landmarks na may finite na [x, y, (z)]");
+      }
+      out.add([
+        for (final p in fr) [for (final v in (p.length >= 3 ? p.take(3) : [...p, 0.0])) double.parse(v.toStringAsFixed(5))]
+      ]);
+    }
+    return out;
+  }
+
+  /// POST /v1/predict_raw/static_letters (A-Y without J / Z) or
+  /// static_numbers (1-10): a few frames of the held handshape (1..60),
+  /// upright, with the size of that upright image.
+  Future<StaticPredictResponse> predictRawStatic({
+    required bool numbers,
+    required List<List<List<double>>> frames,
+    required int imageWidth,
+    required int imageHeight,
+  }) async {
+    if (frames.isEmpty || frames.length > 60) {
+      throw ArgumentError("Kailangan ng 1..60 frames, nakuha: ${frames.length}");
+    }
+    if (imageWidth <= 0 || imageHeight <= 0) throw ArgumentError("Invalid image size: ${imageWidth}x$imageHeight");
+    final model = numbers ? 'static_numbers' : 'static_letters';
+    final body = jsonEncode({
+      'frames': _cleanHandFrames(frames),
+      'image_width': imageWidth,
+      'image_height': imageHeight,
+    });
+    final response = await _authed(
+        (h) => _client.post(Uri.parse("$baseUrl/v1/predict_raw/$model"), headers: h, body: body));
+    if (response.statusCode != 200) throw _error(response);
+    return StaticPredictResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// POST /v1/predict_raw/numbers: a moving number (11-100) as exactly 24
+  /// frames of 21 x [x, y, z] (the same clip the on-phone decade models use).
+  Future<NumbersPredictResponse> predictRawNumbers({
+    required int targetNumber,
+    required List<List<List<double>>> frames24,
+  }) async {
+    if (targetNumber < 11 || targetNumber > 100) throw ArgumentError("target_number ay 11..100");
+    if (frames24.length != 24) throw ArgumentError("Kailangan ng 24 frames, nakuha: ${frames24.length}");
+    final body = jsonEncode({'target_number': targetNumber, 'frames': _cleanHandFrames(frames24)});
+    final response = await _authed(
+        (h) => _client.post(Uri.parse("$baseUrl/v1/predict_raw/numbers"), headers: h, body: body));
+    if (response.statusCode != 200) throw _error(response);
+    return NumbersPredictResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
 
   /// Bilang ng features ng J/Z model (feature version jz-v2).
   static const int letterFeatureDim = 24;

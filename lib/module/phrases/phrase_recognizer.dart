@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -255,7 +254,7 @@ class PhraseRecognizer {
     _handRotation = value;
     _detectedRotation = null;
     _rotationSamples = 0;
-    _rotationError.updateAll((_, __) => 0);
+    _rotationError.updateAll((_, _) => 0);
   }
 
   int _handRotation = 0;

@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -364,6 +362,10 @@ class _GameProperScreenState extends State<GameProperScreen> {
   // Look-alike letters (B for C, E for F, M for N, ...): shared checks
   // with the tutorial practice (services/dynamic_sign_judge.dart).
   final StaticLetterChecker _shapeChecker = StaticLetterChecker();
+  // Static letters / numbers: the server's static model confirms a pass
+  // (services/dynamic_sign_judge.dart StaticServerCheck); offline the
+  // on-phone verdict stands.
+  final StaticServerCheck _serverCheck = StaticServerCheck();
   int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
   bool _isJudging = false;
   static const double _letterRecordSeconds = 2.5;
@@ -499,12 +501,12 @@ class _GameProperScreenState extends State<GameProperScreen> {
       debugPrint("Firebase Storage gesture fetch for '$charKey' failed: $e. Falling back to asset bundle.");
     }
 
-    // 3. Fallback to local app bundle assets
+    // 3. Storage models/alphabet/<L>.json (current folder), then the bundled copy.
     try {
-      String jsonString = await rootBundle.loadString('assets/alphabet/$charKey.json');
-      final List<dynamic> decoded = jsonDecode(jsonString);
+      final decoded = await TemplateStore.load('alphabet', charKey);
+      if (decoded == null) throw StateError('no template');
       _templateCache[charKey] = decoded;
-      _templateSourceCache[charKey] = 'assets/alphabet/$charKey.json';
+      _templateSourceCache[charKey] = TemplateStore.sourceOf('alphabet', charKey) ?? 'models/alphabet/$charKey.json';
       if (mounted) {
         setState(() => _template = decoded);
       }
@@ -603,6 +605,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
           bestHand = hand;
         }
       }
+      if (bestHand != null) {
+        _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
+      }
       if (bestHand != null &&
           _shapeChecker.check(bestHand, _templateLetter,
                   imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation) !=
@@ -614,7 +619,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
         _staticHoldStartTime ??= now;
         double secs = now.difference(_staticHoldStartTime!).inMilliseconds / 1000.0;
         _holdProgress = (secs / _requiredHoldSeconds).clamp(0.0, 1.0);
-        if (secs >= _requiredHoldSeconds) _submitAnswer(correctAnswer);
+        if (secs >= _requiredHoldSeconds) _confirmThenSubmit(correctAnswer);
       } else {
         _staticHoldStartTime = null;
         _holdProgress = 0.0;
@@ -893,6 +898,25 @@ class _GameProperScreenState extends State<GameProperScreen> {
     }
   }
 
+  /// Static sign held long enough: the server's static model confirms it
+  /// before the answer is submitted (server only: no submit without it).
+  Future<void> _confirmThenSubmit(String correctAnswer) async {
+    if (_isJudging) return;
+    final target = correctAnswer.trim();
+    setState(() => _isJudging = true);
+    final v = await _serverCheck.verify(target, number: RegExp(r'^\d+$').hasMatch(target));
+    if (!mounted) return;
+    setState(() => _isJudging = false);
+    if (v != null && v.ok) {
+      _submitAnswer(correctAnswer);
+    } else {
+      _serverCheck.clear();
+      _staticHoldStartTime = null;
+      _holdProgress = 0.0;
+      _currentScore = math.min(_currentScore, successThreshold - 1);
+    }
+  }
+
   void _submitAnswer(String answer) {
     if (_hasAnswered) return;
     final q = _questions[_currentQuestionIndex];
@@ -1040,7 +1064,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
         height: height,
         width: width,
         fit: fit,
-        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey),
+        errorBuilder: (_, _, _) => const Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey),
       );
     }
 
@@ -1052,7 +1076,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
           height: height,
           width: width,
           fit: fit,
-          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey),
+          errorBuilder: (_, _, _) => const Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey),
         );
       } catch (_) {
         return const Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey);
@@ -1073,7 +1097,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
             height: height,
             width: width,
             fit: fit,
-            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey),
+            errorBuilder: (_, _, _) => const Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey),
           );
         }
         return const Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey);
@@ -1217,7 +1241,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
     final src = (image != null && image.trim().isNotEmpty) ? image : _signImageFor(value);
     if (src == null) return Text(value, style: style);
     if (src.startsWith('assets/')) {
-      return Image.asset(src, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Text(value, style: style));
+      return Image.asset(src, fit: BoxFit.contain, errorBuilder: (_, _, _) => Text(value, style: style));
     }
     return _buildSafeImage(src, fit: BoxFit.contain);
   }

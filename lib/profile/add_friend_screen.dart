@@ -106,7 +106,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))
                 ]
               ),
               child: TextField(
@@ -114,11 +114,11 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
                 decoration: InputDecoration(
                   hintText: "Search by username...",
-                  hintStyle: TextStyle(color: textColor.withOpacity(0.4), fontWeight: FontWeight.w500, fontFamily: 'Inter'),
+                  hintStyle: TextStyle(color: textColor.withValues(alpha: 0.4), fontWeight: FontWeight.w500, fontFamily: 'Inter'),
                   prefixIcon: Icon(CupertinoIcons.search, color: theme.primaryColor),
                   suffixIcon: _searchQuery.isNotEmpty 
                       ? IconButton(
-                          icon: Icon(Icons.close_rounded, color: textColor.withOpacity(0.4)),
+                          icon: Icon(Icons.close_rounded, color: textColor.withValues(alpha: 0.4)),
                           onPressed: () {
                             _searchController.clear();
                             setState(() => _searchQuery = "");
@@ -138,7 +138,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
             child: Text(
               _searchQuery.isEmpty ? "Suggested Players" : "Search Results",
               style: TextStyle(
-                color: textColor.withOpacity(0.6), 
+                color: textColor.withValues(alpha: 0.6), 
                 fontWeight: FontWeight.w800, 
                 fontFamily: 'Inter', 
                 fontSize: 14, 
@@ -156,7 +156,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Center(child: Text("No users found.", style: TextStyle(color: textColor.withOpacity(0.5))));
+                  return Center(child: Text("No users found.", style: TextStyle(color: textColor.withValues(alpha: 0.5))));
                 }
 
                 DocumentSnapshot? currentUserDoc;
@@ -200,9 +200,9 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off_rounded, size: 64, color: textColor.withOpacity(0.2)),
+                        Icon(Icons.search_off_rounded, size: 64, color: textColor.withValues(alpha: 0.2)),
                         const SizedBox(height: 12),
-                        Text("No players match your search.", style: TextStyle(color: textColor.withOpacity(0.6), fontWeight: FontWeight.w600)),
+                        Text("No players match your search.", style: TextStyle(color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.w600)),
                       ],
                     ),
                   );
@@ -212,7 +212,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   itemCount: users.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final doc = users[index];
                     final data = doc.data() as Map<String, dynamic>;
@@ -282,19 +282,19 @@ class _UserCardState extends State<_UserCard> {
     if (avatarData == null || avatarData.isEmpty) {
       return CircleAvatar(
         radius: size / 2,
-        backgroundColor: theme.primaryColor.withOpacity(0.2),
+        backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
         child: Icon(Icons.person_rounded, size: size * 0.6, color: theme.primaryColor),
       );
     }
     if (avatarData.startsWith('data:image')) {
       try {
         final bytes = base64Decode(avatarData.split(',').last);
-        return CircleAvatar(radius: size / 2, backgroundImage: MemoryImage(bytes), backgroundColor: theme.primaryColor.withOpacity(0.2));
+        return CircleAvatar(radius: size / 2, backgroundImage: MemoryImage(bytes), backgroundColor: theme.primaryColor.withValues(alpha: 0.2));
       } catch (e) {
-        return CircleAvatar(radius: size / 2, backgroundColor: theme.disabledColor.withOpacity(0.2), child: Icon(Icons.broken_image_rounded, size: size * 0.5, color: theme.disabledColor));
+        return CircleAvatar(radius: size / 2, backgroundColor: theme.disabledColor.withValues(alpha: 0.2), child: Icon(Icons.broken_image_rounded, size: size * 0.5, color: theme.disabledColor));
       }
     } else {
-      return CircleAvatar(radius: size / 2, backgroundImage: NetworkImage(avatarData), backgroundColor: theme.primaryColor.withOpacity(0.2));
+      return CircleAvatar(radius: size / 2, backgroundImage: NetworkImage(avatarData), backgroundColor: theme.primaryColor.withValues(alpha: 0.2));
     }
   }
 
@@ -314,7 +314,7 @@ class _UserCardState extends State<_UserCard> {
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
@@ -398,7 +398,7 @@ class _UserCardState extends State<_UserCard> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: isFriends ? Colors.green.shade600 
-                     : isFollowing ? theme.disabledColor.withOpacity(0.2) 
+                     : isFollowing ? theme.disabledColor.withValues(alpha: 0.2) 
                      : theme.primaryColor,
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -413,7 +413,7 @@ class _UserCardState extends State<_UserCard> {
                       : isFollowing ? "Following" 
                       : (widget.isTargetFollowingMe ? "Follow Back" : "Follow"),
                     style: TextStyle(
-                      color: isFriends ? Colors.white : (isFollowing ? textColor.withOpacity(0.6) : theme.colorScheme.onPrimary),
+                      color: isFriends ? Colors.white : (isFollowing ? textColor.withValues(alpha: 0.6) : theme.colorScheme.onPrimary),
                       fontWeight: FontWeight.w800,
                       fontFamily: 'Inter',
                       fontSize: 13,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SignService {
@@ -11,11 +12,11 @@ class SignService {
       if (doc.exists) {
         return doc.data() as Map<String, dynamic>;
       } else {
-        print('Sign not found in database.');
+        debugPrint('Sign not found in database.');
         return null;
       }
     } catch (e) {
-      print('Error fetching sign: $e');
+      debugPrint('Error fetching sign: $e');
       return null;
     }
   }
@@ -32,7 +33,7 @@ class SignService {
           .map((doc) => doc.data() as Map<String, dynamic>)
           .toList();
     } catch (e) {
-      print('Error fetching category: $e');
+      debugPrint('Error fetching category: $e');
       return [];
     }
   }

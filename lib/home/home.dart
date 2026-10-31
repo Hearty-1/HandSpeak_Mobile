@@ -1,6 +1,5 @@
 import 'dart:ui'; 
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -98,7 +97,7 @@ class SnedInterafce1 extends StatelessWidget {
         width: size * scale,
         height: size * scale,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Icon(Icons.person, color: theme.primaryColor, size: 26 * scale),
+        errorBuilder: (_, _, _) => Icon(Icons.person, color: theme.primaryColor, size: 26 * scale),
       );
     }
   }
@@ -205,10 +204,10 @@ class SnedInterafce1 extends StatelessWidget {
           child: Container(
             padding: EdgeInsets.all(16 * scale),
             decoration: BoxDecoration(
-              color: theme.cardColor.withOpacity(0.6),
+              color: theme.cardColor.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(24 * scale),
-              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,9 +220,9 @@ class SnedInterafce1 extends StatelessWidget {
                       width: 58 * scale,
                       padding: EdgeInsets.all(10 * scale),
                       decoration: BoxDecoration(
-                        color: theme.scaffoldBackgroundColor.withOpacity(0.8),
+                        color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
                       ),
                       child: Image.asset(imagePath, fit: BoxFit.contain),
                     ),
@@ -245,13 +244,13 @@ class SnedInterafce1 extends StatelessWidget {
                 SizedBox(height: 4 * scale),
                 Row(
                   children: [
-                    Icon(Icons.history_rounded, size: 13 * scale, color: textColor.withOpacity(0.5)),
+                    Icon(Icons.history_rounded, size: 13 * scale, color: textColor.withValues(alpha: 0.5)),
                     SizedBox(width: 4 * scale),
                     Flexible(
                       child: Text(
                         _timeAgo(opened),
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: textColor.withOpacity(0.55), fontSize: 12 * scale, fontWeight: FontWeight.w600),
+                        style: TextStyle(color: textColor.withValues(alpha: 0.55), fontSize: 12 * scale, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -264,14 +263,14 @@ class SnedInterafce1 extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: progress,
                       minHeight: 7 * scale,
-                      backgroundColor: theme.dividerColor.withOpacity(0.15),
+                      backgroundColor: theme.dividerColor.withValues(alpha: 0.15),
                       color: accent,
                     ),
                   ),
                   SizedBox(height: 6 * scale),
                   Text(
                     complete ? L.t('Completed', 'Tapos na') : '$shownXp / $_moduleTargetXp XP',
-                    style: TextStyle(color: complete ? Colors.green : textColor.withOpacity(0.6), fontSize: 11.5 * scale, fontWeight: FontWeight.w700),
+                    style: TextStyle(color: complete ? Colors.green : textColor.withValues(alpha: 0.6), fontSize: 11.5 * scale, fontWeight: FontWeight.w700),
                   ),
                 ],
               ],
@@ -316,7 +315,7 @@ class SnedInterafce1 extends StatelessWidget {
         Text(title, style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
         if (subtitle != null) ...[
           SizedBox(height: 2 * scale),
-          Text(subtitle, style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13 * scale, fontWeight: FontWeight.w500)),
+          Text(subtitle, style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13 * scale, fontWeight: FontWeight.w500)),
         ],
         SizedBox(height: 14 * scale),
       ],
@@ -339,11 +338,11 @@ class SnedInterafce1 extends StatelessWidget {
               child: Container(
                 width: 92 * scale,
                 height: 92 * scale,
-                color: theme.scaffoldBackgroundColor.withOpacity(0.8),
+                color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
                 child: Image.asset(
                   'assets/pictures/$letter.jpg',
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Center(
+                  errorBuilder: (_, _, _) => Center(
                     child: Text(letter, style: TextStyle(fontSize: 44 * scale, fontWeight: FontWeight.w900, color: theme.primaryColor)),
                   ),
                 ),
@@ -361,7 +360,7 @@ class SnedInterafce1 extends StatelessWidget {
                   SizedBox(height: 2 * scale),
                   Text(
                     L.t('Copy the handshape, then try it on camera.', 'Gayahin ang porma ng kamay, saka subukan sa camera.'),
-                    style: TextStyle(color: textColor.withOpacity(0.65), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.3),
+                    style: TextStyle(color: textColor.withValues(alpha: 0.65), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.3),
                   ),
                   SizedBox(height: 10 * scale),
                   Row(
@@ -397,10 +396,10 @@ class SnedInterafce1 extends StatelessWidget {
           child: Container(
             padding: EdgeInsets.all(14 * scale),
             decoration: BoxDecoration(
-              color: theme.cardColor.withOpacity(0.6),
+              color: theme.cardColor.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(22 * scale),
-              border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 8))],
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 8))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -412,14 +411,14 @@ class SnedInterafce1 extends StatelessWidget {
                       width: 50 * scale,
                       padding: EdgeInsets.all(9 * scale),
                       decoration: BoxDecoration(
-                        color: theme.scaffoldBackgroundColor.withOpacity(0.8),
+                        color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
                         shape: BoxShape.circle,
                       ),
                       child: Image.asset(m.image, fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => Icon(m.icon, color: theme.primaryColor)),
+                          errorBuilder: (_, _, _) => Icon(m.icon, color: theme.primaryColor)),
                     ),
                     const Spacer(),
-                    Icon(Icons.arrow_forward_rounded, size: 18 * scale, color: textColor.withOpacity(0.4)),
+                    Icon(Icons.arrow_forward_rounded, size: 18 * scale, color: textColor.withValues(alpha: 0.4)),
                   ],
                 ),
                 SizedBox(height: 12 * scale),
@@ -434,7 +433,7 @@ class SnedInterafce1 extends StatelessWidget {
                   m.blurb,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 12 * scale, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12 * scale, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -466,7 +465,7 @@ class SnedInterafce1 extends StatelessWidget {
         children: [
           Container(
             padding: EdgeInsets.all(10 * scale),
-            decoration: BoxDecoration(color: theme.colorScheme.secondary.withOpacity(0.18), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: theme.colorScheme.secondary.withValues(alpha: 0.18), shape: BoxShape.circle),
             child: Icon(icon, color: theme.colorScheme.secondary, size: 26 * scale),
           ),
           SizedBox(width: 14 * scale),
@@ -477,7 +476,7 @@ class SnedInterafce1 extends StatelessWidget {
                 Text(title, style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800)),
                 SizedBox(height: 4 * scale),
                 Text(body,
-                    style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.4)),
+                    style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.4)),
               ],
             ),
           ),
@@ -516,13 +515,13 @@ class SnedInterafce1 extends StatelessWidget {
       child: _buildGlassContainer(
         context: context,
         scale: scale,
-        color: const Color(0xFFFF8227).withOpacity(0.85), 
+        color: const Color(0xFFFF8227).withValues(alpha: 0.85), 
         child: Row(
           children: [
             Container(
               padding: EdgeInsets.all(10 * scale),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.25),
+                color: Colors.white.withValues(alpha: 0.25),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.redeem_rounded, color: Colors.white, size: 36 * scale),
@@ -545,7 +544,7 @@ class SnedInterafce1 extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9), 
+                      color: Colors.white.withValues(alpha: 0.9), 
                       fontSize: 13 * scale, 
                       fontWeight: FontWeight.w600,
                     ), 
@@ -553,7 +552,7 @@ class SnedInterafce1 extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(0.8), size: 20 * scale),
+            Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withValues(alpha: 0.8), size: 20 * scale),
           ],
         ),
       ),
@@ -575,7 +574,9 @@ class SnedInterafce1 extends StatelessWidget {
     final bool canNotifications = roles.can(AppFeature.notifications);
 
     final double screenWidth = MediaQuery.of(context).size.width; 
-    final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393; 
+    // Screen width can be 0 for a frame (startup / resize): never scale to 0
+    // (a 0-height progress bar is an assertion error).
+    final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble(); 
 
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
@@ -639,7 +640,7 @@ class SnedInterafce1 extends StatelessWidget {
           backgroundColor: theme.scaffoldBackgroundColor, 
           
           drawer: Drawer(
-            backgroundColor: theme.cardColor.withOpacity(0.95), 
+            backgroundColor: theme.cardColor.withValues(alpha: 0.95), 
             elevation: 0,
             child: Column(
               children: [
@@ -673,7 +674,7 @@ class SnedInterafce1 extends StatelessWidget {
                         Text(
                           L.t('${roles.roleLabel} access', 'Access ng ${roles.roleLabel}'),
                           style: TextStyle(
-                            color: theme.colorScheme.onPrimary.withOpacity(0.85),
+                            color: theme.colorScheme.onPrimary.withValues(alpha: 0.85),
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -833,7 +834,7 @@ class SnedInterafce1 extends StatelessWidget {
 
           appBar: AppBar(
             toolbarHeight: 65,
-            backgroundColor: theme.cardColor.withOpacity(0.4),
+            backgroundColor: theme.cardColor.withValues(alpha: 0.4),
             elevation: 0,
             centerTitle: true,
             iconTheme: theme.iconTheme.copyWith(color: textColor),
@@ -855,7 +856,7 @@ class SnedInterafce1 extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
                   ),
                   child: ClipOval(
                     child: Image.asset(
@@ -899,7 +900,7 @@ class SnedInterafce1 extends StatelessWidget {
                   height: 250,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: theme.primaryColor.withOpacity(0.25),
+                    color: theme.primaryColor.withValues(alpha: 0.25),
                   ),
                 ),
               ),
@@ -911,7 +912,7 @@ class SnedInterafce1 extends StatelessWidget {
                   height: 300,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: theme.colorScheme.secondary.withOpacity(0.15),
+                    color: theme.colorScheme.secondary.withValues(alpha: 0.15),
                   ),
                 ),
               ),
@@ -943,8 +944,8 @@ class SnedInterafce1 extends StatelessWidget {
                             height: 48 * scale,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: theme.cardColor.withOpacity(0.6),
-                              border: Border.all(color: theme.primaryColor.withOpacity(0.5), width: 1.5),
+                              color: theme.cardColor.withValues(alpha: 0.6),
+                              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.5), width: 1.5),
                             ),
                             child: ClipOval(
                               child: _buildAvatarImage(context, avatarUrl, scale),
@@ -967,7 +968,7 @@ class SnedInterafce1 extends StatelessWidget {
                     _buildGlassContainer(
                       context: context,
                       scale: scale,
-                      color: theme.primaryColor.withOpacity(0.85), 
+                      color: theme.primaryColor.withValues(alpha: 0.85), 
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                         crossAxisAlignment: CrossAxisAlignment.center, 
@@ -990,7 +991,7 @@ class SnedInterafce1 extends StatelessWidget {
                                     roles.role == UserRole.parent
                                         ? L.t('Learn Filipino Sign Language with your child, one sign at a time.', 'Matuto ng Filipino Sign Language kasama ang anak mo, isang senyas sa bawat araw.')
                                         : L.t('Explore the lessons your students learn, sign by sign.', 'Tingnan ang mga aralin ng iyong mga estudyante, senyas sa senyas.'),
-                                    style: TextStyle(color: theme.colorScheme.onPrimary.withOpacity(0.9), fontSize: 14 * scale, fontWeight: FontWeight.w600, height: 1.3),
+                                    style: TextStyle(color: theme.colorScheme.onPrimary.withValues(alpha: 0.9), fontSize: 14 * scale, fontWeight: FontWeight.w600, height: 1.3),
                                   ),
                                   SizedBox(height: 12 * scale),
                                   Wrap(
@@ -1004,7 +1005,7 @@ class SnedInterafce1 extends StatelessWidget {
                                         Container(
                                           padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 5 * scale),
                                           decoration: BoxDecoration(
-                                            color: theme.colorScheme.onPrimary.withOpacity(0.2),
+                                            color: theme.colorScheme.onPrimary.withValues(alpha: 0.2),
                                             borderRadius: BorderRadius.circular(14 * scale),
                                           ),
                                           child: Row(
@@ -1023,7 +1024,7 @@ class SnedInterafce1 extends StatelessWidget {
                                 SizedBox(height: 12 * scale), 
                                 Text(
                                   L.t('Level $currentLevel', 'Level $currentLevel'), 
-                                  style: TextStyle(color: theme.colorScheme.onPrimary.withOpacity(0.9), fontSize: 16 * scale, fontWeight: FontWeight.w700), 
+                                  style: TextStyle(color: theme.colorScheme.onPrimary.withValues(alpha: 0.9), fontSize: 16 * scale, fontWeight: FontWeight.w700), 
                                 ),
                                 SizedBox(height: 6 * scale), 
                                 
@@ -1031,7 +1032,7 @@ class SnedInterafce1 extends StatelessWidget {
                                   height: 26 * scale, 
                                   width: double.infinity, 
                                   decoration: BoxDecoration(
-                                    color: theme.colorScheme.onPrimary.withOpacity(0.3), 
+                                    color: theme.colorScheme.onPrimary.withValues(alpha: 0.3), 
                                     borderRadius: BorderRadius.circular(13 * scale), 
                                   ),
                                   child: Stack(
@@ -1041,7 +1042,7 @@ class SnedInterafce1 extends StatelessWidget {
                                         decoration: BoxDecoration(
                                           color: theme.colorScheme.onPrimary, 
                                           borderRadius: BorderRadius.circular(13 * scale), 
-                                          boxShadow: [BoxShadow(color: theme.colorScheme.onPrimary.withOpacity(0.5), blurRadius: 8)],
+                                          boxShadow: [BoxShadow(color: theme.colorScheme.onPrimary.withValues(alpha: 0.5), blurRadius: 8)],
                                         ),
                                       ),
                                       Align(
@@ -1070,11 +1071,11 @@ class SnedInterafce1 extends StatelessWidget {
                           Container(
                             padding: EdgeInsets.all(12 * scale),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.onPrimary.withOpacity(0.2),
+                              color: theme.colorScheme.onPrimary.withValues(alpha: 0.2),
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: theme.colorScheme.onPrimary.withOpacity(0.2), 
+                                  color: theme.colorScheme.onPrimary.withValues(alpha: 0.2), 
                                   blurRadius: 20, 
                                   spreadRadius: 5
                                 )
@@ -1151,11 +1152,11 @@ class SnedInterafce1 extends StatelessWidget {
           width: double.infinity,
           padding: EdgeInsets.all(22 * scale),
           decoration: BoxDecoration(
-            color: color ?? theme.cardColor.withOpacity(0.6),
+            color: color ?? theme.cardColor.withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(24 * scale),
-            border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10)),
             ],
           ),
           child: child,
@@ -1176,9 +1177,9 @@ class SnedInterafce1 extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 8 * scale), 
           decoration: BoxDecoration(
-            color: theme.cardColor.withOpacity(0.6), 
+            color: theme.cardColor.withValues(alpha: 0.6), 
             borderRadius: BorderRadius.circular(20 * scale), 
-            border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.0), 
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0), 
           ),
           child: Row(
             children: [
@@ -1219,7 +1220,9 @@ class InfoDetailScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final double screenWidth = MediaQuery.of(context).size.width;
-    final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393;
+    // Screen width can be 0 for a frame (startup / resize): never scale to 0
+    // (a 0-height progress bar is an assertion error).
+    final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble();
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor, 
@@ -1259,7 +1262,7 @@ class InfoDetailScreen extends StatelessWidget {
                 Text(
                   section.body,
                   style: TextStyle(
-                    color: textColor.withOpacity(0.85),
+                    color: textColor.withValues(alpha: 0.85),
                     fontSize: 14 * scale,
                     height: 1.6, 
                   ),
@@ -1283,7 +1286,9 @@ class AboutUsScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final double screenWidth = MediaQuery.of(context).size.width;
-    final double scale = screenWidth / 393 > 1.2 ? 1.2 : screenWidth / 393;
+    // Screen width can be 0 for a frame (startup / resize): never scale to 0
+    // (a 0-height progress bar is an assertion error).
+    final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble();
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -1311,9 +1316,9 @@ class AboutUsScreen extends StatelessWidget {
               width: 100 * scale,
               height: 100 * scale,
               decoration: BoxDecoration(
-                color: textColor.withOpacity(0.05),
+                color: textColor.withValues(alpha: 0.05),
                 shape: BoxShape.circle,
-                border: Border.all(color: textColor.withOpacity(0.1)),
+                border: Border.all(color: textColor.withValues(alpha: 0.1)),
               ),
               child: Center(
                 child: Image.asset('assets/pictures/image 66.png', fit: BoxFit.contain), 
@@ -1338,7 +1343,7 @@ class AboutUsScreen extends StatelessWidget {
           SizedBox(height: 8 * scale),
           Text(
             L.t('HandSpeak is a gamified Filipino Sign Language (FSL) learning adventure equipped with real-time gesture recognition. Our goal is to level up foundational literacy and boost school-wide inclusivity at Sto. Tomas North Central School (STNCS).', 'Ang HandSpeak ay isang larong pag-aaral ng Filipino Sign Language (FSL) na may real-time na pagkilala ng senyas. Layunin naming paunlarin ang batayang literasiya at ang inklusibong pag-aaral sa Sto. Tomas North Central School (STNCS).'),
-            style: TextStyle(color: textColor.withOpacity(0.85), fontSize: 14 * scale, height: 1.6),
+            style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6),
             textAlign: TextAlign.justify,
           ),
           SizedBox(height: 28 * scale),
@@ -1347,7 +1352,7 @@ class AboutUsScreen extends StatelessWidget {
           SizedBox(height: 8 * scale),
           Text(
             L.t('This digital learning world was forged as a Capstone Project by developers from the College of Informatics and Computing Sciences at Batangas State University - JPLPC Malvar Campus.', 'Ang digital na mundong ito ng pag-aaral ay ginawa bilang Capstone Project ng mga developer mula sa College of Informatics and Computing Sciences ng Batangas State University - JPLPC Malvar Campus.'),
-            style: TextStyle(color: textColor.withOpacity(0.85), fontSize: 14 * scale, height: 1.6),
+            style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6),
             textAlign: TextAlign.justify,
           ),
           SizedBox(height: 16 * scale),
@@ -1369,9 +1374,9 @@ class AboutUsScreen extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(16 * scale),
       decoration: BoxDecoration(
-        color: textColor.withOpacity(0.03),
+        color: textColor.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(12 * scale),
-        border: Border.all(color: textColor.withOpacity(0.05)),
+        border: Border.all(color: textColor.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: [
@@ -1383,9 +1388,9 @@ class AboutUsScreen extends StatelessWidget {
           ),
           Row(
             children: [
-              Icon(Icons.link_rounded, color: textColor.withOpacity(0.5), size: 20 * scale),
+              Icon(Icons.link_rounded, color: textColor.withValues(alpha: 0.5), size: 20 * scale),
               SizedBox(width: 12 * scale),
-              Icon(Icons.email_outlined, color: textColor.withOpacity(0.5), size: 20 * scale),
+              Icon(Icons.email_outlined, color: textColor.withValues(alpha: 0.5), size: 20 * scale),
             ],
           )
         ],

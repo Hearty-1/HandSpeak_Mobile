@@ -87,14 +87,14 @@ class _NotificationBellState extends State<NotificationBell> with SingleTickerPr
                   height: 40,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: theme.cardColor.withOpacity(0.4),
+                    color: theme.cardColor.withValues(alpha: 0.4),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2), 
+                      color: Colors.white.withValues(alpha: 0.2), 
                       width: 1.2,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -115,7 +115,7 @@ class _NotificationBellState extends State<NotificationBell> with SingleTickerPr
                               alignment: Alignment.topCenter,
                               child: Icon(
                                 Icons.notifications_rounded,
-                                color: hasUnreadNotifications ? theme.primaryColor : textColor.withOpacity(0.8),
+                                color: hasUnreadNotifications ? theme.primaryColor : textColor.withValues(alpha: 0.8),
                                 size: 24,
                               ),
                             );
@@ -144,7 +144,7 @@ class _NotificationBellState extends State<NotificationBell> with SingleTickerPr
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: const Color(0xFFF34B1B).withOpacity(0.6),
+                                          color: const Color(0xFFF34B1B).withValues(alpha: 0.6),
                                           blurRadius: 6 * _pulseAnimation.value,
                                           spreadRadius: 1.5 * _pulseAnimation.value,
                                         ),

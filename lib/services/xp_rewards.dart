@@ -37,6 +37,6 @@ class XpRewards {
   static const int phrasePractice = practiceSign;
   static const int civicPractice = practiceSign;
 
-  /// Mastery record keys (users.tutorialMastery.<key>).
+  /// Mastery record keys (`users.tutorialMastery.<key>`).
   static String practiceKey(String category) => 'practice_$category';
 }
