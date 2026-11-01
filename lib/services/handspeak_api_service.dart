@@ -27,12 +27,12 @@ class HandSpeakModels {
   /// sagot ng live URL (hal. hindi pa nailipat ang traffic sa bagong revision),
   /// ipinapadala ulit sa tagged revision. Kapag nailipat na ang traffic, ang
   /// live URL na mismo ang ginagamit; walang kailangang baguhin dito.
-  static const Map<String, StagedRawModel> stagedRawModels = {
-    lupangHinirang: StagedRawModel(
-      checkpoint: 'palm_lupang_v9_switch',
-      url: 'https://lupang-v9---handspeak-inference-xo2j6ffgta-as.a.run.app',
-    ),
-  };
+  ///
+  /// Empty: every model is read from the live service, so a model the web
+  /// app retrains and deploys is used as soon as it takes the traffic. (A
+  /// pinned checkpoint here made the app skip a retrained Lupang model and
+  /// keep asking the old tagged revision.)
+  static const Map<String, StagedRawModel> stagedRawModels = {};
 }
 
 /// Inaasahang `source_checkpoint` ng isang raw model + tagged revision URL nito.

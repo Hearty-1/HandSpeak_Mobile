@@ -2031,24 +2031,43 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
         );
       }
 
-      var result = await send(frames);
-      // Some training clips are the sign only, start to end, with no rest
-      // around it (e.g. the Setyembre samples: activeS = durationS = 2.08 s).
-      // If the first clip does not pass, the same capture is sent once more
-      // cut the other way (tight = the sign only, without raising / lowering
-      // the hands; or with the margin when tight went first), and the better
-      // answer for the practised sign is used.
-      if (!_assess(result).passed) {
-        final tight = _TrainingClip.from(all, settings, tight: !settings.tightFirst);
-        if (tight.frames.length >= 8 && tight.frames.length != frames.length && tight.problem() == null) {
-          final second = await send(tight.frames);
-          debugPrint('Published model tight clip (${tight.describe()}): ${second.raw}');
-          if (_assess(second).passed || _assess(second).share > _assess(result).share) {
-            result = second;
-            _clipInfo = '${settings.tightFirst ? 'with margin' : 'tight'}: ${tight.describe()}';
-          }
+      // The capture is sent as the training-shaped clip first. If it does not
+      // pass, the same capture is tried in other shapes, stopping at the first
+      // that passes; otherwise the answer closest to a pass is used:
+      //  - unsmoothed: the server's motion gates (LOW_MOTION, SINGLE_STROKE)
+      //    were calibrated on training videos, and smoothing a slow phone
+      //    camera's landmarks can push a real sign under them;
+      //  - cut the other way (tight = the sign only, without raising /
+      //    lowering the hands; or with the margin when tight went first):
+      //    some training clips are the sign only (Setyembre: activeS =
+      //    durationS = 2.08 s).
+      final alt = _TrainingClip.from(all, settings, tight: !settings.tightFirst);
+      final tries = <(String, List<RawFrame>)>[
+        ('', frames),
+        ('unsmoothed', clip.unsmoothed),
+        if (alt.problem() == null) (settings.tightFirst ? 'with margin' : 'tight', alt.frames),
+        if (alt.problem() == null) ('${settings.tightFirst ? 'with margin' : 'tight'}, unsmoothed', alt.unsmoothed),
+      ];
+      RawPredictResponse? result;
+      var resultRank = -1.0;
+      for (final (name, fs) in tries) {
+        if (fs.length < 2) continue;
+        final r = await send(fs);
+        final a = _assess(r);
+        debugPrint('Published model try ${name.isEmpty ? 'training clip' : name} (${fs.length} frames): '
+            '${r.accepted ? 'accepted' : 'rejected ${r.rejection?.code ?? '-'} ${r.failedChecks}'}'
+            '${a.passed ? ' PASS' : ''}, target share ${(a.share * 100).toStringAsFixed(0)}%'
+            '${[for (final c in r.checks) if (!c.passed) ' | ${c.label} ${c.text}'].join()}');
+        // A model answer beats a gate rejection; then the practised sign's share.
+        final rank = (a.passed ? 10.0 : 0.0) + (r.topK.isNotEmpty ? 1.0 : 0.0) + a.share;
+        if (rank > resultRank) {
+          result = r;
+          resultRank = rank;
+          if (name.isNotEmpty) _clipInfo = '$name: ${name.startsWith('tight') || name.startsWith('with') ? alt.describe() : clip.describe()}';
         }
+        if (a.passed || !mounted || _disposed) break;
       }
+      if (result == null) return;
       if (!mounted || _disposed) return;
       debugPrint('Published model ${_model.modelId} response: ${result.raw}');
       _judge(result);
@@ -2140,6 +2159,32 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
         L.t('Try ${_target.name} again. Follow the example.', 'Subukang muli ang ${_target.name}. Sundan ang halimbawa.') + debug,
         FeedbackTone.tryAgain,
       );
+    } else if (result.topK.isEmpty && result.rejection != null) {
+      // Stopped by the server's capture checks before the model answered.
+      final code = result.rejection!.code;
+      final why = '\n${L.t('Reason', 'Dahilan')}: ${result.rejection!.message}';
+      final (title, message) = switch (code) {
+        'LOW_MOTION' || 'SINGLE_STROKE' => (
+            L.t('Move a little more', 'Igalaw nang mas malinaw'),
+            L.t('The camera saw too little movement. Do the whole sign with clear, full movements, like the example.',
+                'Kaunti lang ang galaw na nakita. Gawin ang buong kumpas nang malinaw at buo ang galaw, gaya ng halimbawa.'),
+          ),
+        'TOO_SHORT' || 'FRAGMENT_DURATION' => (
+            L.t('A little too fast!', 'Medyo mabilis!'),
+            L.t('Do the whole sign, at a normal speed.', 'Gawin ang buong kumpas sa normal na bilis.'),
+          ),
+        'OUT_OF_FRAME' || 'NO_HANDS' || 'LOW_LANDMARKS' => (
+            L.t('Keep your hands in view', 'Panatilihing kita ang mga kamay'),
+            L.t('Sign in front of your chest, with both hands fully inside the camera.',
+                'Gawin ang kumpas sa harap ng dibdib, buo ang mga kamay sa loob ng camera.'),
+          ),
+        _ => (
+            L.t('Try again', 'Subukang muli'),
+            L.t('The sign was not recognized. Follow the example and sign it clearly.',
+                'Hindi makilala ang kumpas. Sundan ang halimbawa at gawin nang malinaw.'),
+          ),
+      };
+      _show(title, message + (kDebugMode ? why + debug : ''), FeedbackTone.tryAgain);
     } else {
       _show(
         L.t('Try again', 'Subukang muli'),
@@ -2557,11 +2602,12 @@ class _RecordControls extends StatelessWidget {
 }
 
 /// A practice capture shaped like the web's training clips
-/// (gesture_training_samples, validated by the web pipeline): the sign
-/// itself with a short margin (training: ~1.0 s of signing in a ~1.8 s clip),
-/// body and hands in view in every frame, no hand cut off at the edge. The
-/// server resamples the whole clip to 32 steps, so a phone capture with
-/// seconds of waiting around the sign squeezes the sign into a few steps.
+/// (gesture_training_samples, validated by the web pipeline). The server
+/// resamples the whole clip to 32 steps, so the sign must fill the same share
+/// of the clip as in training: the capture is cut to the training clip length
+/// of the sign (PracticeSettings.clipS, e.g. ~1.8 s for Calendar, ~4 s for
+/// Drinks) centred on the moving part; without it, to the moving part plus
+/// a short margin.
 class _TrainingClip {
   final List<RawFrame> frames;
   final double durationS;
@@ -2573,11 +2619,35 @@ class _TrainingClip {
   /// Limits: the web's validation thresholds, per model / sign.
   final PracticeSettings settings;
 
-  const _TrainingClip(this.frames, this.durationS, this.activeS, this.handCoverage, this.poseCoverage, this.outOfFrame, this.settings);
+  /// The same frames without smoothing (sent when the smoothed clip is
+  /// stopped by the server's motion gates).
+  final List<RawFrame> unsmoothed;
 
-  /// Hand moved between two frames: mean |dx| + |dy| of its 21 points
-  /// above this share of the image (handshape changes count too).
-  static const double _motion = 0.008;
+  const _TrainingClip(this.frames, this.durationS, this.activeS, this.handCoverage, this.poseCoverage, this.outOfFrame, this.settings,
+      [this.unsmoothed = const []]);
+
+  /// Hand moved: mean |dx| + |dy| of its 21 points over [_windowMs] above
+  /// this share of the image (handshape changes count too). Measured over a
+  /// fixed time, not between frames, so it does not depend on the camera's
+  /// frame rate (the same threshold per frame missed slow, small signs such
+  /// as Cold at 30-60 fps).
+  static const double _motion = 0.016;
+  static const int _windowMs = 100;
+
+  /// First and last index of the moving part, or (-1, -1).
+  static (int, int) _activeSpan(List<RawFrame> fs) {
+    var first = -1, last = -1, j = 0;
+    for (var i = 1; i < fs.length; i++) {
+      while (j < i - 1 && fs[i].timeMs - fs[j + 1].timeMs >= _windowMs) {
+        j++;
+      }
+      if (_moved(fs[j], fs[i]) > _motion) {
+        if (first == -1) first = j;
+        last = i;
+      }
+    }
+    return (first, last);
+  }
 
 
   static bool _inFrame(List<List<double>>? hand) {
@@ -2618,19 +2688,23 @@ class _TrainingClip {
     }
     final margin = tight ? 0 : settings.marginMs;
 
-    // The moving part, plus a short margin like the training clips.
-    var first = -1, last = -1;
-    for (var i = 1; i < frames.length; i++) {
-      if (_moved(frames[i - 1], frames[i]) > _motion) {
-        if (first == -1) first = i - 1;
-        last = i;
-      }
-    }
+    final (first, last) = _activeSpan(frames);
     var activeS = 0.0;
     if (first != -1) {
-      activeS = (frames[last].timeMs - frames[first].timeMs) / 1000.0;
-      final from = frames[first].timeMs - margin, to = frames[last].timeMs + margin;
-      frames = frames.where((f) => f.timeMs >= from && f.timeMs <= to).toList();
+      final a = frames[first].timeMs, b = frames[last].timeMs;
+      activeS = (b - a) / 1000.0;
+      final clipMs = (settings.clipS * 1000).round();
+      if (!tight && clipMs > b - a) {
+        // The training clip length, centred on the sign and kept inside the
+        // recording. Like the training clips, this keeps the rest before and
+        // after the sign, frames without hands included.
+        final start = all.first.timeMs, end = all.last.timeMs;
+        final from = ((a + b - clipMs) / 2).round().clamp(start, math.max(start, end - clipMs));
+        frames = all.where((f) => f.timeMs >= from && f.timeMs <= from + clipMs).toList();
+      } else {
+        // The moving part, plus a short margin.
+        frames = frames.where((f) => f.timeMs >= a - margin && f.timeMs <= b + margin).toList();
+      }
     }
 
     final n = frames.isEmpty ? 1 : frames.length;
@@ -2638,16 +2712,21 @@ class _TrainingClip {
     final withPose = frames.where((f) => f.pose != null).length;
     final cutOff = frames.where((f) => (f.leftHand != null && !_inFrame(f.leftHand)) || (f.rightHand != null && !_inFrame(f.rightHand))).length;
     final duration = frames.length < 2 ? 0.0 : (frames.last.timeMs - frames.first.timeMs) / 1000.0;
-    return _TrainingClip(_smooth(frames), duration, activeS, withHands / n, withPose / n, cutOff / n, settings);
+    return _TrainingClip(_smooth(frames), duration, activeS, withHands / n, withPose / n, cutOff / n, settings, frames);
   }
 
   /// Training ran MediaPipe Holistic with smooth_landmarks=true; the phone's
   /// landmarks are raw. A light running average per point (restarted when a
   /// hand / the body was not detected) removes the frame-to-frame jitter.
-  static const double _keep = 0.4; // share of the previous smoothed value
+  /// [_keep] is the share of the previous value 50 ms earlier; with fewer
+  /// frames per second it shrinks (0.4 at 20 fps, ~0.1 at 8 fps), so a slow
+  /// phone camera does not flatten the movement (and the server's motion
+  /// energy, LOW_MOTION) as well.
+  static const double _keep = 0.4;
 
   static List<RawFrame> _smooth(List<RawFrame> frames) {
     List<List<double>>? prevPose, prevLeft, prevRight;
+    var keep = _keep;
     List<List<double>>? step(List<List<double>>? now, List<List<double>>? prev) {
       if (now == null) return null;
       if (prev == null || prev.length != now.length) return now;
@@ -2655,14 +2734,18 @@ class _TrainingClip {
         for (var i = 0; i < now.length; i++)
           [
             for (var k = 0; k < now[i].length; k++)
-              k < 3 && k < prev[i].length ? _keep * prev[i][k] + (1 - _keep) * now[i][k] : now[i][k]
+              k < 3 && k < prev[i].length ? keep * prev[i][k] + (1 - keep) * now[i][k] : now[i][k]
           ]
       ];
     }
 
+    int? lastMs;
     return [
       for (final f in frames)
         () {
+          final dt = lastMs == null ? 50 : (f.timeMs - lastMs!).clamp(1, 1000);
+          lastMs = f.timeMs;
+          keep = math.pow(_keep, dt / 50).toDouble();
           prevPose = step(f.pose, prevPose);
           prevLeft = step(f.leftHand, prevLeft);
           prevRight = step(f.rightHand, prevRight);
@@ -2690,7 +2773,9 @@ class _TrainingClip {
             'Gawin ang kumpas sa harap ng dibdib, buo ang mga kamay sa loob ng camera.'),
       );
     }
-    if (activeS < settings.minActiveS) {
+    // The web measures motion its own way; the phone's estimate only stops
+    // captures with clearly too little signing, the model judges the rest.
+    if (activeS < settings.minActiveS * 0.5) {
       return (
         title: L.t('A little too fast!', 'Medyo mabilis!'),
         message: L.t('Do the whole sign, at a normal speed.', 'Gawin ang buong kumpas sa normal na bilis.'),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
@@ -20,6 +22,9 @@ class PublishedGestureClass {
     required this.lessonSymbol,
     this.practice = PracticeSettings.defaults,
   });
+
+  PublishedGestureClass withPractice(PracticeSettings p) =>
+      PublishedGestureClass(index: index, key: key, label: label, lessonSymbol: lessonSymbol, practice: p);
 
   /// Shown to the learner: label, else key.
   String get name => label.trim().isNotEmpty ? label.trim() : key.trim();
@@ -59,6 +64,13 @@ class PracticeSettings {
   /// training clips have no rest around the sign (activeS = durationS).
   final bool tightFirst;
 
+  /// Length (s) of this sign's training clips, rest included (median of the
+  /// uploaded samples, e.g. 1.8 s for Calendar, 4.05 s for Drinks). The
+  /// practice capture is cut to the same length around the sign, so the sign
+  /// fills the same share of the model's 32 time steps as in training.
+  /// 0 = unknown: cut to the sign plus [marginMs].
+  final double clipS;
+
   const PracticeSettings({
     this.minConfidence = 0.70,
     this.minSignShare = 0.20,
@@ -69,6 +81,7 @@ class PracticeSettings {
     this.maxOutOfFrame = 0.2,
     this.marginMs = 400,
     this.tightFirst = false,
+    this.clipS = 0,
   });
 
   static const PracticeSettings defaults = PracticeSettings();
@@ -95,6 +108,7 @@ class PracticeSettings {
       maxOutOfFrame: d(['maxOutOfFrame', 'max_out_of_frame'], maxOutOfFrame),
       marginMs: d(['marginMs', 'margin_ms'], marginMs.toDouble()).round(),
       tightFirst: m['tightFirst'] is bool ? m['tightFirst'] as bool : tightFirst,
+      clipS: d(['clipS', 'clip_s'], clipS),
     );
   }
 }
@@ -181,6 +195,17 @@ class PublishedGestureModel {
     );
   }
 
+  PublishedGestureModel withClasses(List<PublishedGestureClass> c) => PublishedGestureModel(
+        modelId: modelId,
+        serviceUrl: serviceUrl,
+        name: name,
+        category: category,
+        invalidIndex: invalidIndex,
+        modelVersion: modelVersion,
+        classes: c,
+        practice: practice,
+      );
+
   PublishedGestureClass? classAt(int index) {
     for (final c in classes) {
       if (c.index == index) return c;
@@ -209,34 +234,131 @@ class PublishedGestureModel {
 
 /// Published models by category, read once per app session.
 class PublishedGestureModels {
-  static final Map<String, Future<PublishedGestureModel?>> _cache = {};
 
   /// The active published model of [categoryId] (also tried in lower case),
   /// or null when there is none, it is inactive, or Firestore cannot be read
   /// (offline). A failed read is not cached, so it is tried again later.
+  /// Categories whose published model is switched off in the app (testing):
+  /// they practise without a model, as before one was published. Remove an
+  /// entry to connect the model again.
+  /// (activity_categories document ids, lower case: practice2final = Calendar.)
+  static const Set<String> disconnected = {};
+
   static Future<PublishedGestureModel?> forCategory(String categoryId) {
     final id = categoryId.trim();
-    if (id.isEmpty) return Future.value(null);
-    return _cache[id] ??= _fetch(id).then((m) => m, onError: (Object e) {
-      debugPrint('Published model lookup failed for $id: $e');
-      _cache.remove(id);
-      return null;
+    if (id.isEmpty || disconnected.contains(id.toLowerCase())) return Future.value(null);
+    _watch(id);
+    final model = _latest.containsKey(id)
+        ? Future.value(_latest[id])
+        : _first[id]!.future.timeout(const Duration(seconds: 10), onTimeout: () => null);
+    return model.then((m) => m == null ? null : _withTrainingShape(m));
+  }
+
+  // ---- training clip shape ----------------------------------------------------
+
+  static final Map<String, Future<PublishedGestureModel>> _shaped = {};
+
+  /// [m] with each sign's training clip length (PracticeSettings.clipS), the
+  /// median durationS of the category's validated training samples
+  /// (gesture_training_samples.validation.metrics). Every gesture set records
+  /// its clips differently (Calendar: ~1.8 s, the sign with a short rest;
+  /// Drinks: 4 s, ~1.5 s of signing in the middle), and the server resamples
+  /// the whole clip to 32 steps, so the phone's clip must have the same length
+  /// around the sign. A clipS set on the web (practice / classes[].practice)
+  /// wins. Read once per model version; on failure the model is used as is.
+  static Future<PublishedGestureModel> _withTrainingShape(PublishedGestureModel m) {
+    final key = '${m.modelId}|${m.modelVersion}';
+    return _shaped[key] ??= _readTrainingShape(m).catchError((Object e) {
+      debugPrint('Training clip shape for ${m.modelId} not read: $e');
+      _shaped.remove(key);
+      return m;
     });
   }
 
-  static Future<PublishedGestureModel?> _fetch(String id) async {
+  static Future<PublishedGestureModel> _readTrainingShape(PublishedGestureModel m) async {
+    if (m.category.isEmpty || m.classes.every((c) => c.practice.clipS > 0)) return m;
     final snap = await FirebaseFirestore.instance
+        .collection('gesture_training_samples')
+        .where('category', isEqualTo: m.category)
+        .limit(2000)
+        .get();
+    final byClass = <String, List<double>>{};
+    final all = <double>[];
+    for (final doc in snap.docs) {
+      final d = doc.data();
+      if (d['status'] != 'valid') continue;
+      final v = d['validation'];
+      final metrics = v is Map ? v['metrics'] : null;
+      final dur = metrics is Map ? metrics['durationS'] : null;
+      if (dur is! num || dur <= 0) continue;
+      all.add(dur.toDouble());
+      for (final k in [d['classKey'], d['classLabel']]) {
+        if (k != null && '$k'.trim().isNotEmpty) (byClass['$k'.trim()] ??= []).add(dur.toDouble());
+      }
+    }
+    if (all.isEmpty) return m;
+    double median(List<double> xs) => (List.of(xs)..sort())[xs.length ~/ 2];
+    final overall = median(all);
+    final classes = [
+      for (final c in m.classes)
+        c.practice.clipS > 0
+            ? c
+            : c.withPractice(c.practice.merge({'clipS': median(byClass[c.key] ?? byClass[c.label] ?? all)})),
+    ];
+    debugPrint('Training clip length for ${m.modelId}: median ${overall.toStringAsFixed(2)} s '
+        '(${all.length} samples; ${[for (final c in classes) '${c.name} ${c.practice.clipS.toStringAsFixed(2)}'].join(', ')})');
+    return m.withClasses(classes);
+  }
+
+  // A live Firestore listener per category: a model published, replaced or
+  // switched off on the web reaches the app within seconds, without a restart.
+  static final Map<String, StreamSubscription<QuerySnapshot<Map<String, dynamic>>>> _subs = {};
+  static final Map<String, PublishedGestureModel?> _latest = {};
+  static final Map<String, Completer<PublishedGestureModel?>> _first = {};
+
+  static void _watch(String id) {
+    if (_subs.containsKey(id)) return;
+    final first = _first[id] = Completer<PublishedGestureModel?>();
+    void done(PublishedGestureModel? m) {
+      if (!first.isCompleted) first.complete(m);
+    }
+
+    _subs[id] = FirebaseFirestore.instance
         .collection('published_gesture_models')
         .where('category', whereIn: {id, id.toLowerCase()}.toList())
         .where('active', isEqualTo: true)
-        .get();
-    final models = [for (final d in snap.docs) PublishedGestureModel.fromDoc(d)].whereType<PublishedGestureModel>().toList();
-    // Offline with nothing cached: do not remember "no model" for the session.
-    if (models.isEmpty && snap.metadata.isFromCache) throw StateError('offline');
-    if (models.isEmpty) return null;
-    if (models.length > 1) {
-      debugPrint('Several active published models for $id: ${models.map((m) => m.modelId)}; using ${models.first.modelId}');
+        .snapshots()
+        .listen((snap) {
+      final docs = [...snap.docs]..sort((a, b) => _time(b.data()).compareTo(_time(a.data())));
+      final models = [for (final d in docs) PublishedGestureModel.fromDoc(d)].whereType<PublishedGestureModel>().toList();
+      // Offline with nothing cached: no answer yet, wait for the server.
+      if (models.isEmpty && snap.metadata.isFromCache) {
+        done(null);
+        return;
+      }
+      final model = models.isEmpty ? null : models.first;
+      if (models.length > 1) {
+        debugPrint('Several active published models for $id: ${models.map((m) => m.modelId)}; using the newest, ${model!.modelId}');
+      }
+      if (_latest[id]?.modelId != model?.modelId) debugPrint('Published model for $id: ${model?.modelId ?? 'none'}');
+      _latest[id] = model;
+      done(model);
+    }, onError: (Object e) {
+      debugPrint('Published model lookup failed for $id: $e');
+      done(null);
+      // Tried again on the next lookup.
+      _subs.remove(id)?.cancel();
+      _first.remove(id);
+      _latest.remove(id);
+    });
+  }
+
+  /// Newest first when several models are active.
+  static int _time(Map<String, dynamic> d) {
+    for (final k in ['publishedAt', 'updatedAt', 'createdAt']) {
+      final v = d[k];
+      if (v is Timestamp) return v.millisecondsSinceEpoch;
     }
-    return models.first;
+    return 0;
   }
 }
