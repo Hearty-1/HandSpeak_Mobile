@@ -82,7 +82,7 @@ const List<String> questCategories = ['alphabet', 'numbers', 'phrases', 'civic']
 const Map<String, String> questCategoryNames = {
   'alphabet': 'Alphabet',
   'numbers': 'Numbers',
-  'phrases': 'Words & Phrases',
+  'phrases': 'Greetings',
   'civic': 'Civic',
 };
 

@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -301,7 +302,7 @@ class AccessRestrictedScreen extends StatelessWidget {
                   foregroundColor: theme.colorScheme.onPrimary,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                 ),
                 onPressed: () => Navigator.maybePop(context),
                 child: const Text('Go back', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),

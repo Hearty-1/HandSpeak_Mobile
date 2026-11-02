@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -1624,7 +1625,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                 elevation: 4,
               ),
               child: Text("SUBMIT ANSWER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
@@ -1689,7 +1690,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
             onPressed: _availableSequenceOptions.isNotEmpty ? null : () => _submitAnswer(_currentSequence.join(',')),
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.primaryColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
             ),
             child: Text("SUBMIT ORDER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
           )
@@ -1801,7 +1802,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
               onPressed: () => _submitAnswer(_identificationController.text.trim()),
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                 elevation: 4,
               ),
               child: Text("SUBMIT ANSWER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 16)),
@@ -1947,7 +1948,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.primaryColor,
               padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               elevation: 4,
             ),
             child: Text(
@@ -2245,7 +2246,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                     style: ElevatedButton.styleFrom(
                       backgroundColor: theme.primaryColor,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
+                      shape: Button3DBorder(
                         borderRadius: BorderRadius.circular(18),
                       ),
                     ),

@@ -111,7 +111,7 @@ List<BadgeData> buildAchievements(Map<String, dynamic> user) {
     b('First Sign', 'Complete your very first lesson.', xp, 50, Colors.blueAccent, L, image: 'assets/pictures/alphabet1.png'),
     b('Alphabet Explorer', 'Complete 5 Alphabet levels.', perCategory['alphabet']!, 5, const Color(0xFF42A5F5), L, icon: Icons.abc_rounded),
     b('Number Navigator', 'Complete 5 Numbers levels.', perCategory['numbers']!, 5, const Color(0xFF26C6DA), L, icon: Icons.pin_rounded),
-    b('Phrase Speaker', 'Complete 5 Words & Phrases levels.', perCategory['phrases']!, 5, const Color(0xFF66BB6A), L, icon: Icons.chat_bubble_rounded),
+    b('Phrase Speaker', 'Complete 5 Greetings levels.', perCategory['phrases']!, 5, const Color(0xFF66BB6A), L, icon: Icons.chat_bubble_rounded),
     b('Civic Champion', 'Complete 5 Civic levels.', perCategory['civic']!, 5, const Color(0xFFEF5350), L, icon: Icons.flag_rounded),
     b('Well-Rounded', 'Complete a level in all 4 categories.', categoriesTried, 4, const Color(0xFF7E57C2), L, icon: Icons.public_rounded),
     b('Hard Hitter', 'Complete your first Hard level.', hard, 1, const Color(0xFFFF7043), L, icon: Icons.terrain_rounded),

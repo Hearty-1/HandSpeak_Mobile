@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -262,7 +263,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                   ),
                   child: Text(
                     "START MATCH",
@@ -1343,7 +1344,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                   : () => _submitAnswer(_userAnswerSlots.join('')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                 elevation: 4,
               ),
               child: Text("SUBMIT ANSWER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 0.5)),
@@ -1427,7 +1428,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                 : () => _submitAnswer(_currentSequence.join(',')),
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.primaryColor,
-              shape: RoundedRectangleBorder(
+              shape: Button3DBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
@@ -1511,7 +1512,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
           width: double.infinity, height: 50,
           child: ElevatedButton(
             onPressed: _hasAnswered ? null : () => _submitAnswer(''),
-            style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+            style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: Button3DBorder(borderRadius: BorderRadius.circular(28))),
             child: Text("SUBMIT MATCHES", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
           ),
         ),
@@ -1542,7 +1543,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
           width: double.infinity, height: 50,
           child: ElevatedButton(
             onPressed: _hasAnswered ? null : () => _submitAnswer(_identificationController.text.trim()),
-            style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+            style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: Button3DBorder(borderRadius: BorderRadius.circular(28))),
             child: Text("SUBMIT IDENTIFICATION", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
           ),
         ),
@@ -1678,7 +1679,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).primaryColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               ),
               child: const Text("CONTINUE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
             ),
@@ -1924,7 +1925,7 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
                     backgroundColor: accentColor,
                     elevation: 3,
                     shadowColor: accentColor.withValues(alpha: 0.4),
-                    shape: RoundedRectangleBorder(
+                    shape: Button3DBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),

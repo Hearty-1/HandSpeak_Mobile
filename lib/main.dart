@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -140,7 +141,7 @@ const List<_IntroSlide> _introSlides = [
     eyebrow: 'LEARN',
     title: 'Step by step',
     body: 'Start with the alphabet and numbers, then move on to greetings.',
-    chips: [(Icons.abc_rounded, 'Alphabet'), (Icons.pin_rounded, 'Numbers'), (Icons.chat_rounded, 'Phrases')],
+    chips: [(Icons.abc_rounded, 'Alphabet'), (Icons.pin_rounded, 'Numbers'), (Icons.chat_rounded, 'Greetings')],
     accent: Color(0xFFFF8A3D),
   ),
   _IntroSlide(
@@ -160,7 +161,7 @@ const List<_IntroSlide> _introSlides = [
     accent: Color(0xFF3D7BFF),
   ),
   _IntroSlide(
-    image: 'assets/pictures/trophy.png',
+    image: 'assets/pictures/troph.png',
     eyebrow: 'PLAY',
     title: 'Earn, level up, compete',
     body: 'Collect XP and Stars, keep your daily streak, unlock badges and challenge your classmates in the arena.',
@@ -516,7 +517,7 @@ class _PrimaryButton extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 0,
           minimumSize: const Size(double.infinity, 60),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
         ),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),

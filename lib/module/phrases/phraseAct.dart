@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -9,9 +10,11 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
-import 'package:video_player/video_player.dart';
 
+import '/widgets/activity_video.dart';
+import '/module/alphabet/easyAct_mc.dart' show ThemedLevelCompleteDialog;
 import '/providers/sound_provider.dart';
+import '/widgets/activity_feedback.dart';
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
 
@@ -517,7 +520,7 @@ class _QuizScreen extends StatefulWidget {
   State<_QuizScreen> createState() => _QuizScreenState();
 }
 
-class _QuizScreenState extends State<_QuizScreen> {
+class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderStateMixin {
   // Game music while this level is open (see SoundProvider.claimBgm).
   late final SoundProvider _bgm;
 
@@ -532,10 +535,20 @@ class _QuizScreenState extends State<_QuizScreen> {
   int _currentIndex = 0;
   bool _isAnswered = false;
   bool _isCorrect = false;
-  int _score = 0;
   int _starsEarned = 0;
   bool _isSaving = false;
   bool _finished = false;
+
+  /// Hearts, as in the alphabet / numbers activities: a wrong answer costs
+  /// one; none left ends the level. Stars come from the hearts left.
+  static const int _maxHearts = 5;
+  int _hearts = _maxHearts;
+
+  // Feedback bar animation (badge pop + slide in), as in easyAct_mc.dart.
+  late final AnimationController _feedbackAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+  late final Animation<double> _scaleAnimation = CurvedAnimation(parent: _feedbackAnim, curve: Curves.elasticOut);
+  late final Animation<Offset> _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
+      .animate(CurvedAnimation(parent: _feedbackAnim, curve: Curves.easeOutBack));
 
   @override
   void initState() {
@@ -551,6 +564,7 @@ class _QuizScreenState extends State<_QuizScreen> {
     _bgm.releaseBgm(this);
     _answer.removeListener(_onAnswerChanged);
     _answer.dispose();
+    _feedbackAnim.dispose();
     super.dispose();
   }
 
@@ -587,19 +601,53 @@ class _QuizScreenState extends State<_QuizScreen> {
     setState(() {
       _isAnswered = true;
       _isCorrect = correct;
-      if (correct) _score++;
+      if (!correct) _hearts--;
     });
+    _feedbackAnim.forward(from: 0.0);
+    if (_hearts <= 0) _showGameOverDialog();
   }
 
-  int _starsFor(int score, int total) {
-    final accuracy = total > 0 ? score / total : 0.0;
-    if (accuracy >= 0.9) return 3;
-    if (accuracy >= 0.6) return 2;
-    if (accuracy > 0) return 1;
-    return 0;
+  /// Same as the alphabet / numbers activities: no mistakes 3 stars, up to
+  /// two mistakes 2 stars, otherwise 1.
+  int _starsForHearts(int hearts) {
+    if (hearts == _maxHearts) return 3;
+    if (hearts >= 3) return 2;
+    return 1;
+  }
+
+  void _showGameOverDialog() {
+    if (_finished) return;
+    _finished = true;
+    _progress
+        .recordActivityAttempt(levelId: widget.levelId, category: widget.category, isCompleted: false, starsEarned: 0)
+        .catchError((e) => debugPrint('Error saving ${widget.category} activity attempt: $e'));
+    Provider.of<SoundProvider>(context, listen: false).playGameOver();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Out of Hearts! 💔', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+        content: Text(
+          'You made a few mistakes. Take a break and review the tutorials, then try again!',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('Exit Activity', style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _continue() async {
+    _feedbackAnim.reset();
     if (_currentIndex < _questions.length - 1) {
       _answer.reset();
       setState(() {
@@ -611,7 +659,7 @@ class _QuizScreenState extends State<_QuizScreen> {
     }
 
     setState(() => _isSaving = true);
-    _starsEarned = _starsFor(_score, _questions.length);
+    _starsEarned = _starsForHearts(_hearts);
     try {
       await _progress.recordActivityAttempt(
         levelId: widget.levelId,
@@ -631,6 +679,13 @@ class _QuizScreenState extends State<_QuizScreen> {
       _isSaving = false;
       _finished = true;
     });
+    // Same animated stars dialog as the alphabet / numbers activities
+    // (AWESOME! closes it and the level).
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => ThemedLevelCompleteDialog(starsEarned: _starsEarned, levelId: widget.levelId),
+    );
   }
 
   @override
@@ -642,27 +697,37 @@ class _QuizScreenState extends State<_QuizScreen> {
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: theme.cardColor.withValues(alpha: 0.5),
         elevation: 0,
-        centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: textColor),
+          icon: Icon(Icons.close, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(widget.title, style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.w800)),
         flexibleSpace: ClipRRect(
           child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
         ),
-      ),
-      body: Stack(
-        children: [
-          Positioned.fill(child: widget.background),
-          SafeArea(child: _buildBody(theme)),
+        title: Text(
+          widget.title,
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: -0.5),
+        ),
+        centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Row(
+              children: [
+                const Icon(Icons.favorite, color: Colors.red, size: 24),
+                const SizedBox(width: 4),
+                Text('$_hearts', style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
         ],
       ),
+      body: SafeArea(child: _buildBody(theme)),
     );
   }
 
@@ -670,36 +735,24 @@ class _QuizScreenState extends State<_QuizScreen> {
     if (_isLoading) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
     if (_error != null) return _buildMessage(theme, Icons.wifi_off_rounded, _error!);
     if (_questions.isEmpty) return _buildMessage(theme, Icons.assignment_outlined, widget.emptyMessage);
-    if (_finished) return _buildCompletionView(theme);
 
     final q = _questions[_currentIndex];
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: LinearProgressIndicator(
-                          value: (_currentIndex + 1) / _questions.length,
-                          backgroundColor: theme.dividerColor,
-                          valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
-                          minHeight: 12,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      '${_currentIndex + 1}/${_questions.length}',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
-                    ),
-                  ],
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: (_currentIndex + 1) / _questions.length,
+                    backgroundColor: theme.dividerColor,
+                    valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                    minHeight: 12,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 _QuestionView(
@@ -718,17 +771,17 @@ class _QuizScreenState extends State<_QuizScreen> {
   }
 
   Widget _buildBottomBar(ThemeData theme, _Question q) {
-    const green = Color(0xFF58CC02);
-    const red = Color(0xFFEA2B2B);
+    final feedbackData = activityFeedbackVisuals(context, _isCorrect);
     final answerLabel = _QuestionView.answerLabel(q);
-    final isLast = _currentIndex == _questions.length - 1;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       decoration: BoxDecoration(
-        color: !_isAnswered ? theme.cardColor : (_isCorrect ? green : red),
+        color: !_isAnswered ? theme.cardColor : null,
+        gradient: _isAnswered ? (feedbackData['gradient'] as LinearGradient) : null,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(top: BorderSide(color: theme.dividerColor, width: 2)),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, -4))],
       ),
       child: Column(
@@ -736,52 +789,63 @@ class _QuizScreenState extends State<_QuizScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_isAnswered) ...[
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle),
-                  child: Icon(_isCorrect ? Icons.check_rounded : Icons.close_rounded, color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _isCorrect ? 'Awesome Job! 🎉' : 'Not Quite! 💡',
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+            SlideTransition(
+              position: _slideAnimation,
+              child: Row(
+                children: [
+                  ScaleTransition(
+                    scale: _scaleAnimation,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: feedbackData['badgeColor'] as Color,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2))],
                       ),
-                      if (!_isCorrect && answerLabel.isNotEmpty)
-                        Text(
-                          'Correct answer: $answerLabel',
-                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                        ),
-                    ],
+                      child: Icon(feedbackData['icon'] as IconData, color: Colors.white, size: 32),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          feedbackData['title'] as String,
+                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          !_isCorrect && answerLabel.isNotEmpty ? 'Correct answer: $answerLabel' : feedbackData['subtitle'] as String,
+                          style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
           ],
           SizedBox(
             width: double.infinity,
             height: 54,
             child: ElevatedButton(
-              onPressed: _isSaving ? null : (_isAnswered ? _continue : (_answer.isReady ? _check : null)),
+              onPressed: _isSaving || _hearts <= 0 ? null : (_isAnswered ? _continue : (_answer.isReady ? _check : null)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isAnswered ? Colors.white : theme.primaryColor,
+                backgroundColor: !_isAnswered ? theme.primaryColor : Colors.white,
                 disabledBackgroundColor: theme.dividerColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: _isAnswered ? 4 : 0,
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               ),
               child: _isSaving
                   ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
                   : Text(
-                      _isAnswered ? (isLast ? 'VIEW RESULTS' : 'CONTINUE') : 'CHECK',
+                      _isAnswered ? 'CONTINUE' : 'CHECK',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
-                        color: _isAnswered ? (_isCorrect ? green : red) : theme.colorScheme.onPrimary,
+                        color: !_isAnswered ? theme.colorScheme.onPrimary : (feedbackData['accentColor'] as Color),
                       ),
                     ),
             ),
@@ -810,7 +874,7 @@ class _QuizScreenState extends State<_QuizScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               ),
               onPressed: () => Navigator.pop(context),
               child: Text('Go Back', style: TextStyle(color: theme.colorScheme.onPrimary)),
@@ -821,62 +885,6 @@ class _QuizScreenState extends State<_QuizScreen> {
     );
   }
 
-  Widget _buildCompletionView(ThemeData theme) {
-    final textColor = theme.colorScheme.onSurface;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                3,
-                (i) => Icon(
-                  i < _starsEarned ? Icons.star_rounded : Icons.star_border_rounded,
-                  color: i < _starsEarned ? const Color(0xFFFFD700) : textColor.withValues(alpha: 0.3),
-                  size: 56,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text('Activity Completed!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: textColor)),
-            const SizedBox(height: 12),
-            Text(
-              'Stars Earned: $_starsEarned / 3',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: theme.primaryColor),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Score: $_score / ${_questions.length}',
-              style: TextStyle(fontSize: 16, color: textColor.withValues(alpha: 0.8)),
-            ),
-            if (_starsEarned < 2) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Get 2 stars to unlock the next level.',
-                style: TextStyle(fontSize: 14, color: textColor.withValues(alpha: 0.7)),
-              ),
-            ],
-            const SizedBox(height: 32),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.primaryColor,
-                padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Finish',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// Links an [_QuestionView] to its screen: the screen enables CHECK
@@ -1156,19 +1164,18 @@ class _QuestionViewState extends State<_QuestionView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (q.videoUrl.isNotEmpty || q.imageUrl.isNotEmpty) ...[
-          Container(
-            height: 200,
-            padding: const EdgeInsets.all(12),
+          Center(child: SizedBox.square(dimension: 220, child: Container(
+            
             decoration: BoxDecoration(
               color: theme.cardColor,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(20),
               child: _Media(source: q.videoUrl.isNotEmpty ? q.videoUrl : q.imageUrl, iconSize: 40),
             ),
-          ),
+          ))),
           const SizedBox(height: 16),
         ],
         if (q.audioUrl.isNotEmpty) ...[
@@ -1239,7 +1246,7 @@ class _QuestionViewState extends State<_QuestionView> {
       crossAxisCount: 2,
       mainAxisSpacing: 14,
       crossAxisSpacing: 14,
-      childAspectRatio: hasMedia ? 1.1 : 2.2,
+      childAspectRatio: hasMedia ? 1.0 : 2.2,
       children: [for (final option in _choices) _choiceTile(option, theme)],
     );
   }
@@ -1251,7 +1258,7 @@ class _QuestionViewState extends State<_QuestionView> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         height: height,
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: height == null ? 16 : 6),
+        padding: _Media.isMedia(option) ? const EdgeInsets.all(2) : EdgeInsets.symmetric(horizontal: 14, vertical: height == null ? 16 : 6),
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(16),
@@ -1259,7 +1266,7 @@ class _QuestionViewState extends State<_QuestionView> {
         ),
         alignment: Alignment.center,
         child: _Media.isMedia(option)
-            ? ClipRRect(borderRadius: BorderRadius.circular(10), child: _Media(source: option, iconSize: 28))
+            ? ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: _Media(source: option, iconSize: 28)))
             : Text(
                 option,
                 textAlign: TextAlign.center,
@@ -1502,7 +1509,7 @@ class _QuestionViewState extends State<_QuestionView> {
         ),
         alignment: Alignment.center,
         child: _Media.isMedia(item)
-            ? _Media(source: item, iconSize: 32)
+            ? _Media(source: item, iconSize: 32, fit: BoxFit.contain)
             : Text(
                 item,
                 textAlign: TextAlign.center,
@@ -1618,11 +1625,11 @@ class _QuestionViewState extends State<_QuestionView> {
 /// base64 image; videos (mp4, mov, webm) loop muted.
 class _Media extends StatelessWidget {
   final String source;
-  final BoxFit fit = BoxFit.contain;
+  final BoxFit fit;
   final double iconSize;
   final Widget? fallback;
 
-  const _Media({required this.source, this.iconSize = 24, this.fallback});
+  const _Media({required this.source, this.iconSize = 24, this.fallback, this.fit = BoxFit.cover});
 
   static final RegExp _imageExt = RegExp(r'\.(png|jpe?g|webp|gif)$', caseSensitive: false);
   static final RegExp _videoExt = RegExp(r'\.(mp4|mov|webm|m4v)$', caseSensitive: false);
@@ -1659,7 +1666,7 @@ class _Media extends StatelessWidget {
     final s = source.trim();
     final broken = fallback ?? Icon(Icons.image_not_supported, size: iconSize, color: Colors.grey);
     if (s.isEmpty) return broken;
-    if (isVideo(s)) return _LoopingVideo(url: s, fit: fit, fallback: broken);
+    if (isVideo(s)) return ActivityVideo(url: s, fit: fit, fallback: broken);
     if (s.startsWith('http://') || s.startsWith('https://')) {
       return Image.network(
         s,
@@ -1676,67 +1683,6 @@ class _Media extends StatelessWidget {
   }
 }
 
-class _LoopingVideo extends StatefulWidget {
-  final String url;
-  final BoxFit fit;
-  final Widget fallback;
-
-  const _LoopingVideo({required this.url, required this.fit, required this.fallback});
-
-  @override
-  State<_LoopingVideo> createState() => _LoopingVideoState();
-}
-
-class _LoopingVideoState extends State<_LoopingVideo> {
-  VideoPlayerController? _controller;
-  bool _failed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _open();
-  }
-
-  Future<void> _open() async {
-    final url = widget.url;
-    final c = url.startsWith('assets/')
-        ? VideoPlayerController.asset(url)
-        : VideoPlayerController.networkUrl(Uri.parse(url));
-    _controller = c;
-    try {
-      await c.initialize();
-      await c.setLooping(true);
-      await c.setVolume(0);
-      await c.play();
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('Activity video unavailable ($url): $e');
-      if (mounted) setState(() => _failed = true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = _controller;
-    if (_failed) return widget.fallback;
-    if (c == null || !c.value.isInitialized) {
-      return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
-    }
-    return FittedBox(
-      fit: widget.fit,
-      clipBehavior: Clip.hardEdge,
-      child: SizedBox(width: c.value.size.width, height: c.value.size.height, child: VideoPlayer(c)),
-    );
-  }
-}
-
-/// Plays the question's audio clip (audioStoragePath in the doc).
 class _AudioButton extends StatefulWidget {
   final String url;
   const _AudioButton({required this.url});

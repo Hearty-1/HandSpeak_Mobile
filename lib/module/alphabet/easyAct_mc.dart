@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:async'; 
 import 'dart:math' as math;
@@ -11,6 +12,9 @@ import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
+import '/widgets/activity_video.dart';
+import '/providers/language_provider.dart';
+import '/widgets/sign_recording.dart';
 import '/providers/sound_provider.dart';
 import '/providers/theme_provider.dart' show GalaxyPalette;
 import '/services/lighting_monitor.dart';
@@ -352,7 +356,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.black87,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                   elevation: 4,
                 ),
                 onPressed: () {
@@ -453,6 +457,16 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
   bool _isJudging = false;
 
+  /// J / Z: RECORD SIGN -> countdown -> 3 s recording -> check
+  /// (widgets/sign_recording.dart). Only the recorded frames are judged.
+  late final SignRecordingController _recorder = SignRecordingController(onChanged: () {
+    if (mounted) setState(() {});
+  });
+
+  /// gesture_attempts trigger of the next check: 'check' (CAPTURE & CHECK)
+  /// or 'recording' (a finished J / Z recording).
+  String _pendingTrigger = 'check';
+
   List<dynamic>? _template;
   String _templateLetter = ''; // letter of [_template] (tricky-letter scoring)
   /// File that [_template] came from (gesture_attempts modelVersion).
@@ -516,6 +530,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _bgm.releaseBgm(this);
     // Left mid-level (no-op if the level was completed / lost: already finished).
     _gestureTracker?.finish(outcome: 'exited', heartsLeft: _hearts, totalQuestions: _questions.length);
+    _recorder.dispose();
     _handSub?.cancel();
     _cameraController?.stopImageStream();
     _cameraController?.dispose();
@@ -563,6 +578,20 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         : const SizedBox.shrink();
     final src = pathOrUrl.trim();
     if (src.isEmpty) return fallback();
+    // Sign videos (e.g. moving signs): play / pause, one at a time.
+    if (RegExp(r'\.(mp4|mov|webm|m4v)$', caseSensitive: false).hasMatch(Uri.decodeComponent(src.split('?').first))) {
+      if (src.startsWith('http') || src.startsWith('assets/')) return ActivityVideo(url: src, fit: fit, fallback: fallback());
+      return FutureBuilder<String?>(
+        future: _storageUrl(src),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)));
+          }
+          final url = snap.data;
+          return url == null ? fallback() : ActivityVideo(url: url, fit: fit, fallback: fallback());
+        },
+      );
+    }
 
     if (src.startsWith('data:image') || (!src.startsWith('http') && !src.startsWith('assets/') && src.length > 300)) {
       final bytes = _safeBase64Decode(src);
@@ -727,8 +756,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   void _recordRecentFrame(List<Hand> hands) {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (_isDynamicLetter) {
-      // The movement of the last seconds (one frame cannot show a J / Z).
-      _judge.addFrame(hands, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
+      // Only the recording counts (record first, then check).
+      if (_recorder.recording) {
+        _judge.addFrame(hands, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
+      }
       return;
     }
     final template = _template;
@@ -897,6 +928,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _latestDetectedHands = [];
     _currentScore = 0.0;
     _template = null; // the next letter's template is loading
+    _recorder.cancel();
+    _pendingTrigger = 'check';
     _clearRecentFrames();
     _serverCheck.clear();
 
@@ -984,9 +1017,32 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     }
   }
 
+  /// J / Z: records the sign, then checks it.
+  void _recordDynamicSign() {
+    if (_isAnswered || _isJudging || _recorder.busy) return;
+    _recorder.start(
+      onRecordingStarted: _judge.clear,
+      onDone: () {
+        if (!mounted || _isAnswered) return;
+        if (!_judge.hasFrames) {
+          // Nothing to judge: no heart lost, record again.
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(L.t('No hand was seen while recording. Keep your hand in the frame and try again.',
+                'Walang nakitang kamay habang nagre-record. Panatilihin ang kamay sa frame at subukang muli.')),
+          ));
+          return;
+        }
+        _pendingTrigger = 'recording';
+        _verifyCurrentAnswer();
+      },
+    );
+  }
+
   Future<void> _verifyCurrentAnswer() async {
     if (_isAnswered || _isJudging) return;
     final q = _questions[_currentIndex];
+    final String trigger = _pendingTrigger;
+    _pendingTrigger = 'check';
     bool isCorrect = false;
     // Analytics for this attempt (gesture_attempts).
     String? predictedLabel;
@@ -1088,7 +1144,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         confidence: modelConfidence,
         predictedLabel: predictedLabel,
         handsDetected: handsInView,
-        trigger: 'check',
+        trigger: trigger,
         // The file(s) that actually scored it: fsl_letter_j / z.onnx (+ the
         // server check) for J / Z, else the letter's template.
         modelVersion: usedModel,
@@ -1411,11 +1467,9 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   const SizedBox(height: 24),
 
                   if (currentQuestion.imageUrl.isNotEmpty) ...[
-                    Container(
-                      width: double.infinity,
-                      height: 200,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
+                    Center(child: SizedBox.square(dimension: 220, child: Container(
+                      
+                                            decoration: BoxDecoration(
                         color: theme.cardColor,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
@@ -1427,10 +1481,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.contain, size: 40),
+                        borderRadius: BorderRadius.circular(20),
+                        child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.cover, size: 40),
                       ),
-                    ),
+                    ))),
                     const SizedBox(height: 24),
                   ],
 
@@ -1533,19 +1587,23 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                           ? null
                           : (_isAnswered
                               ? _handleNext
-                              : (_isCheckButtonEnabled ? _verifyCurrentAnswer : null)),
+                              : (_isCameraLevel && _isDynamicLetter
+                                  ? (_isCameraInitialized && !_isJudging && !_recorder.busy ? _recordDynamicSign : null)
+                                  : (_isCheckButtonEnabled ? _verifyCurrentAnswer : null))),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: !_isAnswered ? theme.primaryColor : Colors.white,
                         disabledBackgroundColor: theme.dividerColor,
                         elevation: _isAnswered ? 4 : 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                       ),
                       child: _isSaving
                           ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
                           : Text(
-                              _isAnswered 
-                                  ? "CONTINUE" 
-                                  : (_isCameraLevel ? "CAPTURE & CHECK" : "CHECK"),
+                              _isAnswered
+                                  ? "CONTINUE"
+                                  : (_isCameraLevel
+                                      ? (_isDynamicLetter ? signRecordingButtonLabel(_recorder, checking: _isJudging) : "CAPTURE & CHECK")
+                                      : "CHECK"),
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
@@ -1781,7 +1839,15 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           ),
         if (!_isLandscape(context)) const SizedBox(height: 20),
 
-        AnimatedContainer(
+        if (_isDynamicLetter)
+          SignRecordingStatus(
+            controller: _recorder,
+            sign: _questions[_currentIndex].correctAnswer.toUpperCase(),
+            checking: _isJudging,
+            handsVisible: handDetected,
+          )
+        else
+          AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
@@ -1836,7 +1902,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       crossAxisCount: 2,
       mainAxisSpacing: 16,
       crossAxisSpacing: 16,
-      childAspectRatio: isImageOption ? 1.2 : 2.2, 
+      childAspectRatio: isImageOption ? 1.0 : 2.2, 
       children: currentQuestion.options.map((option) {
         return GestureDetector(
           onTap: () => _handleOptionSelected(option),
@@ -1850,8 +1916,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
             alignment: Alignment.center,
             child: _isImageString(option)
                 ? Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: _buildImageWidget(option, fit: BoxFit.contain, size: 24),
+                    padding: const EdgeInsets.all(2.0),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: _buildImageWidget(option, fit: BoxFit.cover, size: 24))),
                   )
                 : Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme))),
           ),
@@ -1887,7 +1953,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     ? Padding(
                         padding: const EdgeInsets.all(4.0),
                         child: givenItem.image.isNotEmpty
-                            ? _buildImageWidget(givenItem.image, fit: BoxFit.contain, size: 22)
+                            ? _buildImageWidget(givenItem.image, fit: BoxFit.cover, size: 22)
                             : Text(char, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                       )
                     : Text(char ?? '', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
@@ -1921,8 +1987,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   child: Padding(
                     padding: const EdgeInsets.all(6.0), 
                     child: _isImageString(optionValue)
-                        ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24)
-                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.contain, size: 30),
+                        ? _buildImageWidget(optionValue, fit: BoxFit.cover, size: 24)
+                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.cover, size: 30),
                   ),
                 ),
               ),

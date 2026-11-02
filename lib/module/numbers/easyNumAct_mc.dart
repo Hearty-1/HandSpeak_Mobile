@@ -1,10 +1,14 @@
 // ignore_for_file: file_names
+import '/widgets/button_3d.dart';
 import 'dart:convert';
-import 'dart:async'; 
+import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui'; 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '/widgets/activity_video.dart';
+import '/providers/language_provider.dart';
+import '/widgets/sign_recording.dart';
 import '/services/offline_sync.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -19,10 +23,9 @@ import '/services/progress_service.dart';
 import '/providers/theme_provider.dart' show GalaxyPalette;
 import '/services/dynamic_sign_judge.dart';
 import '/services/frame_gate.dart';
-import '/services/gesture_analytics.dart'; 
+import '/services/gesture_analytics.dart';
 
 import '/services/performance_monitor.dart';
-
 
 // ==========================================
 // 1. DATA MODELS
@@ -32,11 +35,7 @@ class GivenFslItem {
   final String letter;
   final String image;
 
-  GivenFslItem({
-    required this.position,
-    required this.letter,
-    required this.image,
-  });
+  GivenFslItem({required this.position, required this.letter, required this.image});
 
   factory GivenFslItem.fromJson(Map<String, dynamic> json) {
     return GivenFslItem(
@@ -74,10 +73,7 @@ class QuizQuestion {
       questionText: json['question_text'] ?? '',
       options: List<String>.from(json['options'] ?? []),
       correctAnswer: (json['correct_answer'] ?? '').toString(),
-      givenFsl: (json['given_fsl'] as List<dynamic>?)
-              ?.map((e) => GivenFslItem.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          [],
+      givenFsl: (json['given_fsl'] as List<dynamic>?)?.map((e) => GivenFslItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
     );
   }
 }
@@ -86,11 +82,7 @@ class NumbersQuizApiService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   Future<List<QuizQuestion>> fetchEasyQuestions(String levelId, String typeFilter) async {
-    final querySnapshot = await _db
-        .collection('activity_questions')
-        .where('category', isEqualTo: 'numbers')
-        .where('level', isEqualTo: levelId)
-        .get();
+    final querySnapshot = await _db.collection('activity_questions').where('category', isEqualTo: 'numbers').where('level', isEqualTo: levelId).get();
 
     if (querySnapshot.docs.isEmpty) {
       throw Exception("LEVEL NOT FOUND!\n\nNo questions match levelId: '$levelId'.");
@@ -106,22 +98,15 @@ class NumbersQuizApiService {
     // A level uploaded from the web app can mix question types (e.g. 3
     // sign_to_text + 1 text_to_sign); every question renders by its own type,
     // so the whole level is played. Only camera levels keep their own type.
-    List<QuizQuestion> matchingQuestions = typeFilter == 'camera_spell'
-        ? levelQuestions.where((q) => q.type == typeFilter).toList()
-        : levelQuestions;
+    List<QuizQuestion> matchingQuestions = typeFilter == 'camera_spell' ? levelQuestions.where((q) => q.type == typeFilter).toList() : levelQuestions;
 
-    List<QuizQuestion> finalQuestions = matchingQuestions.isNotEmpty
-        ? matchingQuestions
-        : levelQuestions;
+    List<QuizQuestion> finalQuestions = matchingQuestions.isNotEmpty ? matchingQuestions : levelQuestions;
 
     // Short level (the web app fills levels up to 4 questions; some have
     // fewer, e.g. the newest level while it is still being filled): top it up
     // with review questions from the other levels of the same difficulty.
     if (finalQuestions.length < minQuestionsPerLevel && typeFilter != 'camera_spell') {
-      finalQuestions = [
-        ...finalQuestions,
-        ...await _reviewQuestions(levelId, finalQuestions, minQuestionsPerLevel - finalQuestions.length),
-      ];
+      finalQuestions = [...finalQuestions, ...await _reviewQuestions(levelId, finalQuestions, minQuestionsPerLevel - finalQuestions.length)];
     }
 
     finalQuestions.shuffle();
@@ -175,37 +160,23 @@ class ThemedLevelCompleteDialog extends StatefulWidget {
   final int starsEarned;
   final String levelId;
 
-  const ThemedLevelCompleteDialog({
-    super.key,
-    required this.starsEarned,
-    required this.levelId,
-  });
+  const ThemedLevelCompleteDialog({super.key, required this.starsEarned, required this.levelId});
 
   @override
   State<ThemedLevelCompleteDialog> createState() => _ThemedLevelCompleteDialogState();
 }
 
-class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
-    with TickerProviderStateMixin {
+class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog> with TickerProviderStateMixin {
   late List<AnimationController> _starControllers;
   late List<Animation<double>> _starScaleAnimations;
 
   @override
   void initState() {
     super.initState();
-    _starControllers = List.generate(
-      3,
-      (index) => AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 600),
-      ),
-    );
+    _starControllers = List.generate(3, (index) => AnimationController(vsync: this, duration: const Duration(milliseconds: 600)));
 
     _starScaleAnimations = _starControllers.map((controller) {
-      return CurvedAnimation(
-        parent: controller,
-        curve: Curves.elasticOut,
-      );
+      return CurvedAnimation(parent: controller, curve: Curves.elasticOut);
     }).toList();
 
     _animateStars();
@@ -237,13 +208,13 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
   }
 
   LinearGradient _getDialogGradient(Color bgColor) {
-    if (bgColor.toARGB32() == 0xFF080928) { 
+    if (bgColor.toARGB32() == 0xFF080928) {
       return const LinearGradient(colors: [Color(0xFF1B1A4B), Color(0xFF7C4DFF)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.toARGB32() == 0xFF1D3D3A) { 
+    } else if (bgColor.toARGB32() == 0xFF1D3D3A) {
       return const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.toARGB32() == 0xFF001B3A) { 
+    } else if (bgColor.toARGB32() == 0xFF001B3A) {
       return const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)], begin: Alignment.topLeft, end: Alignment.bottomRight);
-    } else if (bgColor.toARGB32() == 0xFFE0EAFC) { 
+    } else if (bgColor.toARGB32() == 0xFFE0EAFC) {
       return const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)], begin: Alignment.topLeft, end: Alignment.bottomRight);
     }
     return const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)], begin: Alignment.topLeft, end: Alignment.bottomRight);
@@ -262,13 +233,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
         decoration: BoxDecoration(
           gradient: dialogGradient,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            )
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -290,9 +255,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
               children: List.generate(3, (index) {
                 final isEarned = index < widget.starsEarned;
                 return ScaleTransition(
-                  scale: isEarned
-                      ? _starScaleAnimations[index]
-                      : const AlwaysStoppedAnimation(1.0),
+                  scale: isEarned ? _starScaleAnimations[index] : const AlwaysStoppedAnimation(1.0),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 6.0),
                     child: Icon(
@@ -319,19 +282,16 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: Colors.black87,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                   elevation: 4,
                 ),
                 onPressed: () {
                   Navigator.of(context).pop();
                   Navigator.of(context).pop();
                 },
-                child: const Text(
-                  "AWESOME!",
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                ),
+                child: const Text("AWESOME!", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -344,13 +304,9 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
 // ==========================================
 class EasyNumActMc extends StatefulWidget {
   final String levelId;
-  final String questionType; 
+  final String questionType;
 
-  const EasyNumActMc({
-    super.key, 
-    required this.levelId,
-    required this.questionType,
-  });
+  const EasyNumActMc({super.key, required this.levelId, required this.questionType});
 
   @override
   State<EasyNumActMc> createState() => _EasyNumActMcState();
@@ -361,7 +317,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   late final SoundProvider _bgm;
 
   final NumbersQuizApiService _apiService = NumbersQuizApiService();
-  
+
   List<QuizQuestion> _questions = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -394,7 +350,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   List<String> _availableSequenceOptions = [];
 
   // Matching State
-  Map<String, String?> _matchingAnswers = {}; 
+  Map<String, String?> _matchingAnswers = {};
   String? _selectedLeftMatch;
 
   // Camera & ML Pipeline Variables
@@ -405,11 +361,22 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   bool _isCameraInitialized = false;
   bool _isProcessingFrame = false;
 
-  static const double _requiredHoldSeconds = 1.0;
-  DateTime? _staticHoldStartTime;
+  // Static numbers (0-10): CAPTURE & CHECK judges the best match of the last
+  // [_staticWindowMs] (like the alphabet activity): tapping moves the hand,
+  // so a sign held correctly a moment earlier still counts.
+  static const int _staticWindowMs = 1500;
+  final List<({int t, double score})> _recentScores = [];
+  bool _handsVisible = false;
 
-  bool _isRecordingMotion = false;
-  DateTime? _startRecordingTime;
+  /// Moving numbers (11-100): RECORD SIGN -> countdown -> recording -> check
+  /// (widgets/sign_recording.dart). Only the recorded frames are judged.
+  late final SignRecordingController _recorder = SignRecordingController(
+    onChanged: () {
+      if (mounted) setState(() {});
+    },
+    recordSeconds: _dynamicRecordSeconds,
+  );
+
   /// Moving numbers (11-100): judged like the numbers tutorial practice
   /// (assets/numbers/fsl_numbers_*.onnx decade models) from the recording.
   final DynamicSignJudge _judge = DynamicSignJudge();
@@ -419,11 +386,10 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   final StaticServerCheck _serverCheck = StaticServerCheck();
   int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
   bool _isJudging = false;
+
   /// A moving number needs its first handshape, the movement and the final
   /// handshape: a longer recording than a held static sign.
   static const double _dynamicRecordSeconds = 3.0;
-  static const Duration _dropoutGracePeriod = Duration(milliseconds: 300);
-  DateTime? _lastHandsSeenTime;
 
   bool get _isCameraLevel {
     if (widget.questionType == 'camera_spell' || widget.questionType == 'camera') return true;
@@ -443,12 +409,10 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     final n = int.tryParse(_questions[_currentIndex].correctAnswer.trim());
     return n != null && n >= 11;
   }
-  
 
   List<dynamic>? _template;
   double _currentScore = 0.0;
-  double _holdProgress = 0.0;
-  final double successThreshold = 70.0; 
+  final double successThreshold = 70.0;
 
   late AnimationController _feedbackAnimController;
   late Animation<double> _scaleAnimation;
@@ -464,23 +428,14 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       _initializeCameraPipeline();
     }
 
-    _feedbackAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
+    _feedbackAnimController = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
 
-    _scaleAnimation = CurvedAnimation(
-      parent: _feedbackAnimController,
-      curve: Curves.elasticOut,
-    );
+    _scaleAnimation = CurvedAnimation(parent: _feedbackAnimController, curve: Curves.elasticOut);
 
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.4),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _feedbackAnimController,
-      curve: Curves.easeOutBack,
-    ));
+    ).animate(CurvedAnimation(parent: _feedbackAnimController, curve: Curves.easeOutBack));
   }
 
   @override
@@ -488,6 +443,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     _bgm.releaseBgm(this);
     // Left mid-level (no-op if the level was completed / lost: already finished).
     _gestureTracker?.finish(outcome: 'exited', heartsLeft: _hearts, totalQuestions: _questions.length);
+    _recorder.dispose();
     _handSub?.cancel();
     if (_cameraController?.value.isStreamingImages ?? false) {
       _cameraController?.stopImageStream();
@@ -501,10 +457,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   Uint8List? _safeBase64Decode(String input) {
     try {
       String cleaned = input.contains(',') ? input.split(',').last : input;
-      cleaned = cleaned
-          .replaceAll(RegExp(r'\s+'), '')
-          .replaceAll('-', '+')
-          .replaceAll('_', '/');
+      cleaned = cleaned.replaceAll(RegExp(r'\s+'), '').replaceAll('-', '+').replaceAll('_', '/');
 
       cleaned = cleaned.replaceAll(RegExp(r'[^A-Za-z0-9+/=].*$'), '');
       cleaned = base64.normalize(cleaned);
@@ -518,17 +471,32 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
   /// Question / option picture. A picture that cannot load (dead link,
   /// missing file) shows [fallbackText] or nothing: never a broken-image icon.
-  Widget _buildImageWidget(
-    String pathOrUrl, {
-    BoxFit fit = BoxFit.contain,
-    double size = 24,
-    String? fallbackText,
-  }) {
+  Widget _buildImageWidget(String pathOrUrl, {BoxFit fit = BoxFit.contain, double size = 24, String? fallbackText}) {
     Widget fallback() => fallbackText != null && fallbackText.trim().isNotEmpty
-        ? Center(child: Text(fallbackText, textAlign: TextAlign.center, style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold)))
+        ? Center(
+            child: Text(
+              fallbackText,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: size * 0.8, fontWeight: FontWeight.bold),
+            ),
+          )
         : const SizedBox.shrink();
     final src = pathOrUrl.trim();
     if (src.isEmpty) return fallback();
+    // Sign videos (e.g. moving signs): play / pause, one at a time.
+    if (RegExp(r'\.(mp4|mov|webm|m4v)$', caseSensitive: false).hasMatch(Uri.decodeComponent(src.split('?').first))) {
+      if (src.startsWith('http') || src.startsWith('assets/')) return ActivityVideo(url: src, fit: fit, fallback: fallback());
+      return FutureBuilder<String?>(
+        future: _storageUrl(src),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)));
+          }
+          final url = snap.data;
+          return url == null ? fallback() : ActivityVideo(url: url, fit: fit, fallback: fallback());
+        },
+      );
+    }
 
     if (src.startsWith('data:image')) {
       final bytes = _safeBase64Decode(src);
@@ -555,9 +523,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     return Image.asset(
       assetPath,
       fit: fit,
-      errorBuilder: (context, error, stackTrace) => src.startsWith('assets/')
-          ? fallback()
-          : Image.asset('assets/pictures/$src', fit: fit, errorBuilder: (_, _, _) => fallback()),
+      errorBuilder: (context, error, stackTrace) =>
+          src.startsWith('assets/') ? fallback() : Image.asset('assets/pictures/$src', fit: fit, errorBuilder: (_, _, _) => fallback()),
     );
   }
 
@@ -565,43 +532,29 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   /// "gs://..."), resolved once to download URLs.
   static final Map<String, Future<String?>> _storageUrls = {};
   static bool _looksLikeStoragePath(String s) =>
-      s.startsWith('gs://') ||
-      (!s.startsWith('http') && !s.startsWith('assets/') && !s.startsWith('data:') && s.contains('/') && s.length <= 300);
-  static Future<String?> _storageUrl(String path) => _storageUrls[path] ??= (path.startsWith('gs://')
-          ? FirebaseStorage.instance.refFromURL(path)
-          : FirebaseStorage.instance.ref(path))
-      .getDownloadURL()
-      .then<String?>((u) => u)
-      .catchError((_) => null);
+      s.startsWith('gs://') || (!s.startsWith('http') && !s.startsWith('assets/') && !s.startsWith('data:') && s.contains('/') && s.length <= 300);
+  static Future<String?> _storageUrl(String path) =>
+      _storageUrls[path] ??= (path.startsWith('gs://') ? FirebaseStorage.instance.refFromURL(path) : FirebaseStorage.instance.ref(path))
+          .getDownloadURL()
+          .then<String?>((u) => u)
+          .catchError((_) => null);
 
   Future<void> _initializeCameraPipeline() async {
     if (_isCameraInitialized) return;
     try {
-      _landmarkerPlugin = HandLandmarkerPlugin.create(
-        numHands: 2,
-        minHandDetectionConfidence: 0.5,
-        delegate: HandLandmarkerDelegate.gpu, 
-      );
+      _landmarkerPlugin = HandLandmarkerPlugin.create(numHands: 2, minHandDetectionConfidence: 0.5, delegate: HandLandmarkerDelegate.gpu);
       _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
 
       final cameras = await availableCameras();
       if (!mounted) return;
 
       if (cameras.isNotEmpty) {
-        final frontCamera = cameras.firstWhere(
-          (camera) => camera.lensDirection == CameraLensDirection.front,
-          orElse: () => cameras.first,
-        );
-        _cameraController = CameraController(
-          frontCamera, 
-          ResolutionPreset.medium, 
-          enableAudio: false,
-        );
+        final frontCamera = cameras.firstWhere((camera) => camera.lensDirection == CameraLensDirection.front, orElse: () => cameras.first);
+        _cameraController = CameraController(frontCamera, ResolutionPreset.medium, enableAudio: false);
         await _cameraController!.initialize();
         if (!mounted) return;
         await _cameraController!.startImageStream(_processCameraFrame);
       }
-
 
       if (mounted) {
         setState(() {
@@ -655,91 +608,63 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   void _onHandsDetected(List<Hand> detectedHands) {
     _frameGate.done();
     if (_isAnswered || !mounted) return;
-
-    final now = DateTime.now();
+    _handsVisible = detectedHands.isNotEmpty;
 
     if (_isDynamicLetter) {
-      if (_isJudging) return;
-      final bool handsPresent = detectedHands.isNotEmpty;
-      if (handsPresent) {
-        _lastHandsSeenTime = now;
-        if (!_isRecordingMotion) {
-          _isRecordingMotion = true;
-          _startRecordingTime = now;
-          _judge.clear();
-        }
+      // Only the recording counts (record first, then check).
+      if (_recorder.recording) {
         _judge.addFrame(detectedHands, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
-        final double elapsedSeconds = now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
-        if (mounted) {
-          setState(() => _holdProgress = (elapsedSeconds / _dynamicRecordSeconds).clamp(0.0, 1.0));
-        }
-        if (elapsedSeconds >= _dynamicRecordSeconds) {
-          _isRecordingMotion = false;
-          unawaited(_judgeMovingNumber());
-        }
-      } else if (_isRecordingMotion) {
-        final lastSeen = _lastHandsSeenTime;
-        final bool withinGrace = lastSeen != null && now.difference(lastSeen) <= _dropoutGracePeriod;
-        if (!withinGrace) {
-          if (mounted) {
-            setState(() {
-              _isRecordingMotion = false;
-              _startRecordingTime = null;
-              _holdProgress = 0.0;
-            });
-          }
-          _judge.clear();
-        }
       }
+      setState(() {});
       return;
     }
 
-    if (_template == null) return;
-
-    if (detectedHands.isNotEmpty) {
-      double highestScoreAcrossAllHands = 0.0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_template != null && detectedHands.isNotEmpty) {
+      double best = 0.0;
       Hand? bestHand;
-      for (int handIdx = 0; handIdx < detectedHands.length; handIdx++) {
-        final double score = _calculateScore(detectedHands[handIdx].landmarks, _template!);
-        if (score > highestScoreAcrossAllHands) {
-          highestScoreAcrossAllHands = score;
-          bestHand = detectedHands[handIdx];
+      for (final h in detectedHands) {
+        final double score = _calculateScore(h.landmarks, _template!);
+        if (score > best) {
+          best = score;
+          bestHand = h;
         }
       }
       if (bestHand != null) {
         _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
       }
+      _recentScores.add((t: now, score: best));
+    }
+    _recentScores.removeWhere((e) => now - e.t > _staticWindowMs);
+    // Best match of the window: shown live and judged by CAPTURE & CHECK.
+    _currentScore = _recentScores.isEmpty ? 0.0 : _recentScores.map((e) => e.score).reduce(math.max);
+    setState(() {});
+  }
 
-      _currentScore = highestScoreAcrossAllHands;
-
-      if (_currentScore >= successThreshold) {
-        _staticHoldStartTime ??= now;
-        final double holdSecs = now.difference(_staticHoldStartTime!).inMilliseconds / 1000.0;
-        _holdProgress = (holdSecs / _requiredHoldSeconds).clamp(0.0, 1.0);
-
-        if (holdSecs >= _requiredHoldSeconds) {
-          _staticHoldStartTime = null;
-          _holdProgress = 1.0;
-          _pendingTrigger = 'auto_hold';
-          _verifyCurrentAnswer();
+  /// Moving number: records the sign, then checks it.
+  void _recordDynamicSign() {
+    if (_isAnswered || _isJudging || _recorder.busy) return;
+    _recorder.start(
+      onRecordingStarted: _judge.clear,
+      onDone: () {
+        if (!mounted || _isAnswered) return;
+        if (!_judge.hasFrames) {
+          // Nothing to judge: no heart lost, record again.
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                L.t(
+                  'No hand was seen while recording. Keep your hand in the frame and try again.',
+                  'Walang nakitang kamay habang nagre-record. Panatilihin ang kamay sa frame at subukang muli.',
+                ),
+              ),
+            ),
+          );
           return;
         }
-      } else {
-        _staticHoldStartTime = null;
-        _holdProgress = 0.0;
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
-    } else {
-      _staticHoldStartTime = null;
-      _currentScore = 0.0;
-      _holdProgress = 0.0;
-      if (mounted) {
-        setState(() {});
-      }
-    }
+        unawaited(_judgeMovingNumber());
+      },
+    );
   }
 
   /// Judges the recorded moving number with its decade model (as the numbers
@@ -758,30 +683,12 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     debugPrint('[Activity] Number $target: ${v.isCorrect ? 'PASS' : 'fail'} (${v.feedback}) via ${v.model}');
     setState(() {
       _isJudging = false;
-      _holdProgress = 0.0;
       _currentScore = v.isCorrect ? math.max(v.score, successThreshold) : math.min(v.score, successThreshold - 1);
     });
-    if (v.isCorrect) {
-      _pendingTrigger = 'auto_recording';
-      _verifyCurrentAnswer();
-    } else {
-      // A finished recording that did not match: a failed attempt.
-      _gestureTracker?.recordAttempt(
-        sign: q.correctAnswer,
-        questionId: q.id,
-        questionIndex: _currentIndex,
-        isCorrect: false,
-        score: _currentScore,
-        isDynamic: true,
-        confidence: v.confidence,
-        predictedLabel: v.predicted,
-        handsDetected: true,
-        framesRecorded: v.frames,
-        trigger: 'auto_recording',
-        modelVersion: v.model, // the decade model that judged it
-      );
-      _startRecordingTime = null;
-    }
+    // Right or wrong, the recording is answered like a CAPTURE & CHECK:
+    // feedback, hearts and the gesture_attempts record.
+    _pendingTrigger = 'recording';
+    _verifyCurrentAnswer();
   }
 
   /// File that judged the last moving number (gesture_attempts modelVersion).
@@ -791,11 +698,11 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
 
     final Landmark wrist = liveLms[0];
-    final Landmark mBase = liveLms[9]; 
-    
+    final Landmark mBase = liveLms[9];
+
     double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2) + math.pow(wrist.z - mBase.z, 2));
     if (dist == 0) dist = 1.0;
-    
+
     double bestScore = 0.0;
     final orientationMatrices = [
       [1.0, 0.0, 0.0, 1.0, 1.0],
@@ -821,7 +728,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         double tx = (template[i]['x'] as num).toDouble();
         double ty = (template[i]['y'] as num).toDouble();
         double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
-        
+
         double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2) + math.pow(dz - tz, 2));
         totalDifference += pointDiff;
       }
@@ -835,9 +742,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   Future<void> _loadQuestions() async {
     try {
       final questions = await _apiService.fetchEasyQuestions(widget.levelId, widget.questionType);
-      
+
       if (!mounted) return;
-      
+
       setState(() {
         _questions = questions;
         _isLoading = false;
@@ -861,7 +768,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     _isAnswered = false;
 
     if (_isCameraQuestion(q)) {
-      _initializeCameraPipeline(); 
+      _initializeCameraPipeline();
     }
 
     if (q.type == 'typing') {
@@ -876,10 +783,12 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       }
       _shuffledOptions = List<String>.from(q.options)..shuffle();
     } else if (_isCameraQuestion(q) && q.type != 'sequence_order' && q.type != 'matching_type') {
-      _isRecordingMotion = false;
-      _staticHoldStartTime = null;
+      _recorder.cancel();
+      _judge.clear();
+      _recentScores.clear();
+      _serverCheck.clear();
+      _pendingTrigger = 'check';
       _currentScore = 0.0;
-      _holdProgress = 0.0;
       _loadGestureLibrary(q.correctAnswer.toUpperCase());
     } else if (q.type == 'sequence_order') {
       _currentSequence = [];
@@ -1011,7 +920,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
           _currentScore = math.min(_currentScore, successThreshold - 1);
         }
       }
-      _selectedAnswer = isCorrect ? q.correctAnswer : null; 
+      _selectedAnswer = isCorrect ? q.correctAnswer : null;
       final trigger = triggerForThis;
       _gestureTracker?.recordAttempt(
         sign: q.correctAnswer,
@@ -1022,12 +931,14 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
         isDynamic: _isDynamicLetter,
         confidence: _isDynamicLetter ? _lastModelConfidence : null,
         predictedLabel: _isDynamicLetter ? _lastPredictedLabel : null,
-        handsDetected: _currentScore > 0 || trigger != 'check',
+        handsDetected: _isDynamicLetter ? (_lastFramesRecorded ?? 0) > 0 : (_handsVisible || _recentScores.isNotEmpty),
         framesRecorded: _isDynamicLetter ? _lastFramesRecorded : null,
         trigger: trigger,
         // The file that actually scored it: the motion model, else the
         // number's bundled template.
-        modelVersion: _isDynamicLetter ? _lastModelFile : (serverModel ?? TemplateStore.sourceOf('numbers', q.correctAnswer) ?? 'models/numbers/${q.correctAnswer.trim()}.json'),
+        modelVersion: _isDynamicLetter
+            ? _lastModelFile
+            : (serverModel ?? TemplateStore.sourceOf('numbers', q.correctAnswer) ?? 'models/numbers/${q.correctAnswer.trim()}.json'),
       );
     } else {
       isCorrect = _selectedAnswer == q.correctAnswer;
@@ -1059,7 +970,10 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       builder: (context) => AlertDialog(
         backgroundColor: Theme.of(context).cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text("Out of Hearts! 💔", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+        title: const Text(
+          "Out of Hearts! 💔",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+        ),
         content: Text(
           "You made a few mistakes. Take a break and review the tutorials, then try again!",
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
@@ -1070,8 +984,11 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
               Navigator.pop(context);
               Navigator.pop(context);
             },
-            child: const Text("Exit Activity", style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
-          )
+            child: const Text(
+              "Exit Activity",
+              style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
         ],
       ),
     );
@@ -1080,75 +997,68 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   // ==========================================
   // PROGRESS TRACKING & DATA SAVING LOGIC
   // ==========================================
-Future<void> _saveUserProgress(int starsEarned) async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) {
-    debugPrint("Save failed: No authenticated user found.");
-    return;
-  }
+  Future<void> _saveUserProgress(int starsEarned) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint("Save failed: No authenticated user found.");
+      return;
+    }
 
-  final db = FirebaseFirestore.instance;
-  final userRef = db.collection('users').doc(user.uid);
-  final attemptRef = db.collection('activity_attempts').doc();
-  // Stars (best per level) and XP: fixed XP per new star, small repeat XP
-  // within the daily cap (ProgressService.saveActivityStars, xp_rewards.dart).
-  await ProgressService().saveActivityStars(levelId: widget.levelId, stars: starsEarned, xpField: 'numbersXp');
+    final db = FirebaseFirestore.instance;
+    final userRef = db.collection('users').doc(user.uid);
+    final attemptRef = db.collection('activity_attempts').doc();
+    // Stars (best per level) and XP: fixed XP per new star, small repeat XP
+    // within the daily cap (ProgressService.saveActivityStars, xp_rewards.dart).
+    await ProgressService().saveActivityStars(levelId: widget.levelId, stars: starsEarned, xpField: 'numbersXp');
 
-  try {
-    await OfflineSync.run((transaction) async {
-      final snapshotDoc = await transaction.get(userRef);
-      final data = snapshotDoc.exists ? (snapshotDoc.data() ?? {}) : <String, dynamic>{};
+    try {
+      await OfflineSync.run((transaction) async {
+        final snapshotDoc = await transaction.get(userRef);
+        final data = snapshotDoc.exists ? (snapshotDoc.data() ?? {}) : <String, dynamic>{};
 
-      // 3. Auto-Unlock Next Sequential Level
-      List<String> unlockedLevels = data['unlockedLevels'] is List
-          ? List<String>.from(data['unlockedLevels'] as List)
-          : ['easy_level_1', 'level_1', 'easy_num_1'];
+        // 3. Auto-Unlock Next Sequential Level
+        List<String> unlockedLevels = data['unlockedLevels'] is List
+            ? List<String>.from(data['unlockedLevels'] as List)
+            : ['easy_level_1', 'level_1', 'easy_num_1'];
 
-      if (!unlockedLevels.contains(widget.levelId)) {
-        unlockedLevels.add(widget.levelId);
-      }
-
-      final match = RegExp(r'(\d+)').firstMatch(widget.levelId);
-      if (match != null) {
-        final int currentLevelNum = int.parse(match.group(1)!);
-        final String nextLevelId = widget.levelId.replaceAll(
-          match.group(1)!,
-          '${currentLevelNum + 1}',
-        );
-        if (!unlockedLevels.contains(nextLevelId)) {
-          unlockedLevels.add(nextLevelId);
+        if (!unlockedLevels.contains(widget.levelId)) {
+          unlockedLevels.add(widget.levelId);
         }
-      }
 
-      // 4. Completed Activities Tracking
-      final int completedCount = (data['completedActivitiesCount'] ?? 0) as int;
+        final match = RegExp(r'(\d+)').firstMatch(widget.levelId);
+        if (match != null) {
+          final int currentLevelNum = int.parse(match.group(1)!);
+          final String nextLevelId = widget.levelId.replaceAll(match.group(1)!, '${currentLevelNum + 1}');
+          if (!unlockedLevels.contains(nextLevelId)) {
+            unlockedLevels.add(nextLevelId);
+          }
+        }
 
-      // Commit Main User Profile Document Updates (creates doc if missing)
-      transaction.set(
-        userRef,
-        {
+        // 4. Completed Activities Tracking
+        final int completedCount = (data['completedActivitiesCount'] ?? 0) as int;
+
+        // Commit Main User Profile Document Updates (creates doc if missing)
+        transaction.set(userRef, {
           'unlockedLevels': unlockedLevels,
           'completedActivitiesCount': completedCount + 1,
           'lastActive': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+        }, SetOptions(merge: true));
 
-      // 5. Append Record directly to Top-Level 'activity_attempts' Collection
-      transaction.set(attemptRef, {
-        'category': 'numbers',
-        'isCompleted': true,
-        'levelId': widget.levelId,
-        'starsEarned': starsEarned,
-        'timestamp': FieldValue.serverTimestamp(),
-        'userId': user.uid,
+        // 5. Append Record directly to Top-Level 'activity_attempts' Collection
+        transaction.set(attemptRef, {
+          'category': 'numbers',
+          'isCompleted': true,
+          'levelId': widget.levelId,
+          'starsEarned': starsEarned,
+          'timestamp': FieldValue.serverTimestamp(),
+          'userId': user.uid,
+        });
       });
-    });
-    debugPrint("Saved document successfully to activity_attempts.");
-  } catch (e) {
-    debugPrint("Progress Tracking Transaction Failed: $e");
+      debugPrint("Saved document successfully to activity_attempts.");
+    } catch (e) {
+      debugPrint("Progress Tracking Transaction Failed: $e");
+    }
   }
-}
 
   Future<void> _handleNext() async {
     _feedbackAnimController.reset();
@@ -1160,18 +1070,17 @@ Future<void> _saveUserProgress(int starsEarned) async {
       });
     } else {
       setState(() => _isSaving = true);
-      
+
       int starsEarned = 1;
       if (_hearts == 5) {
         starsEarned = 3;
       } else if (_hearts >= 3) {
         starsEarned = 2;
       }
-      
+
       // Execute progress & stars tracking persistence
       await _saveUserProgress(starsEarned);
-      _gestureTracker?.finish(
-          outcome: 'completed', heartsLeft: _hearts, starsEarned: starsEarned, totalQuestions: _questions.length);
+      _gestureTracker?.finish(outcome: 'completed', heartsLeft: _hearts, starsEarned: starsEarned, totalQuestions: _questions.length);
 
       if (!mounted) return;
       setState(() => _isSaving = false);
@@ -1180,10 +1089,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => ThemedLevelCompleteDialog(
-          starsEarned: starsEarned,
-          levelId: widget.levelId,
-        ),
+        builder: (context) => ThemedLevelCompleteDialog(starsEarned: starsEarned, levelId: widget.levelId),
       );
     }
   }
@@ -1192,7 +1098,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
     final bgColor = Theme.of(context).scaffoldBackgroundColor.toARGB32();
     final IconData feedbackIcon = isCorrect ? Icons.check_rounded : Icons.close_rounded;
 
-    if (bgColor == 0xFF080928) { 
+    if (bgColor == 0xFF080928) {
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Cosmic Victory! 🚀" : "Asteroid Bump! ☄️",
@@ -1203,13 +1109,13 @@ Future<void> _saveUserProgress(int starsEarned) async {
         'accentColor': isCorrect ? GalaxyPalette.success : GalaxyPalette.error,
       };
     }
-    
-    if (bgColor == 0xFF1D3D3A) { 
+
+    if (bgColor == 0xFF1D3D3A) {
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Magical Spell! 🌿" : "Lost in the Woods! 🍃",
         'subtitle': isCorrect ? "Ancient wisdom guided you!" : "Listen to the forest breeze and retry.",
-        'gradient': isCorrect 
+        'gradient': isCorrect
             ? const LinearGradient(colors: [Color(0xFF1D3D3A), Color(0xFF4D7C73)])
             : const LinearGradient(colors: [Color(0xFF3E2723), Color(0xFF8D6E63)]),
         'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFE53935),
@@ -1217,12 +1123,12 @@ Future<void> _saveUserProgress(int starsEarned) async {
       };
     }
 
-    if (bgColor == 0xFF001B3A) { 
+    if (bgColor == 0xFF001B3A) {
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "Splashtastic! 🌊" : "Washed Away! 🐙",
         'subtitle': isCorrect ? "Riding the big wave like a pro!" : "Take a breath and dive back in.",
-        'gradient': isCorrect 
+        'gradient': isCorrect
             ? const LinearGradient(colors: [Color(0xFF005C97), Color(0xFF363795)])
             : const LinearGradient(colors: [Color(0xFF1C2833), Color(0xFF4A5568)]),
         'badgeColor': isCorrect ? const Color(0xFF00E5FF) : const Color(0xFFFF5252),
@@ -1230,12 +1136,12 @@ Future<void> _saveUserProgress(int starsEarned) async {
       };
     }
 
-    if (bgColor == 0xFFE0EAFC) { 
+    if (bgColor == 0xFFE0EAFC) {
       return {
         'icon': feedbackIcon,
         'title': isCorrect ? "On Cloud Nine! ☁️" : "A Little Stormy! 🌧️",
         'subtitle': isCorrect ? "Bright sky ahead, great job!" : "The sun will shine on your next guess.",
-        'gradient': isCorrect 
+        'gradient': isCorrect
             ? const LinearGradient(colors: [Color(0xFFA8C0FF), Color(0xFF3F2B96)])
             : const LinearGradient(colors: [Color(0xFF546E7A), Color(0xFF78909C)]),
         'badgeColor': isCorrect ? const Color(0xFF5C7CFA) : const Color(0xFFFF6B6B),
@@ -1247,7 +1153,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
       'icon': feedbackIcon,
       'title': isCorrect ? "Awesome Job! 🎉" : "Not Quite! 💡",
       'subtitle': isCorrect ? "You nailed the correct answer!" : "Review the sign and try again.",
-      'gradient': isCorrect 
+      'gradient': isCorrect
           ? const LinearGradient(colors: [Color(0xFF11998E), Color(0xFF38EF7D)])
           : const LinearGradient(colors: [Color(0xFFCB2D3E), Color(0xFFEF473A)]),
       'badgeColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
@@ -1277,14 +1183,17 @@ Future<void> _saveUserProgress(int starsEarned) async {
 
   bool get _isCheckButtonEnabled {
     final q = _questions[_currentIndex];
-    
+
     if (q.type == 'typing') return !_userAnswerSlots.contains(null);
     if (q.type == 'sequence_order') return _currentSequence.length == q.options.length;
     if (q.type == 'matching_type') return !_matchingAnswers.values.contains(null);
-    
-    if (_isCameraQuestion(q)) return true; 
 
-    return _selectedAnswer != null; 
+    if (_isCameraQuestion(q)) {
+      // A hand seen in the last moments counts too: the hand often moves away to tap.
+      return !_isJudging && (_handsVisible || _recentScores.isNotEmpty);
+    }
+
+    return _selectedAnswer != null;
   }
 
   @override
@@ -1293,9 +1202,9 @@ Future<void> _saveUserProgress(int starsEarned) async {
     final textColor = theme.colorScheme.onSurface;
 
     return Scaffold(
-      extendBodyBehindAppBar: true, 
+      extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
-      
+
       appBar: AppBar(
         backgroundColor: theme.cardColor.withValues(alpha: 0.5),
         elevation: 0,
@@ -1305,18 +1214,13 @@ Future<void> _saveUserProgress(int starsEarned) async {
         ),
         flexibleSpace: ClipRRect(
           child: SmartBlur(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), 
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
         ),
         title: Text(
           "Numbers Activities",
-          style: TextStyle(
-            color: textColor, 
-            fontWeight: FontWeight.w800,
-            fontFamily: 'Inter',
-            letterSpacing: -0.5
-          ),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: -0.5),
         ),
         centerTitle: true,
         actions: [
@@ -1332,7 +1236,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 ),
               ],
             ),
-          )
+          ),
         ],
       ),
       body: _buildBody(theme, textColor),
@@ -1350,25 +1254,34 @@ Future<void> _saveUserProgress(int starsEarned) async {
             children: [
               const Icon(Icons.error_outline, color: Colors.red, size: 64),
               const SizedBox(height: 16),
-              Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
-        )
+        ),
       );
     }
-    if (_questions.isEmpty) return Center(child: Text("No questions available.", style: TextStyle(color: textColor)));
+    if (_questions.isEmpty) {
+      return Center(
+        child: Text("No questions available.", style: TextStyle(color: textColor)),
+      );
+    }
 
     final currentQuestion = _questions[_currentIndex];
     final progress = (_currentIndex + 1) / _questions.length;
     final feedbackData = _getThemeFeedbackVisuals(context, _isCorrect);
-    
+
     final String correctAnswerValue = currentQuestion.correctAnswer.toLowerCase();
-    final bool isImageAnswer = correctAnswerValue.startsWith('data:image') || 
-                               correctAnswerValue.endsWith('.png') || 
-                               correctAnswerValue.endsWith('.jpg') || 
-                               correctAnswerValue.endsWith('.jpeg') || 
-                               correctAnswerValue.startsWith('http') || 
-                               correctAnswerValue.startsWith('gs://');
+    final bool isImageAnswer =
+        correctAnswerValue.startsWith('data:image') ||
+        correctAnswerValue.endsWith('.png') ||
+        correctAnswerValue.endsWith('.jpg') ||
+        correctAnswerValue.endsWith('.jpeg') ||
+        correctAnswerValue.startsWith('http') ||
+        correctAnswerValue.startsWith('gs://');
 
     return SafeArea(
       child: Column(
@@ -1377,76 +1290,69 @@ Future<void> _saveUserProgress(int starsEarned) async {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(flex: 5, child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: theme.dividerColor,
-                      valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
-                      minHeight: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
+                Expanded(
+                  flex: 5,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            backgroundColor: theme.dividerColor,
+                            valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                            minHeight: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
 
-                  if (currentQuestion.imageUrl.isNotEmpty) ...[
-                    Container(
-                      width: double.infinity,
-                      height: 200,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: theme.cardColor,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.06),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          )
+                        if (currentQuestion.imageUrl.isNotEmpty) ...[
+                          Center(child: SizedBox.square(dimension: 220, child: Container(
+                            
+                                                        decoration: BoxDecoration(
+                              color: theme.cardColor,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.cover, size: 40),
+                            ),
+                          ))),
+                          const SizedBox(height: 24),
                         ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.contain, size: 40),
-                      ),
+
+                        Text(
+                          currentQuestion.questionText,
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: textColor),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+
+                        if (currentQuestion.type == 'typing')
+                          _buildTypingLayout(currentQuestion, theme)
+                        else if (currentQuestion.type == 'fill_in_the_blank')
+                          _buildFillInBlankLayout(currentQuestion, theme)
+                        else if (currentQuestion.type == 'sequence_order')
+                          _buildSequenceLayout(currentQuestion, theme)
+                        else if (currentQuestion.type == 'matching_type')
+                          _buildMatchingLayout(currentQuestion, theme)
+                        else if (_isCameraQuestion(currentQuestion))
+                          _buildCameraLayout(currentQuestion, theme)
+                        else
+                          _buildMultipleChoiceLayout(currentQuestion, theme),
+                      ],
                     ),
-                    const SizedBox(height: 24),
-                  ],
-
-                  Text(
-                    currentQuestion.questionText,
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: textColor),
-                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 24),
-
-                  if (currentQuestion.type == 'typing')
-                    _buildTypingLayout(currentQuestion, theme)
-                  else if (currentQuestion.type == 'fill_in_the_blank')
-                    _buildFillInBlankLayout(currentQuestion, theme)
-                  else if (currentQuestion.type == 'sequence_order')
-                    _buildSequenceLayout(currentQuestion, theme)
-                  else if (currentQuestion.type == 'matching_type')
-                    _buildMatchingLayout(currentQuestion, theme)
-                  else if (_isCameraQuestion(currentQuestion))
-                    _buildCameraLayout(currentQuestion, theme)
-                  else
-                    _buildMultipleChoiceLayout(currentQuestion, theme), 
-                ],
-              ),
-            )),
-                if (_isLandscape(context) && _isCameraQuestion(currentQuestion) &&
+                ),
+                if (_isLandscape(context) &&
+                    _isCameraQuestion(currentQuestion) &&
                     !const {'typing', 'fill_in_the_blank', 'sequence_order', 'matching_type'}.contains(currentQuestion.type))
                   Expanded(
                     flex: 6,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 20, 20, 12),
-                      child: _buildCameraBox(theme),
-                    ),
+                    child: Padding(padding: const EdgeInsets.fromLTRB(0, 20, 20, 12), child: _buildCameraBox(theme)),
                   ),
               ],
             ),
@@ -1462,7 +1368,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 gradient: _isAnswered ? (feedbackData['gradient'] as LinearGradient) : null,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                 border: Border(top: BorderSide(color: theme.dividerColor, width: 2)),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, -4))]
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, -4))],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1511,11 +1417,8 @@ Future<void> _saveUserProgress(int starsEarned) async {
                                         height: 28,
                                         width: 28,
                                         padding: const EdgeInsets.all(2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: _buildImageWidget(currentQuestion.correctAnswer, fit: BoxFit.contain, size: 24),
+                                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
+                                        child: _buildImageWidget(currentQuestion.correctAnswer, fit: BoxFit.cover, size: 24),
                                       ),
                                     ],
                                   )
@@ -1533,61 +1436,41 @@ Future<void> _saveUserProgress(int starsEarned) async {
                     const SizedBox(height: 18),
                   ],
 
-                  if (!_isAnswered && currentQuestion.type != 'typing' && _isCameraQuestion(currentQuestion)) ...[
-                    Container(
-                      width: double.infinity,
-                      height: 54,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: theme.primaryColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: theme.primaryColor.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.videocam_rounded, color: theme.primaryColor, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            "Hold sign steadily in front of camera",
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: theme.primaryColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: _isSaving
-                            ? null
-                            : (_isAnswered
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: _isSaving
+                          ? null
+                          : (_isAnswered
                                 ? _handleNext
-                                : (_isCheckButtonEnabled ? _verifyCurrentAnswer : null)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: !_isAnswered ? theme.primaryColor : Colors.white,
-                          disabledBackgroundColor: theme.dividerColor,
-                          elevation: _isAnswered ? 4 : 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        child: _isSaving
-                            ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
-                            : Text(
-                                _isAnswered ? "CONTINUE" : "CHECK",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                  color: !_isAnswered ? theme.colorScheme.onPrimary : (feedbackData['accentColor'] as Color),
-                                ),
-                              ),
+                                : (_isCameraQuestion(currentQuestion) && _isDynamicLetter
+                                      ? (_isCameraInitialized && !_isJudging && !_recorder.busy ? _recordDynamicSign : null)
+                                      : (_isCheckButtonEnabled ? _verifyCurrentAnswer : null))),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: !_isAnswered ? theme.primaryColor : Colors.white,
+                        disabledBackgroundColor: theme.dividerColor,
+                        elevation: _isAnswered ? 4 : 0,
+                        shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                       ),
+                      child: _isSaving
+                          ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
+                          : Text(
+                              _isAnswered
+                                  ? "CONTINUE"
+                                  : (_isCameraQuestion(currentQuestion)
+                                        ? (_isDynamicLetter
+                                              ? signRecordingButtonLabel(_recorder, checking: _isJudging)
+                                              : (_isJudging ? "CHECKING..." : "CAPTURE & CHECK"))
+                                        : "CHECK"),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: !_isAnswered ? theme.colorScheme.onPrimary : (feedbackData['accentColor'] as Color),
+                              ),
+                            ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -1633,17 +1516,17 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 decoration: BoxDecoration(
                   color: isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isSelected ? theme.primaryColor : theme.dividerColor,
-                    width: 2,
-                  ),
+                  border: Border.all(color: isSelected ? theme.primaryColor : theme.dividerColor, width: 2),
                 ),
                 alignment: Alignment.center,
-                child: Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                child: Text(
+                  option,
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                ),
               ),
             );
           }).toList(),
-        )
+        ),
       ],
     );
   }
@@ -1653,7 +1536,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
       children: [
         const Text("Tap words below to build the correct sequence:", style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 16),
-        
+
         Container(
           width: double.infinity,
           height: 60,
@@ -1713,7 +1596,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
         rightItems.add(opt);
       }
     }
-    
+
     rightItems.shuffle();
 
     return Row(
@@ -1725,7 +1608,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
             children: leftItems.map((item) {
               bool isSelected = _selectedLeftMatch == item;
               bool isMatched = _matchingAnswers[item] != null;
-              
+
               return GestureDetector(
                 onTap: isMatched ? null : () => _handleMatchingSelect(item, true),
                 child: Container(
@@ -1737,9 +1620,12 @@ Future<void> _saveUserProgress(int starsEarned) async {
                     border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.dividerColor), width: 2),
                   ),
                   alignment: Alignment.center,
-                  child: item.startsWith('data:image') 
+                  child: item.startsWith('data:image')
                       ? _buildImageWidget(item, fit: BoxFit.contain, size: 40)
-                      : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                      : Text(
+                          item,
+                          style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                        ),
                 ),
               );
             }).toList(),
@@ -1750,7 +1636,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
           child: Column(
             children: rightItems.map((item) {
               bool isMatched = _matchingAnswers.containsValue(item);
-              
+
               return GestureDetector(
                 onTap: isMatched ? null : () => _handleMatchingSelect(item, false),
                 child: Container(
@@ -1762,14 +1648,17 @@ Future<void> _saveUserProgress(int starsEarned) async {
                     border: Border.all(color: isMatched ? Colors.green : theme.dividerColor, width: 2),
                   ),
                   alignment: Alignment.center,
-                  child: item.startsWith('data:image') 
+                  child: item.startsWith('data:image')
                       ? _buildImageWidget(item, fit: BoxFit.contain, size: 40)
-                      : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                      : Text(
+                          item,
+                          style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                        ),
                 ),
               );
             }).toList(),
           ),
-        )
+        ),
       ],
     );
   }
@@ -1778,30 +1667,25 @@ Future<void> _saveUserProgress(int starsEarned) async {
   Widget _buildCameraBox(ThemeData theme) {
     final bool isPassing = _currentScore >= successThreshold;
     return AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                width: 4.0,
-                color: isPassing ? Colors.greenAccent : theme.dividerColor.withValues(alpha: 0.6),
-              ),
-              boxShadow: [
-                if (isPassing) BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.6), blurRadius: 25, spreadRadius: 2)
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: _isCameraInitialized && _cameraController != null && _cameraController!.value.isInitialized
-                  ? _CameraView(controller: _cameraController!)
-                  : Center(child: CircularProgressIndicator(color: theme.primaryColor)),
-            ),
-          );
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(width: 4.0, color: isPassing ? Colors.greenAccent : theme.dividerColor.withValues(alpha: 0.6)),
+        boxShadow: [if (isPassing) BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.6), blurRadius: 25, spreadRadius: 2)],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: _isCameraInitialized && _cameraController != null && _cameraController!.value.isInitialized
+            ? _CameraView(controller: _cameraController!)
+            : Center(child: CircularProgressIndicator(color: theme.primaryColor)),
+      ),
+    );
   }
 
   Widget _buildCameraLayout(QuizQuestion currentQuestion, ThemeData theme) {
     bool isPassing = _currentScore >= successThreshold;
-    
+
     return Column(
       children: [
         if (!_isLandscape(context))
@@ -1813,74 +1697,44 @@ Future<void> _saveUserProgress(int starsEarned) async {
               child: AspectRatio(aspectRatio: 1, child: _buildCameraBox(theme)),
             ),
           ),
-        if (!_isLandscape(context))
-        const SizedBox(height: 24),
+        if (!_isLandscape(context)) const SizedBox(height: 24),
 
-        if (_holdProgress > 0.0) ...[
-          Column(
-            children: [
-              Text(
-                _isDynamicLetter ? "Recording motion..." : "Holding sign steady...",
-                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
-              ),
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 220, 
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: theme.dividerColor, 
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      widthFactor: _holdProgress,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.greenAccent,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          )
-        ] else ...[
+        if (_isDynamicLetter)
+          SignRecordingStatus(controller: _recorder, sign: currentQuestion.correctAnswer.trim(), checking: _isJudging, handsVisible: _handsVisible)
+        else
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
               color: isPassing ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(
-                color: isPassing ? Colors.greenAccent.withValues(alpha: 0.6) : theme.dividerColor,
-                width: 2
-              ),
+              border: Border.all(color: isPassing ? Colors.greenAccent.withValues(alpha: 0.6) : theme.dividerColor, width: 2),
             ),
             child: Text(
-              "Sign Match: ${_currentScore.toStringAsFixed(1)}%",
-              style: TextStyle(
-                color: isPassing ? Colors.green : theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
-              ),
+              !_handsVisible && _recentScores.isEmpty
+                  ? "Position your hand in the frame"
+                  : (_template == null
+                        ? "Loading the reference sign..."
+                        : (_isJudging
+                              ? "Checking your ${currentQuestion.correctAnswer.trim()}..."
+                              : (isPassing
+                                    ? "Match ${_currentScore.toStringAsFixed(0)}% - tap 'CAPTURE & CHECK'."
+                                    : "Match ${_currentScore.toStringAsFixed(0)}%: adjust your hand."))),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: isPassing ? Colors.green : theme.colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16),
             ),
           ),
-        ],
       ],
     );
   }
 
   Widget _buildMultipleChoiceLayout(QuizQuestion currentQuestion, ThemeData theme) {
-    final isImageOption = currentQuestion.options.isNotEmpty && 
-                          (currentQuestion.options[0].startsWith('data:image') ||
-                           currentQuestion.options[0].contains('.png') || 
-                           currentQuestion.options[0].contains('.jpg') ||
-                           currentQuestion.options[0].startsWith('http'));
+    final isImageOption =
+        currentQuestion.options.isNotEmpty &&
+        (currentQuestion.options[0].startsWith('data:image') ||
+            currentQuestion.options[0].contains('.png') ||
+            currentQuestion.options[0].contains('.jpg') ||
+            currentQuestion.options[0].startsWith('http'));
 
     return GridView.count(
       shrinkWrap: true,
@@ -1888,7 +1742,7 @@ Future<void> _saveUserProgress(int starsEarned) async {
       crossAxisCount: 2,
       mainAxisSpacing: 16,
       crossAxisSpacing: 16,
-      childAspectRatio: isImageOption ? 1.2 : 2.2, 
+      childAspectRatio: isImageOption ? 1.0 : 2.2,
       children: currentQuestion.options.map((option) {
         return GestureDetector(
           onTap: () => _handleOptionSelected(option),
@@ -1902,10 +1756,13 @@ Future<void> _saveUserProgress(int starsEarned) async {
             alignment: Alignment.center,
             child: isImageOption
                 ? Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: _buildImageWidget(option, fit: BoxFit.contain, size: 24, fallbackText: option),
+                    padding: const EdgeInsets.all(2.0),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: _buildImageWidget(option, fit: BoxFit.cover, size: 24, fallbackText: option))),
                   )
-                : Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme))),
+                : Text(
+                    option,
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme)),
+                  ),
           ),
         );
       }).toList(),
@@ -1930,7 +1787,9 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 width: 52,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: char != null ? (givenItem != null ? theme.primaryColor.withValues(alpha: 0.08) : theme.primaryColor.withValues(alpha: 0.18)) : theme.cardColor,
+                  color: char != null
+                      ? (givenItem != null ? theme.primaryColor.withValues(alpha: 0.08) : theme.primaryColor.withValues(alpha: 0.18))
+                      : theme.cardColor,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: char != null ? theme.primaryColor : theme.dividerColor, width: 2),
                 ),
@@ -1939,16 +1798,22 @@ Future<void> _saveUserProgress(int starsEarned) async {
                     ? Padding(
                         padding: const EdgeInsets.all(4.0),
                         child: givenItem.image.isNotEmpty
-                            ? _buildImageWidget(givenItem.image, fit: BoxFit.contain, size: 22, fallbackText: char)
-                            : Text(char, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                            ? _buildImageWidget(givenItem.image, fit: BoxFit.cover, size: 22, fallbackText: char)
+                            : Text(
+                                char,
+                                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                              ),
                       )
-                    : Text(char ?? '', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                    : Text(
+                        char ?? '',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                      ),
               ),
             );
           }),
         ),
         const SizedBox(height: 32),
-        
+
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -1971,10 +1836,10 @@ Future<void> _saveUserProgress(int starsEarned) async {
                 child: Opacity(
                   opacity: isUsed ? 0.3 : 1.0,
                   child: Padding(
-                    padding: const EdgeInsets.all(6.0), 
+                    padding: const EdgeInsets.all(6.0),
                     child: optionValue.startsWith('data:image') || optionValue.contains('/') || optionValue.contains('.')
-                        ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24, fallbackText: optionValue)
-                        : _buildImageWidget('$optionValue.jpg', fit: BoxFit.contain, size: 30, fallbackText: optionValue),
+                        ? _buildImageWidget(optionValue, fit: BoxFit.cover, size: 24, fallbackText: optionValue)
+                        : _buildImageWidget('$optionValue.jpg', fit: BoxFit.cover, size: 30, fallbackText: optionValue),
                   ),
                 ),
               ),
@@ -2001,9 +1866,7 @@ int _cameraImageRotation(CameraController? c) {
     DeviceOrientation.portraitDown => 180,
     DeviceOrientation.landscapeRight => 270,
   };
-  return c.description.lensDirection == CameraLensDirection.front
-      ? (sensor + ccw) % 360
-      : (sensor - ccw + 360) % 360;
+  return c.description.lensDirection == CameraLensDirection.front ? (sensor + ccw) % 360 : (sensor - ccw + 360) % 360;
 }
 
 bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
@@ -2021,16 +1884,11 @@ class _CameraView extends StatelessWidget {
       builder: (context, value, _) {
         final size = value.previewSize;
         if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
-        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
-            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft || value.deviceOrientation == DeviceOrientation.landscapeRight;
         return DecoratedBox(
           position: DecorationPosition.foreground,
           decoration: BoxDecoration(
-            gradient: RadialGradient(
-              radius: 1.05,
-              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
-              stops: const [0.62, 1.0],
-            ),
+            gradient: RadialGradient(radius: 1.05, colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)], stops: const [0.62, 1.0]),
           ),
           child: ColoredBox(
             color: Colors.black,

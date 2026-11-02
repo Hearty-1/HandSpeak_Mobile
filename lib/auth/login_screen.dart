@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -373,7 +374,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                       backgroundColor: const Color(0xFFFFB800),
                       disabledBackgroundColor: Colors.grey.shade400,
                       foregroundColor: Colors.white, 
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                      shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                     ),
                     child: _isLoading
                         ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
@@ -406,7 +407,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
                       backgroundColor: Colors.white,
                       foregroundColor: Colors.black87,
                       side: BorderSide(color: Colors.grey.shade300, width: 1.2),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                      shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                     ),
                     child: _isGoogleLoading
                         ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Color(0xFFFFB800), strokeWidth: 3))

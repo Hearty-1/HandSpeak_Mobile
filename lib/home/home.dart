@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
@@ -16,6 +17,8 @@ import '../profile/profile.dart';
 import '../leaderboard/arena.dart'; 
 import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
+import '/module/custom_category_screen.dart' show CloudCategory, CloudCategoryScreen, CloudCover;
+import '/widgets/button_3d.dart';
 import '/services/performance_monitor.dart';
 import '/auth/login_screen.dart';
 import '/auth/role_selection_screen.dart';
@@ -104,6 +107,9 @@ class SnedInterafce1 extends StatelessWidget {
 
   static const int _moduleTargetXp = 1000; // XP that completes a module (module.dart)
 
+  /// Continue Learning key of a web app category: `cloud:<category id>`.
+  static const String cloudPrefix = 'cloud:';
+
   static String _moduleOf(String raw) {
     final k = raw.toLowerCase().trim();
     if (k.contains('number')) return 'numbers';
@@ -144,8 +150,17 @@ class SnedInterafce1 extends StatelessWidget {
     final opened = data['moduleLastOpened'];
     if (opened is Map) {
       opened.forEach((key, value) {
+        if (value is! Timestamp) return;
         final m = _moduleOf('$key');
-        if (m.isNotEmpty && value is Timestamp) lastOpened[m] = value.toDate();
+        if (m.isNotEmpty) {
+          lastOpened[m] = value.toDate();
+        } else if ('$key'.trim().isNotEmpty && '$key' != 'general') {
+          // A web app category (activity_categories id): "cloud:<id>", its
+          // XP in "<id>Xp" (CloudCategory.xpField).
+          final id = '$key';
+          lastOpened['$cloudPrefix$id'] = value.toDate();
+          moduleXp['$cloudPrefix$id'] = xp('${id.replaceAll(RegExp(r'[^A-Za-z0-9]'), '_')}Xp');
+        }
       });
     }
 
@@ -178,24 +193,78 @@ class SnedInterafce1 extends StatelessWidget {
   /// L.t('Continue Learning', 'Ipagpatuloy ang Pag-aaral') shortcut: module art, name, last opened and the
   /// module's XP progress; tapping resumes the module.
   Widget _buildContinueCard(BuildContext context, String moduleKey, int xp, DateTime? opened, double scale) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
+    if (moduleKey.startsWith(cloudPrefix)) return _buildCloudContinueCard(context, moduleKey.substring(cloudPrefix.length), xp, opened, scale);
     final (String title, String imagePath, Widget Function(int) screen) = switch (moduleKey) {
       'numbers' => (L.t('Numbers', 'Mga Numero'), 'assets/pictures/numbers.png', (int x) => NumbersInterface(currentXp: x, targetXp: _moduleTargetXp)),
-      'common words' => (L.t('Words/Phrases', 'Mga Salita/Parirala'), 'assets/pictures/words.png', (int x) => PhraseInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      'common words' => (L.t('Greetings', 'Mga Pagbati'), 'assets/pictures/words.png', (int x) => PhraseInterface(currentXp: x, targetXp: _moduleTargetXp)),
       'civic' => (L.t('Civic Observances', 'Pagdiriwang Pansibiko'), 'assets/pictures/civic.png', (int x) => CivicInterface(currentXp: x, targetXp: _moduleTargetXp)),
       _ => (L.t('Alphabet', 'Alpabeto'), 'assets/pictures/abc.png', (int x) => AlphabetInterface(currentXp: x, targetXp: _moduleTargetXp)),
     };
+    final shownXp = math.min(xp, _moduleTargetXp);
+    return _continueCardBody(
+      context,
+      title: title,
+      icon: Image.asset(imagePath, fit: BoxFit.contain),
+      xp: xp,
+      opened: opened,
+      scale: scale,
+      onTap: () {
+        ProgressService().trackRecentModule(moduleKey);
+        Navigator.push(context, _fadeRoute(screen(shownXp)));
+      },
+    );
+  }
+
+  /// Continue Learning card of a web app category: its name and cover from
+  /// `activity_categories/<id>`; opens its category screen.
+  Widget _buildCloudContinueCard(BuildContext context, String id, int xp, DateTime? opened, double scale) {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: _cloudCategoryDocs[id] ??= FirebaseFirestore.instance.collection('activity_categories').doc(id).get(),
+      builder: (context, snap) {
+        final doc = snap.data;
+        final category = doc != null && doc.exists ? CloudCategory.fromDoc(doc) : null;
+        return _continueCardBody(
+          context,
+          title: category?.title ?? (snap.connectionState == ConnectionState.done ? id : '...'),
+          icon: category == null || category.cover.isEmpty
+              ? Icon(Icons.category_rounded, color: Theme.of(context).primaryColor)
+              : ClipOval(child: CloudCover(source: category.cover)),
+          iconPadding: category != null && category.cover.isNotEmpty ? 0 : 10,
+          xp: xp,
+          opened: opened,
+          scale: scale,
+          onTap: category == null
+              ? null
+              : () {
+                  ProgressService().trackRecentModule(id);
+                  Navigator.push(context, _fadeRoute(CloudCategoryScreen(category: category, targetXp: _moduleTargetXp)));
+                },
+        );
+      },
+    );
+  }
+
+  static final Map<String, Future<DocumentSnapshot<Map<String, dynamic>>>> _cloudCategoryDocs = {};
+
+  Widget _continueCardBody(
+    BuildContext context, {
+    required String title,
+    required Widget icon,
+    required int xp,
+    required DateTime? opened,
+    required double scale,
+    required VoidCallback? onTap,
+    double iconPadding = 10,
+  }) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
     final shownXp = math.min(xp, _moduleTargetXp);
     final progress = shownXp / _moduleTargetXp;
     final complete = xp >= _moduleTargetXp;
     final accent = complete ? Colors.green : theme.primaryColor;
 
-    return GestureDetector(
-      onTap: () {
-        ProgressService().trackRecentModule(moduleKey);
-        Navigator.push(context, _fadeRoute(screen(shownXp)));
-      },
+    return Pressable3D(radius: BorderRadius.circular(24 * scale), child: GestureDetector(
+      onTap: onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24 * scale),
         clipBehavior: Clip.antiAlias,
@@ -218,13 +287,13 @@ class SnedInterafce1 extends StatelessWidget {
                     Container(
                       height: 58 * scale,
                       width: 58 * scale,
-                      padding: EdgeInsets.all(10 * scale),
+                      padding: EdgeInsets.all(iconPadding * scale),
                       decoration: BoxDecoration(
                         color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
                         shape: BoxShape.circle,
                         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
                       ),
-                      child: Image.asset(imagePath, fit: BoxFit.contain),
+                      child: icon,
                     ),
                     const Spacer(),
                     Container(
@@ -278,7 +347,7 @@ class SnedInterafce1 extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 
   // ---------------------------------------------------------------------------
@@ -289,7 +358,7 @@ class SnedInterafce1 extends StatelessWidget {
   static List<({String key, String title, String blurb, String image, IconData icon})> get _guestModules => [
     (key: 'alphabet', title: L.t('Alphabet', 'Alpabeto'), blurb: L.t('A–Z hand signs', 'Mga senyas ng A–Z'), image: 'assets/pictures/abc.png', icon: Icons.abc_rounded),
     (key: 'numbers', title: L.t('Numbers', 'Mga Numero'), blurb: L.t('Counting signs', 'Mga senyas sa pagbilang'), image: 'assets/pictures/numbers.png', icon: Icons.pin_rounded),
-    (key: 'common words', title: L.t('Words/Phrases', 'Mga Salita/Parirala'), blurb: L.t('Everyday greetings', 'Pang-araw-araw na pagbati'), image: 'assets/pictures/words.png', icon: Icons.forum_rounded),
+    (key: 'common words', title: L.t('Greetings', 'Mga Pagbati'), blurb: L.t('Everyday greetings', 'Pang-araw-araw na pagbati'), image: 'assets/pictures/words.png', icon: Icons.forum_rounded),
     (key: 'civic', title: L.t('Civic Observances', 'Pagdiriwang Pansibiko'), blurb: 'Lupang Hinirang', image: 'assets/pictures/civic.png', icon: Icons.flag_rounded),
   ];
 
@@ -326,7 +395,7 @@ class SnedInterafce1 extends StatelessWidget {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final letter = _signOfTheDay();
-    return GestureDetector(
+    return Pressable3D(radius: BorderRadius.circular(24 * scale), child: GestureDetector(
       onTap: () => Navigator.push(context, _fadeRoute(TutorialPractice(targetLetter: letter))),
       child: _buildGlassContainer(
         context: context,
@@ -379,14 +448,14 @@ class SnedInterafce1 extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildGuestModuleTile(
       BuildContext context, ({String key, String title, String blurb, String image, IconData icon}) m, double scale) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
-    return GestureDetector(
+    return Pressable3D(radius: BorderRadius.circular(22 * scale), child: GestureDetector(
       onTap: () => Navigator.push(context, _fadeRoute(_moduleScreen(m.key))),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22 * scale),
@@ -440,7 +509,7 @@ class SnedInterafce1 extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildGuestTip(BuildContext context, UserRole role, double scale) {
@@ -505,7 +574,7 @@ class SnedInterafce1 extends StatelessWidget {
       ];
 
   Widget _buildDailyTreasureCard(BuildContext context, double scale, String subtitle) {
-    return GestureDetector(
+    return Pressable3D(radius: BorderRadius.circular(24 * scale), child: GestureDetector(
       onTap: () {
         Navigator.push(
           context,
@@ -556,7 +625,7 @@ class SnedInterafce1 extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 
   @override
@@ -687,15 +756,15 @@ class SnedInterafce1 extends StatelessWidget {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(vertical: 10), 
                     children: [
-                      ListTile(
-                        leading: Icon(Icons.settings, color: theme.primaryColor), 
+                      MenuCapsule(child: ListTile(
+                        leading: Icon(Icons.settings_outlined, color: theme.primaryColor), 
                         title: Text(L.t('Settings', 'Mga Setting'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context); 
                           Navigator.push(context, _fadeRoute(const SettingsScreen()));
                         }, 
-                      ),
-                      ListTile(
+                      )),
+                      MenuCapsule(child: ListTile(
                         leading: Icon(Icons.help_outline, color: theme.primaryColor), 
                         title: Text(L.t('Help & Support', 'Tulong at Suporta'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
@@ -736,16 +805,16 @@ class SnedInterafce1 extends StatelessWidget {
                             ],
                           )));
                         }, 
-                      ),
-                      ListTile(
+                      )),
+                      MenuCapsule(child: ListTile(
                         leading: Icon(Icons.info_outline, color: theme.primaryColor), 
                         title: Text(L.t('About Us', 'Tungkol sa Amin'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
                           Navigator.pop(context);
                           Navigator.push(context, _fadeRoute(const AboutUsScreen()));
                         }, 
-                      ),
-                      ListTile(
+                      )),
+                      MenuCapsule(child: ListTile(
                         leading: Icon(Icons.gavel_rounded, color: theme.primaryColor), 
                         title: Text(L.t('Terms & Privacy Policy', 'Mga Tuntunin at Privacy Policy'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
                         onTap: () {
@@ -801,10 +870,10 @@ class SnedInterafce1 extends StatelessWidget {
                             ],
                           )));
                         }, 
-                      ),
-                      ListTile(
-  leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: const Color(0xFFF34B1B)), 
-  title: Text(isGuest ? L.t('Change Role', 'Palitan ang Role') : L.t('Sign Out', 'Mag-sign Out'), style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
+                      )),
+                      MenuCapsule(solid: true, child: ListTile(
+  leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: Colors.white), 
+  title: Text(isGuest ? L.t('Change Role', 'Palitan ang Role') : L.t('Sign Out', 'Mag-sign Out'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), 
   onTap: () async {
     if (isGuest) {
       // Faculty / Parent have no account: just leave guest mode and ask for a role again.
@@ -824,7 +893,7 @@ class SnedInterafce1 extends StatelessWidget {
       (route) => false
     );
   }, 
-),
+)),
                     ],
                   ),
                 ),
@@ -1355,13 +1424,37 @@ class AboutUsScreen extends StatelessWidget {
             style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6),
             textAlign: TextAlign.justify,
           ),
-          SizedBox(height: 16 * scale),
+          SizedBox(height: 20 * scale),
 
-          _buildDevProfile(context, "Magpantay, Mea Angel S.", scale),
+          // Team name
+          Center(
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 10 * scale),
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(30 * scale),
+                border: Border.all(color: theme.primaryColor.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shield_rounded, color: theme.primaryColor, size: 20 * scale),
+                  SizedBox(width: 8 * scale),
+                  Text(
+                    'Tech Spartan Innovators',
+                    style: TextStyle(color: theme.primaryColor, fontSize: 16 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: 20 * scale),
+
+          _buildDevProfile(context, "Magpantay, Mea Angel S.", 'meamagpantay49@gmail.com', 'assets/pictures/mea.jpg', scale),
           SizedBox(height: 12 * scale),
-          _buildDevProfile(context, "Maligalig, Heartdel D.", scale),
+          _buildDevProfile(context, "Maligalig, Heartdel D.", 'heartmaligalig@gmail.com', 'assets/pictures/heart.jpg', scale),
           SizedBox(height: 12 * scale),
-          _buildDevProfile(context, "Serrano, Anthony", scale),
+          _buildDevProfile(context, "Serrano, Anthony", 'anthonyserrano037@gmail.com', 'assets/pictures/anthony.png', scale),
 
           SizedBox(height: 40 * scale),
         ],
@@ -1369,8 +1462,9 @@ class AboutUsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDevProfile(BuildContext context, String name, double scale) {
-    final textColor = Theme.of(context).colorScheme.onSurface;
+  Widget _buildDevProfile(BuildContext context, String name, String email, String photo, double scale) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
     return Container(
       padding: EdgeInsets.all(16 * scale),
       decoration: BoxDecoration(
@@ -1380,19 +1474,45 @@ class AboutUsScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              name,
-              style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w600),
+          Container(
+            width: 56 * scale,
+            height: 56 * scale,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.6), width: 2),
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                photo,
+                fit: BoxFit.cover,
+                alignment: Alignment.topCenter,
+                errorBuilder: (_, _, _) => Icon(Icons.person_rounded, color: textColor.withValues(alpha: 0.4), size: 32 * scale),
+              ),
             ),
           ),
-          Row(
-            children: [
-              Icon(Icons.link_rounded, color: textColor.withValues(alpha: 0.5), size: 20 * scale),
-              SizedBox(width: 12 * scale),
-              Icon(Icons.email_outlined, color: textColor.withValues(alpha: 0.5), size: 20 * scale),
-            ],
-          )
+          SizedBox(width: 14 * scale),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w600)),
+                SizedBox(height: 2 * scale),
+                Text(email, style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12 * scale)),
+              ],
+            ),
+          ),
+          // Opens the mail app; if there is none, copies the address.
+          IconButton(
+            tooltip: email,
+            icon: Icon(Icons.email_outlined, color: theme.primaryColor, size: 22 * scale),
+            onPressed: () async {
+              final ok = await launchUrl(Uri(scheme: 'mailto', path: email)).catchError((_) => false);
+              if (ok || !context.mounted) return;
+              await Clipboard.setData(ClipboardData(text: email));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L.t('Email copied: $email', 'Nakopya ang email: $email'))));
+            },
+          ),
         ],
       ),
     );

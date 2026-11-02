@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -257,7 +258,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () => Navigator.pop(context, controller.text.trim()),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFFB800),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
             ),
             child: Text(context.tr(context.tr('Verify', 'I-verify'), 'I-verify'), style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
@@ -293,14 +294,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingsCard(
             context: context,
             children: [
-              ListTile(
+              Pressable3D(child: ListTile(
                 leading: const Icon(CupertinoIcons.person_alt_circle, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Edit Personal Details', 'I-edit ang Personal na Detalye'), 'I-edit ang Personal na Detalye'), style: TextStyle(color: textColor)),
                 trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
                 onTap: () {
                   _showEditProfileDialog(context);
                 },
-              ),
+              )),
             ],
           ),
 
@@ -310,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               ValueListenableBuilder<bool>(
                 valueListenable: PerformanceSettings.reduceEffects,
-                builder: (context, on, _) => SwitchListTile(
+                builder: (context, on, _) => Pressable3D(child: SwitchListTile(
                   activeThumbColor: const Color(0xFFFFB800),
                   inactiveThumbColor: Colors.grey.shade400,
                   inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -322,10 +323,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   value: on,
                   onChanged: (val) => PerformanceSettings.set(val),
-                ),
+                )),
               ),
               Divider(height: 1, color: theme.dividerColor),
-              SwitchListTile(
+              Pressable3D(child: SwitchListTile(
                 activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -340,9 +341,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: (val) {
                   soundProvider.toggleBgmMute();
                 },
-              ),
+              )),
               Divider(height: 1, color: theme.dividerColor),
-              SwitchListTile(
+              Pressable3D(child: SwitchListTile(
                 activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -357,9 +358,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: (val) {
                   soundProvider.toggleSfxMute();
                 },
-              ),
+              )),
               Divider(height: 1, color: theme.dividerColor),
-              ListTile(
+              Pressable3D(child: ListTile(
                 leading: const Icon(Icons.translate_rounded, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Language', 'Wika'), 'Wika'), style: TextStyle(color: textColor)),
                 trailing: DropdownButton<String>(
@@ -375,9 +376,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (val != null) context.read<LanguageProvider>().setLanguage(val);
                   },
                 ),
-              ),
+              )),
               Divider(height: 1, color: theme.dividerColor),
-              ListTile(
+              Pressable3D(child: ListTile(
                 leading: const Icon(CupertinoIcons.paintbrush_fill, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Theme', 'Tema'), 'Tema'), style: TextStyle(color: textColor)),
                 trailing: DropdownButton<String>(
@@ -401,7 +402,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     }
                   },
                 ),
-              ),
+              )),
             ],
           ),
 
@@ -409,7 +410,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingsCard(
             context: context,
             children: [
-              SwitchListTile(
+              Pressable3D(child: SwitchListTile(
                 activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -424,25 +425,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   setState(() => _twoFactorEnabled = val);
                   _handle2FAToggle(val);
                 },
-              ),
+              )),
               Divider(height: 1, color: theme.dividerColor),
-              ListTile(
+              Pressable3D(child: ListTile(
                 leading: Icon(CupertinoIcons.lock_fill, color: textColor.withValues(alpha: 0.6)),
                 title: Text(context.tr(context.tr('Change Password', 'Palitan ang Password'), 'Palitan ang Password'), style: TextStyle(color: textColor)),
                 trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
                 onTap: () {
                   _showChangePasswordDialog(context);
                 },
-              ),
+              )),
               Divider(height: 1, color: theme.dividerColor),
-              ListTile(
+              Pressable3D(child: ListTile(
                 leading: Icon(CupertinoIcons.device_phone_portrait, color: textColor.withValues(alpha: 0.6)),
                 title: Text(context.tr(context.tr('Session & Activity Logs', 'Session at Activity Logs'), 'Session at Activity Logs'), style: TextStyle(color: textColor)),
                 trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
                 onTap: () {
                   _showSessionHistory(context);
                 },
-              ),
+              )),
             ],
           ),
           
@@ -477,12 +478,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
+      // Raised 3D card: lit from the top, a faint shade at the bottom.
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.white.withValues(alpha: 0.14), Colors.white.withValues(alpha: 0.0), Colors.black.withValues(alpha: 0.05)],
+          stops: const [0.0, 0.4, 1.0],
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Column(children: children),
     );
   }

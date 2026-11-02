@@ -81,7 +81,9 @@ class ProgressService {
     final cat = _normalizeCategory(moduleKey);
     return {
       'recentModules': FieldValue.arrayUnion([cat]),
-      if (modules.contains(cat)) 'moduleLastOpened': {cat: FieldValue.serverTimestamp()},
+      // Built-in modules and the web app's categories (activity_categories
+      // ids), so Continue Learning can show either.
+      if (cat != 'general') 'moduleLastOpened': {cat: FieldValue.serverTimestamp()},
     };
   }
 

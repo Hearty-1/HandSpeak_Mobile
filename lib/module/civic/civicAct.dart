@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -9,8 +10,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
-import 'package:video_player/video_player.dart';
 
+import '/widgets/activity_video.dart';
 import '/providers/sound_provider.dart';
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
@@ -436,7 +437,7 @@ class _QuizScreenState extends State<_QuizScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isAnswered ? Colors.white : theme.primaryColor,
                 disabledBackgroundColor: theme.dividerColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               ),
               child: _isSaving
                   ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
@@ -474,7 +475,7 @@ class _QuizScreenState extends State<_QuizScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               ),
               onPressed: () => Navigator.pop(context),
               child: Text('Go Back', style: TextStyle(color: theme.colorScheme.onPrimary)),
@@ -528,7 +529,7 @@ class _QuizScreenState extends State<_QuizScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
                 padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               ),
               onPressed: () => Navigator.pop(context),
               child: Text(
@@ -820,19 +821,18 @@ class _QuestionViewState extends State<_QuestionView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (q.videoUrl.isNotEmpty || q.imageUrl.isNotEmpty) ...[
-          Container(
-            height: 200,
-            padding: const EdgeInsets.all(12),
+          Center(child: SizedBox.square(dimension: 220, child: Container(
+            
             decoration: BoxDecoration(
               color: theme.cardColor,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(20),
               child: _Media(source: q.videoUrl.isNotEmpty ? q.videoUrl : q.imageUrl, iconSize: 40),
             ),
-          ),
+          ))),
           const SizedBox(height: 16),
         ],
         if (q.audioUrl.isNotEmpty) ...[
@@ -903,7 +903,7 @@ class _QuestionViewState extends State<_QuestionView> {
       crossAxisCount: 2,
       mainAxisSpacing: 14,
       crossAxisSpacing: 14,
-      childAspectRatio: hasMedia ? 1.1 : 2.2,
+      childAspectRatio: hasMedia ? 1.0 : 2.2,
       children: [for (final option in _choices) _choiceTile(option, theme)],
     );
   }
@@ -915,7 +915,7 @@ class _QuestionViewState extends State<_QuestionView> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         height: height,
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: height == null ? 16 : 6),
+        padding: _Media.isMedia(option) ? const EdgeInsets.all(2) : EdgeInsets.symmetric(horizontal: 14, vertical: height == null ? 16 : 6),
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(16),
@@ -923,7 +923,7 @@ class _QuestionViewState extends State<_QuestionView> {
         ),
         alignment: Alignment.center,
         child: _Media.isMedia(option)
-            ? ClipRRect(borderRadius: BorderRadius.circular(10), child: _Media(source: option, iconSize: 28))
+            ? ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: _Media(source: option, iconSize: 28)))
             : Text(
                 option,
                 textAlign: TextAlign.center,
@@ -1166,7 +1166,7 @@ class _QuestionViewState extends State<_QuestionView> {
         ),
         alignment: Alignment.center,
         child: _Media.isMedia(item)
-            ? _Media(source: item, iconSize: 32)
+            ? _Media(source: item, iconSize: 32, fit: BoxFit.contain)
             : Text(
                 item,
                 textAlign: TextAlign.center,
@@ -1282,11 +1282,11 @@ class _QuestionViewState extends State<_QuestionView> {
 /// base64 image; videos (mp4, mov, webm) loop muted.
 class _Media extends StatelessWidget {
   final String source;
-  final BoxFit fit = BoxFit.contain;
+  final BoxFit fit;
   final double iconSize;
   final Widget? fallback;
 
-  const _Media({required this.source, this.iconSize = 24, this.fallback});
+  const _Media({required this.source, this.iconSize = 24, this.fallback, this.fit = BoxFit.cover});
 
   static final RegExp _imageExt = RegExp(r'\.(png|jpe?g|webp|gif)$', caseSensitive: false);
   static final RegExp _videoExt = RegExp(r'\.(mp4|mov|webm|m4v)$', caseSensitive: false);
@@ -1323,7 +1323,7 @@ class _Media extends StatelessWidget {
     final s = source.trim();
     final broken = fallback ?? Icon(Icons.image_not_supported, size: iconSize, color: Colors.grey);
     if (s.isEmpty) return broken;
-    if (isVideo(s)) return _LoopingVideo(url: s, fit: fit, fallback: broken);
+    if (isVideo(s)) return ActivityVideo(url: s, fit: fit, fallback: broken);
     if (s.startsWith('http://') || s.startsWith('https://')) {
       return Image.network(
         s,
@@ -1340,67 +1340,6 @@ class _Media extends StatelessWidget {
   }
 }
 
-class _LoopingVideo extends StatefulWidget {
-  final String url;
-  final BoxFit fit;
-  final Widget fallback;
-
-  const _LoopingVideo({required this.url, required this.fit, required this.fallback});
-
-  @override
-  State<_LoopingVideo> createState() => _LoopingVideoState();
-}
-
-class _LoopingVideoState extends State<_LoopingVideo> {
-  VideoPlayerController? _controller;
-  bool _failed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _open();
-  }
-
-  Future<void> _open() async {
-    final url = widget.url;
-    final c = url.startsWith('assets/')
-        ? VideoPlayerController.asset(url)
-        : VideoPlayerController.networkUrl(Uri.parse(url));
-    _controller = c;
-    try {
-      await c.initialize();
-      await c.setLooping(true);
-      await c.setVolume(0);
-      await c.play();
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('Activity video unavailable ($url): $e');
-      if (mounted) setState(() => _failed = true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = _controller;
-    if (_failed) return widget.fallback;
-    if (c == null || !c.value.isInitialized) {
-      return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
-    }
-    return FittedBox(
-      fit: widget.fit,
-      clipBehavior: Clip.hardEdge,
-      child: SizedBox(width: c.value.size.width, height: c.value.size.height, child: VideoPlayer(c)),
-    );
-  }
-}
-
-/// Plays the question's audio clip (audioStoragePath in the doc).
 class _AudioButton extends StatefulWidget {
   final String url;
   const _AudioButton({required this.url});

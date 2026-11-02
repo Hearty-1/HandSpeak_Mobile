@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -433,7 +434,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
                                   backgroundColor: theme.primaryColor,
                                   foregroundColor: theme.colorScheme.onPrimary,
                                   minimumSize: Size(299 * scale, 50 * scale),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
+                                  shape: Button3DBorder(borderRadius: BorderRadius.circular(25 * scale)),
                                   elevation: 0,
                                 ),
                                 onPressed: () {

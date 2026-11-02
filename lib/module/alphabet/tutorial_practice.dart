@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -2001,7 +2002,7 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                       foregroundColor: theme.colorScheme.onPrimary,
                       elevation: 4,
                       shadowColor: theme.primaryColor.withValues(alpha: 0.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                       minimumSize: const Size(double.infinity, 54),
                     ),
                     onPressed: () {

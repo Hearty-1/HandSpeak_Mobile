@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -234,7 +235,7 @@ class AlphabetInterface extends StatelessWidget {
                                     SizedBox(height: 12 * scale),
                                     GestureDetector(
                                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const DifficultySelectionScreen())),
-                                      child: Image.asset("assets/pictures/actt.png", width: 164 * scale, height: 160 * scale, fit: BoxFit.cover),
+                                      child: PictureButton3D(picture: Image.asset("assets/pictures/actt.png", width: 164 * scale, height: 160 * scale, fit: BoxFit.cover)),
                                     ),
                                   ],
                                 ),
@@ -250,7 +251,7 @@ class AlphabetInterface extends StatelessWidget {
                                     SizedBox(height: 12 * scale),
                                     GestureDetector(
                                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LeaderboardScreen(initialTab: 'challenges'))),
-                                      child: Image.asset("assets/pictures/battle.png", width: 159 * scale, height: 159 * scale, fit: BoxFit.cover),
+                                      child: PictureButton3D(picture: Image.asset("assets/pictures/battle.png", width: 159 * scale, height: 159 * scale, fit: BoxFit.cover)),
                                     ),
                                   ],
                                 ),
@@ -310,7 +311,7 @@ class AlphabetInterface extends StatelessWidget {
         elevation: 4,
         shadowColor: theme.primaryColor.withValues(alpha: 0.5),
         padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20 * scale)),
+        shape: Button3DBorder(borderRadius: BorderRadius.circular(20 * scale)),
       ),
       icon: Icon(icon, size: 18 * scale),
       label: Text(

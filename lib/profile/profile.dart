@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
@@ -101,7 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.primaryColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                  shape: Button3DBorder(borderRadius: BorderRadius.circular(28))
                 ),
                 onPressed: () {},
                 child: Text('Go to Login', style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
@@ -631,7 +632,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: FilledButton.styleFrom(
                     backgroundColor: theme.primaryColor,
                     padding: EdgeInsets.symmetric(vertical: 16 * scale),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16 * scale)),
+                    shape: Button3DBorder(borderRadius: BorderRadius.circular(16 * scale)),
                   ),
                   onPressed: () => Navigator.pop(context),
                   child: const Text("Awesome", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
@@ -931,7 +932,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.primaryColor, 
                     elevation: 0, 
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12 * scale))
+                    shape: Button3DBorder(borderRadius: BorderRadius.circular(12 * scale))
                   ),
                   child: isSaving 
                       ? SizedBox(width: 18 * scale, height: 18 * scale, child: CircularProgressIndicator(color: theme.colorScheme.onPrimary, strokeWidth: 2))

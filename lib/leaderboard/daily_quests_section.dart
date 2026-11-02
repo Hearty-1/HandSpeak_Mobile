@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -570,7 +571,7 @@ class _QuestCard extends StatelessWidget {
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(
                     backgroundColor: info.color,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12 * s)),
+                    shape: Button3DBorder(borderRadius: BorderRadius.circular(12 * s)),
                   ),
                   onPressed: claiming ? null : onClaim,
                   icon: claiming

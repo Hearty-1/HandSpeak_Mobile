@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:ui'; 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -178,15 +179,15 @@ class SnedInterface2 extends StatelessWidget {
                       child: ListView(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         children: [
-                          ListTile(
-                            leading: Icon(Icons.settings, color: theme.primaryColor),
+                          MenuCapsule(child: ListTile(
+                            leading: Icon(Icons.settings_outlined, color: theme.primaryColor),
                             title: Text(L.t('Settings', 'Mga Setting'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
                               Navigator.pop(context);
                               Navigator.push(context, _fadeRoute(const SettingsScreen()));
                             },
-                          ),
-                          ListTile(
+                          )),
+                          MenuCapsule(child: ListTile(
                             leading: Icon(Icons.help_outline, color: theme.primaryColor),
                             title: Text(L.t('Help & Support', 'Tulong at Suporta'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
@@ -203,16 +204,16 @@ class SnedInterface2 extends StatelessWidget {
                                 ],
                               )));
                             },
-                          ),
-                          ListTile(
+                          )),
+                          MenuCapsule(child: ListTile(
                             leading: Icon(Icons.info_outline, color: theme.primaryColor),
                             title: Text(L.t('About Us', 'Tungkol sa Amin'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
                               Navigator.pop(context);
                               Navigator.push(context, _fadeRoute(const AboutUsScreen()));
                             },
-                          ),
-                          ListTile(
+                          )),
+                          MenuCapsule(child: ListTile(
                             leading: Icon(Icons.gavel_rounded, color: theme.primaryColor),
                             title: Text(L.t('Terms & Privacy Policy', 'Mga Tuntunin at Privacy Policy'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
@@ -232,10 +233,10 @@ class SnedInterface2 extends StatelessWidget {
                                 ],
                               )));
                             },
-                          ),
-                          ListTile(
-  leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: const Color(0xFFF34B1B)), 
-  title: Text(isGuest ? L.t('Change Role', 'Palitan ang Role') : L.t('Sign Out', 'Mag-sign Out'), style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w600)), 
+                          )),
+                          MenuCapsule(solid: true, child: ListTile(
+  leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: Colors.white), 
+  title: Text(isGuest ? L.t('Change Role', 'Palitan ang Role') : L.t('Sign Out', 'Mag-sign Out'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), 
   onTap: () async {
     if (isGuest) {
       // Faculty / Parent have no account: leave guest mode and ask for a role again.
@@ -255,7 +256,7 @@ class SnedInterface2 extends StatelessWidget {
       (route) => false
     );
   }, 
-),
+)),
                         ],
                       ),
                     ),
@@ -401,7 +402,7 @@ class SnedInterface2 extends StatelessWidget {
                               scale: scale,
                               leftOffset: 12,
                               topOffset: canProgress ? 330 : 300, 
-                              title: L.t('Words/Phrases', 'Mga Salita/Parirala'),
+                              title: L.t('Greetings', 'Mga Pagbati'),
                               imagePath: "assets/pictures/words.png",
                               currentXp: displayWordsXp,
                               targetXp: targetXp,

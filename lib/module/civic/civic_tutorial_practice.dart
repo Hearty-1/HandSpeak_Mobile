@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'dart:convert';
@@ -911,7 +912,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                       foregroundColor: theme.colorScheme.onPrimary,
                       elevation: 4,
                       shadowColor: theme.primaryColor.withValues(alpha: 0.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                       minimumSize: const Size(double.infinity, 54),
                     ),
                     onPressed: () => Navigator.pop(dialogContext),
@@ -1512,7 +1513,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(200, 50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+              shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
             ),
             onPressed: () => Navigator.pop(context),
             child: Text(L.t('Finish', 'Tapusin'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

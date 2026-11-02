@@ -23,7 +23,7 @@ class ActivityCategoryConfig {
     this.xpField,
   });
 
-  static const phrases = ActivityCategoryConfig(aliases: ['phrase', 'phrases', 'Phrase', 'Phrases'], title: 'Phrases');
+  static const phrases = ActivityCategoryConfig(aliases: ['phrase', 'phrases', 'Phrase', 'Phrases'], title: 'Greetings');
 
   /// easy / medium / hard from a level id ("phrases_easy_3",
   /// "calendar_hard_2"); a level without one counts as easy.

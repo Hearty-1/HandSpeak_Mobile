@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -31,6 +32,7 @@ import '/services/role_service.dart';
 import '/services/xp_rewards.dart';
 import '/providers/language_provider.dart';
 import '/widgets/practice_feedback.dart';
+import '/widgets/practice_success.dart';
 
 /// A category added in the web app (Firestore `activity_categories/{id}`):
 /// label, description, cover image, isActive. The four built-in modules have
@@ -81,6 +83,16 @@ class CloudCategory {
   String get title => label == label.toUpperCase() && label.length > 1
       ? label.split(' ').map((w) => w.isEmpty ? w : w[0] + w.substring(1).toLowerCase()).join(' ')
       : label;
+}
+
+/// A category cover (URL, Storage path or base64), for other screens.
+class CloudCover extends StatelessWidget {
+  final String source;
+  final BoxFit fit;
+  const CloudCover({super.key, required this.source, this.fit = BoxFit.cover});
+
+  @override
+  Widget build(BuildContext context) => _CloudMedia(source: source, fit: fit);
 }
 
 /// Image / video from a URL, Firebase Storage path or base64 string.
@@ -408,7 +420,7 @@ class CloudCategoryScreen extends StatelessWidget {
                                                       xpField: category.xpField,
                                                     ),
                                                   ))),
-                                      child: Image.asset("assets/pictures/actt.png", width: 164 * scale, height: 160 * scale, fit: BoxFit.cover),
+                                      child: PictureButton3D(picture: Image.asset("assets/pictures/actt.png", width: 164 * scale, height: 160 * scale, fit: BoxFit.cover)),
                                     ),
                                   ]),
                                 ),
@@ -421,7 +433,7 @@ class CloudCategoryScreen extends StatelessWidget {
                                     GestureDetector(
                                       onTap: () => Navigator.push(context,
                                           MaterialPageRoute(builder: (_) => const LeaderboardScreen(initialTab: 'challenges'))),
-                                      child: Image.asset("assets/pictures/battle.png", width: 159 * scale, height: 159 * scale, fit: BoxFit.cover),
+                                      child: PictureButton3D(picture: Image.asset("assets/pictures/battle.png", width: 159 * scale, height: 159 * scale, fit: BoxFit.cover)),
                                     ),
                                   ]),
                                 ),
@@ -492,7 +504,7 @@ class _SectionRow extends StatelessWidget {
                   elevation: 4,
                   shadowColor: theme.primaryColor.withValues(alpha: 0.5),
                   padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20 * scale)),
+                  shape: Button3DBorder(borderRadius: BorderRadius.circular(20 * scale)),
                 ),
                 icon: Icon(icon, size: 18 * scale),
                 label: Text(label, style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w800, fontSize: 14 * scale)),
@@ -996,7 +1008,7 @@ class _CloudLessonScreenState extends State<CloudLessonScreen> {
                                 backgroundColor: theme.primaryColor,
                                 foregroundColor: theme.colorScheme.onPrimary,
                                 minimumSize: Size(299 * scale, 50 * scale),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
+                                shape: Button3DBorder(borderRadius: BorderRadius.circular(25 * scale)),
                                 elevation: 0,
                               ),
                               onPressed: () => Navigator.push(
@@ -1281,23 +1293,16 @@ class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
     }
   }
 
+  bool _confirmed = false;
+
   Future<void> _confirm() async {
-    await ProgressService().markTutorialMastered(widget.category.id, widget.lesson.title);
+    if (_confirmed) return;
+    _confirmed = true;
+    // Same rewards and feedback as the other categories' practice.
+    await practiceSuccessHaptics();
+    final xp = await _cloudAwardMastery(widget.category, widget.lesson, continuous: widget.onDone != null);
     if (!mounted) return;
-    final theme = Theme.of(context);
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: theme.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        icon: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 56),
-        title: const Text('Great signing!', textAlign: TextAlign.center),
-        content: Text('"${widget.lesson.title}" is marked as practised.', textAlign: TextAlign.center),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(widget.onDone != null ? 'Next sign' : 'Done')),
-        ],
-      ),
-    );
+    await showPracticeMasteredDialog(context, signName: widget.lesson.title, xpGained: xp);
     if (!mounted) return;
     if (widget.onDone != null) {
       widget.onDone!();
@@ -1543,7 +1548,7 @@ class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
                                 backgroundColor: theme.primaryColor,
                                 foregroundColor: theme.colorScheme.onPrimary,
                                 disabledBackgroundColor: theme.dividerColor,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                               ),
                               onPressed: ready ? _confirm : null,
                               icon: const Icon(Icons.check_rounded),
@@ -1780,6 +1785,7 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
   DateTime? _recordStart;
   bool _evaluating = false;
   bool _done = false;
+  int _xpGained = 0; // XP actually awarded (0 when mastered before)
   final List<RawFrame> _frames = [];
   bool _sawHands = false;
   int _lastHandMs = 0;
@@ -2199,36 +2205,18 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
   Future<void> _onSuccess() async {
     if (_done) return;
     _done = true;
-    HapticFeedback.heavyImpact();
-    final continuous = widget.onDone != null;
-    final module = widget.category.id;
-    await ProgressService().markTutorialMastered(module, widget.lesson.title);
-    await ProgressService().awardFirstMastery(
-      moduleKey: continuous ? XpRewards.practiceKey(module) : module,
-      itemKey: ProgressService.masteryKey(widget.lesson.title),
-      xp: continuous ? XpRewards.practiceSign : XpRewards.tutorialSign,
-      xpField: widget.category.xpField,
-      countsAsLesson: !continuous,
-    );
+    // Same rewards and feedback as the Greetings / Numbers / Alphabet practice.
+    await practiceSuccessHaptics();
+    _xpGained = await _cloudAwardMastery(widget.category, widget.lesson, continuous: widget.onDone != null);
     if (!mounted) return;
-    if (continuous) {
+    if (widget.onDone != null) {
+      // Inline success card (see build), then the next sign.
+      setState(() {});
       await Future.delayed(const Duration(milliseconds: 1500));
       if (mounted) widget.onDone!();
       return;
     }
-    final theme = Theme.of(context);
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: theme.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        icon: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 56),
-        title: Text(L.t('Great signing!', 'Mahusay!'), textAlign: TextAlign.center),
-        content: Text(L.t('"${widget.lesson.title}" is mastered.', 'Natutunan mo na ang "${widget.lesson.title}".'),
-            textAlign: TextAlign.center),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(L.t('Done', 'Tapos')))],
-      ),
-    );
+    await showPracticeMasteredDialog(context, signName: widget.lesson.title, xpGained: _xpGained);
     if (mounted) Navigator.pop(context);
   }
 
@@ -2413,25 +2401,30 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
                           const SizedBox(height: 24),
                           if (!landscape) SizedBox(width: screenWidth * 0.60, child: AspectRatio(aspectRatio: 1, child: cameraPane)),
                           const SizedBox(height: 16),
-                          _RecordControls(
-                            heroTag: 'cloud_record_button',
-                            countdown: _countdown,
-                            isRecording: _recording,
-                            isEvaluating: _evaluating,
-                            elapsed: elapsed,
-                            recordProgress: recordProgress,
-                            bodyVisible: _poseVisible,
-                            showButton: ready && !_done,
-                            onRecord: _toggleRecording,
-                            width: screenWidth * 0.70,
-                          ),
-                          const SizedBox(height: 16),
-                          // One feedback card: the verdict after an attempt,
-                          // else the instruction / status.
-                          if (_title.isNotEmpty && !_recording && !_evaluating)
-                            PracticeFeedback(title: _title, message: _message, tone: _tone)
-                          else
-                            PracticeFeedback(message: _guide, tone: _error != null ? FeedbackTone.problem : FeedbackTone.info),
+                          if (widget.onDone != null && _done) ...[
+                            const SizedBox(height: 8),
+                            ContinuousPracticeSuccess(xpGained: _xpGained, nextLabel: L.t('Next sign...', 'Susunod na kumpas...')),
+                          ] else ...[
+                            _RecordControls(
+                              heroTag: 'cloud_record_button',
+                              countdown: _countdown,
+                              isRecording: _recording,
+                              isEvaluating: _evaluating,
+                              elapsed: elapsed,
+                              recordProgress: recordProgress,
+                              bodyVisible: _poseVisible,
+                              showButton: ready && !_done,
+                              onRecord: _toggleRecording,
+                              width: screenWidth * 0.70,
+                            ),
+                            const SizedBox(height: 16),
+                            // One feedback card: the verdict after an attempt,
+                            // else the instruction / status.
+                            if (_title.isNotEmpty && !_recording && !_evaluating)
+                              PracticeFeedback(title: _title, message: _message, tone: _tone)
+                            else
+                              PracticeFeedback(message: _guide, tone: _error != null ? FeedbackTone.problem : FeedbackTone.info),
+                          ],
                         ],
                       ),
                     ),
@@ -2790,4 +2783,20 @@ class _TrainingClip {
     return '${frames.length} frames, ${durationS.toStringAsFixed(1)} s (signing ${activeS.toStringAsFixed(1)} s), '
         '${fps.toStringAsFixed(0)} fps, hands ${pc(handCoverage)}, body ${pc(poseCoverage)}, cut off ${pc(outOfFrame)}';
   }
+}
+
+/// Marks [lesson] mastered and awards its XP like every other category
+/// (XpRewards: 20 XP for a tutorial sign, 10 for a continuous practice sign,
+/// first time only, then the capped repeat XP), into the category's module
+/// XP field. Returns the XP actually awarded.
+Future<int> _cloudAwardMastery(CloudCategory category, CloudLesson lesson, {required bool continuous}) async {
+  final module = category.id;
+  await ProgressService().markTutorialMastered(module, lesson.title);
+  return ProgressService().awardFirstMastery(
+    moduleKey: continuous ? XpRewards.practiceKey(module) : module,
+    itemKey: ProgressService.masteryKey(lesson.title),
+    xp: continuous ? XpRewards.practiceSign : XpRewards.tutorialSign,
+    xpField: category.xpField,
+    countsAsLesson: !continuous,
+  );
 }

@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -160,7 +161,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                         disabledBackgroundColor: onSurface.withValues(alpha: 0.12),
                         foregroundColor: Colors.white,
                         elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                       ),
                       child: _busy
                           ? const SizedBox(

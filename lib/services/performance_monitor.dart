@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:ui' show FrameTiming, ImageFilter;
 
@@ -371,7 +372,7 @@ class _PerformanceHintOverlayState extends State<PerformanceHintOverlay> {
                           style: FilledButton.styleFrom(
                             backgroundColor: amber,
                             foregroundColor: const Color(0xFF2A2340),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                           ),
                           onPressed: () {
                             PerformanceSettings.set(true);

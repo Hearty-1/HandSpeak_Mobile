@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -1233,7 +1234,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                     height: 50,
                     child: ElevatedButton(
                       onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: Button3DBorder(borderRadius: BorderRadius.circular(28))),
                       child: Text("Done", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900)),
                     ),
                   )
@@ -1421,7 +1422,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFF34B1B),
                 padding: const EdgeInsets.all(16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               ),
               child: isLoading
                   ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -1668,7 +1669,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
               onPressed: isLoading ? null : _handleCreateRoom,
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.primaryColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
               ),
               child: isLoading
                   ? CircularProgressIndicator(color: theme.colorScheme.onPrimary)
@@ -1922,7 +1923,7 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
                           : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: widget.isHost ? const Color(0xFFF34B1B) : theme.disabledColor,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                         elevation: 0,
                       ),
                       child: Text(
