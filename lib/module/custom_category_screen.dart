@@ -15,6 +15,7 @@ import 'package:hand_landmarker/hand_landmarker.dart';
 import '/leaderboard/arena.dart' show LeaderboardScreen;
 import '/module/alphabet/tutorial_practice.dart' show TutorialPractice;
 import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
+import '/module/civic/civic_tutorial_practice.dart' show CivicTutorialPractice;
 import '/module/numbers/numbers_tutorial_practice.dart' show NumbersTutorialPractice;
 import '/module/phrases/phrase_recognizer.dart' show PhraseRecognizer;
 import '/module/phrases/phrase_tutorial_practice.dart' show PhraseTutorialPractice;
@@ -33,6 +34,7 @@ import '/services/xp_rewards.dart';
 import '/providers/language_provider.dart';
 import '/widgets/practice_feedback.dart';
 import '/widgets/practice_success.dart';
+import '/widgets/challenge_camera_sign.dart' show ChallengeSignResult;
 
 /// A category added in the web app (Firestore `activity_categories/{id}`):
 /// label, description, cover image, isActive. The four built-in modules have
@@ -2799,4 +2801,507 @@ Future<int> _cloudAwardMastery(CloudCategory category, CloudLesson lesson, {requ
     xpField: category.xpField,
     countsAsLesson: !continuous,
   );
+}
+
+// =============================================================================
+// Camera question checked by a category's published model (activities and
+// challenges)
+// =============================================================================
+
+/// Normalised id of the activity_categories / published_gesture_models
+/// category for a challenge or activity category name.
+String publishedCategoryId(String category) {
+  final k = category.trim().toLowerCase();
+  if (k.contains('phrase') || k.contains('greeting') || k.contains('word')) return 'phrases';
+  if (k.contains('civic')) return 'civic';
+  return category.trim();
+}
+
+/// A camera question for a sign of a category with a model trained on the
+/// web (published_gesture_models: Calendar, Drinks, Greetings, Civic and any
+/// category added later): RECORD SIGN -> 3-2-1 -> sign (stops by itself when
+/// the hands are lowered, or STOP) -> the capture is shaped like the model's
+/// training clips and checked by the model, exactly as in the tutorial
+/// practice (CloudModelPractice). When the category has no published model
+/// for the sign yet, it says so and offers SKIP (a skipped result).
+class PublishedCameraSign extends StatefulWidget {
+  final String category;
+  final String sign;
+  final bool enabled;
+  final ValueChanged<ChallengeSignResult> onResult;
+
+  const PublishedCameraSign({super.key, required this.category, required this.sign, required this.onResult, this.enabled = true});
+
+  @override
+  State<PublishedCameraSign> createState() => _PublishedCameraSignState();
+}
+
+class _PublishedCameraSignState extends State<PublishedCameraSign> {
+  static const int _autoStopAfterMs = 1500;
+  static const int _manualStopTrimMs = 600;
+  static const Duration _maxRecording = Duration(seconds: 6);
+
+  PublishedGestureModel? _model;
+  PublishedGestureClass? _target;
+  bool _lookedUp = false;
+
+  CameraController? _camera;
+  bool _disposed = false;
+  int _inFlight = 0;
+  bool _handsVisible = false;
+  int _imageWidth = 0, _imageHeight = 0;
+  String _engine = '';
+
+  int _countdown = 0;
+  Timer? _countdownTimer;
+  Timer? _maxTimer;
+  bool _recording = false;
+  bool _evaluating = false;
+  bool _answered = false;
+  final List<RawFrame> _frames = [];
+  bool _sawHands = false;
+  int _lastHandMs = 0;
+  String _note = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _lookup();
+  }
+
+  @override
+  void didUpdateWidget(covariant PublishedCameraSign old) {
+    super.didUpdateWidget(old);
+    if (old.sign != widget.sign || old.category != widget.category) {
+      _cancel();
+      _answered = false;
+      _note = '';
+      _lookup();
+    }
+  }
+
+  Future<void> _lookup() async {
+    setState(() => _lookedUp = false);
+    final m = await PublishedGestureModels.forCategory(publishedCategoryId(widget.category));
+    final t = m?.classForLesson([widget.sign]);
+    if (!mounted) return;
+    setState(() {
+      _model = t == null ? null : m;
+      _target = t;
+      _lookedUp = true;
+    });
+    if (t != null && _camera == null) _startCamera();
+  }
+
+  Future<void> _startCamera() async {
+    try {
+      final cams = await availableCameras();
+      if (cams.isEmpty || _disposed) return;
+      final cam = cams.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cams.first);
+      final c = CameraController(cam, ResolutionPreset.medium, enableAudio: false, imageFormatGroup: ImageFormatGroup.yuv420);
+      await c.initialize();
+      if (_disposed) {
+        await c.dispose();
+        return;
+      }
+      setState(() => _camera = c);
+      await c.startImageStream(_onImage);
+    } catch (e) {
+      debugPrint('Published camera sign: camera unavailable: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _countdownTimer?.cancel();
+    _maxTimer?.cancel();
+    final c = _camera;
+    _camera = null;
+    if (c != null) {
+      unawaited(() async {
+        try {
+          if (c.value.isStreamingImages) await c.stopImageStream();
+        } catch (_) {}
+        await c.dispose();
+      }());
+    }
+    super.dispose();
+  }
+
+  static bool _inFrame(List<List<double>>? hand) {
+    if (hand == null || hand.isEmpty) return false;
+    const m = 0.02;
+    for (final p in hand) {
+      if (p.length < 2 || p[0] < m || p[0] > 1 - m || p[1] < m || p[1] > 1 - m) return false;
+    }
+    return true;
+  }
+
+  Future<void> _onImage(CameraImage image) async {
+    LightingMonitor.instance.onImage(image);
+    final c = _camera;
+    if (_disposed || _answered || _evaluating || c == null || _inFlight >= 2) return;
+    _inFlight++;
+    try {
+      final r = await HolisticCapture.process(image, _CloudMirrorPracticeState._rotation(c));
+      if (r == null || _disposed || !mounted) return;
+      _imageWidth = r.imageWidth;
+      _imageHeight = r.imageHeight;
+      _engine = r.engine;
+      final f = r.frame;
+      final changed = f.hasHands != _handsVisible;
+      _handsVisible = f.hasHands;
+      if (!_recording) {
+        if (changed) setState(() {});
+        return;
+      }
+      _frames.add(f);
+      if (_inFrame(f.leftHand) || _inFrame(f.rightHand)) {
+        _sawHands = true;
+        _lastHandMs = f.timeMs;
+      } else if (_sawHands && f.timeMs - _lastHandMs > _autoStopAfterMs) {
+        unawaited(_stopAndEvaluate());
+        return;
+      }
+      if (changed) setState(() {});
+    } catch (e) {
+      debugPrint('Published camera sign capture error: $e');
+    } finally {
+      _inFlight--;
+    }
+  }
+
+  void _onButton() {
+    if (!widget.enabled || _answered || _evaluating || _camera == null) return;
+    if (_countdown > 0) {
+      _cancel();
+    } else if (_recording) {
+      _stopAndEvaluate(manual: true);
+    } else {
+      HapticFeedback.selectionClick();
+      setState(() {
+        _countdown = 3;
+        _note = L.t('Lower your hands and get ready...', 'Ibaba ang mga kamay at pumwesto...');
+      });
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted || _disposed) return t.cancel();
+        if (_countdown <= 1) {
+          t.cancel();
+          _frames.clear();
+          _sawHands = false;
+          setState(() {
+            _countdown = 0;
+            _recording = true;
+            _note = L.t('Sign now! Lower your hands when you are done.', 'Kumpas na! Ibaba ang mga kamay kapag tapos na.');
+          });
+          _maxTimer = Timer(_maxRecording, () => _stopAndEvaluate());
+        } else {
+          setState(() => _countdown--);
+        }
+      });
+    }
+  }
+
+  void _cancel() {
+    _countdownTimer?.cancel();
+    _maxTimer?.cancel();
+    _frames.clear();
+    if (!mounted) return;
+    setState(() {
+      _countdown = 0;
+      _recording = false;
+    });
+  }
+
+  void _finish(ChallengeSignResult r) {
+    if (_answered) return;
+    _answered = true;
+    if (mounted) setState(() => _evaluating = false);
+    widget.onResult(r);
+  }
+
+  /// Same pass rule as CloudModelPractice._assess.
+  ({bool passed, double share, Prediction? best}) _assess(RawPredictResponse result) {
+    final model = _model!, target = _target!;
+    double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
+    bool isSign(Prediction p) => p.index != model.invalidIndex && model.classAt(p.index) != null;
+    final signs = [for (final p in result.topK) if (isSign(p)) p];
+    final invalid = result.topK.where((p) => !isSign(p)).fold<double>(0, (a, p) => a + pct(p));
+    final mass = math.max(1.0 - invalid, 0.05);
+    double share(Prediction? p) => p == null ? 0.0 : (pct(p) / mass).clamp(0.0, 1.0);
+    final best = signs.isNotEmpty ? signs.first : null;
+    final next = signs.length > 1 ? signs[1] : null;
+    final t = signs.where((p) => p.index == target.index).firstOrNull;
+    final passed = best != null &&
+        best.index == target.index &&
+        (pct(best) >= target.practice.minConfidence ||
+            (share(best) >= target.practice.minSignShare && share(best) - share(next) >= target.practice.minSignLead));
+    return (passed: passed, share: share(t), best: best);
+  }
+
+  Future<void> _stopAndEvaluate({bool manual = false}) async {
+    if (!_recording || _disposed) return;
+    _maxTimer?.cancel();
+    var frames = List<RawFrame>.of(_frames)..sort((a, b) => a.timeMs.compareTo(b.timeMs));
+    _frames.clear();
+    setState(() => _recording = false);
+    if (manual && frames.isNotEmpty) {
+      final cutoff = frames.last.timeMs - _manualStopTrimMs;
+      frames = frames.where((f) => f.timeMs <= cutoff).toList();
+    }
+    if (!frames.any((f) => f.hasHands)) {
+      setState(() => _note = L.t('No hands were seen. Keep your hands in view and record again.',
+          'Walang nakitang kamay. Panatilihing kita ang mga kamay at i-record muli.'));
+      return;
+    }
+    final model = _model!, target = _target!;
+    final settings = target.practice;
+    final clip = _TrainingClip.from(frames, settings, tight: settings.tightFirst);
+    final problem = clip.problem();
+    if (problem != null) {
+      // Not worth sending: say what to fix, record again (not a wrong answer).
+      setState(() => _note = '${problem.title}. ${problem.message}');
+      return;
+    }
+    setState(() {
+      _evaluating = true;
+      _note = L.t('Checking your sign...', 'Sinusuri ang kumpas...');
+    });
+    try {
+      Future<RawPredictResponse> send(List<RawFrame> fs) {
+        final s0 = fs.first.timeMs;
+        final fixed = CaptureFixer.fix([for (final f in fs) f.toJson(s0)], _imageWidth, _imageHeight,
+            reassignHands: !HolisticResult.isHolisticEngine(_engine));
+        return HandSpeakApiService().predictRaw(
+          modelId: model.modelId,
+          serviceUrl: model.serviceUrl,
+          frames: fixed.frames,
+          imageWidth: fixed.imageWidth,
+          imageHeight: fixed.imageHeight,
+          topK: 10,
+        );
+      }
+
+      final alt = _TrainingClip.from(frames, settings, tight: !settings.tightFirst);
+      final tries = <List<RawFrame>>[
+        clip.frames,
+        clip.unsmoothed,
+        if (alt.problem() == null) alt.frames,
+        if (alt.problem() == null) alt.unsmoothed,
+      ];
+      RawPredictResponse? result;
+      ({bool passed, double share, Prediction? best})? verdict;
+      var rank = -1.0;
+      for (final fs in tries) {
+        if (fs.length < 2) continue;
+        final r = await send(fs);
+        final a = _assess(r);
+        final k = (a.passed ? 10.0 : 0.0) + (r.topK.isNotEmpty ? 1.0 : 0.0) + a.share;
+        if (k > rank) {
+          rank = k;
+          result = r;
+          verdict = a;
+        }
+        if (a.passed || !mounted || _disposed) break;
+      }
+      if (result == null || verdict == null || !mounted) return;
+      double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
+      final best = verdict.best;
+      _finish(ChallengeSignResult(
+        correct: verdict.passed,
+        score: verdict.share * 100,
+        isDynamic: true,
+        model: model.modelId,
+        predicted: best == null ? null : model.classAt(best.index)?.name,
+        confidence: best == null ? null : pct(best),
+        frames: frames.length,
+      ));
+    } catch (e) {
+      debugPrint('Published camera sign: prediction error: $e');
+      if (mounted) {
+        setState(() {
+          _evaluating = false;
+          _note = L.t('The model did not answer. Check your internet connection, then record again.',
+              'Hindi sumagot ang model. Tingnan ang koneksyon sa internet, saka i-record muli.');
+        });
+      }
+    }
+  }
+
+  // ---- built-in Cloud Run models (Greetings, Lupang Hinirang) --------------
+
+  /// Greetings and Civic (Lupang Hinirang) are checked by the app's own
+  /// Cloud Run models (/v1/predict/greetings, /v1/predict_raw/lupang_hinirang),
+  /// through their tutorial practice screens in check mode: the screen opens
+  /// for this sign, and passing it answers the question. Null when neither
+  /// fits (the sign is not one of their signs).
+  Widget Function(VoidCallback onPassed)? get _builtIn {
+    final cat = publishedCategoryId(widget.category);
+    final sign = widget.sign.trim();
+    if (cat == 'phrases' && PhraseRecognizer.classIndexFor(sign) != -1) {
+      return (onPassed) => PhraseTutorialPractice(targetPhrase: sign, onPassed: onPassed);
+    }
+    if (cat == 'civic') {
+      return (onPassed) => CivicTutorialPractice(questions: [{'question': sign, 'label': sign}], onPassed: onPassed);
+    }
+    return null;
+  }
+
+  Future<void> _openBuiltIn() async {
+    final builder = _builtIn;
+    if (builder == null || !widget.enabled || _answered) return;
+    HapticFeedback.selectionClick();
+    var passed = false;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (ctx) => builder(() {
+        passed = true;
+        Navigator.of(ctx).pop();
+      }),
+    ));
+    if (!mounted || !passed) return; // closed without passing: try again later
+    _finish(ChallengeSignResult(
+      correct: true,
+      score: 100,
+      isDynamic: true,
+      model: publishedCategoryId(widget.category) == 'civic' ? 'lupang_hinirang' : 'greetings',
+    ));
+  }
+
+  Widget _buildBuiltIn(ThemeData theme) {
+    final onSurface = theme.colorScheme.onSurface;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.videocam_rounded, size: 56, color: theme.primaryColor),
+        const SizedBox(height: 10),
+        Text(
+          L.t('Sign "${widget.sign}" to the camera.', 'Ikumpas ang "${widget.sign}" sa camera.'),
+          textAlign: TextAlign.center,
+          style: TextStyle(color: onSurface, fontWeight: FontWeight.w800, fontSize: 16),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          L.t('The camera opens: record the sign, it is checked, and a correct sign answers this question.',
+              'Bubukas ang camera: i-record ang kumpas, susuriin ito, at ang tamang kumpas ang sagot sa tanong.'),
+          textAlign: TextAlign.center,
+          style: TextStyle(color: onSurface.withValues(alpha: 0.7), fontSize: 13),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton.icon(
+            onPressed: widget.enabled && !_answered ? _openBuiltIn : null,
+            icon: Icon(Icons.fiber_manual_record_rounded, color: theme.colorScheme.onPrimary),
+            label: Text(L.t('RECORD SIGN', 'I-RECORD ANG KUMPAS'),
+                style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
+            style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: widget.enabled && !_answered
+              ? () => _finish(const ChallengeSignResult(correct: false, score: 0, isDynamic: true, model: 'none'))
+              : null,
+          child: Text(L.t("I can't sign it yet", 'Hindi ko pa kaya'), style: TextStyle(color: onSurface.withValues(alpha: 0.7))),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final onSurface = theme.colorScheme.onSurface;
+    if (!_lookedUp) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
+    if (_target == null && _builtIn != null) return _buildBuiltIn(theme);
+    if (_target == null) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.videocam_off_rounded, size: 48, color: onSurface.withValues(alpha: 0.4)),
+          const SizedBox(height: 10),
+          Text(
+            L.t('Camera checking for "${widget.sign}" is coming soon.', 'Malapit nang masuri ng camera ang "${widget.sign}".'),
+            textAlign: TextAlign.center,
+            style: TextStyle(color: onSurface, fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: widget.enabled
+                  ? () => _finish(const ChallengeSignResult(correct: false, score: 0, isDynamic: true, model: 'none', skipped: true))
+                  : null,
+              style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor),
+              child: Text(L.t('SKIP', 'LAKTAWAN'), style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ],
+      );
+    }
+    final c = _camera;
+    final side = math.min(MediaQuery.sizeOf(context).width * 0.60, 320.0);
+    final label = _evaluating
+        ? L.t('CHECKING...', 'SINUSURI...')
+        : _countdown > 0
+            ? L.t('GET READY... $_countdown', 'HUMANDA... $_countdown')
+            : _recording
+                ? L.t('STOP', 'ITIGIL')
+                : L.t('RECORD SIGN', 'I-RECORD ANG KUMPAS');
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Column(
+        children: [
+          Center(
+            child: Container(
+              width: side,
+              height: side,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(width: 4, color: _recording ? Colors.redAccent : (_handsVisible ? theme.primaryColor : theme.dividerColor)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: c == null || !c.value.isInitialized
+                    ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                    : FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: c.value.previewSize?.shortestSide ?? 1,
+                          height: c.value.previewSize?.longestSide ?? 1,
+                          child: CameraPreview(c),
+                        ),
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_countdown > 0)
+            Text('$_countdown', style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 40))
+          else
+            Text(
+              _note.isNotEmpty
+                  ? _note
+                  : L.t('Tap RECORD SIGN, do the whole "${widget.sign}" sign, then lower your hands.',
+                      'Pindutin ang RECORD SIGN, gawin ang buong "${widget.sign}", saka ibaba ang mga kamay.'),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _recording ? Colors.redAccent : onSurface.withValues(alpha: 0.8), fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: widget.enabled && !_answered && !_evaluating && c != null ? _onButton : null,
+              style: ElevatedButton.styleFrom(backgroundColor: _recording ? Colors.redAccent : theme.primaryColor),
+              child: Text(label, style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

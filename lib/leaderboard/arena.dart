@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
+import '/services/challenge_categories.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -956,7 +957,16 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
   int _selectedRounds = 10;
   int _selectedTimer = 15; 
 
-  final List<String> _categories = ['Alphabet', 'Numbers', 'Common Phrases', 'Civic Observances'];
+  /// Built-in modules + the web app's categories (services/challenge_categories.dart).
+  List<({String value, String label})> _categories = ChallengeCategories.builtIn;
+
+  @override
+  void initState() {
+    super.initState();
+    ChallengeCategories.load().then((c) {
+      if (mounted) setState(() => _categories = c);
+    });
+  }
   final List<int> _roundsOptions = [5, 10, 15, 20];
   final List<int> _timerOptions = [10, 15, 30, 0]; 
 
@@ -1097,7 +1107,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
       if (_invitedFriendUids.isNotEmpty) {
         final notificationEntry = {
           'title': 'New Challenge Invite! 🎮',
-          'body': '$hostName invited you to join a $_selectedCategory challenge!',
+          'body': '$hostName invited you to join a ${_categories.where((c) => c.value == _selectedCategory).map((c) => c.label).firstOrNull ?? _selectedCategory} challenge!',
           'type': 'challenge_invite',
           'roomCode': code,
           'fromUserId': _currentUserId,
@@ -1565,7 +1575,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                 isExpanded: true,
                 dropdownColor: theme.cardColor,
                 style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
-                items: _categories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat))).toList(),
+                items: _categories.map((c) => DropdownMenuItem(value: c.value, child: Text(c.label))).toList(),
                 onChanged: (val) {
                   if (val != null) setState(() => _selectedCategory = val);
                 },

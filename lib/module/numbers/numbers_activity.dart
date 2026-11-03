@@ -1,3 +1,5 @@
+import '/widgets/level_map.dart';
+import '/widgets/level_avatar.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -547,30 +549,6 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
     };
   }
 
-  Widget _buildVerticalPathLine(Map<String, dynamic> themeStyles) {
-    final Color nodeColor = themeStyles['nodeColor'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(4, (index) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4.0),
-          child: Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: nodeColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(color: nodeColor.withValues(alpha: 0.4), blurRadius: 4, spreadRadius: 1)
-              ],
-            ),
-          ),
-        )),
-      ),
-    );
-  }
-
   String get _appBarTitle {
     if (widget.difficulty.isEmpty) return 'Numbers Activity';
     return '${widget.difficulty[0].toUpperCase()}${widget.difficulty.substring(1)} Activity';
@@ -622,9 +600,11 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                 int totalEasyStars = 0;
                 int totalMediumStars = 0;
                 Map<String, dynamic> progressMap = {}; 
+                String? avatar;
 
                 if (userProgressSnapshot.hasData && userProgressSnapshot.data!.exists) {
                   final data = userProgressSnapshot.data!.data() as Map<String, dynamic>?;
+                  avatar = LevelAvatar.of(data);
                   if (data != null && data['progress'] != null) {
                     progressMap = Map<String, dynamic>.from(data['progress']);
                     
@@ -691,13 +671,6 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                       );
                     }
 
-                    final alignments = [
-                      Alignment.center,
-                      Alignment.centerRight,
-                      Alignment.center,
-                      Alignment.centerLeft,
-                    ];
-
                     return Column(
                       children: [
                         Padding(
@@ -728,14 +701,16 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                         ),
 
                         Expanded(
-                          child: ListView.builder(
+                          child: LevelMap(
+                            color: nodeColor,
+                            // Opens at the student's current level.
+                            initialIndex: isTierUnlocked ? _unlockedUpTo(levelKeys, progressMap) : 0,
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
                             physics: const BouncingScrollPhysics(),
                             itemCount: levelKeys.length,
                             itemBuilder: (context, index) {
                               final levelId = levelKeys[index];
                               final levelData = levelsMap[levelId]!;
-                              final String title = levelData['title'];
                               final String questionType = levelData['type'];
 
                               final int earnedStars = progressMap[levelId] ?? 0;
@@ -745,32 +720,23 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
 
                               final unlockMsg = !isTierUnlocked
                                   ? 'Earn at least 5 ⭐ in the previous difficulty to unlock!'
-                                  : 'Earn 2 ⭐ in Level ${levelKeys[unlockedUpTo].split('_').last} to unlock!';
+                                  : 'Earn 2 ⭐ in the previous level to unlock!';
 
                               return Column(
                                 children: [
                                   Align(
-                                    alignment: alignments[index % alignments.length],
+                                    alignment: Alignment.center,
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         if (isUnlocked)
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: List.generate(3, (starIdx) {
-                                              return Icon(
-                                                starIdx < earnedStars ? Icons.star_rounded : Icons.star_border_rounded,
-                                                color: nodeColor,
-                                                size: 20,
-                                              );
-                                            }),
-                                          )
+                                          LevelStars(earned: earnedStars)
                                         else
                                           Text(
                                             "🔒 Locked",
                                             style: TextStyle(color: themeStyles['dividerText'], fontSize: 12, fontWeight: FontWeight.bold),
                                           ),
-                                        const SizedBox(height: 8),
+                                        SizedBox(height: isUnlocked && index == unlockedUpTo ? 74 : 8),
 
                                         GestureDetector(
                                           onTap: isUnlocked
@@ -795,75 +761,22 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                                                 },
                                           child: Stack(
                                             alignment: Alignment.center,
+                                            clipBehavior: Clip.none,
                                             children: [
-                                              // Node Outer Aura Ring
-                                              Container(
-                                                width: 104,
-                                                height: 104,
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  color: isUnlocked ? nodeColor.withValues(alpha: 0.3) : Colors.black12,
+                                              LevelNode3D(unlocked: isUnlocked, color: nodeColor, light: nodeLightColor),
+                                              // The student is here: the level they are up to.
+                                              if (isUnlocked && index == unlockedUpTo)
+                                                Positioned(
+                                                  top: -70,
+                                                  child: LevelAvatar(avatar: avatar, color: nodeColor),
                                                 ),
-                                              ),
-                                              // Node Circle
-                                              Container(
-                                                width: 86,
-                                                height: 86,
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  gradient: LinearGradient(
-                                                    colors: isUnlocked
-                                                      ? [nodeLightColor, nodeColor]
-                                                      : [Colors.grey.shade400, Colors.grey.shade700],
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                  ),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: (isUnlocked ? nodeColor : Colors.black).withValues(alpha: 0.5),
-                                                      blurRadius: 10,
-                                                      offset: const Offset(0, 6),
-                                                    )
-                                                  ],
-                                                  border: Border.all(
-                                                    color: isUnlocked ? Colors.white : Colors.grey.shade400,
-                                                    width: 4,
-                                                  ),
-                                                ),
-                                                child: Center(
-                                                  child: Icon(
-                                                    isUnlocked ? Icons.play_arrow_rounded : Icons.lock_rounded,
-                                                    color: Colors.white,
-                                                    size: 46,
-                                                  ),
-                                                ),
-                                              ),
                                             ],
                                           ),
                                         ),
-                                        const SizedBox(height: 10),
-
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: themeStyles['cardBg'],
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            title,
-                                            style: TextStyle(
-                                              color: isUnlocked ? themeStyles['text'] : themeStyles['dividerText'],
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        )
+                                        
                                       ],
                                     ),
                                   ),
-
-                                  if (index < levelKeys.length - 1)
-                                    _buildVerticalPathLine(themeStyles),
                                 ],
                               );
                             },

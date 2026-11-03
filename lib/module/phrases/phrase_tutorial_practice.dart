@@ -157,6 +157,10 @@ class PhraseTutorialPractice extends StatefulWidget {
   /// (xp_rewards.dart): tutorial vs continuous practice.
   final int? xpReward;
 
+  /// Check mode (a camera question of an activity / challenge): a correct
+  /// sign calls this instead of the mastery dialog and XP.
+  final VoidCallback? onPassed;
+
   const PhraseTutorialPractice({
     super.key,
     required this.targetPhrase,
@@ -166,6 +170,7 @@ class PhraseTutorialPractice extends StatefulWidget {
     this.progressLabel,
     this.onSkip,
     this.xpReward,
+    this.onPassed,
   });
 
   @override
@@ -1221,6 +1226,11 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   Future<void> _onSuccess() async {
     if (_isSuccessAchieved) return;
     _isSuccessAchieved = true;
+    if (widget.onPassed != null) {
+      HapticFeedback.heavyImpact();
+      widget.onPassed!();
+      return;
+    }
 
     HapticFeedback.heavyImpact();
     await Future.delayed(const Duration(milliseconds: 100));

@@ -60,11 +60,16 @@ class CivicTutorialPractice extends StatefulWidget {
   /// success card replaces the "Mastered!" dialog.
   final bool continuous;
 
+  /// Check mode (a camera question of an activity / challenge): a correct
+  /// sign calls this instead of the mastery dialog and XP.
+  final VoidCallback? onPassed;
+
   const CivicTutorialPractice({
     super.key,
     this.category = 'lupang_hinirang',
     this.questions,
     this.continuous = false,
+    this.onPassed,
   });
 
   @override
@@ -765,6 +770,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     if (_isSuccessAchieved) return;
     _isSuccessAchieved = true;
     HapticFeedback.heavyImpact();
+    if (widget.onPassed != null) {
+      widget.onPassed!();
+      return;
+    }
 
     if (!mounted) return;
 

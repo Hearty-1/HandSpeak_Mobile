@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '/widgets/difficulty_card.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -204,7 +205,7 @@ class _NumbersDifficultySelectionScreenState
                           title: "EASY",
                           subtitle: L.t('Count & identify basic numbers', 'Bumilang at kilalanin ang mga numero'),
                           icon: Icons.signal_cellular_alt_1_bar_rounded,
-                          color: const Color(0xFF58CC02),
+                          color: DifficultyColors.easy,
                           isUnlocked: true,
                           currentStars: easyStars,
                           maxStars: maxEasyStars,
@@ -218,7 +219,7 @@ class _NumbersDifficultySelectionScreenState
                           title: "MEDIUM",
                           subtitle: L.t('Solve simple math & signs', 'Simpleng math at mga senyas'),
                           icon: Icons.signal_cellular_alt_2_bar_rounded,
-                          color: const Color(0xFFFFB800),
+                          color: DifficultyColors.medium,
                           isUnlocked: isMediumUnlocked,
                           currentStars: mediumStars,
                           maxStars: maxMediumStars,
@@ -233,7 +234,7 @@ class _NumbersDifficultySelectionScreenState
                           title: "HARD",
                           subtitle: L.t('Master advanced calculations', 'Mas mahirap na kalkulasyon'),
                           icon: Icons.signal_cellular_alt_rounded,
-                          color: const Color(0xFFFF2A85),
+                          color: DifficultyColors.hard,
                           isUnlocked: isHardUnlocked,
                           currentStars: hardStars,
                           maxStars: maxHardStars,
@@ -355,177 +356,17 @@ class _NumbersDifficultySelectionScreenState
     String? lockedMessage,
     required VoidCallback onTap,
   }) {
-    final double progress = maxStars > 0 ? (currentStars / maxStars).clamp(0.0, 1.0) : 0.0;
-    final int level = switch (title.toUpperCase()) { 'EASY' => 1, 'MEDIUM' => 2, _ => 3 };
-    final IconData levelIcon = switch (level) {
-      1 => Icons.signal_cellular_alt_1_bar_rounded,
-      2 => Icons.signal_cellular_alt_2_bar_rounded,
-      _ => Icons.signal_cellular_alt_rounded,
-    };
-    final Color textColor = themeStyles['text'] as Color;
-    final Color accent = isUnlocked ? color : Colors.grey.shade500;
-    final bool big = height >= 200;
-    final bool done = isUnlocked && maxStars > 0 && currentStars >= maxStars;
-
-    return Semantics(
-      button: true,
-      label: '$title. ${isUnlocked ? subtitle : (lockedMessage ?? L.t('Locked', 'Naka-lock'))}. $currentStars of $maxStars stars.',
-      child: _PressableCard(
-        onTap: isUnlocked
-            ? onTap
-            : () => ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(lockedMessage ?? L.t('Locked!', 'Naka-lock!')), backgroundColor: Colors.redAccent),
-                ),
-        child: Container(
-          height: height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(26),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: isUnlocked
-                  ? [Color.alphaBlend(color.withValues(alpha: 0.16), themeStyles['cardBg'] as Color), themeStyles['cardBg'] as Color]
-                  : [Colors.grey.shade800.withValues(alpha: 0.55), Colors.grey.shade900.withValues(alpha: 0.55)],
-            ),
-            border: Border.all(color: accent.withValues(alpha: isUnlocked ? 0.9 : 0.5), width: 2.5),
-            boxShadow: [
-              BoxShadow(
-                color: (isUnlocked ? color : Colors.black).withValues(alpha: 0.25),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              // Soft watermark of the level icon.
-              Positioned(
-                right: -12,
-                bottom: -18,
-                child: Icon(levelIcon, size: height * 0.75, color: accent.withValues(alpha: 0.08)),
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: big ? 18 : 12),
-                child: Row(
-                  children: [
-                    // Level badge
-                    Container(
-                      width: big ? 92 : 72,
-                      height: big ? 92 : 72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: isUnlocked
-                            ? LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color.lerp(color, Colors.white, 0.25)!, color],
-                              )
-                            : null,
-                        color: isUnlocked ? null : Colors.grey.shade700,
-                        boxShadow: [
-                          if (isUnlocked) BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 12, offset: const Offset(0, 4)),
-                        ],
-                      ),
-                      child: Icon(isUnlocked ? levelIcon : Icons.lock_rounded, size: big ? 46 : 36, color: Colors.white),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  title,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: big ? 28 : 22,
-                                    fontFamily: 'Inter',
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.0,
-                                    color: isUnlocked ? textColor : Colors.grey.shade400,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: accent.withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  done ? L.t('DONE', 'TAPOS NA') : L.t('LEVEL $level', 'LEVEL $level'),
-                                  style: TextStyle(fontSize: 10.5, fontFamily: 'Inter', fontWeight: FontWeight.w800, color: accent),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            isUnlocked ? subtitle : (lockedMessage ?? L.t('Locked', 'Naka-lock')),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: big ? 15 : 13,
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w600,
-                              height: 1.25,
-                              color: isUnlocked ? textColor.withValues(alpha: 0.72) : Colors.grey.shade400,
-                            ),
-                          ),
-                          SizedBox(height: big ? 14 : 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: LinearProgressIndicator(
-                                    value: progress,
-                                    minHeight: big ? 12 : 10,
-                                    backgroundColor: accent.withValues(alpha: 0.15),
-                                    valueColor: AlwaysStoppedAnimation<Color>(accent),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Icon(Icons.star_rounded, size: big ? 20 : 17, color: isUnlocked ? const Color(0xFFFFC107) : Colors.grey.shade500),
-                              const SizedBox(width: 2),
-                              Text(
-                                '$currentStars/$maxStars',
-                                style: TextStyle(
-                                  fontSize: big ? 14 : 12,
-                                  fontFamily: 'Inter',
-                                  fontWeight: FontWeight.w800,
-                                  color: isUnlocked ? textColor : Colors.grey.shade400,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // Next step
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: accent.withValues(alpha: 0.18)),
-                      child: Icon(
-                        isUnlocked ? Icons.arrow_forward_ios_rounded : Icons.lock_outline_rounded,
-                        size: 18,
-                        color: accent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    // Same look as the Home "Daily Challenges" card (widgets/difficulty_card.dart).
+    return DifficultyCard(
+      title: title,
+      subtitle: subtitle,
+      color: color,
+      isUnlocked: isUnlocked,
+      currentStars: currentStars,
+      maxStars: maxStars,
+      lockedMessage: lockedMessage,
+      onTap: onTap,
+      height: height,
     );
   }
 }

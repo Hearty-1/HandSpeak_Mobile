@@ -1,4 +1,6 @@
 // ignore_for_file: file_names
+import '/module/custom_category_screen.dart' show PublishedCameraSign;
+import '/widgets/challenge_camera_sign.dart' show ChallengeSignResult;
 import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:math';
@@ -592,6 +594,40 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
     }
   }
 
+  /// A camera answer (PublishedCameraSign): graded like CHECK. A sign the
+  /// category's model cannot check yet is skipped, without losing a heart.
+  void _answerCamera(ChallengeSignResult r) {
+    if (_isAnswered) return;
+    if (r.skipped) {
+      _continue();
+      return;
+    }
+    final correct = r.correct;
+    final q = _questions[_currentIndex];
+    // gesture_attempts, like the alphabet / numbers camera levels.
+    _progress
+        .recordGestureAttempt(
+          sign: q.correctAnswer,
+          levelId: widget.levelId,
+          questionId: q.id,
+          isCorrect: correct,
+          score: r.score,
+          category: widget.category,
+          isCameraGesture: true,
+          modelVersion: r.model,
+        )
+        .catchError((e) => debugPrint('gesture attempt not saved: $e'));
+    final sound = Provider.of<SoundProvider>(context, listen: false);
+    correct ? sound.playCorrect() : sound.playIncorrect();
+    setState(() {
+      _isAnswered = true;
+      _isCorrect = correct;
+      if (!correct) _hearts--;
+    });
+    _feedbackAnim.forward(from: 0.0);
+    if (_hearts <= 0) _showGameOverDialog();
+  }
+
   void _check() {
     if (_isAnswered || !_answer.isReady) return;
     final correct = _answer.grade();
@@ -755,12 +791,27 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
                   ),
                 ),
                 const SizedBox(height: 24),
-                _QuestionView(
-                  key: ValueKey('${q.id}_$_currentIndex'),
-                  question: q,
-                  controller: _answer,
-                  revealed: _isAnswered,
-                ),
+                if (q.isCamera) ...[
+                  Text(
+                    q.questionText.trim().isNotEmpty ? q.questionText : 'Sign "${q.correctAnswer}" to the camera.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface),
+                  ),
+                  const SizedBox(height: 16),
+                  PublishedCameraSign(
+                    key: ValueKey('cam_${q.id}_$_currentIndex'),
+                    category: widget.category,
+                    sign: q.correctAnswer,
+                    enabled: !_isAnswered,
+                    onResult: _answerCamera,
+                  ),
+                ] else
+                  _QuestionView(
+                    key: ValueKey('${q.id}_$_currentIndex'),
+                    question: q,
+                    controller: _answer,
+                    revealed: _isAnswered,
+                  ),
               ],
             ),
           ),
@@ -1496,26 +1547,18 @@ class _QuestionViewState extends State<_QuestionView> {
   }
 
   Widget _matchTile(String item, ThemeData theme, {required Color fill, required Color border, VoidCallback? onTap}) {
-    return GestureDetector(
+    // Pictures / videos as square tiles the width of the column (_MatchTile).
+    final media = _Media.isMedia(item);
+    return _MatchTile(
+      isMedia: media,
+      // Same tile size in both columns: all square when either has media.
+      square: [..._leftItems, ..._rightItems].any(_Media.isMedia),
+      fill: fill,
+      border: border,
       onTap: onTap,
-      child: Container(
-        height: 80,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: border, width: 2),
-        ),
-        alignment: Alignment.center,
-        child: _Media.isMedia(item)
-            ? _Media(source: item, iconSize: 32, fit: BoxFit.contain)
-            : Text(
-                item,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
-              ),
-      ),
+      child: media
+          ? _Media(source: item, iconSize: 32, fit: BoxFit.cover)
+          : Text(item, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
     );
   }
 
@@ -1571,9 +1614,15 @@ class _QuestionViewState extends State<_QuestionView> {
             Expanded(
               child: Column(
                 children: [
-                  for (final right in _rightItems)
+                  for (var ri = 0; ri < _rightItems.length; ri++)
                     () {
-                      final owner = _matches.entries.where((e) => e.value == right).map((e) => e.key).firstOrNull;
+                      final right = _rightItems[ri];
+                      // The same answer can be on the right more than once
+                      // (two signs that both mean "R"): each tile is its own
+                      // slot, the k-th "R" tile belongs to the k-th match of "R".
+                      final owners = [for (final e in _matches.entries) if (e.value == right) e.key];
+                      final k = [for (var j = 0; j < ri; j++) if (_rightItems[j] == right) j].length;
+                      final owner = k < owners.length ? owners[k] : null;
                       Color border = theme.dividerColor;
                       Color fill = theme.cardColor;
                       if (owner != null) {
@@ -1994,13 +2043,11 @@ class _QuestionRepository {
     return resolveMedia(list);
   }
 
-  /// Camera questions need the recognition pipeline of their own screen;
-  /// a question without an answer cannot be graded.
+  /// A question without an answer cannot be graded.
   static bool _playable(_Question q) {
-    if (q.isCamera) {
-      debugPrint('Skipping camera question ${q.id} (not supported on this screen).');
-      return false;
-    }
+    // Camera questions are checked by the category's published model
+    // (PublishedCameraSign); they need the sign to check.
+    if (q.isCamera) return q.correctAnswer.trim().isNotEmpty;
     switch (q.type) {
       case _QType.sequenceOrder:
         return q.options.isNotEmpty || q.correctOrder.isNotEmpty;
@@ -2109,5 +2156,58 @@ class _QuestionRepository {
     if (!option.contains('|||')) return _resolve(option);
     final parts = option.split('|||');
     return (await Future.wait(parts.map(_resolve))).join('|||');
+  }
+}
+
+/// One item of a matching question (all categories). A picture or video is
+/// a square tile the width of its column, filled edge to edge (videos keep
+/// their play button; a tap on the rest of the tile selects it), so it is
+/// big enough to read; text is a compact tile. [fill] / [border] show the
+/// item's state (selected, matched, right / wrong).
+class _MatchTile extends StatelessWidget {
+  final bool isMedia;
+  final Widget child;
+  final Color fill;
+  final Color border;
+  final VoidCallback? onTap;
+
+  /// Square tile even for text, so both columns have the same tile size
+  /// when either column has pictures / videos (default: [isMedia]).
+  final bool? square;
+
+  const _MatchTile({required this.isMedia, required this.child, required this.fill, required this.border, this.onTap, this.square});
+
+
+  @override
+  Widget build(BuildContext context) {
+    final r = BorderRadius.circular(14);
+    final sq = square ?? isMedia;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: sq ? null : 64,
+          padding: EdgeInsets.all(sq ? 3 : 8),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: r,
+            border: Border.all(color: border, width: 2.5),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          alignment: Alignment.center,
+          child: sq
+              ? AspectRatio(
+                  aspectRatio: 1,
+                  child: isMedia
+                      ? ClipRRect(borderRadius: BorderRadius.circular(11), child: SizedBox.expand(child: child))
+                      : Center(child: FittedBox(fit: BoxFit.scaleDown, child: DefaultTextStyle.merge(style: const TextStyle(fontSize: 28), child: child))),
+                )
+              : child,
+        ),
+      ),
+    );
   }
 }

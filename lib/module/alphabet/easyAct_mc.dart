@@ -1723,13 +1723,30 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildMatchingLayout(QuizQuestion currentQuestion, ThemeData theme) {
-    List<String> leftItems = [];
-    List<String> rightItems = [];
+  /// Right column of the current matching question, shuffled once per
+  /// question (it used to reshuffle on every rebuild).
+  List<String> _matchingRightOrder = [];
+  String _matchingRightFor = '';
 
+  static bool _isMatchMedia(String s) {
+    final v = s.trim();
+    if (v.isEmpty) return false;
+    return v.startsWith('data:image') ||
+        v.startsWith('http://') ||
+        v.startsWith('https://') ||
+        v.startsWith('assets/') ||
+        v.startsWith('gs://') ||
+        _MatchTile.isVideo(v) ||
+        RegExp(r'\.(png|jpe?g|webp|gif)$', caseSensitive: false).hasMatch(Uri.decodeComponent(v.split('?').first)) ||
+        (v.length > 100 && !v.contains(' '));
+  }
+
+  Widget _buildMatchingLayout(QuizQuestion currentQuestion, ThemeData theme) {
+    final leftItems = <String>[];
+    final rightItems = <String>[];
     for (var opt in currentQuestion.options) {
       if (opt.contains('|||')) {
-        var parts = opt.split('|||');
+        final parts = opt.split('|||');
         leftItems.add(parts[0]);
         rightItems.add(parts[1]);
       } else {
@@ -1737,66 +1754,78 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         rightItems.add(opt);
       }
     }
-    
-    rightItems.shuffle();
+    final key = '${currentQuestion.id}_$_currentIndex';
+    if (_matchingRightFor != key) {
+      _matchingRightFor = key;
+      _matchingRightOrder = List.of(rightItems)..shuffle();
+    }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // Same tile size in both columns: all square when either has media.
+    final anyMedia = [...leftItems, ...rightItems].any(_isMatchMedia);
+    Widget content(String item) => _isMatchMedia(item)
+        ? _buildImageWidget(item, fit: BoxFit.cover, size: 40, fallbackText: item)
+        : Text(item, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface));
+
+    return Column(
       children: [
-        Expanded(
-          child: Column(
-            children: leftItems.map((item) {
-              bool isSelected = _selectedLeftMatch == item;
-              bool isMatched = _matchingAnswers[item] != null;
-              
-              return GestureDetector(
-                onTap: isMatched ? null : () => _handleMatchingSelect(item, true),
-                child: Container(
-                  height: 80,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: isMatched ? Colors.green.withValues(alpha: 0.2) : (isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.dividerColor), width: 2),
-                  ),
-                  alignment: Alignment.center,
-                  child: _isImageString(item) 
-                      ? _buildImageWidget(item, fit: BoxFit.contain, size: 40)
-                      : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-                ),
-              );
-            }).toList(),
-          ),
+        Text(
+          'Tap an item on the left, then its match on the right.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            children: rightItems.map((item) {
-              bool isMatched = _matchingAnswers.containsValue(item);
-              
-              return GestureDetector(
-                onTap: isMatched ? null : () => _handleMatchingSelect(item, false),
-                child: Container(
-                  height: 80,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: isMatched ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isMatched ? Colors.green : theme.dividerColor, width: 2),
-                  ),
-                  alignment: Alignment.center,
-                  child: _isImageString(item) 
-                      ? _buildImageWidget(item, fit: BoxFit.contain, size: 40)
-                      : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-                ),
-              );
-            }).toList(),
-          ),
-        )
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                children: [
+                  for (final item in leftItems)
+                    () {
+                      final isSelected = _selectedLeftMatch == item;
+                      final isMatched = _matchingAnswers[item] != null;
+                      return _MatchTile(
+                        isMedia: _isMatchMedia(item),
+                        square: anyMedia,
+                        fill: isMatched ? Colors.green.withValues(alpha: 0.2) : (isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor),
+                        border: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.dividerColor),
+                        onTap: isMatched ? null : () => _handleMatchingSelect(item, true),
+                        child: content(item),
+                      );
+                    }(),
+                ],
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                children: [
+                  for (var ri = 0; ri < _matchingRightOrder.length; ri++)
+                    () {
+                      final item = _matchingRightOrder[ri];
+                      // Repeated answers (two signs that both mean "R"): each
+                      // tile is its own slot, taken in order.
+                      final used = _matchingAnswers.values.where((v) => v == item).length;
+                      final k = [for (var j = 0; j < ri; j++) if (_matchingRightOrder[j] == item) j].length;
+                      final isMatched = k < used;
+                      return _MatchTile(
+                        isMedia: _isMatchMedia(item),
+                        square: anyMedia,
+                        fill: isMatched ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
+                        border: isMatched ? Colors.green : theme.dividerColor,
+                        onTap: isMatched ? null : () => _handleMatchingSelect(item, false),
+                        child: content(item),
+                      );
+                    }(),
+                ],
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
+
 
   /// Camera box with its highlight; inline in portrait, right pane in landscape.
   Widget _buildCameraBox(ThemeData theme) {
@@ -2061,6 +2090,63 @@ class _CameraView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// One item of a matching question (all categories). A picture or video is
+/// a square tile the width of its column, filled edge to edge (videos keep
+/// their play button; a tap on the rest of the tile selects it), so it is
+/// big enough to read; text is a compact tile. [fill] / [border] show the
+/// item's state (selected, matched, right / wrong).
+class _MatchTile extends StatelessWidget {
+  final bool isMedia;
+  final Widget child;
+  final Color fill;
+  final Color border;
+  final VoidCallback? onTap;
+
+  /// Square tile even for text, so both columns have the same tile size
+  /// when either column has pictures / videos (default: [isMedia]).
+  final bool? square;
+
+  const _MatchTile({required this.isMedia, required this.child, required this.fill, required this.border, this.onTap, this.square});
+
+  static final RegExp _video = RegExp(r'\.(mp4|mov|webm|m4v|3gp|mkv)$', caseSensitive: false);
+
+  /// A video link / path (query string ignored).
+  static bool isVideo(String s) => _video.hasMatch(Uri.decodeComponent(s.trim().split('?').first));
+
+  @override
+  Widget build(BuildContext context) {
+    final r = BorderRadius.circular(14);
+    final sq = square ?? isMedia;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: sq ? null : 64,
+          padding: EdgeInsets.all(sq ? 3 : 8),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: r,
+            border: Border.all(color: border, width: 2.5),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          alignment: Alignment.center,
+          child: sq
+              ? AspectRatio(
+                  aspectRatio: 1,
+                  child: isMedia
+                      ? ClipRRect(borderRadius: BorderRadius.circular(11), child: SizedBox.expand(child: child))
+                      : Center(child: FittedBox(fit: BoxFit.scaleDown, child: DefaultTextStyle.merge(style: const TextStyle(fontSize: 28), child: child))),
+                )
+              : child,
+        ),
+      ),
     );
   }
 }

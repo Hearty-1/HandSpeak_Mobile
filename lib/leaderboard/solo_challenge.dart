@@ -1,21 +1,17 @@
+import '/module/custom_category_screen.dart' show PublishedCameraSign;
 import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
+import '/services/challenge_categories.dart';
+import '/widgets/activity_video.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '/widgets/challenge_camera_sign.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:camera/camera.dart';
-import 'package:hand_landmarker/hand_landmarker.dart';
 
-import '/services/lighting_monitor.dart';
-import '/services/dynamic_sign_judge.dart';
 import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
-import '/services/frame_gate.dart';
 
 
 // ==========================================
@@ -41,6 +37,9 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
   @override
   void initState() {
     super.initState();
+    ChallengeCategories.load().then((c) {
+      if (mounted) setState(() => _categories = c);
+    });
     _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.activity); // gamebgm.mp3
   }
 
@@ -48,7 +47,8 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
   int _selectedRounds = 10;
   int _selectedTimer = 15;
 
-  final List<String> _categories = ['Alphabet', 'Numbers', 'Common Phrases', 'Civic Observances'];
+  /// Built-in modules + the web app's categories (services/challenge_categories.dart).
+  List<({String value, String label})> _categories = ChallengeCategories.builtIn;
   final List<int> _roundsOptions = [5, 10, 15, 20];
   final List<int> _timerOptions = [10, 15, 30, 0];
 
@@ -58,7 +58,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
       MaterialPageRoute(
         builder: (context) => GameProperScreen(
           roomCode: 'SOLO',
-          challengeTitle: 'Solo $_selectedCategory Challenge',
+          challengeTitle: 'Solo ${_categories.where((c) => c.value == _selectedCategory).map((c) => c.label).firstOrNull ?? _selectedCategory} Challenge',
           isHost: true,
           category: _selectedCategory,
           totalRounds: _selectedRounds,
@@ -164,7 +164,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
                     dropdownColor: theme.cardColor,
                     icon: Icon(Icons.keyboard_arrow_down_rounded, color: theme.primaryColor),
                     style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 15),
-                    items: _categories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat))).toList(),
+                    items: _categories.map((c) => DropdownMenuItem(value: c.value, child: Text(c.label))).toList(),
                     onChanged: (val) {
                       if (val != null) setState(() => _selectedCategory = val);
                     },
@@ -343,62 +343,18 @@ class _GameProperScreenState extends State<GameProperScreen> {
   List<String> _matchingLeftItems = [];
   List<String> _matchingRightItems = [];
 
-  CameraController? _cameraController;
-  HandLandmarkerPlugin? _landmarkerPlugin;
-  StreamSubscription<List<Hand>>? _handSub;
 
-  bool _isCameraInitialized = false;
-  bool _isProcessingFrame = false;
 
-  static const double _requiredHoldSeconds = 1.0;
-  DateTime? _staticHoldStartTime;
 
-  bool _isRecordingMotion = false;
-  DateTime? _startRecordingTime;
-  static const Duration _dropoutGracePeriod = Duration(milliseconds: 300);
-  DateTime? _lastHandsSeenTime;
 
-  /// J / Z: judged like the alphabet tutorial practice from a recording.
-  final DynamicSignJudge _judge = DynamicSignJudge();
-  // Look-alike letters (B for C, E for F, M for N, ...): shared checks
-  // with the tutorial practice (services/dynamic_sign_judge.dart).
-  final StaticLetterChecker _shapeChecker = StaticLetterChecker();
-  // Static letters / numbers: the server's static model confirms a pass
-  // (services/dynamic_sign_judge.dart StaticServerCheck); offline the
-  // on-phone verdict stands.
-  final StaticServerCheck _serverCheck = StaticServerCheck();
-  int _imageWidth = 0, _imageHeight = 0, _imageRotation = 0;
-  bool _isJudging = false;
-  static const double _letterRecordSeconds = 2.5;
-  /// File(s) that judged the last J / Z (gesture_attempts modelVersion).
-  String? _lastDynamicModel;
 
-  // In-memory caching for loaded gesture template JSONs
-  static final Map<String, List<dynamic>> _templateCache = {};
-  List<dynamic>? _template;
-  String _templateLetter = ''; // letter of [_template] (tricky-letter scoring)
   double _currentScore = 0.0;
-  double _holdProgress = 0.0;
+  // Camera answers (widgets/challenge_camera_sign.dart): the model that
+  // judged the last one (gesture_attempts modelVersion).
+  String? _lastCameraModel;
   final double successThreshold = 70.0;
 
-  static const List<String> _dynamicLetters = ['J', 'Z'];
 
-  /// File each letter's template came from (gesture_attempts modelVersion).
-  static final Map<String, String> _templateSourceCache = {};
-
-  /// The file that actually scored a camera sign: the J / Z motion model when
-  /// it is loaded, else the letter's template.
-  String _usedModelFile(String sign) {
-    final key = sign.trim().toUpperCase();
-    if (_isDynamicLetter) return _lastDynamicModel ?? 'assets/alphabet/fsl_letter_${key.toLowerCase()}.onnx';
-    return _templateSourceCache[key] ?? 'assets/alphabet/$key.json';
-  }
-
-  bool get _isDynamicLetter {
-    if (_questions.isEmpty || _currentQuestionIndex >= _questions.length) return false;
-    final correctAnswer = _extractCorrectAnswer(_questions[_currentQuestionIndex]);
-    return _dynamicLetters.contains(correctAnswer.toUpperCase());
-  }
 
   Timer? _timer;
   int _timeLeft = 15;
@@ -422,10 +378,6 @@ class _GameProperScreenState extends State<GameProperScreen> {
     _bgm.releaseBgm(this);
     _timer?.cancel();
     _identificationController.dispose();
-    _handSub?.cancel();
-    _cameraController?.stopImageStream();
-    _cameraController?.dispose();
-    _landmarkerPlugin?.dispose();
     super.dispose();
   }
 
@@ -434,296 +386,12 @@ class _GameProperScreenState extends State<GameProperScreen> {
     _currentUserId = user?.uid ?? 'guest_${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  Future<void> _initializeCameraPipeline() async {
-    if (_isCameraInitialized) return;
-    try {
-      _landmarkerPlugin = HandLandmarkerPlugin.create(
-        numHands: 2,
-        minHandDetectionConfidence: 0.5,
-        delegate: HandLandmarkerDelegate.gpu,
-      );
-      _handSub = _landmarkerPlugin!.landmarkStream.listen(_onHandsDetected);
 
-      final cameras = await availableCameras();
-      if (cameras.isNotEmpty) {
-        final frontCamera = cameras.firstWhere(
-          (camera) => camera.lensDirection == CameraLensDirection.front,
-          orElse: () => cameras.first,
-        );
-        _cameraController = CameraController(
-          frontCamera,
-          ResolutionPreset.medium,
-          enableAudio: false,
-        );
-        await _cameraController!.initialize();
-        await _cameraController!.startImageStream(_processCameraFrame);
-      }
-
-      // J / Z models (assets/alphabet/fsl_letter_j.onnx, fsl_letter_z.onnx).
-      DynamicSignJudge.prepare(letters: true).catchError((e) => debugPrint('J / Z models failed to load: $e'));
-
-      if (mounted) setState(() => _isCameraInitialized = true);
-    } catch (e) {
-      debugPrint("Camera Pipeline Error: $e");
-    }
-  }
-
-  /// Fetches sign gesture landmarks template JSON from Firebase Storage with in-memory caching and asset fallback.
-  Future<void> _loadGestureLibrary(String letter) async {
-    final charKey = letter.trim().toUpperCase();
-    if (charKey.isEmpty) return;
-    _templateLetter = charKey;
-
-    // 1. Check in-memory cache
-    if (_templateCache.containsKey(charKey)) {
-      if (mounted) {
-        setState(() => _template = _templateCache[charKey]);
-      }
-      return;
-    }
-
-    // 2. Fetch template JSON from Firebase Cloud Storage
-    try {
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('gesture_templates/$charKey.json');
-      final Uint8List? data = await ref.getData(2 * 1024 * 1024); // 2MB max download
-      if (data != null && data.isNotEmpty) {
-        final jsonString = utf8.decode(data);
-        final List<dynamic> decoded = jsonDecode(jsonString);
-        _templateCache[charKey] = decoded;
-        _templateSourceCache[charKey] = 'gesture_templates/$charKey.json';
-        if (mounted) {
-          setState(() => _template = decoded);
-        }
-        return;
-      }
-    } catch (e) {
-      debugPrint("Firebase Storage gesture fetch for '$charKey' failed: $e. Falling back to asset bundle.");
-    }
-
-    // 3. Storage models/alphabet/<L>.json (current folder), then the bundled copy.
-    try {
-      final decoded = await TemplateStore.load('alphabet', charKey);
-      if (decoded == null) throw StateError('no template');
-      _templateCache[charKey] = decoded;
-      _templateSourceCache[charKey] = TemplateStore.sourceOf('alphabet', charKey) ?? 'models/alphabet/$charKey.json';
-      if (mounted) {
-        setState(() => _template = decoded);
-      }
-    } catch (e) {
-      debugPrint("Local asset fallback for gesture template '$charKey' failed: $e");
-      if (mounted) {
-        setState(() => _template = null);
-      }
-    }
-  }
-
-  final FrameGate _frameGate = FrameGate();
-
-  void _processCameraFrame(CameraImage image) {
-    LightingMonitor.instance.onImage(image); // low-light warning
-    if (!_isCameraInitialized || _landmarkerPlugin == null || _hasAnswered || _isProcessingFrame) return;
-    _isProcessingFrame = true;
-    try {
-      _imageWidth = image.width;
-      _imageHeight = image.height;
-      _imageRotation = _cameraImageRotation(_cameraController);
-      if (!_frameGate.tryEnter()) return; // one frame in flight (services/frame_gate.dart)
-      _landmarkerPlugin!.processFrame(image, _imageRotation);
-    } catch (e) {
-      debugPrint("Inference Error: $e");
-    } finally {
-      _isProcessingFrame = false;
-    }
-  }
-
-  /// Judges the recorded J / Z (as the alphabet tutorial practice does).
-  Future<void> _judgeMovingLetter(String letter) async {
-    setState(() => _isJudging = true);
-    final v = await _judge.judgeLetter(letter);
-    if (!mounted) return;
-    _judge.clear();
-    _lastDynamicModel = v.model;
-    debugPrint('[Game] Letter $letter: ${v.isCorrect ? 'PASS' : 'fail'} (${v.feedback}) via ${v.model}');
-    setState(() {
-      _isJudging = false;
-      _holdProgress = 0.0;
-      _currentScore = v.isCorrect ? math.max(v.score, successThreshold) : math.min(v.score, successThreshold - 1);
-    });
-    if (v.isCorrect) {
-      _submitAnswer(letter);
-    } else {
-      _startRecordingTime = null;
-    }
-  }
-
-  void _onHandsDetected(List<Hand> detectedHands) {
-    _frameGate.done();
-    if (_hasAnswered || _questions.isEmpty || _currentQuestionIndex >= _questions.length) return;
-    final currentQ = _questions[_currentQuestionIndex];
-    if (_determineQuestionType(currentQ) != 'camera_spell') return;
-
-    final now = DateTime.now();
-    final correctAnswer = _extractCorrectAnswer(currentQ).toUpperCase();
-
-    if (_isDynamicLetter) {
-      // J / Z: record a few seconds, then judge like the tutorial practice
-      // (fsl_letter_j / z.onnx + the server check).
-      if (_isJudging) return;
-      if (detectedHands.isNotEmpty) {
-        _lastHandsSeenTime = now;
-        if (!_isRecordingMotion) {
-          _isRecordingMotion = true;
-          _startRecordingTime = now;
-          _judge.clear();
-        }
-        _judge.addFrame(detectedHands, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
-        final double elapsed = now.difference(_startRecordingTime!).inMilliseconds / 1000.0;
-        if (mounted) setState(() => _holdProgress = (elapsed / _letterRecordSeconds).clamp(0.0, 1.0));
-        if (elapsed >= _letterRecordSeconds) {
-          _isRecordingMotion = false;
-          unawaited(_judgeMovingLetter(correctAnswer));
-        }
-      } else if (_isRecordingMotion) {
-        final lastSeen = _lastHandsSeenTime;
-        if (lastSeen == null || now.difference(lastSeen) > _dropoutGracePeriod) {
-          if (mounted) setState(() { _isRecordingMotion = false; _holdProgress = 0.0; });
-          _judge.clear();
-        }
-      }
-      return;
-    }
-
-    if (_template == null) return;
-    if (detectedHands.isNotEmpty) {
-      double maxScore = 0.0;
-      Hand? bestHand;
-      for (var hand in detectedHands) {
-        double score = _calculateScore(hand.landmarks, _template!);
-        if (score > maxScore) {
-          maxScore = score;
-          bestHand = hand;
-        }
-      }
-      if (bestHand != null) {
-        _serverCheck.add(bestHand, imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation);
-      }
-      if (bestHand != null &&
-          _shapeChecker.check(bestHand, _templateLetter,
-                  imageWidth: _imageWidth, imageHeight: _imageHeight, rotation: _imageRotation) !=
-              null) {
-        maxScore = math.min(maxScore, successThreshold - 5);
-      }
-      _currentScore = maxScore;
-      if (_currentScore >= successThreshold) {
-        _staticHoldStartTime ??= now;
-        double secs = now.difference(_staticHoldStartTime!).inMilliseconds / 1000.0;
-        _holdProgress = (secs / _requiredHoldSeconds).clamp(0.0, 1.0);
-        if (secs >= _requiredHoldSeconds) _confirmThenSubmit(correctAnswer);
-      } else {
-        _staticHoldStartTime = null;
-        _holdProgress = 0.0;
-      }
-      if (mounted) setState(() {});
-    }
-  }
 
   /// G, H, K, P, Q: tricky letters (horizontal or crossing fingers). Scored in
   /// 2D only (no z noise), scale from wrist->middle base or the index reach,
   /// fingertips weighted 1.5x, a relaxed curve, and G/H/P/Q locked to the
   /// sideways orientations.
-  static const List<String> _trickyLetters = ['G', 'H', 'K', 'P', 'Q'];
-
-  double _calculateTrickyScore(List<Landmark> liveLms, List<dynamic> template, String letter) {
-    final Landmark wrist = liveLms[0];
-    final Landmark mBase = liveLms[9];
-    final Landmark indexTip = liveLms[8];
-
-    // Stable scale factor to prevent small-fist error inflation
-    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2));
-    final double distIndex = math.sqrt(math.pow(wrist.x - indexTip.x, 2) + math.pow(wrist.y - indexTip.y, 2));
-    dist = math.max(dist, distIndex * 0.55);
-    if (dist < 0.05) dist = 0.05; // Safety floor
-
-    // High priority weighting on action fingertips: thumb, index, middle tips
-    const List<int> highPriorityLandmarks = [4, 8, 12];
-
-    const orientationMatrices = [
-      [1.0, 0.0, 0.0, 1.0, 1.0], // 0: Upright Normal
-      [0.0, -1.0, 1.0, 0.0, 1.0], // 1: 90 deg
-      [-1.0, 0.0, 0.0, -1.0, 1.0], // 2: 180 deg
-      [0.0, 1.0, -1.0, 0.0, 1.0], // 3: 270 deg
-      [1.0, 0.0, 0.0, 1.0, -1.0], // 4: Upright Mirrored
-      [0.0, -1.0, 1.0, 0.0, -1.0], // 5: 90 deg Mirrored
-      [-1.0, 0.0, 0.0, -1.0, -1.0], // 6: 180 deg Mirrored
-      [0.0, 1.0, -1.0, 0.0, -1.0], // 7: 270 deg Mirrored
-    ];
-
-    double bestScore = 0.0;
-    for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
-      // Directional Lock: horizontal letters use the sideways matrices only ('K' excluded)
-      if (letter != 'K' && mIdx.isEven) continue;
-
-      final matrix = orientationMatrices[mIdx];
-      final double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
-
-      double totalWeightedDifference = 0.0;
-      double totalWeight = 0.0;
-      for (int i = 0; i < 21; i++) {
-        final double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
-        final double dy = (liveLms[i].y - wrist.y) / dist;
-        final double rx = dx * xx + dy * xy;
-        final double ry = dx * yx + dy * yy;
-        final double tx = (template[i]['x'] as num).toDouble();
-        final double ty = (template[i]['y'] as num).toDouble();
-
-        // Purely 2D comparison to eliminate Z-depth noise
-        final double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2));
-        final double weight = highPriorityLandmarks.contains(i) ? 1.5 : 1.0;
-        totalWeightedDifference += pointDiff * weight;
-        totalWeight += weight;
-      }
-
-      // Relaxed scoring curve for G, H, K, P, Q
-      final double score = (100.0 - (totalWeightedDifference / totalWeight * 45.0)).clamp(0.0, 100.0);
-      if (score > bestScore) bestScore = score;
-    }
-    return bestScore;
-  }
-
-  double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
-    if (liveLms.length < 21 || template.length < 21) return 0.0;
-    final String letter = _templateLetter;
-    if (_trickyLetters.contains(letter)) return _calculateTrickyScore(liveLms, template, letter);
-    Landmark wrist = liveLms[0];
-    Landmark mBase = liveLms[9];
-    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2) + math.pow(wrist.z - mBase.z, 2));
-    if (dist == 0) dist = 1.0;
-
-    double bestScore = 0.0;
-    final matrices = [
-      [1.0, 0.0, 0.0, 1.0, 1.0], [-1.0, 0.0, 0.0, -1.0, 1.0], [0.0, -1.0, 1.0, 0.0, 1.0], [0.0, 1.0, -1.0, 0.0, 1.0]
-    ];
-
-    for (var m in matrices) {
-      double diff = 0.0;
-      for (int i = 0; i < 21; i++) {
-        double dx = ((liveLms[i].x - wrist.x) / dist) * m[4];
-        double dy = (liveLms[i].y - wrist.y) / dist;
-        double dz = (liveLms[i].z - wrist.z) / dist;
-        double rx = dx * m[0] + dy * m[1];
-        double ry = dx * m[2] + dy * m[3];
-        double tx = (template[i]['x'] as num).toDouble();
-        double ty = (template[i]['y'] as num).toDouble();
-        double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
-        diff += math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2) + math.pow(dz - tz, 2));
-      }
-      double score = (100.0 - ((diff / 21.0) * 80.0)).clamp(0.0, 100.0);
-      if (score > bestScore) bestScore = score;
-    }
-    return bestScore;
-  }
 
   dynamic _getValueCaseInsensitive(Map<String, dynamic> map, List<String> possibleKeys) {
     for (var key in possibleKeys) {
@@ -771,12 +439,10 @@ class _GameProperScreenState extends State<GameProperScreen> {
       if (snapshot.docs.isNotEmpty) {
         var allQuestions = snapshot.docs.map((d) => d.data()).toList();
         var filtered = allQuestions.where((q) {
-          final cat = (_getValueCaseInsensitive(q, ['category', 'topic', 'group', 'tag']) ?? '').toString().trim().toLowerCase();
-          final target = _category.trim().toLowerCase();
-          return cat == target || cat.contains(target) || target.contains(cat);
+          return ChallengeCategories.matches(_getValueCaseInsensitive(q, ['category', 'topic', 'group', 'tag'])?.toString(), _category);
         }).toList();
 
-        if (filtered.isEmpty) filtered = allQuestions;
+        // Only this category's questions (no fall-back to every category).
         filtered.shuffle();
 
         if (mounted) {
@@ -812,15 +478,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
     _identificationController.clear();
 
     if (type == 'camera_spell') {
-      _isRecordingMotion = false;
-      _staticHoldStartTime = null;
+      // Camera answered by ChallengeCameraSign (widgets/challenge_camera_sign.dart).
       _currentScore = 0.0;
-      _holdProgress = 0.0;
-      if (!_isCameraInitialized) {
-        _initializeCameraPipeline().then((_) => _loadGestureLibrary(correctAnswer));
-      } else {
-        _loadGestureLibrary(correctAnswer);
-      }
+      _lastCameraModel = null;
     } else if (type == 'typing') {
       final target = correctAnswer.toUpperCase();
       _userAnswerSlots = List<String?>.filled(target.length, null);
@@ -899,23 +559,21 @@ class _GameProperScreenState extends State<GameProperScreen> {
     }
   }
 
-  /// Static sign held long enough: the server's static model confirms it
-  /// before the answer is submitted (server only: no submit without it).
-  Future<void> _confirmThenSubmit(String correctAnswer) async {
-    if (_isJudging) return;
-    final target = correctAnswer.trim();
-    setState(() => _isJudging = true);
-    final v = await _serverCheck.verify(target, number: RegExp(r'^\d+$').hasMatch(target));
-    if (!mounted) return;
-    setState(() => _isJudging = false);
-    if (v != null && v.ok) {
-      _submitAnswer(correctAnswer);
-    } else {
-      _serverCheck.clear();
-      _staticHoldStartTime = null;
-      _holdProgress = 0.0;
-      _currentScore = math.min(_currentScore, successThreshold - 1);
+
+  /// A camera answer from ChallengeCameraSign: right or wrong, it is the
+  /// answer to this question (score, gesture_attempts, next question).
+  void _onCameraResult(ChallengeSignResult r) {
+    if (_hasAnswered) return;
+    // No model can check this sign yet: skip it without a score change.
+    if (r.skipped) {
+      _timer?.cancel();
+      _moveToNextQuestion();
+      return;
     }
+    final correctAnswer = _extractCorrectAnswer(_questions[_currentQuestionIndex]);
+    _currentScore = r.score;
+    _lastCameraModel = r.model;
+    _submitAnswer(r.correct ? correctAnswer : '');
   }
 
   void _submitAnswer(String answer) {
@@ -940,7 +598,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
         score: _currentScore,
         category: _category,
         isCameraGesture: true,
-        modelVersion: _usedModelFile(correctAnswer),
+        modelVersion: _lastCameraModel ?? 'unknown',
       );
     } else if (type == 'typing') {
       isCorrect = answer.trim().toLowerCase() == correctAnswer;
@@ -983,11 +641,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
     }
 
     _timer?.cancel();
-    if (isCorrect) {
-      int timeBonus = _maxTime > 0 ? (100 * (_timeLeft / _maxTime)).round() : 0;
-      int streakBonus = _streak > 1 ? (_streak * 15) : 0;
-      _score += 50 + timeBonus + streakBonus;
-    }
+    // Same points as the group challenge (ChallengeScoring).
+    _score += ChallengeScoring.points(correct: isCorrect, timeLeft: _timeLeft, maxTime: _maxTime, streak: _streak);
 
     if (widget.roomCode != 'SOLO') {
       FirebaseFirestore.instance
@@ -1058,6 +713,10 @@ class _GameProperScreenState extends State<GameProperScreen> {
   Widget _buildSafeImage(String? source, {double? height, double? width, BoxFit fit = BoxFit.contain}) {
     if (source == null || source.trim().isEmpty) return const SizedBox.shrink();
     final cleanSource = source.trim();
+    // Sign videos play with the shared activity player (play / pause).
+    if (RegExp(r'\.(mp4|mov|webm|m4v)$', caseSensitive: false).hasMatch(Uri.decodeComponent(cleanSource.split('?').first))) {
+      return SizedBox(height: height, width: width, child: ActivityVideo(url: cleanSource, fit: BoxFit.cover, fallback: const Icon(Icons.videocam_off_rounded, size: 40, color: Colors.grey)));
+    }
 
     if (cleanSource.startsWith('http://') || cleanSource.startsWith('https://')) {
       return Image.network(
@@ -1446,66 +1105,72 @@ class _GameProperScreenState extends State<GameProperScreen> {
     );
   }
 
+  bool _isMatchMedia(String s) => _isImageString(s) || _MatchTile.isVideo(s);
+
   Widget _buildMatchingLayout(Map<String, dynamic> q, ThemeData theme, Color textColor) {
+    // Same tile size in both columns (_MatchTile): all square when either
+    // column has pictures / videos, which fill their tile.
+    final anyMedia = [..._matchingLeftItems, ..._matchingRightItems].any(_isMatchMedia);
+    Widget content(String item) => _isMatchMedia(item)
+        ? _buildSafeImage(item, fit: BoxFit.cover)
+        : Text(item, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: textColor));
     return Column(
       children: [
         Expanded(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  children: _matchingLeftItems.map((item) {
-                    bool isSelected = _selectedLeftMatch == item;
-                    bool isMatched = _matchingAnswers[item] != null;
-                    final bool isImg = _isImageString(item);
-                    return InkWell(
-                      onTap: (_hasAnswered || isMatched) ? null : () => setState(() => _selectedLeftMatch = item),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        height: 58, margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isMatched ? Colors.green.withValues(alpha: 0.2) : (isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: isMatched ? Colors.green : (isSelected ? theme.primaryColor : theme.primaryColor.withValues(alpha: 0.2)), width: 2),
-                        ),
-                        alignment: Alignment.center,
-                        child: isImg ? _buildSafeImage(item, fit: BoxFit.contain) : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                      ),
-                    );
-                  }).toList(),
-                ),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                children: [
+                  for (final item in _matchingLeftItems)
+                    () {
+                      final isSelected = _selectedLeftMatch == item;
+                      final isMatched = _matchingAnswers[item] != null;
+                      return _MatchTile(
+                        isMedia: _isMatchMedia(item),
+                        square: anyMedia,
+                        fill: isMatched ? Colors.green.withValues(alpha: 0.2) : (isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor),
+                        border: isMatched ? Colors.green : (isSelected ? theme.primaryColor : textColor.withValues(alpha: 0.2)),
+                        onTap: (_hasAnswered || isMatched) ? null : () => setState(() => _selectedLeftMatch = item),
+                        child: content(item),
+                      );
+                    }(),
+                ],
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  children: _matchingRightItems.map((item) {
-                    bool isMatched = _matchingAnswers.containsValue(item);
-                    final bool isImg = _isImageString(item);
-                    return InkWell(
-                      onTap: (_hasAnswered || isMatched || _selectedLeftMatch == null) ? null : () {
-                        setState(() {
-                          _matchingAnswers[_selectedLeftMatch!] = item;
-                          _selectedLeftMatch = null;
-                        });
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        height: 58, margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isMatched ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: isMatched ? Colors.green : textColor.withValues(alpha: 0.2), width: 2),
-                        ),
-                        alignment: Alignment.center,
-                        child: isImg ? _buildSafeImage(item, fit: BoxFit.contain) : Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                      ),
-                    );
-                  }).toList(),
-                ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                children: [
+                  for (var ri = 0; ri < _matchingRightItems.length; ri++)
+                    () {
+                      final item = _matchingRightItems[ri];
+                      // Repeated answers: each tile is its own slot, taken in order.
+                      final used = _matchingAnswers.values.where((v) => v == item).length;
+                      final k = [for (var x = 0; x < ri; x++) if (_matchingRightItems[x] == item) x].length;
+                      final isMatched = k < used;
+                      return _MatchTile(
+                        isMedia: _isMatchMedia(item),
+                        square: anyMedia,
+                        fill: isMatched ? Colors.green.withValues(alpha: 0.2) : theme.cardColor,
+                        border: isMatched ? Colors.green : textColor.withValues(alpha: 0.2),
+                        onTap: (_hasAnswered || isMatched || _selectedLeftMatch == null)
+                            ? null
+                            : () => setState(() {
+                                  _matchingAnswers[_selectedLeftMatch!] = item;
+                                  _selectedLeftMatch = null;
+                                }),
+                        child: content(item),
+                      );
+                    }(),
+                ],
               ),
-            ],
+            ),
+          ],
+            ),
           ),
         ),
         SizedBox(
@@ -1549,70 +1214,6 @@ class _GameProperScreenState extends State<GameProperScreen> {
         ),
       ],
     );
-  }
-
-  Widget _buildCameraSpellLayout(ThemeData theme, Color textColor) {
-    if (!_isCameraInitialized || _cameraController == null) {
-      return Center(child: CircularProgressIndicator(color: theme.primaryColor));
-    }
-    final bool landscape = _isLandscape(context);
-    // Landscape: taller camera on the right, accuracy + progress on the left.
-    final double camHeight = landscape ? MediaQuery.of(context).size.height * 0.55 : 230;
-    final Widget camera = SizedBox(
-      height: camHeight,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: _CameraView(controller: _cameraController!),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: _currentScore >= successThreshold ? Colors.green : theme.primaryColor.withValues(alpha: 0.6), width: 3),
-            ),
-          ),
-        ],
-      ),
-    );
-    final List<Widget> status = [
-      ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: LinearProgressIndicator(
-          value: _holdProgress,
-          backgroundColor: textColor.withValues(alpha: 0.1),
-          valueColor: AlwaysStoppedAnimation<Color>(_currentScore >= successThreshold ? const Color(0xFF4CAF50) : theme.primaryColor),
-          minHeight: 10,
-        ),
-      ),
-      const SizedBox(height: 10),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.center_focus_strong_rounded, color: theme.primaryColor, size: 20),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              "Sign Accuracy: ${_currentScore.toStringAsFixed(1)}%",
-              style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontSize: 15),
-            ),
-          ),
-        ],
-      ),
-    ];
-    if (landscape) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(flex: 5, child: Column(mainAxisSize: MainAxisSize.min, children: status)),
-          const SizedBox(width: 16),
-          Expanded(flex: 6, child: camera),
-        ],
-      );
-    }
-    return Column(children: [camera, const SizedBox(height: 14), ...status]);
   }
 
   /// Records comprehensive challenge progress and game session metrics into Firestore.
@@ -1782,7 +1383,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
                           case 'identification':
                             return _buildIdentificationInput(correctAnswer, theme, textColor);
                           case 'camera_spell':
-                            return _buildCameraSpellLayout(theme, textColor);
+                            return (RegExp(r'^([A-Za-z]|\d+)$').hasMatch(correctAnswer.trim())
+                                ? ChallengeCameraSign(sign: correctAnswer, enabled: !_hasAnswered, onResult: _onCameraResult)
+                                : PublishedCameraSign(category: _category, sign: correctAnswer, enabled: !_hasAnswered, onResult: _onCameraResult));
                           case 'multiple_choice':
                           default:
                             return _buildMultipleChoiceOptions(options, correctAnswer, theme, textColor);
@@ -1953,63 +1556,59 @@ class AnimatedThemedFeedbackBanner extends StatelessWidget {
 // CAMERA HELPERS (local to this screen)
 // =============================================================================
 
-/// Clockwise rotation that makes the camera image upright for the current
-/// device orientation (front: sensor + deviceCCW, back: sensor - deviceCCW).
-int _cameraImageRotation(CameraController? c) {
-  if (c == null) return 0;
-  final sensor = c.description.sensorOrientation;
-  final ccw = switch (c.value.deviceOrientation) {
-    DeviceOrientation.portraitUp => 0,
-    DeviceOrientation.landscapeLeft => 90,
-    DeviceOrientation.portraitDown => 180,
-    DeviceOrientation.landscapeRight => 270,
-  };
-  return c.description.lensDirection == CameraLensDirection.front
-      ? (sensor + ccw) % 360
-      : (sensor - ccw + 360) % 360;
-}
+/// One item of a matching question (all categories). A picture or video is
+/// a square tile the width of its column, filled edge to edge (videos keep
+/// their play button; a tap on the rest of the tile selects it), so it is
+/// big enough to read; text is a compact tile. [fill] / [border] show the
+/// item's state (selected, matched, right / wrong).
+class _MatchTile extends StatelessWidget {
+  final bool isMedia;
+  final Widget child;
+  final Color fill;
+  final Color border;
+  final VoidCallback? onTap;
 
-bool _isLandscape(BuildContext context) => MediaQuery.orientationOf(context) == Orientation.landscape;
+  /// Square tile even for text, so both columns have the same tile size
+  /// when either column has pictures / videos (default: [isMedia]).
+  final bool? square;
 
-/// Camera preview scaled to cover its box without stretching. Display only:
-/// recognition uses the image stream, not this widget.
-class _CameraView extends StatelessWidget {
-  final CameraController controller;
-  const _CameraView({required this.controller});
+  const _MatchTile({required this.isMedia, required this.child, required this.fill, required this.border, this.onTap, this.square});
+
+  static final RegExp _video = RegExp(r'\.(mp4|mov|webm|m4v|3gp|mkv)$', caseSensitive: false);
+
+  /// A video link / path (query string ignored).
+  static bool isVideo(String s) => _video.hasMatch(Uri.decodeComponent(s.trim().split('?').first));
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<CameraValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        final size = value.previewSize;
-        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
-        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
-            value.deviceOrientation == DeviceOrientation.landscapeRight;
-        return DecoratedBox(
-          position: DecorationPosition.foreground,
+    final r = BorderRadius.circular(14);
+    final sq = square ?? isMedia;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: sq ? null : 64,
+          padding: EdgeInsets.all(sq ? 3 : 8),
           decoration: BoxDecoration(
-            gradient: RadialGradient(
-              radius: 1.05,
-              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.28)],
-              stops: const [0.62, 1.0],
-            ),
+            color: fill,
+            borderRadius: r,
+            border: Border.all(color: border, width: 2.5),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 3))],
           ),
-          child: ColoredBox(
-            color: Colors.black,
-            child: ClipRect(
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: landscape ? size.longestSide : size.shortestSide,
-                  height: landscape ? size.shortestSide : size.longestSide,
-                  child: CameraPreview(controller),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
+          alignment: Alignment.center,
+          child: sq
+              ? AspectRatio(
+                  aspectRatio: 1,
+                  child: isMedia
+                      ? ClipRRect(borderRadius: BorderRadius.circular(11), child: SizedBox.expand(child: child))
+                      : Center(child: FittedBox(fit: BoxFit.scaleDown, child: DefaultTextStyle.merge(style: const TextStyle(fontSize: 28), child: child))),
+                )
+              : child,
+        ),
+      ),
     );
   }
 }

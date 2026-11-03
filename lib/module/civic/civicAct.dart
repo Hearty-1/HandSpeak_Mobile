@@ -1,4 +1,6 @@
 // ignore_for_file: file_names
+import '/module/custom_category_screen.dart' show PublishedCameraSign;
+import '/widgets/challenge_camera_sign.dart' show ChallengeSignResult;
 import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:math';
@@ -12,7 +14,9 @@ import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 
 import '/widgets/activity_video.dart';
+import '/module/alphabet/easyAct_mc.dart' show ThemedLevelCompleteDialog;
 import '/providers/sound_provider.dart';
+import '/widgets/activity_feedback.dart';
 import '/services/performance_monitor.dart';
 import '/services/progress_service.dart';
 
@@ -182,7 +186,7 @@ class _QuizScreen extends StatefulWidget {
   State<_QuizScreen> createState() => _QuizScreenState();
 }
 
-class _QuizScreenState extends State<_QuizScreen> {
+class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderStateMixin {
   // Game music while this level is open (see SoundProvider.claimBgm).
   late final SoundProvider _bgm;
 
@@ -197,10 +201,20 @@ class _QuizScreenState extends State<_QuizScreen> {
   int _currentIndex = 0;
   bool _isAnswered = false;
   bool _isCorrect = false;
-  int _score = 0;
   int _starsEarned = 0;
   bool _isSaving = false;
   bool _finished = false;
+
+  /// Hearts, as in the alphabet / numbers activities: a wrong answer costs
+  /// one; none left ends the level. Stars come from the hearts left.
+  static const int _maxHearts = 5;
+  int _hearts = _maxHearts;
+
+  // Feedback bar animation (badge pop + slide in), as in easyAct_mc.dart.
+  late final AnimationController _feedbackAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+  late final Animation<double> _scaleAnimation = CurvedAnimation(parent: _feedbackAnim, curve: Curves.elasticOut);
+  late final Animation<Offset> _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
+      .animate(CurvedAnimation(parent: _feedbackAnim, curve: Curves.easeOutBack));
 
   @override
   void initState() {
@@ -216,6 +230,7 @@ class _QuizScreenState extends State<_QuizScreen> {
     _bgm.releaseBgm(this);
     _answer.removeListener(_onAnswerChanged);
     _answer.dispose();
+    _feedbackAnim.dispose();
     super.dispose();
   }
 
@@ -243,6 +258,40 @@ class _QuizScreenState extends State<_QuizScreen> {
     }
   }
 
+  /// A camera answer (PublishedCameraSign): graded like CHECK. A sign the
+  /// category's model cannot check yet is skipped, without losing a heart.
+  void _answerCamera(ChallengeSignResult r) {
+    if (_isAnswered) return;
+    if (r.skipped) {
+      _continue();
+      return;
+    }
+    final correct = r.correct;
+    final q = _questions[_currentIndex];
+    // gesture_attempts, like the alphabet / numbers camera levels.
+    _progress
+        .recordGestureAttempt(
+          sign: q.correctAnswer,
+          levelId: widget.levelId,
+          questionId: q.id,
+          isCorrect: correct,
+          score: r.score,
+          category: widget.category,
+          isCameraGesture: true,
+          modelVersion: r.model,
+        )
+        .catchError((e) => debugPrint('gesture attempt not saved: $e'));
+    final sound = Provider.of<SoundProvider>(context, listen: false);
+    correct ? sound.playCorrect() : sound.playIncorrect();
+    setState(() {
+      _isAnswered = true;
+      _isCorrect = correct;
+      if (!correct) _hearts--;
+    });
+    _feedbackAnim.forward(from: 0.0);
+    if (_hearts <= 0) _showGameOverDialog();
+  }
+
   void _check() {
     if (_isAnswered || !_answer.isReady) return;
     final correct = _answer.grade();
@@ -252,19 +301,53 @@ class _QuizScreenState extends State<_QuizScreen> {
     setState(() {
       _isAnswered = true;
       _isCorrect = correct;
-      if (correct) _score++;
+      if (!correct) _hearts--;
     });
+    _feedbackAnim.forward(from: 0.0);
+    if (_hearts <= 0) _showGameOverDialog();
   }
 
-  int _starsFor(int score, int total) {
-    final accuracy = total > 0 ? score / total : 0.0;
-    if (accuracy >= 0.9) return 3;
-    if (accuracy >= 0.6) return 2;
-    if (accuracy > 0) return 1;
-    return 0;
+  /// Same as the alphabet / numbers activities: no mistakes 3 stars, up to
+  /// two mistakes 2 stars, otherwise 1.
+  int _starsForHearts(int hearts) {
+    if (hearts == _maxHearts) return 3;
+    if (hearts >= 3) return 2;
+    return 1;
+  }
+
+  void _showGameOverDialog() {
+    if (_finished) return;
+    _finished = true;
+    _progress
+        .recordActivityAttempt(levelId: widget.levelId, category: widget.category, isCompleted: false, starsEarned: 0)
+        .catchError((e) => debugPrint('Error saving ${widget.category} activity attempt: $e'));
+    Provider.of<SoundProvider>(context, listen: false).playGameOver();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Out of Hearts! 💔', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+        content: Text(
+          'You made a few mistakes. Take a break and review the tutorials, then try again!',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('Exit Activity', style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _continue() async {
+    _feedbackAnim.reset();
     if (_currentIndex < _questions.length - 1) {
       _answer.reset();
       setState(() {
@@ -276,7 +359,7 @@ class _QuizScreenState extends State<_QuizScreen> {
     }
 
     setState(() => _isSaving = true);
-    _starsEarned = _starsFor(_score, _questions.length);
+    _starsEarned = _starsForHearts(_hearts);
     try {
       await _progress.recordActivityAttempt(
         levelId: widget.levelId,
@@ -296,6 +379,13 @@ class _QuizScreenState extends State<_QuizScreen> {
       _isSaving = false;
       _finished = true;
     });
+    // Same animated stars dialog as the alphabet / numbers activities
+    // (AWESOME! closes it and the level).
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => ThemedLevelCompleteDialog(starsEarned: _starsEarned, levelId: widget.levelId),
+    );
   }
 
   @override
@@ -307,27 +397,37 @@ class _QuizScreenState extends State<_QuizScreen> {
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: theme.cardColor.withValues(alpha: 0.5),
         elevation: 0,
-        centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: textColor),
+          icon: Icon(Icons.close, color: textColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(widget.title, style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.w800)),
         flexibleSpace: ClipRRect(
           child: SmartBlur(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(color: Colors.transparent),
           ),
         ),
-      ),
-      body: Stack(
-        children: [
-          Positioned.fill(child: widget.background),
-          SafeArea(child: _buildBody(theme)),
+        title: Text(
+          widget.title,
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: -0.5),
+        ),
+        centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Row(
+              children: [
+                const Icon(Icons.favorite, color: Colors.red, size: 24),
+                const SizedBox(width: 4),
+                Text('$_hearts', style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
         ],
       ),
+      body: SafeArea(child: _buildBody(theme)),
     );
   }
 
@@ -335,44 +435,47 @@ class _QuizScreenState extends State<_QuizScreen> {
     if (_isLoading) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
     if (_error != null) return _buildMessage(theme, Icons.wifi_off_rounded, _error!);
     if (_questions.isEmpty) return _buildMessage(theme, Icons.assignment_outlined, widget.emptyMessage);
-    if (_finished) return _buildCompletionView(theme);
 
     final q = _questions[_currentIndex];
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: LinearProgressIndicator(
-                          value: (_currentIndex + 1) / _questions.length,
-                          backgroundColor: theme.dividerColor,
-                          valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
-                          minHeight: 12,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      '${_currentIndex + 1}/${_questions.length}',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
-                    ),
-                  ],
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: (_currentIndex + 1) / _questions.length,
+                    backgroundColor: theme.dividerColor,
+                    valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
+                    minHeight: 12,
+                  ),
                 ),
                 const SizedBox(height: 24),
-                _QuestionView(
-                  key: ValueKey('${q.id}_$_currentIndex'),
-                  question: q,
-                  controller: _answer,
-                  revealed: _isAnswered,
-                ),
+                if (q.isCamera) ...[
+                  Text(
+                    q.questionText.trim().isNotEmpty ? q.questionText : 'Sign "${q.correctAnswer}" to the camera.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface),
+                  ),
+                  const SizedBox(height: 16),
+                  PublishedCameraSign(
+                    key: ValueKey('cam_${q.id}_$_currentIndex'),
+                    category: widget.category,
+                    sign: q.correctAnswer,
+                    enabled: !_isAnswered,
+                    onResult: _answerCamera,
+                  ),
+                ] else
+                  _QuestionView(
+                    key: ValueKey('${q.id}_$_currentIndex'),
+                    question: q,
+                    controller: _answer,
+                    revealed: _isAnswered,
+                  ),
               ],
             ),
           ),
@@ -383,17 +486,17 @@ class _QuizScreenState extends State<_QuizScreen> {
   }
 
   Widget _buildBottomBar(ThemeData theme, _Question q) {
-    const green = Color(0xFF58CC02);
-    const red = Color(0xFFEA2B2B);
+    final feedbackData = activityFeedbackVisuals(context, _isCorrect);
     final answerLabel = _QuestionView.answerLabel(q);
-    final isLast = _currentIndex == _questions.length - 1;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       decoration: BoxDecoration(
-        color: !_isAnswered ? theme.cardColor : (_isCorrect ? green : red),
+        color: !_isAnswered ? theme.cardColor : null,
+        gradient: _isAnswered ? (feedbackData['gradient'] as LinearGradient) : null,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(top: BorderSide(color: theme.dividerColor, width: 2)),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, -4))],
       ),
       child: Column(
@@ -401,52 +504,63 @@ class _QuizScreenState extends State<_QuizScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_isAnswered) ...[
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle),
-                  child: Icon(_isCorrect ? Icons.check_rounded : Icons.close_rounded, color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _isCorrect ? 'Awesome Job! 🎉' : 'Not Quite! 💡',
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+            SlideTransition(
+              position: _slideAnimation,
+              child: Row(
+                children: [
+                  ScaleTransition(
+                    scale: _scaleAnimation,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: feedbackData['badgeColor'] as Color,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2))],
                       ),
-                      if (!_isCorrect && answerLabel.isNotEmpty)
-                        Text(
-                          'Correct answer: $answerLabel',
-                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                        ),
-                    ],
+                      child: Icon(feedbackData['icon'] as IconData, color: Colors.white, size: 32),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          feedbackData['title'] as String,
+                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          !_isCorrect && answerLabel.isNotEmpty ? 'Correct answer: $answerLabel' : feedbackData['subtitle'] as String,
+                          style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
           ],
           SizedBox(
             width: double.infinity,
             height: 54,
             child: ElevatedButton(
-              onPressed: _isSaving ? null : (_isAnswered ? _continue : (_answer.isReady ? _check : null)),
+              onPressed: _isSaving || _hearts <= 0 ? null : (_isAnswered ? _continue : (_answer.isReady ? _check : null)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isAnswered ? Colors.white : theme.primaryColor,
+                backgroundColor: !_isAnswered ? theme.primaryColor : Colors.white,
                 disabledBackgroundColor: theme.dividerColor,
-                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
+                elevation: _isAnswered ? 4 : 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               child: _isSaving
                   ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
                   : Text(
-                      _isAnswered ? (isLast ? 'VIEW RESULTS' : 'CONTINUE') : 'CHECK',
+                      _isAnswered ? 'CONTINUE' : 'CHECK',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
-                        color: _isAnswered ? (_isCorrect ? green : red) : theme.colorScheme.onPrimary,
+                        color: !_isAnswered ? theme.colorScheme.onPrimary : (feedbackData['accentColor'] as Color),
                       ),
                     ),
             ),
@@ -486,62 +600,6 @@ class _QuizScreenState extends State<_QuizScreen> {
     );
   }
 
-  Widget _buildCompletionView(ThemeData theme) {
-    final textColor = theme.colorScheme.onSurface;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                3,
-                (i) => Icon(
-                  i < _starsEarned ? Icons.star_rounded : Icons.star_border_rounded,
-                  color: i < _starsEarned ? const Color(0xFFFFD700) : textColor.withValues(alpha: 0.3),
-                  size: 56,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text('Activity Completed!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: textColor)),
-            const SizedBox(height: 12),
-            Text(
-              'Stars Earned: $_starsEarned / 3',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: theme.primaryColor),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Score: $_score / ${_questions.length}',
-              style: TextStyle(fontSize: 16, color: textColor.withValues(alpha: 0.8)),
-            ),
-            if (_starsEarned < 2) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Get 2 stars to unlock the next level.',
-                style: TextStyle(fontSize: 14, color: textColor.withValues(alpha: 0.7)),
-              ),
-            ],
-            const SizedBox(height: 32),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.primaryColor,
-                padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 16),
-                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Finish',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimary),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// Links an [_QuestionView] to its screen: the screen enables CHECK
@@ -1153,26 +1211,18 @@ class _QuestionViewState extends State<_QuestionView> {
   }
 
   Widget _matchTile(String item, ThemeData theme, {required Color fill, required Color border, VoidCallback? onTap}) {
-    return GestureDetector(
+    // Pictures / videos as square tiles the width of the column (_MatchTile).
+    final media = _Media.isMedia(item);
+    return _MatchTile(
+      isMedia: media,
+      // Same tile size in both columns: all square when either has media.
+      square: [..._leftItems, ..._rightItems].any(_Media.isMedia),
+      fill: fill,
+      border: border,
       onTap: onTap,
-      child: Container(
-        height: 80,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: border, width: 2),
-        ),
-        alignment: Alignment.center,
-        child: _Media.isMedia(item)
-            ? _Media(source: item, iconSize: 32, fit: BoxFit.contain)
-            : Text(
-                item,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
-              ),
-      ),
+      child: media
+          ? _Media(source: item, iconSize: 32, fit: BoxFit.cover)
+          : Text(item, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
     );
   }
 
@@ -1228,9 +1278,15 @@ class _QuestionViewState extends State<_QuestionView> {
             Expanded(
               child: Column(
                 children: [
-                  for (final right in _rightItems)
+                  for (var ri = 0; ri < _rightItems.length; ri++)
                     () {
-                      final owner = _matches.entries.where((e) => e.value == right).map((e) => e.key).firstOrNull;
+                      final right = _rightItems[ri];
+                      // The same answer can be on the right more than once
+                      // (two signs that both mean "R"): each tile is its own
+                      // slot, the k-th "R" tile belongs to the k-th match of "R".
+                      final owners = [for (final e in _matches.entries) if (e.value == right) e.key];
+                      final k = [for (var j = 0; j < ri; j++) if (_rightItems[j] == right) j].length;
+                      final owner = k < owners.length ? owners[k] : null;
                       Color border = theme.dividerColor;
                       Color fill = theme.cardColor;
                       if (owner != null) {
@@ -1651,13 +1707,11 @@ class _QuestionRepository {
     return resolveMedia(list);
   }
 
-  /// Camera questions need the recognition pipeline of their own screen;
-  /// a question without an answer cannot be graded.
+  /// A question without an answer cannot be graded.
   static bool _playable(_Question q) {
-    if (q.isCamera) {
-      debugPrint('Skipping camera question ${q.id} (not supported on this screen).');
-      return false;
-    }
+    // Camera questions are checked by the category's published model
+    // (PublishedCameraSign); they need the sign to check.
+    if (q.isCamera) return q.correctAnswer.trim().isNotEmpty;
     switch (q.type) {
       case _QType.sequenceOrder:
         return q.options.isNotEmpty || q.correctOrder.isNotEmpty;
@@ -1766,5 +1820,58 @@ class _QuestionRepository {
     if (!option.contains('|||')) return _resolve(option);
     final parts = option.split('|||');
     return (await Future.wait(parts.map(_resolve))).join('|||');
+  }
+}
+
+/// One item of a matching question (all categories). A picture or video is
+/// a square tile the width of its column, filled edge to edge (videos keep
+/// their play button; a tap on the rest of the tile selects it), so it is
+/// big enough to read; text is a compact tile. [fill] / [border] show the
+/// item's state (selected, matched, right / wrong).
+class _MatchTile extends StatelessWidget {
+  final bool isMedia;
+  final Widget child;
+  final Color fill;
+  final Color border;
+  final VoidCallback? onTap;
+
+  /// Square tile even for text, so both columns have the same tile size
+  /// when either column has pictures / videos (default: [isMedia]).
+  final bool? square;
+
+  const _MatchTile({required this.isMedia, required this.child, required this.fill, required this.border, this.onTap, this.square});
+
+
+  @override
+  Widget build(BuildContext context) {
+    final r = BorderRadius.circular(14);
+    final sq = square ?? isMedia;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: sq ? null : 64,
+          padding: EdgeInsets.all(sq ? 3 : 8),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: r,
+            border: Border.all(color: border, width: 2.5),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          alignment: Alignment.center,
+          child: sq
+              ? AspectRatio(
+                  aspectRatio: 1,
+                  child: isMedia
+                      ? ClipRRect(borderRadius: BorderRadius.circular(11), child: SizedBox.expand(child: child))
+                      : Center(child: FittedBox(fit: BoxFit.scaleDown, child: DefaultTextStyle.merge(style: const TextStyle(fontSize: 28), child: child))),
+                )
+              : child,
+        ),
+      ),
+    );
   }
 }

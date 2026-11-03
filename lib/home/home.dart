@@ -1278,70 +1278,194 @@ class InfoSection {
   const InfoSection({required this.title, required this.body, required this.icon});
 }
 
-class InfoDetailScreen extends StatelessWidget {
+/// Help & Support / Terms & Privacy: a header card, then each section as a
+/// card with its icon that opens to show the text (the first one open), so
+/// the page is easy to scan instead of one long text.
+class InfoDetailScreen extends StatefulWidget {
   final String title;
   final List<InfoSection> sections;
 
   const InfoDetailScreen({super.key, required this.title, required this.sections});
 
   @override
+  State<InfoDetailScreen> createState() => _InfoDetailScreenState();
+}
+
+class _InfoDetailScreenState extends State<InfoDetailScreen> {
+  final Set<int> _open = {0};
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final double screenWidth = MediaQuery.of(context).size.width;
-    // Screen width can be 0 for a frame (startup / resize): never scale to 0
-    // (a 0-height progress bar is an assertion error).
+    // Screen width can be 0 for a frame (startup / resize): never scale to 0.
     final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble();
+    final primary = theme.primaryColor;
+    final t = widget.title.toLowerCase();
+    final isTerms = t.contains('term') || t.contains('tuntunin');
+    final allOpen = _open.length == widget.sections.length;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor, 
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
         centerTitle: true,
         iconTheme: theme.iconTheme.copyWith(color: textColor),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: textColor, 
-            fontWeight: FontWeight.w700, 
-            fontSize: 18 * scale,
-            letterSpacing: -0.5,
-          ),
-        ),
+        title: Text(widget.title,
+            style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 18 * scale, letterSpacing: -0.5)),
       ),
       body: ListView(
         physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 20 * scale),
+        padding: EdgeInsets.symmetric(horizontal: 20 * scale, vertical: 12 * scale),
         children: [
-          ...sections.map((section) => Padding(
-            padding: EdgeInsets.only(bottom: 28 * scale),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Header card
+          Container(
+            padding: EdgeInsets.all(20 * scale),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24 * scale),
+              gradient: LinearGradient(
+                colors: [primary, Color.lerp(primary, Colors.black, 0.35)!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [BoxShadow(color: primary.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
+            ),
+            child: Row(
               children: [
-                Text(
-                  section.title,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 16 * scale,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Container(
+                  padding: EdgeInsets.all(12 * scale),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), shape: BoxShape.circle),
+                  child: Icon(isTerms ? Icons.verified_user_rounded : Icons.support_agent_rounded, color: Colors.white, size: 30 * scale),
                 ),
-                SizedBox(height: 8 * scale),
-                Text(
-                  section.body,
-                  style: TextStyle(
-                    color: textColor.withValues(alpha: 0.85),
-                    fontSize: 14 * scale,
-                    height: 1.6, 
+                SizedBox(width: 14 * scale),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.title,
+                          style: TextStyle(color: Colors.white, fontSize: 18 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.3)),
+                      SizedBox(height: 4 * scale),
+                      Text(
+                        isTerms
+                            ? L.t('${widget.sections.length} sections · tap one to read it', '${widget.sections.length} bahagi · pindutin para basahin')
+                            : L.t('${widget.sections.length} topics to help you get started', '${widget.sections.length} paksa para makapagsimula ka'),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13 * scale, fontWeight: FontWeight.w500),
+                      ),
+                    ],
                   ),
-                  textAlign: TextAlign.justify, 
                 ),
               ],
             ),
-          )),
-          SizedBox(height: 40 * scale),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => setState(() {
+                if (allOpen) {
+                  _open.clear();
+                } else {
+                  _open.addAll(List.generate(widget.sections.length, (i) => i));
+                }
+              }),
+              icon: Icon(allOpen ? Icons.unfold_less_rounded : Icons.unfold_more_rounded, size: 18 * scale),
+              label: Text(allOpen ? L.t('Collapse all', 'Isara lahat') : L.t('Expand all', 'Buksan lahat'),
+                  style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          for (var i = 0; i < widget.sections.length; i++) _sectionCard(context, i, scale),
+          SizedBox(height: 32 * scale),
         ],
+      ),
+    );
+  }
+
+  Widget _sectionCard(BuildContext context, int i, double scale) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final primary = theme.primaryColor;
+    final section = widget.sections[i];
+    final open = _open.contains(i);
+    // "1. Acceptance of Terms" -> "SECTION 1" + "Acceptance of Terms".
+    final m = RegExp(r'^\s*(\d+)\.\s*(.*)$').firstMatch(section.title);
+    final heading = m?.group(2) ?? section.title;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12 * scale),
+      child: Pressable3D(
+        radius: BorderRadius.circular(20 * scale),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(20 * scale),
+            border: Border.all(color: open ? primary.withValues(alpha: 0.45) : theme.dividerColor.withValues(alpha: 0.4), width: 1.4),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: open ? 0.10 : 0.05), blurRadius: 12, offset: const Offset(0, 5))],
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20 * scale),
+              onTap: () => setState(() => open ? _open.remove(i) : _open.add(i)),
+              child: Padding(
+                padding: EdgeInsets.all(16 * scale),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 44 * scale,
+                          height: 44 * scale,
+                          decoration: BoxDecoration(color: primary.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(14 * scale)),
+                          child: Icon(section.icon, color: primary, size: 24 * scale),
+                        ),
+                        SizedBox(width: 14 * scale),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (m != null)
+                                Text(L.t('SECTION ${m.group(1)}', 'BAHAGI ${m.group(1)}'),
+                                    style: TextStyle(color: primary, fontSize: 10.5 * scale, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                              Text(heading,
+                                  style: TextStyle(color: textColor, fontSize: 15.5 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+                            ],
+                          ),
+                        ),
+                        AnimatedRotation(
+                          turns: open ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 220),
+                          child: Icon(Icons.keyboard_arrow_down_rounded, color: textColor.withValues(alpha: 0.5), size: 26 * scale),
+                        ),
+                      ],
+                    ),
+                    AnimatedCrossFade(
+                      firstChild: const SizedBox(width: double.infinity),
+                      secondChild: Padding(
+                        padding: EdgeInsets.only(top: 12 * scale),
+                        child: Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(14 * scale),
+                          decoration: BoxDecoration(
+                            color: primary.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(14 * scale),
+                          ),
+                          child: Text(section.body,
+                              style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6)),
+                        ),
+                      ),
+                      crossFadeState: open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                      duration: const Duration(milliseconds: 220),
+                      sizeCurve: Curves.easeOut,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1408,22 +1532,21 @@ class AboutUsScreen extends StatelessWidget {
           ),
           SizedBox(height: 32 * scale),
 
-          Text(L.t('Our Mission', 'Ang Aming Misyon'), style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
-          SizedBox(height: 8 * scale),
-          Text(
-            L.t('HandSpeak is a gamified Filipino Sign Language (FSL) learning adventure equipped with real-time gesture recognition. Our goal is to level up foundational literacy and boost school-wide inclusivity at Sto. Tomas North Central School (STNCS).', 'Ang HandSpeak ay isang larong pag-aaral ng Filipino Sign Language (FSL) na may real-time na pagkilala ng senyas. Layunin naming paunlarin ang batayang literasiya at ang inklusibong pag-aaral sa Sto. Tomas North Central School (STNCS).'),
-            style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6),
-            textAlign: TextAlign.justify,
+          _aboutCard(context, scale, Icons.flag_rounded, L.t('Our Mission', 'Ang Aming Misyon'),
+              L.t('HandSpeak is a gamified Filipino Sign Language (FSL) learning adventure equipped with real-time gesture recognition. Our goal is to level up foundational literacy and boost school-wide inclusivity at Sto. Tomas North Central School (STNCS).', 'Ang HandSpeak ay isang larong pag-aaral ng Filipino Sign Language (FSL) na may real-time na pagkilala ng senyas. Layunin naming paunlarin ang batayang literasiya at ang inklusibong pag-aaral sa Sto. Tomas North Central School (STNCS).')),
+          SizedBox(height: 14 * scale),
+          Row(
+            children: [
+              Expanded(child: _aboutStat(context, scale, Icons.sign_language_rounded, 'FSL', L.t('Filipino Sign Language', 'Filipino Sign Language'))),
+              SizedBox(width: 10 * scale),
+              Expanded(child: _aboutStat(context, scale, Icons.videocam_rounded, L.t('Real-time', 'Real-time'), L.t('Gesture recognition', 'Pagkilala ng senyas'))),
+              SizedBox(width: 10 * scale),
+              Expanded(child: _aboutStat(context, scale, Icons.school_rounded, 'STNCS', L.t('Partner school', 'Katuwang na paaralan'))),
+            ],
           ),
-          SizedBox(height: 28 * scale),
-
-          Text(L.t('The Developers', 'Ang mga Developer'), style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
-          SizedBox(height: 8 * scale),
-          Text(
-            L.t('This digital learning world was forged as a Capstone Project by developers from the College of Informatics and Computing Sciences at Batangas State University - JPLPC Malvar Campus.', 'Ang digital na mundong ito ng pag-aaral ay ginawa bilang Capstone Project ng mga developer mula sa College of Informatics and Computing Sciences ng Batangas State University - JPLPC Malvar Campus.'),
-            style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6),
-            textAlign: TextAlign.justify,
-          ),
+          SizedBox(height: 14 * scale),
+          _aboutCard(context, scale, Icons.code_rounded, L.t('The Developers', 'Ang mga Developer'),
+              L.t('This digital learning world was forged as a Capstone Project by developers from the College of Informatics and Computing Sciences at Batangas State University - JPLPC Malvar Campus.', 'Ang digital na mundong ito ng pag-aaral ay ginawa bilang Capstone Project ng mga developer mula sa College of Informatics and Computing Sciences ng Batangas State University - JPLPC Malvar Campus.')),
           SizedBox(height: 20 * scale),
 
           // Team name
@@ -1457,6 +1580,62 @@ class AboutUsScreen extends StatelessWidget {
           _buildDevProfile(context, "Serrano, Anthony", 'anthonyserrano037@gmail.com', 'assets/pictures/anthony.png', scale),
 
           SizedBox(height: 40 * scale),
+        ],
+      ),
+    );
+  }
+
+  Widget _aboutCard(BuildContext context, double scale, IconData icon, String title, String body) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    return Container(
+      padding: EdgeInsets.all(16 * scale),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(20 * scale),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.4)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 5))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(9 * scale),
+                decoration: BoxDecoration(color: theme.primaryColor.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(12 * scale)),
+                child: Icon(icon, color: theme.primaryColor, size: 20 * scale),
+              ),
+              SizedBox(width: 12 * scale),
+              Text(title, style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          SizedBox(height: 12 * scale),
+          Text(body, style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6)),
+        ],
+      ),
+    );
+  }
+
+  Widget _aboutStat(BuildContext context, double scale, IconData icon, String value, String label) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 14 * scale, horizontal: 8 * scale),
+      decoration: BoxDecoration(
+        color: theme.primaryColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18 * scale),
+        border: Border.all(color: theme.primaryColor.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: theme.primaryColor, size: 24 * scale),
+          SizedBox(height: 6 * scale),
+          Text(value, style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w900)),
+          SizedBox(height: 2 * scale),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 10.5 * scale, fontWeight: FontWeight.w600)),
         ],
       ),
     );
