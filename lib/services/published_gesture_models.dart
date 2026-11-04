@@ -35,7 +35,7 @@ class PublishedGestureClass {
 /// update:
 ///
 ///   `published_gesture_models/{id}`.practice = { minConfidence, minSignShare,
-///     minSignLead, minActiveS, minPoseCoverage, minHandCoverage,
+///     minSignLead, maxInvalid, minActiveS, minPoseCoverage, minHandCoverage,
 ///     maxOutOfFrame, marginMs, tightFirst }
 ///   `published_gesture_models/{id}`.classes[i].practice = { same keys }
 ///
@@ -50,6 +50,13 @@ class PracticeSettings {
   /// probability and this lead over the next sign.
   final double minSignShare;
   final double minSignLead;
+
+  /// ... but only while the model's "not recognised" (invalid class) share is
+  /// at most this. Above it the model is rejecting the sign (a similar but
+  /// wrong handshape), and the sign share must not overrule it. Colors phone
+  /// tests (2026-11-04): correct signs came with 0.47-0.70 invalid, a false
+  /// pass with 0.83.
+  final double maxInvalid;
 
   /// Capture checks (web validation thresholds).
   final double minActiveS;
@@ -75,6 +82,7 @@ class PracticeSettings {
     this.minConfidence = 0.70,
     this.minSignShare = 0.20,
     this.minSignLead = 0.10,
+    this.maxInvalid = 0.75,
     this.minActiveS = 0.75,
     this.minPoseCoverage = 0.8,
     this.minHandCoverage = 0.8,
@@ -102,6 +110,7 @@ class PracticeSettings {
       minConfidence: d(['minConfidence', 'min_confidence'], minConfidence),
       minSignShare: d(['minSignShare', 'min_sign_share'], minSignShare),
       minSignLead: d(['minSignLead', 'min_sign_lead'], minSignLead),
+      maxInvalid: d(['maxInvalid', 'max_invalid'], maxInvalid),
       minActiveS: d(['minActiveS', 'min_active_s'], minActiveS),
       minPoseCoverage: d(['minPoseCoverage', 'min_pose_coverage'], minPoseCoverage),
       minHandCoverage: d(['minHandCoverage', 'min_hand_coverage'], minHandCoverage),

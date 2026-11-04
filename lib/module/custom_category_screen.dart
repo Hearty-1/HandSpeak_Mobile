@@ -2073,7 +2073,10 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
           resultRank = rank;
           if (name.isNotEmpty) _clipInfo = '$name: ${name.startsWith('tight') || name.startsWith('with') ? alt.describe() : clip.describe()}';
         }
-        if (a.passed || !mounted || _disposed) break;
+        // Other shapes only when the server's gates stopped the clip before the
+        // model answered (no sign scores): a model answer is final, retrying it
+        // in other cuts only fished for a pass (false positives).
+        if (a.passed || r.topK.isNotEmpty || !mounted || _disposed) break;
       }
       if (result == null) return;
       if (!mounted || _disposed) return;
@@ -2121,7 +2124,9 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
     final passed = best != null &&
         best.index == _target.index &&
         (pct(best) >= _target.practice.minConfidence ||
-            (share(best) >= _target.practice.minSignShare && share(best) - share(next) >= _target.practice.minSignLead));
+            (invalid <= _target.practice.maxInvalid &&
+                share(best) >= _target.practice.minSignShare &&
+                share(best) - share(next) >= _target.practice.minSignLead));
     return (passed: passed, share: share(target));
   }
 
@@ -2139,7 +2144,7 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
     final passed = best != null &&
         best.index == _target.index &&
         (pct(best) >= _target.practice.minConfidence ||
-            (share(best) >= _target.practice.minSignShare && lead >= _target.practice.minSignLead));
+            (invalid <= _target.practice.maxInvalid && share(best) >= _target.practice.minSignShare && lead >= _target.practice.minSignLead));
 
     var debug = '';
     if (kDebugMode) {
@@ -3036,7 +3041,9 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
     final passed = best != null &&
         best.index == target.index &&
         (pct(best) >= target.practice.minConfidence ||
-            (share(best) >= target.practice.minSignShare && share(best) - share(next) >= target.practice.minSignLead));
+            (invalid <= target.practice.maxInvalid &&
+                share(best) >= target.practice.minSignShare &&
+                share(best) - share(next) >= target.practice.minSignLead));
     return (passed: passed, share: share(t), best: best);
   }
 
@@ -3103,7 +3110,10 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
           result = r;
           verdict = a;
         }
-        if (a.passed || !mounted || _disposed) break;
+        // Other shapes only when the server's gates stopped the clip before the
+        // model answered (no sign scores): a model answer is final, retrying it
+        // in other cuts only fished for a pass (false positives).
+        if (a.passed || r.topK.isNotEmpty || !mounted || _disposed) break;
       }
       if (result == null || verdict == null || !mounted) return;
       double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
