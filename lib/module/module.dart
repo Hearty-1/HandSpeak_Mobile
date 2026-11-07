@@ -56,10 +56,8 @@ class SnedInterface2 extends StatelessWidget {
     final bool isGuest = roles.isGuest;
     final bool canProgress = roles.can(AppFeature.progress);
 
-    final Color adaptiveProgressColor = theme.colorScheme.secondary;
 
     const double baseWidth = 393; 
-    const double baseHeight = 680;  
     const int targetXp = 1000; 
 
     SystemChrome.setSystemUIOverlayStyle(
@@ -76,10 +74,13 @@ class SnedInterface2 extends StatelessWidget {
         int numbersXp = 0; 
         int wordsXp = 0; 
         int civicsXp = 0; 
+        // users/{uid}: completion on the module cards (ModuleCard).
+        Map<String, dynamic> userData = const {};
 
         if (snapshot.hasData && snapshot.data!.exists) { 
           final data = snapshot.data!.data() as Map<String, dynamic>?; 
           if (data != null) { 
+            userData = data;
             alphabetXp = data['alphabetXp'] ?? 0; 
             numbersXp = data['numbersXp'] ?? 0; 
             wordsXp = data['phraseXp'] ?? data['wordsXp'] ?? 0; 
@@ -352,84 +353,63 @@ class SnedInterface2 extends StatelessWidget {
                   SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
                     child: Padding(
-                      padding: EdgeInsets.only(top: 70 * scale, bottom: 120 * scale),
+                      // Below the transparent app bar (status bar + toolbar), so the
+                      // cards never slide under it.
+                      padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight + 12, bottom: 120 * scale),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                      SizedBox(
-                        // Guests: no XP panels, so the grid is shorter.
-                        height: (canProgress ? baseHeight : baseHeight - 90) * scale,
-                        width: constraints.maxWidth,
-                        child: Stack(
-                          clipBehavior: Clip.none,
+                      // The 4 built-in modules as cards with their XP progress (ModuleCard).
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(16 * scale, 0, 16 * scale, 24 * scale),
+                        child: GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: EdgeInsets.zero,
+                          mainAxisSpacing: 14 * scale,
+                          crossAxisSpacing: 14 * scale,
+                          childAspectRatio: canProgress ? 0.66 : 0.78,
                           children: [
-                            _buildGridNode(
-                              context: context,
+                            ModuleCard(
                               scale: scale,
-                              leftOffset: 12,
-                              topOffset: 0,
                               title: L.t('Alphabets', 'Alpabeto'),
-                              imagePath: "assets/pictures/abc.png",
-                              currentXp: displayAlpXp,
-                              targetXp: targetXp,
-                              isLocked: false,
-                              progressColor: adaptiveProgressColor,
+                              picture: Image.asset("assets/pictures/abc.png", fit: BoxFit.contain),
+                              source: ModuleSource.alphabet,
+                              userData: userData,
                               showProgress: canProgress,
-                              onTap: () => _openModule(
-                                context, 'alphabet',
-                                _fadeRoute(AlphabetInterface(currentXp: displayAlpXp, targetXp: targetXp)),
-                              ),
+                              onTap: () => _openModule(context, 'alphabet', _fadeRoute(AlphabetInterface(currentXp: displayAlpXp, targetXp: targetXp))),
                             ),
-                            _buildGridNode(
-                              context: context,
+                            ModuleCard(
                               scale: scale,
-                              leftOffset: 201, 
-                              topOffset: 0, 
                               title: L.t('Numbers', 'Mga Numero'),
-                              imagePath: "assets/pictures/numbers.png",
-                              currentXp: displayNumXp,
-                              targetXp: targetXp,
-                              isLocked: false,
-                              progressColor: adaptiveProgressColor,
+                              picture: Image.asset("assets/pictures/numbers.png", fit: BoxFit.contain),
+                              source: ModuleSource.numbers,
+                              userData: userData,
                               showProgress: canProgress,
-                              onTap: () => _openModule(
-                                context, 'numbers',
-                                _fadeRoute(NumbersInterface(currentXp: displayNumXp, targetXp: targetXp)),
-                              ),
+                              onTap: () => _openModule(context, 'numbers', _fadeRoute(NumbersInterface(currentXp: displayNumXp, targetXp: targetXp))),
                             ),
-                            _buildGridNode(
-                              context: context,
+                            ModuleCard(
                               scale: scale,
-                              leftOffset: 12,
-                              topOffset: canProgress ? 330 : 300, 
                               title: L.t('Greetings', 'Mga Pagbati'),
-                              imagePath: "assets/pictures/words.png",
-                              currentXp: displayWordsXp,
-                              targetXp: targetXp,
-                              isLocked: isWordsLocked,
-                              progressColor: adaptiveProgressColor,
+                              picture: Image.asset("assets/pictures/words.png", fit: BoxFit.contain),
+                              source: ModuleSource.greetings,
+                              userData: userData,
+                              lockedHint: L.t('Finish Alphabet to unlock', 'Tapusin ang Alpabeto para mabuksan'),
+                              locked: isWordsLocked,
                               showProgress: canProgress,
-                              onTap: () => _openModule(
-                                context, 'common words',
-                                _fadeRoute(PhraseInterface(currentXp: displayWordsXp, targetXp: targetXp)),
-                              ),
+                              onTap: () => _openModule(context, 'common words', _fadeRoute(PhraseInterface(currentXp: displayWordsXp, targetXp: targetXp))),
                             ),
-                            _buildGridNode(
-                              context: context,
+                            ModuleCard(
                               scale: scale,
-                              leftOffset: 201,
-                              topOffset: canProgress ? 330 : 300, 
-                              title: L.t('Civic\nObservances', 'Pagdiriwang\nPansibiko'),
-                              imagePath: "assets/pictures/civic.png",
-                              currentXp: displayCivicsXp,
-                              targetXp: targetXp,
-                              isLocked: isCivicsLocked,
-                              progressColor: adaptiveProgressColor,
+                              title: L.t('Civic Observances', 'Pagdiriwang Pansibiko'),
+                              picture: Image.asset("assets/pictures/civic.png", fit: BoxFit.contain),
+                              source: ModuleSource.civic,
+                              userData: userData,
+                              lockedHint: L.t('Finish Greetings to unlock', 'Tapusin ang Mga Pagbati para mabuksan'),
+                              locked: isCivicsLocked,
                               showProgress: canProgress,
-                              onTap: () => _openModule(
-                                context, 'civic',
-                                _fadeRoute(CivicInterface(currentXp: displayCivicsXp, targetXp: targetXp)),
-                              ),
+                              onTap: () => _openModule(context, 'civic', _fadeRoute(CivicInterface(currentXp: displayCivicsXp, targetXp: targetXp))),
                             ),
                           ],
                         ),
@@ -450,251 +430,4 @@ class SnedInterface2 extends StatelessWidget {
   }
 
 
-  Widget _buildGridNode({
-    required BuildContext context,
-    required double scale,
-    required double leftOffset,
-    required double topOffset,
-    required String title,
-    required String imagePath,
-    required int currentXp,
-    required int targetXp,
-    required bool isLocked,
-    required Color progressColor,
-    required VoidCallback onTap,
-    bool showProgress = true,
-  }) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
-
-    return Positioned(
-      left: leftOffset * scale,
-      top: topOffset * scale,
-      width: 180 * scale,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          GestureDetector(
-            onTap: isLocked ? null : onTap,
-            child: Opacity(
-              opacity: isLocked ? 0.6 : 1.0,
-              child: SizedBox(
-                height: 65 * scale, 
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 24 * scale,
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1.2,
-                      height: 1.1,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: 12 * scale),
-
-          GestureDetector(
-            onTap: isLocked ? null : onTap,
-            child: Opacity(
-              opacity: isLocked ? 0.5 : 1.0,
-              child: SizedBox(
-                width: 150 * scale,
-                height: 150 * scale,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: AssetImage(imagePath),
-                          fit: BoxFit.contain,
-                        ),
-                        boxShadow: isLocked ? [] : [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          )
-                        ],
-                      ),
-                    ),
-                    if (isLocked)
-                      Container(
-                        width: 70 * scale,
-                        height: 90 * scale,
-                        decoration: const BoxDecoration(
-                          image: DecorationImage(
-                            image: AssetImage("assets/pictures/locked.png"),
-                            fit: BoxFit.fill,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (!showProgress) ...[
-            // Guests: an L.t('Explore', 'Tuklasin') pill instead of the XP panel (keeps the grid tight).
-            SizedBox(height: 14 * scale),
-            GestureDetector(
-              onTap: isLocked ? null : onTap,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 18 * scale, vertical: 8 * scale),
-                decoration: BoxDecoration(
-                  color: theme.primaryColor,
-                  borderRadius: BorderRadius.circular(20 * scale),
-                  boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(L.t('Explore', 'Tuklasin'), style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 14 * scale, fontWeight: FontWeight.w800)),
-                    SizedBox(width: 4 * scale),
-                    Icon(Icons.arrow_forward_rounded, size: 16 * scale, color: theme.colorScheme.onPrimary),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          if (showProgress) ...[
-          SizedBox(height: 16 * scale),
-
-          Opacity(
-            opacity: isLocked ? 0.45 : 1.0,
-            child: _buildProgressPanel(
-              context: context,
-              scale: scale,
-              title: L.t('Progress', 'Progreso'),
-              xp: "$currentXp XP",
-              xpNext: L.t('${targetXp - currentXp} to next', '${targetXp - currentXp} pa sa susunod'),
-              progressRatio: currentXp / targetXp,
-              progressColor: progressColor,
-            ),
-          ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProgressPanel({
-    required BuildContext context,
-    required double scale, 
-    required String title, 
-    required String xp, 
-    required String xpNext,
-    required double progressRatio,
-    required Color progressColor,
-  }) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16 * scale),
-      clipBehavior: Clip.antiAlias,
-      child: SmartBlur(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: 178 * scale, height: 76 * scale,
-          decoration: BoxDecoration(
-            color: theme.cardColor.withValues(alpha: 0.75), 
-            borderRadius: BorderRadius.circular(16 * scale),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.0),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06), 
-                blurRadius: 12, 
-                offset: const Offset(0, 4),
-              )
-            ],
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                left: 14 * scale, top: 10 * scale, 
-                child: Text(
-                  title, 
-                  style: TextStyle(
-                    color: textColor, 
-                    fontSize: 13 * scale, 
-                    fontFamily: 'Inter', 
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ), 
-              Positioned(
-                left: 12 * scale, top: 28 * scale, 
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.bolt_rounded, 
-                      color: Colors.amber.shade500, 
-                      size: 20 * scale,
-                    ),
-                    SizedBox(width: 4 * scale),
-                    Text(
-                      xp, 
-                      style: TextStyle(
-                        color: theme.primaryColor, 
-                        fontSize: 18 * scale, 
-                        fontFamily: 'Inter', 
-                        fontWeight: FontWeight.w900, 
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ), 
-              
-              Positioned(
-                left: 12 * scale, top: 58 * scale,
-                child: Container(
-                  width: 154 * scale, height: 6 * scale,
-                  decoration: BoxDecoration(
-                    color: theme.dividerColor.withValues(alpha: 0.2), 
-                    borderRadius: BorderRadius.circular(25 * scale),
-                  ),
-                ),
-              ),
-              
-              Positioned(
-                left: 12 * scale, top: 58 * scale,
-                child: Container(
-                  width: (154 * progressRatio.clamp(0.0, 1.0)) * scale, height: 6 * scale,
-                  decoration: BoxDecoration(
-                    color: progressColor, 
-                    borderRadius: BorderRadius.circular(25 * scale),
-                    boxShadow: [BoxShadow(color: progressColor.withValues(alpha: 0.4), blurRadius: 4)],
-                  ),
-                ),
-              ),
-              
-              Positioned(
-                right: 12 * scale, top: 11 * scale, 
-                child: Text(
-                  xpNext, 
-                  style: TextStyle(
-                    color: textColor.withValues(alpha: 0.5), 
-                    fontSize: 9 * scale, 
-                    fontFamily: 'Inter', 
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ), 
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

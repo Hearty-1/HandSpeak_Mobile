@@ -86,3 +86,116 @@ Map<String, dynamic> activityFeedbackVisuals(BuildContext context, bool isCorrec
     'accentColor': isCorrect ? const Color(0xFF58CC02) : const Color(0xFFEA2B2B),
   };
 }
+
+/// One piece of a sequence question (activities and challenges). A picture or
+/// video is a big square tile (two to a row on a phone), filled edge to
+/// edge, so it can really be seen; text is a pill. A placed piece shows its
+/// position (1, 2, 3...) in a badge; [border] marks right / wrong after CHECK.
+class SequencePiece extends StatelessWidget {
+  final bool isMedia;
+  final Widget child;
+  final bool placed;
+  final int? order;
+  final Color? border;
+  final VoidCallback? onTap;
+
+  const SequencePiece({super.key, required this.isMedia, required this.child, this.placed = false, this.order, this.border, this.onTap});
+
+  /// Side of a picture / video piece: half of the content width (two to a
+  /// row on a phone), so the sign in it is big enough to see.
+  static double mediaSize(BuildContext context) => ((MediaQuery.sizeOf(context).width - 48 - 24 - 14) / 2).clamp(120.0, 220.0);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final size = mediaSize(context);
+    final edge = border ?? (placed ? theme.primaryColor : theme.dividerColor);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: isMedia ? size : null,
+            height: isMedia ? size : null,
+            padding: isMedia ? const EdgeInsets.all(3) : const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            decoration: BoxDecoration(
+              color: placed ? theme.primaryColor.withValues(alpha: 0.16) : theme.cardColor,
+              borderRadius: BorderRadius.circular(isMedia ? 16 : 24),
+              border: Border.all(color: edge, width: 2.5),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 8, offset: const Offset(0, 3))],
+            ),
+            child: isMedia
+                ? ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: child))
+                : DefaultTextStyle.merge(
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: theme.colorScheme.onSurface),
+                    child: child,
+                  ),
+          ),
+          if (order != null)
+            Positioned(
+              top: -7,
+              left: -7,
+              child: Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: edge,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: Text('$order', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Camera question layout of the Alphabet / Numbers camera levels: the hint
+/// chip under the camera and the full-width main button.
+Widget cameraLevelChip(ThemeData theme, {required String text, required bool active, Color? color, IconData? icon}) {
+  final c = color ?? (active ? theme.primaryColor : Colors.grey);
+  return AnimatedContainer(
+    duration: const Duration(milliseconds: 300),
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+    decoration: BoxDecoration(
+      color: active ? c.withValues(alpha: 0.12) : theme.cardColor,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: active ? c : theme.dividerColor, width: 1.5),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon ?? (active ? Icons.pan_tool_rounded : Icons.pan_tool_outlined), color: c, size: 20),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(text,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: active ? c : theme.colorScheme.onSurface.withValues(alpha: 0.7), fontWeight: FontWeight.w700, fontSize: 14)),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget cameraLevelButton(ThemeData theme, {required String label, required VoidCallback? onPressed, bool recording = false}) {
+  return SizedBox(
+    width: double.infinity,
+    height: 54,
+    child: ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: theme.primaryColor,
+        disabledBackgroundColor: theme.dividerColor,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: theme.colorScheme.onPrimary)),
+    ),
+  );
+}

@@ -1,4 +1,4 @@
-import 'dart:ui'; 
+import 'dart:ui';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,18 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
-import 'package:flutter_application_1/module/alphabet/alphabet_interface.dart'; 
-import 'package:flutter_application_1/module/numbers/numbers_interface.dart'; 
-import '../services/progress_service.dart'; 
-import '../module/module.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_application_1/module/alphabet/alphabet_interface.dart';
+import 'package:flutter_application_1/module/numbers/numbers_interface.dart';
+import '../services/progress_service.dart';
+import '../module/module.dart';
 import '../module/phrases/phrase_interface.dart';
 import '../module/civic/civic_interface.dart';
-import '../profile/profile.dart'; 
-import '../leaderboard/arena.dart'; 
+import '../profile/profile.dart';
+import '../leaderboard/arena.dart';
 import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
-import '/module/custom_category_screen.dart' show CloudCategory, CloudCategoryScreen, CloudCover;
+import '/module/custom_category_screen.dart' show CloudCategory, CloudCategoryScreen, CloudCover, ModuleSource;
 import '/widgets/button_3d.dart';
 import '/services/performance_monitor.dart';
 import '/auth/login_screen.dart';
@@ -29,7 +29,7 @@ import '/providers/language_provider.dart';
 import '../home/notification_bell.dart'; // Added import for the standardized bell
 
 void main() {
-  runApp(const FigmaToCodeApp()); 
+  runApp(const FigmaToCodeApp());
 }
 
 class FigmaToCodeApp extends StatelessWidget {
@@ -38,29 +38,19 @@ class FigmaToCodeApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, 
+      debugShowCheckedModeBanner: false,
       theme: ThemeData.light().copyWith(
-        scaffoldBackgroundColor: const Color(0xFFFFF9E5), 
+        scaffoldBackgroundColor: const Color(0xFFFFF9E5),
         primaryColor: const Color(0xFFFFB800),
-        colorScheme: const ColorScheme.light(
-          primary: Color(0xFFFFB800),
-          secondary: Color(0xFFFF8227),
-          onPrimary: Colors.white,
-          onSurface: Color(0xFF222222),
-        ),
+        colorScheme: const ColorScheme.light(primary: Color(0xFFFFB800), secondary: Color(0xFFFF8227), onPrimary: Colors.white, onSurface: Color(0xFF222222)),
       ),
       darkTheme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF121212),
         cardColor: const Color(0xFF1E1E1E),
         primaryColor: const Color(0xFFFFB800),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFFFB800),
-          secondary: Color(0xFFFF8227),
-          onPrimary: Colors.black,
-          onSurface: Colors.white,
-        ),
+        colorScheme: const ColorScheme.dark(primary: Color(0xFFFFB800), secondary: Color(0xFFFF8227), onPrimary: Colors.black, onSurface: Colors.white),
       ),
-      home: const SnedInterafce1(userName: "Student"), 
+      home: const SnedInterafce1(userName: "Student"),
     );
   }
 }
@@ -76,16 +66,16 @@ Route _fadeRoute(Widget page) {
 }
 
 class SnedInterafce1 extends StatelessWidget {
-  final String userName; 
+  final String userName;
 
-  const SnedInterafce1({super.key, required this.userName}); 
+  const SnedInterafce1({super.key, required this.userName});
 
   Widget _buildAvatarImage(BuildContext context, String? avatarData, double scale, {double size = 48}) {
     final theme = Theme.of(context);
     if (avatarData == null || avatarData.isEmpty) {
       return Icon(Icons.person, color: theme.primaryColor, size: 26 * scale);
     }
-    
+
     if (avatarData.startsWith('data:image')) {
       try {
         final String base64String = avatarData.split(',').last;
@@ -123,11 +113,7 @@ class SnedInterafce1 extends StatelessWidget {
   /// and [lastOpened] for their cards. Order: `moduleLastOpened` timestamps,
   /// then the legacy `recentModules` list (newest entries last). Locked
   /// modules are skipped; Alphabet / Numbers fill in for new learners.
-  static List<String> _latestModules(
-    Map<String, dynamic> data,
-    Map<String, int> moduleXp,
-    Map<String, DateTime> lastOpened,
-  ) {
+  static List<String> _latestModules(Map<String, dynamic> data, Map<String, int> moduleXp, Map<String, DateTime> lastOpened) {
     int xp(String field) => (data[field] as num?)?.toInt() ?? 0;
     final mapped = <String, int>{};
     final progress = data['progress'];
@@ -169,9 +155,7 @@ class SnedInterafce1 extends StatelessWidget {
     bool unlocked(String m) => !(m == 'common words' && wordsLocked) && !(m == 'civic' && civicLocked);
 
     final byTime = lastOpened.keys.toList()..sort((a, b) => lastOpened[b]!.compareTo(lastOpened[a]!));
-    final legacy = [
-      for (final e in ((data['recentModules'] as List?) ?? const []).reversed) _moduleOf('$e'),
-    ];
+    final legacy = [for (final e in ((data['recentModules'] as List?) ?? const []).reversed) _moduleOf('$e')];
     final ordered = <String>[];
     for (final m in [...byTime, ...legacy, 'alphabet', 'numbers']) {
       if (m.isNotEmpty && unlocked(m) && !ordered.contains(m)) ordered.add(m);
@@ -192,12 +176,18 @@ class SnedInterafce1 extends StatelessWidget {
 
   /// L.t('Continue Learning', 'Ipagpatuloy ang Pag-aaral') shortcut: module art, name, last opened and the
   /// module's XP progress; tapping resumes the module.
-  Widget _buildContinueCard(BuildContext context, String moduleKey, int xp, DateTime? opened, double scale) {
-    if (moduleKey.startsWith(cloudPrefix)) return _buildCloudContinueCard(context, moduleKey.substring(cloudPrefix.length), xp, opened, scale);
+  Widget _buildContinueCard(BuildContext context, String moduleKey, int xp, DateTime? opened, double scale, Map<String, dynamic> userData) {
+    if (moduleKey.startsWith(cloudPrefix)) {
+      return _buildCloudContinueCard(context, moduleKey.substring(cloudPrefix.length), xp, opened, scale, userData);
+    }
     final (String title, String imagePath, Widget Function(int) screen) = switch (moduleKey) {
       'numbers' => (L.t('Numbers', 'Mga Numero'), 'assets/pictures/numbers.png', (int x) => NumbersInterface(currentXp: x, targetXp: _moduleTargetXp)),
       'common words' => (L.t('Greetings', 'Mga Pagbati'), 'assets/pictures/words.png', (int x) => PhraseInterface(currentXp: x, targetXp: _moduleTargetXp)),
-      'civic' => (L.t('Civic Observances', 'Pagdiriwang Pansibiko'), 'assets/pictures/civic.png', (int x) => CivicInterface(currentXp: x, targetXp: _moduleTargetXp)),
+      'civic' => (
+        L.t('Civic Observances', 'Pagdiriwang Pansibiko'),
+        'assets/pictures/civic.png',
+        (int x) => CivicInterface(currentXp: x, targetXp: _moduleTargetXp),
+      ),
       _ => (L.t('Alphabet', 'Alpabeto'), 'assets/pictures/abc.png', (int x) => AlphabetInterface(currentXp: x, targetXp: _moduleTargetXp)),
     };
     final shownXp = math.min(xp, _moduleTargetXp);
@@ -205,7 +195,13 @@ class SnedInterafce1 extends StatelessWidget {
       context,
       title: title,
       icon: Image.asset(imagePath, fit: BoxFit.contain),
-      xp: xp,
+      source: switch (moduleKey) {
+        'numbers' => ModuleSource.numbers,
+        'common words' => ModuleSource.greetings,
+        'civic' => ModuleSource.civic,
+        _ => ModuleSource.alphabet,
+      },
+      userData: userData,
       opened: opened,
       scale: scale,
       onTap: () {
@@ -217,7 +213,7 @@ class SnedInterafce1 extends StatelessWidget {
 
   /// Continue Learning card of a web app category: its name and cover from
   /// `activity_categories/<id>`; opens its category screen.
-  Widget _buildCloudContinueCard(BuildContext context, String id, int xp, DateTime? opened, double scale) {
+  Widget _buildCloudContinueCard(BuildContext context, String id, int xp, DateTime? opened, double scale, Map<String, dynamic> userData) {
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       future: _cloudCategoryDocs[id] ??= FirebaseFirestore.instance.collection('activity_categories').doc(id).get(),
       builder: (context, snap) {
@@ -230,7 +226,8 @@ class SnedInterafce1 extends StatelessWidget {
               ? Icon(Icons.category_rounded, color: Theme.of(context).primaryColor)
               : ClipOval(child: CloudCover(source: category.cover)),
           iconPadding: category != null && category.cover.isNotEmpty ? 0 : 10,
-          xp: xp,
+          source: category == null ? null : ModuleSource.cloud(category),
+          userData: userData,
           opened: opened,
           scale: scale,
           onTap: category == null
@@ -250,7 +247,8 @@ class SnedInterafce1 extends StatelessWidget {
     BuildContext context, {
     required String title,
     required Widget icon,
-    required int xp,
+    required ModuleSource? source,
+    required Map<String, dynamic> userData,
     required DateTime? opened,
     required double scale,
     required VoidCallback? onTap,
@@ -258,96 +256,149 @@ class SnedInterafce1 extends StatelessWidget {
   }) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
-    final shownXp = math.min(xp, _moduleTargetXp);
-    final progress = shownXp / _moduleTargetXp;
-    final complete = xp >= _moduleTargetXp;
-    final accent = complete ? Colors.green : theme.primaryColor;
+    final accent = theme.primaryColor;
 
-    return Pressable3D(radius: BorderRadius.circular(24 * scale), child: GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24 * scale),
-        clipBehavior: Clip.antiAlias,
-        child: SmartBlur(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Container(
-            padding: EdgeInsets.all(16 * scale),
-            decoration: BoxDecoration(
-              color: theme.cardColor.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(24 * scale),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10))],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 58 * scale,
-                      width: 58 * scale,
-                      padding: EdgeInsets.all(iconPadding * scale),
-                      decoration: BoxDecoration(
-                        color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
+    return Pressable3D(
+      radius: BorderRadius.circular(24 * scale),
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24 * scale),
+          clipBehavior: Clip.antiAlias,
+          child: SmartBlur(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(
+              padding: EdgeInsets.all(16 * scale),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24 * scale),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color.alphaBlend(accent.withValues(alpha: 0.16), theme.cardColor.withValues(alpha: 0.85)), theme.cardColor.withValues(alpha: 0.7)],
+                ),
+                border: Border.all(color: accent.withValues(alpha: 0.30), width: 1.5),
+                boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.18), blurRadius: 18, offset: const Offset(0, 8))],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 62 * scale,
+                        width: 62 * scale,
+                        padding: EdgeInsets.all(iconPadding * scale),
+                        decoration: BoxDecoration(
+                          color: theme.scaffoldBackgroundColor.withValues(alpha: 0.85),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: accent.withValues(alpha: 0.35), width: 2),
+                          boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.22), blurRadius: 10, offset: const Offset(0, 4))],
+                        ),
+                        child: icon,
                       ),
-                      child: icon,
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: EdgeInsets.all(7 * scale),
-                      decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-                      child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18 * scale),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 14 * scale),
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.3, height: 1.15),
-                ),
-                SizedBox(height: 4 * scale),
-                Row(
-                  children: [
-                    Icon(Icons.history_rounded, size: 13 * scale, color: textColor.withValues(alpha: 0.5)),
-                    SizedBox(width: 4 * scale),
-                    Flexible(
-                      child: Text(
-                        _timeAgo(opened),
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: textColor.withValues(alpha: 0.55), fontSize: 12 * scale, fontWeight: FontWeight.w600),
+                      const Spacer(),
+                      Container(
+                        padding: EdgeInsets.all(8 * scale),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(colors: [Color.lerp(accent, Colors.white, 0.25)!, accent]),
+                          boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 3))],
+                        ),
+                        child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20 * scale),
                       ),
-                    ),
-                  ],
-                ),
-                if (context.roles.can(AppFeature.progress)) ...[
-                  const Spacer(),
-                  SizedBox(height: 12 * scale),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6 * scale),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 7 * scale,
-                      backgroundColor: theme.dividerColor.withValues(alpha: 0.15),
-                      color: accent,
-                    ),
+                    ],
                   ),
-                  SizedBox(height: 6 * scale),
+                  SizedBox(height: 14 * scale),
                   Text(
-                    complete ? L.t('Completed', 'Tapos na') : '$shownXp / $_moduleTargetXp XP',
-                    style: TextStyle(color: complete ? Colors.green : textColor.withValues(alpha: 0.6), fontSize: 11.5 * scale, fontWeight: FontWeight.w700),
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.3, height: 1.15),
                   ),
+                  SizedBox(height: 4 * scale),
+                  Row(
+                    children: [
+                      Icon(Icons.history_rounded, size: 13 * scale, color: textColor.withValues(alpha: 0.5)),
+                      SizedBox(width: 4 * scale),
+                      Flexible(
+                        child: Text(
+                          _timeAgo(opened),
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: textColor.withValues(alpha: 0.55), fontSize: 12 * scale, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (context.roles.can(AppFeature.progress) && source != null) ...[
+                    const Spacer(),
+                    SizedBox(height: 12 * scale),
+                    // Completion, the same % as the module's card on the Modules page.
+                    FutureBuilder<({int lessons, List<String> levels})>(
+                      future: source.totals(),
+                      builder: (context, t) {
+                        final p = t.hasData ? source.progress(userData, t.data!) : null;
+                        final done = p?.completed ?? false;
+                        final color = done ? Colors.green : accent;
+                        final pct = ((p?.percent ?? 0) * 100).round();
+                        Widget stat(IconData icon, Color c, String text) => Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 13 * scale, color: c),
+                            SizedBox(width: 3 * scale),
+                            Text(
+                              text,
+                              style: TextStyle(color: textColor.withValues(alpha: 0.75), fontSize: 11 * scale, fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        );
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    p == null ? L.t('Loading...', 'Kinukuha...') : (done ? L.t('Completed', 'Tapos na') : L.t('Progress', 'Progreso')),
+                                    style: TextStyle(
+                                      color: done ? Colors.green : textColor.withValues(alpha: 0.6),
+                                      fontSize: 11.5 * scale,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                if (p != null)
+                                  Text(
+                                    '$pct%',
+                                    style: TextStyle(color: color, fontSize: 14 * scale, fontWeight: FontWeight.w900),
+                                  ),
+                              ],
+                            ),
+                            SizedBox(height: 6 * scale),
+                            ProgressBar3D(value: p?.percent ?? 0, color: color, height: 11 * scale),
+                            if (p != null) ...[
+                              SizedBox(height: 8 * scale),
+                              Wrap(
+                                spacing: 10 * scale,
+                                runSpacing: 2 * scale,
+                                children: [
+                                  stat(Icons.back_hand_rounded, theme.primaryColor, '${p.mastered.clamp(0, p.lessons)}/${p.lessons}'),
+                                  stat(Icons.star_rounded, const Color(0xFFFFB300), '${p.stars}/${p.maxStars}'),
+                                ],
+                              ),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -356,18 +407,42 @@ class SnedInterafce1 extends StatelessWidget {
   // ---------------------------------------------------------------------------
 
   static List<({String key, String title, String blurb, String image, IconData icon})> get _guestModules => [
-    (key: 'alphabet', title: L.t('Alphabet', 'Alpabeto'), blurb: L.t('A–Z hand signs', 'Mga senyas ng A–Z'), image: 'assets/pictures/abc.png', icon: Icons.abc_rounded),
-    (key: 'numbers', title: L.t('Numbers', 'Mga Numero'), blurb: L.t('Counting signs', 'Mga senyas sa pagbilang'), image: 'assets/pictures/numbers.png', icon: Icons.pin_rounded),
-    (key: 'common words', title: L.t('Greetings', 'Mga Pagbati'), blurb: L.t('Everyday greetings', 'Pang-araw-araw na pagbati'), image: 'assets/pictures/words.png', icon: Icons.forum_rounded),
-    (key: 'civic', title: L.t('Civic Observances', 'Pagdiriwang Pansibiko'), blurb: 'Lupang Hinirang', image: 'assets/pictures/civic.png', icon: Icons.flag_rounded),
+    (
+      key: 'alphabet',
+      title: L.t('Alphabet', 'Alpabeto'),
+      blurb: L.t('A–Z hand signs', 'Mga senyas ng A–Z'),
+      image: 'assets/pictures/abc.png',
+      icon: Icons.abc_rounded,
+    ),
+    (
+      key: 'numbers',
+      title: L.t('Numbers', 'Mga Numero'),
+      blurb: L.t('Counting signs', 'Mga senyas sa pagbilang'),
+      image: 'assets/pictures/numbers.png',
+      icon: Icons.pin_rounded,
+    ),
+    (
+      key: 'common words',
+      title: L.t('Greetings', 'Mga Pagbati'),
+      blurb: L.t('Everyday greetings', 'Pang-araw-araw na pagbati'),
+      image: 'assets/pictures/words.png',
+      icon: Icons.forum_rounded,
+    ),
+    (
+      key: 'civic',
+      title: L.t('Civic Observances', 'Pagdiriwang Pansibiko'),
+      blurb: 'Lupang Hinirang',
+      image: 'assets/pictures/civic.png',
+      icon: Icons.flag_rounded,
+    ),
   ];
 
   static Widget _moduleScreen(String key) => switch (key) {
-        'numbers' => const NumbersInterface(currentXp: 0, targetXp: _moduleTargetXp),
-        'common words' => const PhraseInterface(currentXp: 0, targetXp: _moduleTargetXp),
-        'civic' => const CivicInterface(currentXp: 0, targetXp: _moduleTargetXp),
-        _ => const AlphabetInterface(currentXp: 0, targetXp: _moduleTargetXp),
-      };
+    'numbers' => const NumbersInterface(currentXp: 0, targetXp: _moduleTargetXp),
+    'common words' => const PhraseInterface(currentXp: 0, targetXp: _moduleTargetXp),
+    'civic' => const CivicInterface(currentXp: 0, targetXp: _moduleTargetXp),
+    _ => const AlphabetInterface(currentXp: 0, targetXp: _moduleTargetXp),
+  };
 
   /// Same letter for everyone on a given day (A-Z, rotating daily).
   static String _signOfTheDay() {
@@ -381,10 +456,16 @@ class SnedInterafce1 extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+        Text(
+          title,
+          style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5),
+        ),
         if (subtitle != null) ...[
           SizedBox(height: 2 * scale),
-          Text(subtitle, style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13 * scale, fontWeight: FontWeight.w500)),
+          Text(
+            subtitle,
+            style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13 * scale, fontWeight: FontWeight.w500),
+          ),
         ],
         SizedBox(height: 14 * scale),
       ],
@@ -395,121 +476,131 @@ class SnedInterafce1 extends StatelessWidget {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final letter = _signOfTheDay();
-    return Pressable3D(radius: BorderRadius.circular(24 * scale), child: GestureDetector(
-      onTap: () => Navigator.push(context, _fadeRoute(TutorialPractice(targetLetter: letter))),
-      child: _buildGlassContainer(
-        context: context,
-        scale: scale,
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(18 * scale),
-              child: Container(
-                width: 92 * scale,
-                height: 92 * scale,
-                color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
-                child: Image.asset(
-                  'assets/pictures/$letter.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Center(
-                    child: Text(letter, style: TextStyle(fontSize: 44 * scale, fontWeight: FontWeight.w900, color: theme.primaryColor)),
+    return Pressable3D(
+      radius: BorderRadius.circular(24 * scale),
+      child: GestureDetector(
+        onTap: () => Navigator.push(context, _fadeRoute(TutorialPractice(targetLetter: letter))),
+        child: _buildGlassContainer(
+          context: context,
+          scale: scale,
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18 * scale),
+                child: Container(
+                  width: 92 * scale,
+                  height: 92 * scale,
+                  color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
+                  child: Image.asset(
+                    'assets/pictures/$letter.jpg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Center(
+                      child: Text(
+                        letter,
+                        style: TextStyle(fontSize: 44 * scale, fontWeight: FontWeight.w900, color: theme.primaryColor),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-            SizedBox(width: 16 * scale),
-            Expanded(
+              SizedBox(width: 16 * scale),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      L.t('Letter $letter', 'Letra $letter'),
+                      style: TextStyle(color: textColor, fontSize: 24 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.6),
+                    ),
+                    SizedBox(height: 2 * scale),
+                    Text(
+                      L.t('Copy the handshape, then try it on camera.', 'Gayahin ang porma ng kamay, saka subukan sa camera.'),
+                      style: TextStyle(color: textColor.withValues(alpha: 0.65), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.3),
+                    ),
+                    SizedBox(height: 10 * scale),
+                    Row(
+                      children: [
+                        Icon(Icons.videocam_rounded, size: 16 * scale, color: theme.primaryColor),
+                        SizedBox(width: 6 * scale),
+                        Text(
+                          L.t('Practice this sign', 'Sanayin ang senyas na ito'),
+                          style: TextStyle(color: theme.primaryColor, fontSize: 13.5 * scale, fontWeight: FontWeight.w800),
+                        ),
+                        SizedBox(width: 2 * scale),
+                        Icon(Icons.chevron_right_rounded, size: 18 * scale, color: theme.primaryColor),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGuestModuleTile(BuildContext context, ({String key, String title, String blurb, String image, IconData icon}) m, double scale) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    return Pressable3D(
+      radius: BorderRadius.circular(22 * scale),
+      child: GestureDetector(
+        onTap: () => Navigator.push(context, _fadeRoute(_moduleScreen(m.key))),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22 * scale),
+          clipBehavior: Clip.antiAlias,
+          child: SmartBlur(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(
+              padding: EdgeInsets.all(14 * scale),
+              decoration: BoxDecoration(
+                color: theme.cardColor.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(22 * scale),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 8))],
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Container(
+                        height: 50 * scale,
+                        width: 50 * scale,
+                        padding: EdgeInsets.all(9 * scale),
+                        decoration: BoxDecoration(color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8), shape: BoxShape.circle),
+                        child: Image.asset(
+                          m.image,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) => Icon(m.icon, color: theme.primaryColor),
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(Icons.arrow_forward_rounded, size: 18 * scale, color: textColor.withValues(alpha: 0.4)),
+                    ],
+                  ),
+                  SizedBox(height: 12 * scale),
                   Text(
-                    L.t('Letter $letter', 'Letra $letter'),
-                    style: TextStyle(color: textColor, fontSize: 24 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.6),
+                    m.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: textColor, fontSize: 15.5 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.3),
                   ),
                   SizedBox(height: 2 * scale),
                   Text(
-                    L.t('Copy the handshape, then try it on camera.', 'Gayahin ang porma ng kamay, saka subukan sa camera.'),
-                    style: TextStyle(color: textColor.withValues(alpha: 0.65), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.3),
-                  ),
-                  SizedBox(height: 10 * scale),
-                  Row(
-                    children: [
-                      Icon(Icons.videocam_rounded, size: 16 * scale, color: theme.primaryColor),
-                      SizedBox(width: 6 * scale),
-                      Text(L.t('Practice this sign', 'Sanayin ang senyas na ito'),
-                          style: TextStyle(color: theme.primaryColor, fontSize: 13.5 * scale, fontWeight: FontWeight.w800)),
-                      SizedBox(width: 2 * scale),
-                      Icon(Icons.chevron_right_rounded, size: 18 * scale, color: theme.primaryColor),
-                    ],
+                    m.blurb,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12 * scale, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    ));
-  }
-
-  Widget _buildGuestModuleTile(
-      BuildContext context, ({String key, String title, String blurb, String image, IconData icon}) m, double scale) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
-    return Pressable3D(radius: BorderRadius.circular(22 * scale), child: GestureDetector(
-      onTap: () => Navigator.push(context, _fadeRoute(_moduleScreen(m.key))),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22 * scale),
-        clipBehavior: Clip.antiAlias,
-        child: SmartBlur(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Container(
-            padding: EdgeInsets.all(14 * scale),
-            decoration: BoxDecoration(
-              color: theme.cardColor.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(22 * scale),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 8))],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      height: 50 * scale,
-                      width: 50 * scale,
-                      padding: EdgeInsets.all(9 * scale),
-                      decoration: BoxDecoration(
-                        color: theme.scaffoldBackgroundColor.withValues(alpha: 0.8),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Image.asset(m.image, fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => Icon(m.icon, color: theme.primaryColor)),
-                    ),
-                    const Spacer(),
-                    Icon(Icons.arrow_forward_rounded, size: 18 * scale, color: textColor.withValues(alpha: 0.4)),
-                  ],
-                ),
-                SizedBox(height: 12 * scale),
-                Text(
-                  m.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: textColor, fontSize: 15.5 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.3),
-                ),
-                SizedBox(height: 2 * scale),
-                Text(
-                  m.blurb,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12 * scale, fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
           ),
         ),
       ),
-    ));
+    );
   }
 
   Widget _buildGuestTip(BuildContext context, UserRole role, double scale) {
@@ -519,12 +610,18 @@ class SnedInterafce1 extends StatelessWidget {
         ? (
             Icons.family_restroom_rounded,
             L.t('Learn together', 'Sabay na matuto'),
-            L.t('Pick one sign a day and practise it with your child. Let them teach it back to you. It is the fastest way to remember.', 'Pumili ng isang senyas araw-araw at sanayin ito kasama ang anak mo. Hayaan siyang ituro ito pabalik sa iyo. Ito ang pinakamabilis na paraan para matandaan.'),
+            L.t(
+              'Pick one sign a day and practise it with your child. Let them teach it back to you. It is the fastest way to remember.',
+              'Pumili ng isang senyas araw-araw at sanayin ito kasama ang anak mo. Hayaan siyang ituro ito pabalik sa iyo. Ito ang pinakamabilis na paraan para matandaan.',
+            ),
           )
         : (
             Icons.co_present_rounded,
             L.t('Teaching tip', 'Tip sa pagtuturo'),
-            L.t('Use the tutorial videos to introduce a sign in class. Students log in with their own accounts to play activities and earn XP.', 'Gamitin ang mga tutorial video para ipakilala ang senyas sa klase. Mag-log in ang mga estudyante sa sarili nilang account para maglaro at makakuha ng XP.'),
+            L.t(
+              'Use the tutorial videos to introduce a sign in class. Students log in with their own accounts to play activities and earn XP.',
+              'Gamitin ang mga tutorial video para ipakilala ang senyas sa klase. Mag-log in ang mga estudyante sa sarili nilang account para maglaro at makakuha ng XP.',
+            ),
           );
     return _buildGlassContainer(
       context: context,
@@ -542,10 +639,15 @@ class SnedInterafce1 extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800)),
+                Text(
+                  title,
+                  style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800),
+                ),
                 SizedBox(height: 4 * scale),
-                Text(body,
-                    style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.4)),
+                Text(
+                  body,
+                  style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 13 * scale, fontWeight: FontWeight.w500, height: 1.4),
+                ),
               ],
             ),
           ),
@@ -555,77 +657,75 @@ class SnedInterafce1 extends StatelessWidget {
   }
 
   List<Widget> _buildGuestSections(BuildContext context, UserRole role, double scale) => [
-        _sectionTitle(context, L.t('Sign of the Day', 'Senyas ng Araw'), scale),
-        _buildSignOfTheDay(context, scale),
-        SizedBox(height: 28 * scale),
-        _sectionTitle(context, L.t('Explore the Modules', 'Tuklasin ang mga Module'), scale, subtitle: L.t('Watch the tutorials and practise each sign on camera.', 'Panoorin ang mga tutorial at sanayin ang bawat senyas sa camera.')),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          mainAxisSpacing: 14 * scale,
-          crossAxisSpacing: 14 * scale,
-          childAspectRatio: 1.1,
-          children: [for (final m in _guestModules) _buildGuestModuleTile(context, m, scale)],
-        ),
-        SizedBox(height: 28 * scale),
-        _buildGuestTip(context, role, scale),
-      ];
+    _sectionTitle(context, L.t('Sign of the Day', 'Senyas ng Araw'), scale),
+    _buildSignOfTheDay(context, scale),
+    SizedBox(height: 28 * scale),
+    _sectionTitle(
+      context,
+      L.t('Explore the Modules', 'Tuklasin ang mga Module'),
+      scale,
+      subtitle: L.t('Watch the tutorials and practise each sign on camera.', 'Panoorin ang mga tutorial at sanayin ang bawat senyas sa camera.'),
+    ),
+    GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      mainAxisSpacing: 14 * scale,
+      crossAxisSpacing: 14 * scale,
+      childAspectRatio: 1.1,
+      children: [for (final m in _guestModules) _buildGuestModuleTile(context, m, scale)],
+    ),
+    SizedBox(height: 28 * scale),
+    _buildGuestTip(context, role, scale),
+  ];
 
-  Widget _buildDailyTreasureCard(BuildContext context, double scale, String subtitle) {
-    return Pressable3D(radius: BorderRadius.circular(24 * scale), child: GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          _fadeRoute(const LeaderboardScreen(initialTab: 'challenges')),
-        );
-      },
-      child: _buildGlassContainer(
-        context: context,
-        scale: scale,
-        color: const Color(0xFFFF8227).withValues(alpha: 0.85), 
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(10 * scale),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.25),
-                shape: BoxShape.circle,
+  Widget _buildDailyTreasureCard(BuildContext context, double scale, String subtitle, {int questsDone = 0, int questsTotal = 0}) {
+    return Pressable3D(
+      radius: BorderRadius.circular(24 * scale),
+      child: GestureDetector(
+        onTap: () {
+          Navigator.push(context, _fadeRoute(const LeaderboardScreen(initialTab: 'challenges')));
+        },
+        child: _buildGlassContainer(
+          context: context,
+          scale: scale,
+          vivid: true,
+          color: const Color(0xFFFF8227).withValues(alpha: 0.85),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(10 * scale),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.25), shape: BoxShape.circle),
+                child: Icon(Icons.redeem_rounded, color: Colors.white, size: 36 * scale),
               ),
-              child: Icon(Icons.redeem_rounded, color: Colors.white, size: 36 * scale),
-            ),
-            SizedBox(width: 16 * scale),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    L.t('Daily Challenges!', 'Mga Hamon Ngayong Araw!'), 
-                    style: TextStyle(
-                      color: Colors.white, 
-                      fontSize: 18 * scale, 
-                      fontWeight: FontWeight.w900, 
-                      letterSpacing: -0.5,
-                    ), 
-                  ),
-                  SizedBox(height: 4 * scale),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9), 
-                      fontSize: 13 * scale, 
-                      fontWeight: FontWeight.w600,
-                    ), 
-                  ),
-                ],
+              SizedBox(width: 16 * scale),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      L.t('Daily Challenges!', 'Mga Hamon Ngayong Araw!'),
+                      style: TextStyle(color: Colors.white, fontSize: 18 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                    ),
+                    SizedBox(height: 4 * scale),
+                    Text(
+                      subtitle,
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13 * scale, fontWeight: FontWeight.w600),
+                    ),
+                    if (questsTotal > 0) ...[
+                      SizedBox(height: 10 * scale),
+                      ProgressBar3D(value: questsDone / questsTotal, color: Colors.white, height: 12 * scale, trackColor: Colors.white.withValues(alpha: 0.25)),
+                    ],
+                  ],
+                ),
               ),
-            ),
-            Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withValues(alpha: 0.8), size: 20 * scale),
-          ],
+              Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withValues(alpha: 0.8), size: 20 * scale),
+            ],
+          ),
         ),
       ),
-    ));
+    );
   }
 
   @override
@@ -642,53 +742,69 @@ class SnedInterafce1 extends StatelessWidget {
     final bool canProfile = roles.can(AppFeature.profile);
     final bool canNotifications = roles.can(AppFeature.notifications);
 
-    final double screenWidth = MediaQuery.of(context).size.width; 
+    final double screenWidth = MediaQuery.of(context).size.width;
     // Screen width can be 0 for a frame (startup / resize): never scale to 0
     // (a 0-height progress bar is an assertion error).
-    final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble(); 
+    final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble();
 
     SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-      ),
+      SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark),
     );
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: ProgressService().getUserProgressStream(), 
+      stream: ProgressService().getUserProgressStream(),
       builder: (context, userSnapshot) {
-        String studentName = isGuest ? roles.roleLabel : userName; 
-        int streak = 0; 
-        int totalXp = 0; 
-        int stars = 0; 
-        String? avatarUrl; 
+        String studentName = isGuest ? roles.roleLabel : userName;
+        int streak = 0;
+        int totalXp = 0;
+        int stars = 0;
+        Map<String, dynamic> homeUserData = const {}; // Continue Learning completion
+        String? avatarUrl;
         List<String> recentModules = [];
         String questSubtitle = L.t('Your personalised quests are ready!', 'Handa na ang mga quest para sa iyo!');
+        int questsDone = 0, questsTotal = 0; // Daily Challenges bar
 
         // Continue Learning: per-module XP + when each module was last opened.
         final moduleXp = <String, int>{for (final m in ProgressService.modules) m: 0};
         final lastOpened = <String, DateTime>{};
 
-        if (userSnapshot.hasData && userSnapshot.data!.exists) { 
-          final userData = userSnapshot.data!.data() as Map<String, dynamic>?; 
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+          final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
           if (userData != null) {
             final quests = userData['dailyChallenges'];
             if (quests is List && quests.isNotEmpty) {
               final done = Set<String>.from(userData['completedDailyChallenges'] ?? const []);
               final claimedToday = quests.where((q) => q is Map && done.contains(q['id'])).length;
+              questsDone = claimedToday;
+              questsTotal = quests.length;
               final lp = userData['learnerProfile'];
               final pace = lp is Map
-                  ? {'starter': L.t('Getting Started', 'Nagsisimula'), 'steady': L.t('Steady Pace', 'Tuloy-tuloy'), 'balanced': L.t('Balanced', 'Balanse'), 'fast': L.t('Fast Track', 'Mabilis')}[lp['pace']]
+                  ? {
+                      'starter': L.t('Getting Started', 'Nagsisimula'),
+                      'steady': L.t('Steady Pace', 'Tuloy-tuloy'),
+                      'balanced': L.t('Balanced', 'Balanse'),
+                      'fast': L.t('Fast Track', 'Mabilis'),
+                    }[lp['pace']]
                   : null;
               questSubtitle = claimedToday >= quests.length
                   ? L.t('All ${quests.length} quests done today. Great work!', 'Tapos na ang lahat ng ${quests.length} quest ngayong araw. Magaling!')
                   : '$claimedToday of ${quests.length} quests done${pace != null ? ' · $pace' : ''}';
             }
-            studentName = userData['name'] ?? userData['displayName'] ?? studentName; 
-            streak = userData['streak'] ?? 0; 
-            totalXp = userData['xp'] ?? 0; 
-            stars = userData['stars'] ?? (totalXp ~/ 1000);  
-            avatarUrl = userData['avatar'] ?? userData['photoURL']; 
+            studentName = userData['name'] ?? userData['displayName'] ?? studentName;
+            streak = userData['streak'] ?? 0;
+            totalXp = userData['xp'] ?? 0;
+            homeUserData = userData;
+            // Activity stars earned (best per level, progress.<levelId>), the
+            // same stars as on the module cards and panels.
+            final prog = userData['progress'];
+            stars = 0;
+            if (prog is Map) {
+              prog.forEach((k, v) {
+                final key = '$k'.toLowerCase();
+                if (v is num && !key.contains('xp') && !key.contains('challenge')) stars += v.toInt().clamp(0, 3);
+              });
+            }
+            avatarUrl = userData['avatar'] ?? userData['photoURL'];
 
             recentModules = _latestModules(userData, moduleXp, lastOpened);
           }
@@ -698,55 +814,45 @@ class SnedInterafce1 extends StatelessWidget {
           recentModules = ['alphabet', 'numbers'];
         }
 
-        int targetXp = 1000; 
-        int currentLevel = (totalXp ~/ targetXp) + 1; 
-        int xpInLevel = totalXp % targetXp; 
-        double progressRatio = xpInLevel / targetXp; 
+        int targetXp = 1000;
+        int currentLevel = (totalXp ~/ targetXp) + 1;
+        int xpInLevel = totalXp % targetXp;
+        double progressRatio = xpInLevel / targetXp;
 
         return Scaffold(
-          extendBodyBehindAppBar: true, 
-          extendBody: true, 
-          backgroundColor: theme.scaffoldBackgroundColor, 
-          
+          extendBodyBehindAppBar: true,
+          extendBody: true,
+          backgroundColor: theme.scaffoldBackgroundColor,
+
           drawer: Drawer(
-            backgroundColor: theme.cardColor.withValues(alpha: 0.95), 
+            backgroundColor: theme.cardColor.withValues(alpha: 0.95),
             elevation: 0,
             child: Column(
               children: [
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20, right: 20), 
-                  decoration: BoxDecoration(
-                    color: theme.primaryColor, 
-                  ),
+                  padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20, right: 20),
+                  decoration: BoxDecoration(color: theme.primaryColor),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Image.asset("assets/pictures/logo.png", width: 60), 
+                          Image.asset("assets/pictures/logo.png", width: 60),
                           const SizedBox(width: 10),
-                          Image.asset("assets/pictures/image 66.png", width: 60), 
+                          Image.asset("assets/pictures/image 66.png", width: 60),
                         ],
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        L.t('Menu', 'Menu'), 
-                        style: TextStyle(
-                          color: theme.colorScheme.onPrimary,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        L.t('Menu', 'Menu'),
+                        style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 24, fontWeight: FontWeight.bold),
                       ),
                       if (isGuest) ...[
                         const SizedBox(height: 4),
                         Text(
                           L.t('${roles.roleLabel} access', 'Access ng ${roles.roleLabel}'),
-                          style: TextStyle(
-                            color: theme.colorScheme.onPrimary.withValues(alpha: 0.85),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: TextStyle(color: theme.colorScheme.onPrimary.withValues(alpha: 0.85), fontSize: 14, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ],
@@ -754,146 +860,203 @@ class SnedInterafce1 extends StatelessWidget {
                 ),
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 10), 
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     children: [
-                      MenuCapsule(child: ListTile(
-                        leading: Icon(Icons.settings_outlined, color: theme.primaryColor), 
-                        title: Text(L.t('Settings', 'Mga Setting'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                        onTap: () {
-                          Navigator.pop(context); 
-                          Navigator.push(context, _fadeRoute(const SettingsScreen()));
-                        }, 
-                      )),
-                      MenuCapsule(child: ListTile(
-                        leading: Icon(Icons.help_outline, color: theme.primaryColor), 
-                        title: Text(L.t('Help & Support', 'Tulong at Suporta'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(context, _fadeRoute(InfoDetailScreen(
-                            title: L.t('Help & Support', 'Tulong at Suporta'),
-                            sections: [
-                              InfoSection(
-                                title: L.t('The Learning Loop', 'Ang Paraan ng Pag-aaral'),
-                                body: L.t('Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.', 'Ang pag-aaral mo ng Filipino Sign Language ay may apat na yugto: Tutorials, Practice, Activities at Challenges. Makakuha ng 1000 XP para mabuksan ang susunod na module.'),
-                                icon: Icons.loop_rounded,
+                      MenuCapsule(
+                        child: ListTile(
+                          leading: Icon(Icons.settings_outlined, color: theme.primaryColor),
+                          title: Text(
+                            L.t('Settings', 'Mga Setting'),
+                            style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(context, _fadeRoute(const SettingsScreen()));
+                          },
+                        ),
+                      ),
+                      MenuCapsule(
+                        child: ListTile(
+                          leading: Icon(Icons.help_outline, color: theme.primaryColor),
+                          title: Text(
+                            L.t('Help & Support', 'Tulong at Suporta'),
+                            style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              _fadeRoute(
+                                InfoDetailScreen(
+                                  title: L.t('Help & Support', 'Tulong at Suporta'),
+                                  sections: [
+                                    InfoSection(
+                                      title: L.t('The Learning Loop', 'Ang Paraan ng Pag-aaral'),
+                                      body: L.t(
+                                        'Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.',
+                                        'Ang pag-aaral mo ng Filipino Sign Language ay may apat na yugto: Tutorials, Practice, Activities at Challenges. Makakuha ng 1000 XP para mabuksan ang susunod na module.',
+                                      ),
+                                      icon: Icons.loop_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: L.t('Camera Combat', 'Camera Combat'),
+                                      body: L.t(
+                                        'Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.',
+                                        'Siguraduhing maliwanag ang lugar at gamitin ang Mirror-Mode Camera. Ang berdeng tsek ay tama, at ang pulang "X" ay kailangan pang ayusin ang porma.',
+                                      ),
+                                      icon: Icons.camera_alt_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: L.t('Leveling Up & Streaks', 'Pag-level Up at Streaks'),
+                                      body: L.t(
+                                        'Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.',
+                                        'Patuloy na magsanay para makakuha ng XP at mapuno ang Level Progress Bar. I-on ang Streak Reminders para tuloy-tuloy ang pag-aaral.',
+                                      ),
+                                      icon: Icons.local_fire_department_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: L.t('Multiplayer Challenges', 'Multiplayer Challenges'),
+                                      body: L.t(
+                                        'Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".',
+                                        'Hamunin ang mga kaklase: pindutin ang "Join a Room" at ilagay ang Room Code, o maging host sa pagpili ng "Create a Room".',
+                                      ),
+                                      icon: Icons.group_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: L.t('Customizing Experience', 'Pag-customize ng App'),
+                                      body: L.t(
+                                        'Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.',
+                                        'Pumunta sa Settings para palitan ang Tema (tulad ng Galaxy Explorer o Deep Ocean) at i-on o i-off ang Background Music.',
+                                      ),
+                                      icon: Icons.palette_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: L.t('Reporting Bugs', 'Pag-uulat ng Problema'),
+                                      body: L.t(
+                                        'Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.',
+                                        'Maaaring magpadala ang mga guro ng bug report sa admin gamit ang "Feedback & Support". Ang mga estudyante ay mag-ulat sa kanilang guro.',
+                                      ),
+                                      icon: Icons.bug_report_rounded,
+                                    ),
+                                  ],
+                                ),
                               ),
-                              InfoSection(
-                                title: L.t('Camera Combat', 'Camera Combat'),
-                                body: L.t('Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.', 'Siguraduhing maliwanag ang lugar at gamitin ang Mirror-Mode Camera. Ang berdeng tsek ay tama, at ang pulang "X" ay kailangan pang ayusin ang porma.'),
-                                icon: Icons.camera_alt_rounded,
+                            );
+                          },
+                        ),
+                      ),
+                      MenuCapsule(
+                        child: ListTile(
+                          leading: Icon(Icons.info_outline, color: theme.primaryColor),
+                          title: Text(
+                            L.t('About Us', 'Tungkol sa Amin'),
+                            style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(context, _fadeRoute(const AboutUsScreen()));
+                          },
+                        ),
+                      ),
+                      MenuCapsule(
+                        child: ListTile(
+                          leading: Icon(Icons.gavel_rounded, color: theme.primaryColor),
+                          title: Text(
+                            L.t('Terms & Privacy Policy', 'Mga Tuntunin at Privacy Policy'),
+                            style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              _fadeRoute(
+                                InfoDetailScreen(
+                                  title: 'Terms of Service & Privacy Policy',
+                                  sections: [
+                                    InfoSection(
+                                      title: '1. Acceptance of Terms',
+                                      body:
+                                          'By downloading, installing, accessing, or using the HandSpeak application, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service. If you do not agree to these terms, you must discontinue use immediately.',
+                                      icon: Icons.handshake_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: '2. Eligibility & Access',
+                                      body:
+                                          'Access to the HandSpeak platform is expressly restricted to authorized personnel, faculty, and enrolled students of Sto. Tomas North Central School (STNCS). All new registrations are subject to administrative review and remain in a "Pending" status until formally verified.',
+                                      icon: Icons.admin_panel_settings_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: '3. Account Security',
+                                      body:
+                                          'Users are solely responsible for maintaining the confidentiality of their account credentials. HandSpeak assumes no liability for any loss, damage, or unauthorized access arising from a user\'s failure to secure their account information.',
+                                      icon: Icons.lock_person_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: '4. Device Permissions',
+                                      body:
+                                          'The application requires access to your device\'s camera to facilitate real-time gesture recognition. By using the app, you grant explicit consent for this hardware access required for core functionality.',
+                                      icon: Icons.perm_camera_mic_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: '5. Content & Moderation',
+                                      body:
+                                          'All user-generated content, instructional materials, and dataset modifications submitted by faculty members are subject to administrative review. We reserve the right to modify, restrict, or remove any content at our sole discretion to maintain educational integrity.',
+                                      icon: Icons.rule_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: '6. Limitation of Liability',
+                                      body:
+                                          'HandSpeak is provided on an "AS IS" and "AS AVAILABLE" basis. The developers disclaim all warranties, express or implied, including accuracy of gesture recognition. In no event shall the developers be liable for direct, indirect, incidental, or consequential damages resulting from app usage.',
+                                      icon: Icons.warning_amber_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: '7. Data Collection (Player Profiles)',
+                                      body:
+                                          'We collect essential details to build your player profile—such as your Full Name, Email, Student ID, Grade Level, and Section. This information is required for account generation and system security.',
+                                      icon: Icons.person_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: '8. Privacy & Stats Tracking',
+                                      body:
+                                          'We track your gameplay stats—including module completion rates, experience points (XP), earned badges, and gesture accuracy scores. This ensures your progress is accurately recorded and saved.',
+                                      icon: Icons.analytics_rounded,
+                                    ),
+                                    InfoSection(
+                                      title: '9. Teacher Analytics',
+                                      body:
+                                          'Your performance data is securely beamed to a cloud database so your teachers can view descriptive and predictive analytics. This aids educators in tailoring your learning interventions while maintaining strict role-based access control (RBAC).',
+                                      icon: Icons.school_rounded,
+                                    ),
+                                  ],
+                                ),
                               ),
-                              InfoSection(
-                                title: L.t('Leveling Up & Streaks', 'Pag-level Up at Streaks'),
-                                body: L.t('Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.', 'Patuloy na magsanay para makakuha ng XP at mapuno ang Level Progress Bar. I-on ang Streak Reminders para tuloy-tuloy ang pag-aaral.'),
-                                icon: Icons.local_fire_department_rounded,
-                              ),
-                              InfoSection(
-                                title: L.t('Multiplayer Challenges', 'Multiplayer Challenges'),
-                                body: L.t('Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".', 'Hamunin ang mga kaklase: pindutin ang "Join a Room" at ilagay ang Room Code, o maging host sa pagpili ng "Create a Room".'),
-                                icon: Icons.group_rounded,
-                              ),
-                              InfoSection(
-                                title: L.t('Customizing Experience', 'Pag-customize ng App'),
-                                body: L.t('Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.', 'Pumunta sa Settings para palitan ang Tema (tulad ng Galaxy Explorer o Deep Ocean) at i-on o i-off ang Background Music.'),
-                                icon: Icons.palette_rounded,
-                              ),
-                              InfoSection(
-                                title: L.t('Reporting Bugs', 'Pag-uulat ng Problema'),
-                                body: L.t('Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.', 'Maaaring magpadala ang mga guro ng bug report sa admin gamit ang "Feedback & Support". Ang mga estudyante ay mag-ulat sa kanilang guro.'),
-                                icon: Icons.bug_report_rounded,
-                              ),
-                            ],
-                          )));
-                        }, 
-                      )),
-                      MenuCapsule(child: ListTile(
-                        leading: Icon(Icons.info_outline, color: theme.primaryColor), 
-                        title: Text(L.t('About Us', 'Tungkol sa Amin'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(context, _fadeRoute(const AboutUsScreen()));
-                        }, 
-                      )),
-                      MenuCapsule(child: ListTile(
-                        leading: Icon(Icons.gavel_rounded, color: theme.primaryColor), 
-                        title: Text(L.t('Terms & Privacy Policy', 'Mga Tuntunin at Privacy Policy'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)), 
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(context, _fadeRoute(InfoDetailScreen(
-                            title: 'Terms of Service & Privacy Policy',
-                            sections: [
-                              InfoSection(
-                                title: '1. Acceptance of Terms',
-                                body: 'By downloading, installing, accessing, or using the HandSpeak application, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service. If you do not agree to these terms, you must discontinue use immediately.',
-                                icon: Icons.handshake_rounded,
-                              ),
-                              InfoSection(
-                                title: '2. Eligibility & Access',
-                                body: 'Access to the HandSpeak platform is expressly restricted to authorized personnel, faculty, and enrolled students of Sto. Tomas North Central School (STNCS). All new registrations are subject to administrative review and remain in a "Pending" status until formally verified.',
-                                icon: Icons.admin_panel_settings_rounded,
-                              ),
-                              InfoSection(
-                                title: '3. Account Security',
-                                body: 'Users are solely responsible for maintaining the confidentiality of their account credentials. HandSpeak assumes no liability for any loss, damage, or unauthorized access arising from a user\'s failure to secure their account information.',
-                                icon: Icons.lock_person_rounded,
-                              ),
-                              InfoSection(
-                                title: '4. Device Permissions',
-                                body: 'The application requires access to your device\'s camera to facilitate real-time gesture recognition. By using the app, you grant explicit consent for this hardware access required for core functionality.',
-                                icon: Icons.perm_camera_mic_rounded,
-                              ),
-                              InfoSection(
-                                title: '5. Content & Moderation',
-                                body: 'All user-generated content, instructional materials, and dataset modifications submitted by faculty members are subject to administrative review. We reserve the right to modify, restrict, or remove any content at our sole discretion to maintain educational integrity.',
-                                icon: Icons.rule_rounded,
-                              ),
-                              InfoSection(
-                                title: '6. Limitation of Liability',
-                                body: 'HandSpeak is provided on an "AS IS" and "AS AVAILABLE" basis. The developers disclaim all warranties, express or implied, including accuracy of gesture recognition. In no event shall the developers be liable for direct, indirect, incidental, or consequential damages resulting from app usage.',
-                                icon: Icons.warning_amber_rounded,
-                              ),
-                              InfoSection(
-                                title: '7. Data Collection (Player Profiles)',
-                                body: 'We collect essential details to build your player profile—such as your Full Name, Email, Student ID, Grade Level, and Section. This information is required for account generation and system security.',
-                                icon: Icons.person_rounded,
-                              ),
-                              InfoSection(
-                                title: '8. Privacy & Stats Tracking',
-                                body: 'We track your gameplay stats—including module completion rates, experience points (XP), earned badges, and gesture accuracy scores. This ensures your progress is accurately recorded and saved.',
-                                icon: Icons.analytics_rounded,
-                              ),
-                              InfoSection(
-                                title: '9. Teacher Analytics',
-                                body: 'Your performance data is securely beamed to a cloud database so your teachers can view descriptive and predictive analytics. This aids educators in tailoring your learning interventions while maintaining strict role-based access control (RBAC).',
-                                icon: Icons.school_rounded,
-                              )
-                            ],
-                          )));
-                        }, 
-                      )),
-                      MenuCapsule(solid: true, child: ListTile(
-  leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: Colors.white), 
-  title: Text(isGuest ? L.t('Change Role', 'Palitan ang Role') : L.t('Sign Out', 'Mag-sign Out'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), 
-  onTap: () async {
-    if (isGuest) {
-      // Faculty / Parent have no account: just leave guest mode and ask for a role again.
-      await context.read<RoleProvider>().clear();
-      if (!context.mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
-        (route) => false,
-      );
-      return;
-    }
-    await FirebaseAuth.instance.signOut();
-    if (!context.mounted) return;
+                            );
+                          },
+                        ),
+                      ),
+                      MenuCapsule(
+                        solid: true,
+                        child: ListTile(
+                          leading: Icon(isGuest ? Icons.swap_horiz_rounded : Icons.logout_rounded, color: Colors.white),
+                          title: Text(
+                            isGuest ? L.t('Change Role', 'Palitan ang Role') : L.t('Sign Out', 'Mag-sign Out'),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                          ),
+                          onTap: () async {
+                            if (isGuest) {
+                              // Faculty / Parent have no account: just leave guest mode and ask for a role again.
+                              await context.read<RoleProvider>().clear();
+                              if (!context.mounted) return;
+                              Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const RoleSelectionScreen()), (route) => false);
+                              return;
+                            }
+                            await FirebaseAuth.instance.signOut();
+                            if (!context.mounted) return;
 
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const SnedStudentLogin()), 
-      (route) => false
-    );
-  }, 
-)),
+                            Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const SnedStudentLogin()), (route) => false);
+                          },
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -915,7 +1078,7 @@ class SnedInterafce1 extends StatelessWidget {
               ),
             ),
             title: Text(
-              "Home", 
+              "Home",
               style: TextStyle(color: textColor, fontWeight: FontWeight.w700, letterSpacing: -0.5),
             ),
             actions: [
@@ -929,22 +1092,18 @@ class SnedInterafce1 extends StatelessWidget {
                   ),
                   child: ClipOval(
                     child: Image.asset(
-                      "assets/pictures/image 66.png", 
-                      width: 40, 
-                      height: 40, 
+                      "assets/pictures/image 66.png",
+                      width: 40,
+                      height: 40,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Icon(
-                        Icons.account_circle, 
-                        size: 40, 
-                        color: Theme.of(context).disabledColor
-                      ),
+                      errorBuilder: (context, error, stackTrace) => Icon(Icons.account_circle, size: 40, color: Theme.of(context).disabledColor),
                     ),
                   ),
                 ),
               ),
             ],
           ),
-          
+
           bottomNavigationBar: AppNavBar(
             currentIndex: 0,
             onTap: (i) {
@@ -967,10 +1126,7 @@ class SnedInterafce1 extends StatelessWidget {
                 child: Container(
                   width: 250,
                   height: 250,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: theme.primaryColor.withValues(alpha: 0.25),
-                  ),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: theme.primaryColor.withValues(alpha: 0.25)),
                 ),
               ),
               Positioned(
@@ -979,88 +1135,102 @@ class SnedInterafce1 extends StatelessWidget {
                 child: Container(
                   width: 300,
                   height: 300,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: theme.colorScheme.secondary.withValues(alpha: 0.15),
-                  ),
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: theme.colorScheme.secondary.withValues(alpha: 0.15)),
                 ),
               ),
 
               SingleChildScrollView(
-                physics: const BouncingScrollPhysics(), 
-                padding: EdgeInsets.only(
-                  left: 24 * scale, 
-                  right: 24 * scale, 
-                  top: 110 * scale, 
-                  bottom: 120 * scale, 
-                ),
+                physics: const BouncingScrollPhysics(),
+                padding: EdgeInsets.only(left: 24 * scale, right: 24 * scale, top: 110 * scale, bottom: 120 * scale),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (isGuest)
                       Align(
                         alignment: Alignment.centerLeft,
-                        child: _buildGlassStatBadge(context, roles.role!.icon, L.t('${roles.roleLabel} · Guest', '${roles.roleLabel} · Bisita'), theme.primaryColor, scale),
+                        child: _buildGlassStatBadge(
+                          context,
+                          roles.role!.icon,
+                          L.t('${roles.roleLabel} · Guest', '${roles.roleLabel} · Bisita'),
+                          theme.primaryColor,
+                          scale,
+                        ),
                       )
                     else
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween, 
-                      children: [
-                        GestureDetector(
-                          onTap: canProfile ? () => Navigator.push(context, _fadeRoute(const ProfileScreen())) : null, 
-                          child: Container(
-                            width: 48 * scale,
-                            height: 48 * scale,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: theme.cardColor.withValues(alpha: 0.6),
-                              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.5), width: 1.5),
-                            ),
-                            child: ClipOval(
-                              child: _buildAvatarImage(context, avatarUrl, scale),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          GestureDetector(
+                            onTap: canProfile ? () => Navigator.push(context, _fadeRoute(const ProfileScreen())) : null,
+                            child: Container(
+                              width: 48 * scale,
+                              height: 48 * scale,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: theme.cardColor.withValues(alpha: 0.6),
+                                border: Border.all(color: theme.primaryColor.withValues(alpha: 0.5), width: 1.5),
+                              ),
+                              child: ClipOval(child: _buildAvatarImage(context, avatarUrl, scale)),
                             ),
                           ),
-                        ),
-                        Row(
-                          children: [
-                            _buildGlassStatBadge(context, Icons.local_fire_department_rounded, '$streak', theme.colorScheme.secondary, scale), 
-                            SizedBox(width: 8 * scale), 
-                            _buildGlassStatBadge(context, Icons.bolt_rounded, '$totalXp', const Color(0xFF2196F3), scale), 
-                            SizedBox(width: 8 * scale), 
-                            _buildGlassStatBadge(context, Icons.star_rounded, '$stars', theme.primaryColor, scale), 
-                          ],
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 25 * scale), 
+                          Row(
+                            children: [
+                              _buildGlassStatBadge(context, Icons.local_fire_department_rounded, '$streak', theme.colorScheme.secondary, scale),
+                              SizedBox(width: 8 * scale),
+                              _buildGlassStatBadge(context, Icons.bolt_rounded, '$totalXp', const Color(0xFF2196F3), scale),
+                              SizedBox(width: 8 * scale),
+                              _buildGlassStatBadge(context, Icons.star_rounded, '$stars', theme.primaryColor, scale),
+                            ],
+                          ),
+                        ],
+                      ),
+                    SizedBox(height: 25 * scale),
 
                     _buildGlassContainer(
                       context: context,
                       scale: scale,
-                      color: theme.primaryColor.withValues(alpha: 0.85), 
+                      vivid: true,
+                      color: theme.primaryColor.withValues(alpha: 0.85),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween, 
-                        crossAxisAlignment: CrossAxisAlignment.center, 
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start, 
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  L.t('Mabuhay,', 'Mabuhay,'), 
-                                  style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 18 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.5), 
+                                  L.t('Mabuhay,', 'Mabuhay,'),
+                                  style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 18 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.5),
                                 ),
                                 Text(
-                                  '$studentName!', 
-                                  style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 32 * scale, fontWeight: FontWeight.w900, height: 1.0, letterSpacing: -1.0), 
+                                  '$studentName!',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onPrimary,
+                                    fontSize: 32 * scale,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1.0,
+                                    letterSpacing: -1.0,
+                                  ),
                                 ),
                                 if (!canProgress) ...[
                                   SizedBox(height: 10 * scale),
                                   Text(
                                     roles.role == UserRole.parent
-                                        ? L.t('Learn Filipino Sign Language with your child, one sign at a time.', 'Matuto ng Filipino Sign Language kasama ang anak mo, isang senyas sa bawat araw.')
-                                        : L.t('Explore the lessons your students learn, sign by sign.', 'Tingnan ang mga aralin ng iyong mga estudyante, senyas sa senyas.'),
-                                    style: TextStyle(color: theme.colorScheme.onPrimary.withValues(alpha: 0.9), fontSize: 14 * scale, fontWeight: FontWeight.w600, height: 1.3),
+                                        ? L.t(
+                                            'Learn Filipino Sign Language with your child, one sign at a time.',
+                                            'Matuto ng Filipino Sign Language kasama ang anak mo, isang senyas sa bawat araw.',
+                                          )
+                                        : L.t(
+                                            'Explore the lessons your students learn, sign by sign.',
+                                            'Tingnan ang mga aralin ng iyong mga estudyante, senyas sa senyas.',
+                                          ),
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onPrimary.withValues(alpha: 0.9),
+                                      fontSize: 14 * scale,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.3,
+                                    ),
                                   ),
                                   SizedBox(height: 12 * scale),
                                   Wrap(
@@ -1082,88 +1252,73 @@ class SnedInterafce1 extends StatelessWidget {
                                             children: [
                                               Icon(icon, size: 14 * scale, color: theme.colorScheme.onPrimary),
                                               SizedBox(width: 5 * scale),
-                                              Text(label,
-                                                  style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 12 * scale, fontWeight: FontWeight.w800)),
+                                              Text(
+                                                label,
+                                                style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 12 * scale, fontWeight: FontWeight.w800),
+                                              ),
                                             ],
                                           ),
                                         ),
                                     ],
                                   ),
                                 ] else ...[
-                                SizedBox(height: 12 * scale), 
-                                Text(
-                                  L.t('Level $currentLevel', 'Level $currentLevel'), 
-                                  style: TextStyle(color: theme.colorScheme.onPrimary.withValues(alpha: 0.9), fontSize: 16 * scale, fontWeight: FontWeight.w700), 
-                                ),
-                                SizedBox(height: 6 * scale), 
-                                
-                                Container(
-                                  height: 26 * scale, 
-                                  width: double.infinity, 
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.onPrimary.withValues(alpha: 0.3), 
-                                    borderRadius: BorderRadius.circular(13 * scale), 
+                                  SizedBox(height: 12 * scale),
+                                  Text(
+                                    L.t('Level $currentLevel', 'Level $currentLevel'),
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onPrimary.withValues(alpha: 0.9),
+                                      fontSize: 16 * scale,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                  child: Stack(
+                                  SizedBox(height: 6 * scale),
+
+                                  // The same raised 3D bar as Continue Learning, in white on the banner.
+                                  Stack(
+                                    alignment: Alignment.centerLeft,
                                     children: [
-                                      Container(
-                                        width: (MediaQuery.of(context).size.width - 150) * progressRatio.clamp(0.0, 1.0),  
-                                        decoration: BoxDecoration(
-                                          color: theme.colorScheme.onPrimary, 
-                                          borderRadius: BorderRadius.circular(13 * scale), 
-                                          boxShadow: [BoxShadow(color: theme.colorScheme.onPrimary.withValues(alpha: 0.5), blurRadius: 8)],
-                                        ),
+                                      ProgressBar3D(
+                                        value: progressRatio,
+                                        color: Colors.white,
+                                        height: 24 * scale,
+                                        trackColor: Colors.white.withValues(alpha: 0.25),
                                       ),
-                                      Align(
-                                        alignment: Alignment.centerLeft, 
-                                        child: Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 12 * scale), 
-                                          child: Text(
-                                            '$xpInLevel XP', 
-                                            style: TextStyle(
-                                              color: theme.primaryColor,  
-                                              fontWeight: FontWeight.w900,  
-                                              fontSize: 13 * scale, 
-                                            ),
+                                      Padding(
+                                        padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+                                        child: Text(
+                                          '$xpInLevel / $targetXp XP',
+                                          style: TextStyle(
+                                            color: progressRatio > 0.25 ? theme.primaryColor : theme.colorScheme.onPrimary,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 12.5 * scale,
                                           ),
                                         ),
-                                      )
+                                      ),
                                     ],
                                   ),
-                                ),
                                 ], // end: progress (students only)
                               ],
                             ),
                           ),
-                          SizedBox(width: 15 * scale), 
-                          
+                          SizedBox(width: 15 * scale),
+
                           Container(
                             padding: EdgeInsets.all(12 * scale),
                             decoration: BoxDecoration(
                               color: theme.colorScheme.onPrimary.withValues(alpha: 0.2),
                               shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: theme.colorScheme.onPrimary.withValues(alpha: 0.2), 
-                                  blurRadius: 20, 
-                                  spreadRadius: 5
-                                )
-                              ],
+                              boxShadow: [BoxShadow(color: theme.colorScheme.onPrimary.withValues(alpha: 0.2), blurRadius: 20, spreadRadius: 5)],
                             ),
-                            child: Icon(
-                              Icons.waving_hand_rounded, 
-                              color: theme.colorScheme.onPrimary,
-                              size: 56 * scale,
-                            ),
+                            child: Icon(Icons.waving_hand_rounded, color: theme.colorScheme.onPrimary, size: 56 * scale),
                           ),
                         ],
                       ),
                     ),
 
-                    SizedBox(height: 25 * scale), 
+                    SizedBox(height: 25 * scale),
 
                     if (canChallenges) ...[
-                      _buildDailyTreasureCard(context, scale, questSubtitle),
+                      _buildDailyTreasureCard(context, scale, questSubtitle, questsDone: questsDone, questsTotal: questsTotal),
                       SizedBox(height: 32 * scale),
                     ],
 
@@ -1171,28 +1326,34 @@ class SnedInterafce1 extends StatelessWidget {
                     if (isGuest)
                       ..._buildGuestSections(context, roles.role!, scale)
                     else ...[
-                    Text(
-                      L.t('Continue Learning', 'Ipagpatuloy ang Pag-aaral'),
-                      style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5),
-                    ),
-                    SizedBox(height: 16 * scale),
-                    // The two most recently opened modules, side by side.
-                    IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (int i = 0; i < 2; i++) ...[
-                            if (i > 0) SizedBox(width: 14 * scale),
-                            Expanded(
-                              child: i < recentModules.length
-                                  ? _buildContinueCard(context, recentModules[i], moduleXp[recentModules[i]] ?? 0,
-                                      lastOpened[recentModules[i]], scale)
-                                  : const SizedBox.shrink(),
-                            ),
-                          ],
-                        ],
+                      Text(
+                        L.t('Continue Learning', 'Ipagpatuloy ang Pag-aaral'),
+                        style: TextStyle(color: textColor, fontSize: 20 * scale, fontWeight: FontWeight.bold, letterSpacing: -0.5),
                       ),
-                    ),
+                      SizedBox(height: 16 * scale),
+                      // The two most recently opened modules, side by side.
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (int i = 0; i < 2; i++) ...[
+                              if (i > 0) SizedBox(width: 14 * scale),
+                              Expanded(
+                                child: i < recentModules.length
+                                    ? _buildContinueCard(
+                                        context,
+                                        recentModules[i],
+                                        moduleXp[recentModules[i]] ?? 0,
+                                        lastOpened[recentModules[i]],
+                                        scale,
+                                        homeUserData,
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ], // end: Continue Learning (students only)
                   ],
                 ),
@@ -1204,16 +1365,83 @@ class SnedInterafce1 extends StatelessWidget {
     );
   }
 
+  /// A raised banner (Mabuhay, Daily Challenges): a rich gradient of
+  /// [color] lit from the top-left, a glossy sheen, soft decorative circles,
+  /// a light rim and a coloured glow underneath.
+  Widget _buildBanner3D({required BuildContext context, required double scale, required Color color, required Widget child}) {
+    final base = color.withValues(alpha: 1);
+    final r = BorderRadius.circular(26 * scale);
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: r,
+        boxShadow: [
+          BoxShadow(color: Color.lerp(base, Colors.black, 0.35)!.withValues(alpha: 0.55), offset: Offset(0, 6 * scale)),
+          BoxShadow(color: base.withValues(alpha: 0.35), blurRadius: 22, offset: Offset(0, 12 * scale)),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: r,
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: r,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color.lerp(base, Colors.white, 0.18)!, base, Color.lerp(base, Colors.black, 0.18)!],
+              stops: const [0.0, 0.55, 1.0],
+            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.28), width: 1.2),
+          ),
+          child: Stack(
+            children: [
+              // Decorative soft circles
+              Positioned(
+                right: -30 * scale,
+                top: -40 * scale,
+                child: Container(
+                  width: 140 * scale,
+                  height: 140 * scale,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.10)),
+                ),
+              ),
+              Positioned(
+                left: -25 * scale,
+                bottom: -45 * scale,
+                child: Container(
+                  width: 110 * scale,
+                  height: 110 * scale,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.07)),
+                ),
+              ),
+              // Glossy sheen on the top half
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.white.withValues(alpha: 0.18), Colors.white.withValues(alpha: 0.0)],
+                        stops: const [0.0, 0.5],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(padding: EdgeInsets.all(22 * scale), child: child),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-  Widget _buildGlassContainer({
-    required BuildContext context, 
-    required Widget child, 
-    required double scale, 
-    Color? color
-  }) {
+  Widget _buildGlassContainer({required BuildContext context, required Widget child, required double scale, Color? color, bool vivid = false}) {
     final theme = Theme.of(context);
+    if (vivid && color != null) return _buildBanner3D(context: context, scale: scale, color: color, child: child);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24 * scale), 
+      borderRadius: BorderRadius.circular(24 * scale),
       clipBehavior: Clip.antiAlias,
       child: SmartBlur(
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
@@ -1224,9 +1452,7 @@ class SnedInterafce1 extends StatelessWidget {
             color: color ?? theme.cardColor.withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(24 * scale),
             border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10)),
-            ],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10))],
           ),
           child: child,
         ),
@@ -1239,28 +1465,24 @@ class SnedInterafce1 extends StatelessWidget {
     final textColor = theme.colorScheme.onSurface;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20 * scale), 
+      borderRadius: BorderRadius.circular(20 * scale),
       clipBehavior: Clip.antiAlias,
       child: SmartBlur(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 8 * scale), 
+          padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 8 * scale),
           decoration: BoxDecoration(
-            color: theme.cardColor.withValues(alpha: 0.6), 
-            borderRadius: BorderRadius.circular(20 * scale), 
-            border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0), 
+            color: theme.cardColor.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(20 * scale),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
           ),
           child: Row(
             children: [
-              Icon(icon, color: iconColor, size: 18 * scale), 
-              SizedBox(width: 4 * scale), 
+              Icon(icon, color: iconColor, size: 18 * scale),
+              SizedBox(width: 4 * scale),
               Text(
-                value, 
-                style: TextStyle(
-                  color: textColor, 
-                  fontSize: 14 * scale, 
-                  fontWeight: FontWeight.w800, 
-                ),
+                value,
+                style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w800),
               ),
             ],
           ),
@@ -1273,7 +1495,7 @@ class SnedInterafce1 extends StatelessWidget {
 class InfoSection {
   final String title;
   final String body;
-  final IconData icon; 
+  final IconData icon;
 
   const InfoSection({required this.title, required this.body, required this.icon});
 }
@@ -1313,8 +1535,10 @@ class _InfoDetailScreenState extends State<InfoDetailScreen> {
         elevation: 0,
         centerTitle: true,
         iconTheme: theme.iconTheme.copyWith(color: textColor),
-        title: Text(widget.title,
-            style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 18 * scale, letterSpacing: -0.5)),
+        title: Text(
+          widget.title,
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 18 * scale, letterSpacing: -0.5),
+        ),
       ),
       body: ListView(
         physics: const BouncingScrollPhysics(),
@@ -1325,11 +1549,7 @@ class _InfoDetailScreenState extends State<InfoDetailScreen> {
             padding: EdgeInsets.all(20 * scale),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24 * scale),
-              gradient: LinearGradient(
-                colors: [primary, Color.lerp(primary, Colors.black, 0.35)!],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              gradient: LinearGradient(colors: [primary, Color.lerp(primary, Colors.black, 0.35)!], begin: Alignment.topLeft, end: Alignment.bottomRight),
               boxShadow: [BoxShadow(color: primary.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
             ),
             child: Row(
@@ -1344,8 +1564,10 @@ class _InfoDetailScreenState extends State<InfoDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.title,
-                          style: TextStyle(color: Colors.white, fontSize: 18 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.3)),
+                      Text(
+                        widget.title,
+                        style: TextStyle(color: Colors.white, fontSize: 18 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                      ),
                       SizedBox(height: 4 * scale),
                       Text(
                         isTerms
@@ -1370,8 +1592,10 @@ class _InfoDetailScreenState extends State<InfoDetailScreen> {
                 }
               }),
               icon: Icon(allOpen ? Icons.unfold_less_rounded : Icons.unfold_more_rounded, size: 18 * scale),
-              label: Text(allOpen ? L.t('Collapse all', 'Isara lahat') : L.t('Expand all', 'Buksan lahat'),
-                  style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w700)),
+              label: Text(
+                allOpen ? L.t('Collapse all', 'Isara lahat') : L.t('Expand all', 'Buksan lahat'),
+                style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w700),
+              ),
             ),
           ),
           for (var i = 0; i < widget.sections.length; i++) _sectionCard(context, i, scale),
@@ -1401,7 +1625,13 @@ class _InfoDetailScreenState extends State<InfoDetailScreen> {
             color: theme.cardColor,
             borderRadius: BorderRadius.circular(20 * scale),
             border: Border.all(color: open ? primary.withValues(alpha: 0.45) : theme.dividerColor.withValues(alpha: 0.4), width: 1.4),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: open ? 0.10 : 0.05), blurRadius: 12, offset: const Offset(0, 5))],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: open ? 0.10 : 0.05),
+                blurRadius: 12,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
           child: Material(
             type: MaterialType.transparency,
@@ -1427,10 +1657,14 @@ class _InfoDetailScreenState extends State<InfoDetailScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (m != null)
-                                Text(L.t('SECTION ${m.group(1)}', 'BAHAGI ${m.group(1)}'),
-                                    style: TextStyle(color: primary, fontSize: 10.5 * scale, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-                              Text(heading,
-                                  style: TextStyle(color: textColor, fontSize: 15.5 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+                                Text(
+                                  L.t('SECTION ${m.group(1)}', 'BAHAGI ${m.group(1)}'),
+                                  style: TextStyle(color: primary, fontSize: 10.5 * scale, fontWeight: FontWeight.w800, letterSpacing: 1.2),
+                                ),
+                              Text(
+                                heading,
+                                style: TextStyle(color: textColor, fontSize: 15.5 * scale, fontWeight: FontWeight.w800, letterSpacing: -0.2),
+                              ),
                             ],
                           ),
                         ),
@@ -1448,12 +1682,11 @@ class _InfoDetailScreenState extends State<InfoDetailScreen> {
                         child: Container(
                           width: double.infinity,
                           padding: EdgeInsets.all(14 * scale),
-                          decoration: BoxDecoration(
-                            color: primary.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(14 * scale),
+                          decoration: BoxDecoration(color: primary.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(14 * scale)),
+                          child: Text(
+                            section.body,
+                            style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6),
                           ),
-                          child: Text(section.body,
-                              style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6)),
                         ),
                       ),
                       crossFadeState: open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
@@ -1492,12 +1725,7 @@ class AboutUsScreen extends StatelessWidget {
         iconTheme: theme.iconTheme.copyWith(color: textColor),
         title: Text(
           L.t('About Us', 'Tungkol sa Amin'),
-          style: TextStyle(
-            color: textColor,
-            fontWeight: FontWeight.w700,
-            fontSize: 18 * scale,
-            letterSpacing: -0.5,
-          ),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 18 * scale, letterSpacing: -0.5),
         ),
       ),
       body: ListView(
@@ -1513,40 +1741,56 @@ class AboutUsScreen extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: textColor.withValues(alpha: 0.1)),
               ),
-              child: Center(
-                child: Image.asset('assets/pictures/image 66.png', fit: BoxFit.contain), 
-              ),
+              child: Center(child: Image.asset('assets/pictures/image 66.png', fit: BoxFit.contain)),
             ),
           ),
           SizedBox(height: 16 * scale),
           Center(
             child: Text(
               "HandSpeak",
-              style: TextStyle(
-                color: textColor,
-                fontSize: 18 * scale,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: textColor, fontSize: 18 * scale, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
           ),
           SizedBox(height: 32 * scale),
 
-          _aboutCard(context, scale, Icons.flag_rounded, L.t('Our Mission', 'Ang Aming Misyon'),
-              L.t('HandSpeak is a gamified Filipino Sign Language (FSL) learning adventure equipped with real-time gesture recognition. Our goal is to level up foundational literacy and boost school-wide inclusivity at Sto. Tomas North Central School (STNCS).', 'Ang HandSpeak ay isang larong pag-aaral ng Filipino Sign Language (FSL) na may real-time na pagkilala ng senyas. Layunin naming paunlarin ang batayang literasiya at ang inklusibong pag-aaral sa Sto. Tomas North Central School (STNCS).')),
-          SizedBox(height: 14 * scale),
-          Row(
-            children: [
-              Expanded(child: _aboutStat(context, scale, Icons.sign_language_rounded, 'FSL', L.t('Filipino Sign Language', 'Filipino Sign Language'))),
-              SizedBox(width: 10 * scale),
-              Expanded(child: _aboutStat(context, scale, Icons.videocam_rounded, L.t('Real-time', 'Real-time'), L.t('Gesture recognition', 'Pagkilala ng senyas'))),
-              SizedBox(width: 10 * scale),
-              Expanded(child: _aboutStat(context, scale, Icons.school_rounded, 'STNCS', L.t('Partner school', 'Katuwang na paaralan'))),
-            ],
+          _aboutCard(
+            context,
+            scale,
+            Icons.flag_rounded,
+            L.t('Our Mission', 'Ang Aming Misyon'),
+            L.t(
+              'HandSpeak is a gamified Filipino Sign Language (FSL) learning adventure equipped with real-time gesture recognition. Our goal is to level up foundational literacy and boost school-wide inclusivity at Sto. Tomas North Central School (STNCS).',
+              'Ang HandSpeak ay isang larong pag-aaral ng Filipino Sign Language (FSL) na may real-time na pagkilala ng senyas. Layunin naming paunlarin ang batayang literasiya at ang inklusibong pag-aaral sa Sto. Tomas North Central School (STNCS).',
+            ),
           ),
           SizedBox(height: 14 * scale),
-          _aboutCard(context, scale, Icons.code_rounded, L.t('The Developers', 'Ang mga Developer'),
-              L.t('This digital learning world was forged as a Capstone Project by developers from the College of Informatics and Computing Sciences at Batangas State University - JPLPC Malvar Campus.', 'Ang digital na mundong ito ng pag-aaral ay ginawa bilang Capstone Project ng mga developer mula sa College of Informatics and Computing Sciences ng Batangas State University - JPLPC Malvar Campus.')),
+          // Same height for the three tiles (the tallest label sets it).
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _aboutStat(context, scale, Icons.sign_language_rounded, 'FSL', L.t('Filipino Sign Language', 'Filipino Sign Language'))),
+                SizedBox(width: 10 * scale),
+                Expanded(
+                  child: _aboutStat(context, scale, Icons.videocam_rounded, L.t('Real-time', 'Real-time'), L.t('Gesture recognition', 'Pagkilala ng senyas')),
+                ),
+                SizedBox(width: 10 * scale),
+                Expanded(child: _aboutStat(context, scale, Icons.school_rounded, 'STNCS', L.t('Partner school', 'Katuwang na paaralan'))),
+              ],
+            ),
+          ),
+          SizedBox(height: 14 * scale),
+          _aboutCard(
+            context,
+            scale,
+            Icons.code_rounded,
+            L.t('The Developers', 'Ang mga Developer'),
+            L.t(
+              'This digital learning world was forged as a Capstone Project by developers from the College of Informatics and Computing Sciences at Batangas State University - JPLPC Malvar Campus.',
+              'Ang digital na mundong ito ng pag-aaral ay ginawa bilang Capstone Project ng mga developer mula sa College of Informatics and Computing Sciences ng Batangas State University - JPLPC Malvar Campus.',
+            ),
+          ),
           SizedBox(height: 20 * scale),
 
           // Team name
@@ -1607,11 +1851,17 @@ class AboutUsScreen extends StatelessWidget {
                 child: Icon(icon, color: theme.primaryColor, size: 20 * scale),
               ),
               SizedBox(width: 12 * scale),
-              Text(title, style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800)),
+              Text(
+                title,
+                style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w800),
+              ),
             ],
           ),
           SizedBox(height: 12 * scale),
-          Text(body, style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6)),
+          Text(
+            body,
+            style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 14 * scale, height: 1.6),
+          ),
         ],
       ),
     );
@@ -1628,14 +1878,20 @@ class AboutUsScreen extends StatelessWidget {
         border: Border.all(color: theme.primaryColor.withValues(alpha: 0.25)),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, color: theme.primaryColor, size: 24 * scale),
           SizedBox(height: 6 * scale),
-          Text(value, style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w900)),
+          Text(
+            value,
+            style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w900),
+          ),
           SizedBox(height: 2 * scale),
-          Text(label,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 10.5 * scale, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 10.5 * scale, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
@@ -1674,9 +1930,15 @@ class AboutUsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w600)),
+                Text(
+                  name,
+                  style: TextStyle(color: textColor, fontSize: 14 * scale, fontWeight: FontWeight.w600),
+                ),
                 SizedBox(height: 2 * scale),
-                Text(email, style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12 * scale)),
+                Text(
+                  email,
+                  style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12 * scale),
+                ),
               ],
             ),
           ),

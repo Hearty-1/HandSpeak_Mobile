@@ -1,3 +1,4 @@
+import '/module/custom_category_screen.dart' show ModuleProgressPanel, ModuleSource;
 import '/widgets/button_3d.dart';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
@@ -46,38 +47,9 @@ class CivicInterface extends StatelessWidget {
 
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(), 
-      builder: (context, snapshot) { 
-        int moduleXp = 0; 
-        int challengeXp = 0;
-        int civicStars = 0;  
-        const int maxStars = 27;
+      builder: (context, snapshot) {    
 
-        if (snapshot.hasData && snapshot.data!.exists) { 
-          final data = snapshot.data!.data() as Map<String, dynamic>?; 
-          if (data != null) { 
-            // Read module XP from root level
-            moduleXp = (data['civicXp'] ?? 0).toInt(); 
-            
-            // Read challenge XP safely from the progress map
-            if (data['progress'] != null) { 
-              Map<String, dynamic> progressMap = Map<String, dynamic>.from(data['progress']); 
-              challengeXp = (progressMap['civic_challenge_xp'] ?? 0).toInt();
-
-              progressMap.forEach((key, value) { 
-                if (key.startsWith('civic_') && 
-                    !key.toLowerCase().contains('xp') && 
-                    !key.toLowerCase().contains('challenge')) { 
-                  civicStars += (value as num).toInt(); 
-                }
-              });
-            }
-          }
-        }
         
-        // Calculate combined level and progress within the level
-        int totalCategoryXp = moduleXp + challengeXp;
-        int currentLevel = (totalCategoryXp ~/ targetXp) + 1;
-        int xpInLevel = totalCategoryXp % targetXp;
 
         return Scaffold(
           extendBodyBehindAppBar: true, 
@@ -146,13 +118,7 @@ class CivicInterface extends StatelessWidget {
                           
                           // 1. MAIN PROGRESS PANEL (Combined Level)
                           if (canProgress) ...[
-                          _buildMainProgressPanel(
-                            context: context,
-                            scale: scale, 
-                            level: currentLevel,
-                            currentXp: xpInLevel, 
-                            targetXp: targetXp,
-                          ),
+                          ModuleProgressPanel(source: ModuleSource.civic, title: L.t('Civic', 'Pansibiko'), scale: scale),
                           
                           SizedBox(height: 24 * scale),
                           ],
@@ -262,33 +228,6 @@ class CivicInterface extends StatelessWidget {
 
                           SizedBox(height: 32 * scale),
 
-                          // 5. SUB METRICS
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildSubMetricPanel(
-                                  context: context,
-                                  scale: scale,
-                                  valueDisplay: L.t('$civicStars Stars', '$civicStars Bituin'),
-                                  progress: (civicStars / maxStars).clamp(0.0, 1.0),
-                                  icon: Icons.star_rounded,
-                                  iconColor: Colors.amber.shade500,
-                                ),
-                              ),
-                              SizedBox(width: 12 * scale),
-                              // FIXED: Strictly bound to Challenge XP
-                              Expanded(
-                                child: _buildSubMetricPanel(
-                                  context: context,
-                                  scale: scale,
-                                  valueDisplay: "$challengeXp XP",
-                                  progress: (challengeXp / targetXp).clamp(0.0, 1.0),
-                                  icon: Icons.bolt_rounded,
-                                  iconColor: Colors.amber.shade500,
-                                ),
-                              ),
-                            ],
-                          ),
                           ],
                         ],
                       ),
@@ -320,139 +259,4 @@ class CivicInterface extends StatelessWidget {
     );
   }
 
-  Widget _buildMainProgressPanel({
-    required BuildContext context,
-    required double scale, 
-    required int level,
-    required int currentXp, 
-    required int targetXp,
-  }) {
-    final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
-    final double progressRatio = (currentXp / targetXp).clamp(0.0, 1.0); 
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16 * scale), 
-      child: SmartBlur(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
-          decoration: BoxDecoration(
-            color: theme.cardColor.withValues(alpha: 0.65), 
-            borderRadius: BorderRadius.circular(16 * scale), 
-            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5), 
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
-          ),
-          child: Row(
-            children: [
-              _buildGlassIcon(context, scale, 24 * scale, Icons.bolt_rounded, Colors.amber.shade500),
-              SizedBox(width: 16 * scale),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(L.t('Category Level $level', 'Level $level ng Kategorya'), style: TextStyle(color: textColor, fontSize: 13 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w700)),
-                  Text('$currentXp / $targetXp XP', style: TextStyle(color: theme.primaryColor, fontSize: 15 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400)),
-                ],
-              ),
-              SizedBox(width: 16 * scale),
-              Expanded(
-                child: Stack(
-                  alignment: Alignment.centerLeft,
-                  children: [
-                    Container(height: 8 * scale, decoration: BoxDecoration(color: theme.colorScheme.onSurface.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(25 * scale))),
-                    FractionallySizedBox(
-                      widthFactor: progressRatio,
-                      child: Container(
-                        height: 8 * scale, 
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.secondary, 
-                          borderRadius: BorderRadius.circular(25 * scale),
-                          boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withValues(alpha: 0.5), blurRadius: 4)],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSubMetricPanel({
-    required BuildContext context,
-    required double scale, 
-    required String valueDisplay, 
-    required double progress,
-    required IconData icon,
-    required Color iconColor,
-  }) {
-    final theme = Theme.of(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16 * scale),
-      child: SmartBlur(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: EdgeInsets.all(12 * scale),
-          decoration: BoxDecoration(
-            color: theme.cardColor.withValues(alpha: 0.65), 
-            borderRadius: BorderRadius.circular(16 * scale), 
-            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _buildGlassIcon(context, scale, 18 * scale, icon, iconColor),
-                  SizedBox(width: 8 * scale),
-                  Expanded(
-                    child: Text(
-                      valueDisplay, 
-                      style: TextStyle(color: theme.primaryColor, fontSize: 13 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 12 * scale),
-              Stack(
-                alignment: Alignment.centerLeft,
-                children: [
-                  Container(height: 6 * scale, decoration: BoxDecoration(color: theme.colorScheme.onSurface.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(25 * scale))),
-                  FractionallySizedBox(
-                    widthFactor: progress,
-                    child: Container(
-                      height: 6 * scale,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.secondary, 
-                        borderRadius: BorderRadius.circular(25 * scale),
-                        boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withValues(alpha: 0.5), blurRadius: 4)],
-                      ), 
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassIcon(BuildContext context, double scale, double size, IconData icon, Color color) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: EdgeInsets.all(6 * scale),
-      decoration: BoxDecoration(
-        color: theme.cardColor.withValues(alpha: 0.8),
-        shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 8, spreadRadius: 1)],
-      ),
-      child: Icon(icon, color: color, size: size),
-    );
-  }
 }

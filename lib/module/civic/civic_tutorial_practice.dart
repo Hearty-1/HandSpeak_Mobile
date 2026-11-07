@@ -1,3 +1,6 @@
+import '/widgets/sign_recording.dart';
+import '/widgets/activity_feedback.dart';
+import 'dart:math' as math;
 import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
@@ -64,12 +67,28 @@ class CivicTutorialPractice extends StatefulWidget {
   /// sign calls this instead of the mastery dialog and XP.
   final VoidCallback? onPassed;
 
+  /// Embedded in a camera question (activities / challenges): only the
+  /// camera, the record controls and the feedback, with the same recording
+  /// and checking as the practice screen; no app bar or reference.
+  final bool embedded;
+
+  /// Embedded: a checked line that is not the target answers the question
+  /// wrong (as in the Numbers camera levels); a capture problem asks to
+  /// record again.
+  final VoidCallback? onFailed;
+
+  /// Embedded: the main button goes to the activity's bottom bar.
+  final CameraButtonBridge? bridge;
+
   const CivicTutorialPractice({
     super.key,
     this.category = 'lupang_hinirang',
     this.questions,
     this.continuous = false,
     this.onPassed,
+    this.embedded = false,
+    this.onFailed,
+    this.bridge,
   });
 
   @override
@@ -732,6 +751,14 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         return;
       }
 
+      // Check mode: the model answered, and it is not this line. Capture
+      // problems (no hands, too short, out of frame, no motion) record again.
+      const captureChecks = {'NO_HANDS', 'TOO_SHORT', 'LOW_LANDMARKS', 'OUT_OF_FRAME', 'LOW_MOTION'};
+      if (widget.onFailed != null && !result.failed.any(captureChecks.contains)) {
+        widget.onFailed!();
+        return;
+      }
+
       if (accepted && topIdx != -1) {
         _showFeedback(L.t('That looked like "${_labelForIndex(topIdx)}". Try again.', 'Mukhang "${_labelForIndex(topIdx)}" ang naisagawa. Subukang muli.'), score: targetConf);
         return;
@@ -1326,6 +1353,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (widget.continuous) return _buildContinuousUI(theme);
+    if (widget.embedded) return _buildEmbeddedUI(theme);
 
     return Scaffold(
       appBar: AppBar(
@@ -1362,6 +1390,79 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 : _buildPracticeUI(theme),
             ),
       ),
+    );
+  }
+
+  /// [CivicTutorialPractice.embedded]: the camera, the controls, the feedback.
+  Widget _buildEmbeddedUI(ThemeData theme) {
+    if (_isBootstrapping) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 12),
+            Text(_loadingStatus, textAlign: TextAlign.center),
+          ],
+        ),
+      );
+    }
+    final isPassing = _currentScore >= successThreshold;
+    final double elapsed = (_isRecording && _recordStart != null)
+        ? DateTime.now().difference(_recordStart!).inMilliseconds / 1000.0
+        : 0.0;
+    final side = math.min(MediaQuery.sizeOf(context).width * 0.60, 320.0);
+    final buttonState = CameraButtonState(
+      label: cameraButtonLabel(checking: _isEvaluating, countdown: _countdown, recording: _isRecording),
+      recording: _isRecording,
+      onPressed: _isInitialized && !_isSuccessAchieved && !_isEvaluating ? _toggleRecording : null,
+    );
+    widget.bridge?.publish(buttonState);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: side,
+          height: side,
+          decoration: BoxDecoration(
+            border: Border.all(
+              width: 4,
+              color: _isSuccessAchieved || isPassing
+                  ? Colors.green
+                  : (_isRecording || _handsVisible || _isEvaluating ? theme.primaryColor : theme.dividerColor.withValues(alpha: 0.6)),
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              if (_handsVisible || _isRecording)
+                BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 15, spreadRadius: 1),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: _isInitialized && _controller != null
+                ? _CameraView(controller: _controller!)
+                : const Center(child: CircularProgressIndicator()),
+          ),
+        ),
+        const SizedBox(height: 20),
+        // Exactly the Numbers moving-sign status; the button is in the
+        // activity's bottom bar ([bridge]).
+        SignRecordingStatus.view(
+          theme,
+          countdown: _countdown,
+          recording: _isRecording,
+          progress: elapsed / _maxRecording.inSeconds,
+          sign: '${_activeQuestions.isNotEmpty ? (_activeQuestions[_currentStep]['question'] ?? '') : ''}',
+          checking: _isEvaluating,
+          handsVisible: _handsVisible,
+          message: _currentFeedback,
+        ),
+        if (widget.bridge == null) ...[
+          const SizedBox(height: 16),
+          cameraLevelButton(theme, label: buttonState.label, recording: _isRecording, onPressed: buttonState.onPressed),
+        ],
+      ],
     );
   }
 

@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -331,12 +332,7 @@ class BadgeTile extends StatelessWidget {
         else
           ClipRRect(
             borderRadius: BorderRadius.circular(4 * scale),
-            child: LinearProgressIndicator(
-              value: badge.progressPercent,
-              minHeight: 4 * scale,
-              backgroundColor: textColor.withValues(alpha: 0.1),
-              valueColor: AlwaysStoppedAnimation<Color>(badge.themeColor.withValues(alpha: 0.75)),
-            ),
+            child: ProgressBar3D(value: (badge.progressPercent).toDouble(), color: badge.themeColor.withValues(alpha: 0.75), height: 4 * scale, trackColor: textColor.withValues(alpha: 0.1)),
           ),
       ]),
     );

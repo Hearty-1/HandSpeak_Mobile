@@ -1,3 +1,5 @@
+import '/widgets/sign_recording.dart';
+import '/widgets/activity_feedback.dart';
 import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -161,6 +163,19 @@ class PhraseTutorialPractice extends StatefulWidget {
   /// sign calls this instead of the mastery dialog and XP.
   final VoidCallback? onPassed;
 
+  /// Embedded in a camera question (activities / challenges): only the
+  /// camera, the record controls and the feedback, with the same recording
+  /// and checking as the practice screen; no app bar or reference.
+  final bool embedded;
+
+  /// Embedded: a checked sign that is not the target (the model answered)
+  /// answers the question wrong, as in the Numbers camera levels; a capture
+  /// problem (no hands, too fast) just asks to record again.
+  final VoidCallback? onFailed;
+
+  /// Embedded: the main button goes to the activity's bottom bar.
+  final CameraButtonBridge? bridge;
+
   const PhraseTutorialPractice({
     super.key,
     required this.targetPhrase,
@@ -171,6 +186,9 @@ class PhraseTutorialPractice extends StatefulWidget {
     this.onSkip,
     this.xpReward,
     this.onPassed,
+    this.embedded = false,
+    this.onFailed,
+    this.bridge,
   });
 
   @override
@@ -886,6 +904,13 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           _isEvaluating = false;
         });
         _onSuccess();
+        return;
+      }
+
+      if (widget.onFailed != null) {
+        // Check mode: the model answered, and it is not this sign.
+        setState(() => _isEvaluating = false);
+        widget.onFailed!();
         return;
       }
 
@@ -1684,6 +1709,50 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                               ),
                           ],
                         );
+
+    if (widget.embedded) {
+      final side = math.min(MediaQuery.sizeOf(context).width * 0.60, 320.0);
+      final buttonState = CameraButtonState(
+        label: cameraButtonLabel(checking: _isEvaluating, countdown: _countdown, recording: _isRecording),
+        recording: _isRecording,
+        onPressed: _isInitialized && !_isSuccessAchieved && !_isEvaluating ? _toggleRecording : null,
+      );
+      widget.bridge?.publish(buttonState);
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: side,
+            height: side,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                if (_handsVisible || _isRecording)
+                  BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 15, spreadRadius: 1),
+              ],
+            ),
+            child: cameraPane,
+          ),
+          const SizedBox(height: 20),
+          // Exactly the Numbers moving-sign status; the button is in the
+          // activity's bottom bar ([bridge]).
+          SignRecordingStatus.view(
+            theme,
+            countdown: _countdown,
+            recording: _isRecording,
+            progress: recordProgress,
+            sign: widget.targetPhrase,
+            checking: _isEvaluating,
+            handsVisible: _handsVisible,
+            message: _resultTitle.isNotEmpty ? '$_resultTitle ${_resultDetail.isNotEmpty ? '- $_resultDetail' : ''}'.trim() : null,
+          ),
+          if (widget.bridge == null) ...[
+            const SizedBox(height: 16),
+            cameraLevelButton(theme, label: buttonState.label, recording: _isRecording, onPressed: buttonState.onPressed),
+          ],
+        ],
+      );
+    }
 
     return Scaffold(
       extendBodyBehindAppBar: true,

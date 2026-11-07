@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import '/widgets/sign_recording.dart';
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
 import '/widgets/challenge_camera_sign.dart' show ChallengeSignResult;
 import '/widgets/button_3d.dart';
@@ -544,6 +545,10 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
   /// Hearts, as in the alphabet / numbers activities: a wrong answer costs
   /// one; none left ends the level. Stars come from the hearts left.
   static const int _maxHearts = 5;
+
+  /// The camera question's main button, shown in the bottom bar (as in the
+  /// Alphabet / Numbers camera levels).
+  final CameraButtonBridge _camButton = CameraButtonBridge();
   int _hearts = _maxHearts;
 
   // Feedback bar animation (badge pop + slide in), as in easyAct_mc.dart.
@@ -567,6 +572,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
     _answer.removeListener(_onAnswerChanged);
     _answer.dispose();
     _feedbackAnim.dispose();
+    _camButton.dispose();
     super.dispose();
   }
 
@@ -684,6 +690,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
 
   Future<void> _continue() async {
     _feedbackAnim.reset();
+    _camButton.value = null;
     if (_currentIndex < _questions.length - 1) {
       _answer.reset();
       setState(() {
@@ -783,26 +790,36 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: (_currentIndex + 1) / _questions.length,
-                    backgroundColor: theme.dividerColor,
-                    valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
-                    minHeight: 12,
-                  ),
+                  child: ProgressBar3D(value: ((_currentIndex + 1) / _questions.length).toDouble(), color: theme.primaryColor, height: 12, trackColor: theme.dividerColor),
                 ),
                 const SizedBox(height: 24),
                 if (q.isCamera) ...[
+                  // Same as the Alphabet / Numbers camera levels: the question,
+                  // its picture / video if any, then the square camera.
                   Text(
                     q.questionText.trim().isNotEmpty ? q.questionText : 'Sign "${q.correctAnswer}" to the camera.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface),
                   ),
-                  const SizedBox(height: 16),
+                  if (q.videoUrl.isNotEmpty || q.imageUrl.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Center(
+                      child: SizedBox.square(
+                        dimension: 160,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: _Media(source: q.videoUrl.isNotEmpty ? q.videoUrl : q.imageUrl, iconSize: 40),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
                   PublishedCameraSign(
                     key: ValueKey('cam_${q.id}_$_currentIndex'),
                     category: widget.category,
                     sign: q.correctAnswer,
                     enabled: !_isAnswered,
+                    bridge: _camButton,
                     onResult: _answerCamera,
                   ),
                 ] else
@@ -816,7 +833,11 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
             ),
           ),
         ),
-        _buildBottomBar(theme, q),
+        // Camera questions: the camera's own button in the bottom bar.
+        ValueListenableBuilder<CameraButtonState?>(
+          valueListenable: _camButton,
+          builder: (context, _, _) => _buildBottomBar(theme, q),
+        ),
       ],
     );
   }
@@ -882,7 +903,9 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
             width: double.infinity,
             height: 54,
             child: ElevatedButton(
-              onPressed: _isSaving || _hearts <= 0 ? null : (_isAnswered ? _continue : (_answer.isReady ? _check : null)),
+              onPressed: _isSaving || _hearts <= 0
+                  ? null
+                  : (_isAnswered ? _continue : (q.isCamera ? _camButton.value?.onPressed : (_answer.isReady ? _check : null))),
               style: ElevatedButton.styleFrom(
                 backgroundColor: !_isAnswered ? theme.primaryColor : Colors.white,
                 disabledBackgroundColor: theme.dividerColor,
@@ -892,7 +915,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
               child: _isSaving
                   ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: theme.primaryColor, strokeWidth: 2))
                   : Text(
-                      _isAnswered ? 'CONTINUE' : 'CHECK',
+                      _isAnswered ? 'CONTINUE' : (q.isCamera ? (_camButton.value?.label ?? 'RECORD SIGN') : 'CHECK'),
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
@@ -989,6 +1012,8 @@ class _QuestionView extends StatefulWidget {
         return parts.any(_Media.isMedia) ? '' : parts.join(' → ');
       case _QType.matching:
         return '';
+      case _QType.fillInTheBlank when q.blankAnswer.trim().isNotEmpty:
+        return _Media.isMedia(q.blankAnswer) ? '' : q.blankAnswer;
       default:
         return _Media.isMedia(q.correctAnswer) ? '' : q.correctAnswer;
     }
@@ -1149,6 +1174,8 @@ class _QuestionViewState extends State<_QuestionView> {
   }
 
   bool _gradeBlank(String picked) {
+    // The web app stores the right piece in blank_answer: only it is right.
+    if (q.blankAnswer.trim().isNotEmpty) return _same(picked, q.blankAnswer);
     final display = _blankDisplay;
     final answer = q.correctAnswer;
     if (display.isEmpty || display == answer) {
@@ -1464,20 +1491,14 @@ class _QuestionViewState extends State<_QuestionView> {
     );
   }
 
-  Widget _sequenceChip(String value, ThemeData theme, {required bool placed, Color? border}) {
+  Widget _sequenceChip(String value, ThemeData theme, {required bool placed, Color? border, int? order}) {
     final media = _Media.isMedia(value);
-    return Container(
-      width: media ? 72 : null,
-      height: media ? 72 : null,
-      padding: EdgeInsets.symmetric(horizontal: media ? 4 : 14, vertical: media ? 4 : 10),
-      decoration: BoxDecoration(
-        color: placed ? theme.primaryColor.withValues(alpha: 0.18) : theme.cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border ?? (placed ? theme.primaryColor : theme.dividerColor), width: 2),
-      ),
-      child: media
-          ? ClipRRect(borderRadius: BorderRadius.circular(10), child: _Media(source: value))
-          : Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: theme.colorScheme.onSurface)),
+    return SequencePiece(
+      isMedia: media,
+      placed: placed,
+      order: order,
+      border: border,
+      child: media ? _Media(source: value, fit: BoxFit.cover) : Text(value),
     );
   }
 
@@ -1492,16 +1513,17 @@ class _QuestionViewState extends State<_QuestionView> {
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
-          constraints: const BoxConstraints(minHeight: 64),
-          padding: const EdgeInsets.all(10),
+          constraints: const BoxConstraints(minHeight: 72),
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
           decoration: BoxDecoration(
             color: theme.cardColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: theme.dividerColor),
           ),
           child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 12,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
             children: [
               for (var pos = 0; pos < _sequence.length; pos++)
                 GestureDetector(
@@ -1515,6 +1537,7 @@ class _QuestionViewState extends State<_QuestionView> {
                     _sequencePool[_sequence[pos]],
                     theme,
                     placed: true,
+                    order: pos + 1,
                     border: !_locked
                         ? null
                         : (pos < answer.length && _same(_sequencePool[_sequence[pos]], answer[pos]) ? _green : _red),
@@ -1525,8 +1548,8 @@ class _QuestionViewState extends State<_QuestionView> {
         ),
         const SizedBox(height: 20),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 12,
+          runSpacing: 14,
           alignment: WrapAlignment.center,
           children: [
             for (var i = 0; i < _sequencePool.length; i++)
@@ -1813,6 +1836,10 @@ class _Question {
   /// Text for fill-in-the-blank (e.g. "B_TA"), when the doc has one.
   final String blankText;
 
+  /// Fill in the blank: the piece that fills the blank (web app
+  /// `blank_answer`); `correct_answer` is then the text with its "_".
+  final String blankAnswer;
+
   /// Picture / sign video shown above the question ('' when none).
   final String imageUrl;
   final String videoUrl;
@@ -1833,6 +1860,7 @@ class _Question {
     required this.correctAnswer,
     required this.options,
     this.blankText = '',
+    this.blankAnswer = '',
     this.imageUrl = '',
     this.videoUrl = '',
     this.audioUrl = '',
@@ -1939,6 +1967,7 @@ class _Question {
       correctAnswer: answer,
       options: options,
       blankText: _str(pick(data, ['blank_text', 'blankText', 'display_text', 'displayText', 'word_with_blank', 'question_word'])),
+      blankAnswer: _str(pick(data, ['blank_answer', 'blankAnswer', 'missing_piece', 'missingPiece'])),
       imageUrl: _str(pick(data, [
         'main_image', 'mainImage', 'image_url', 'imageUrl', 'image', 'picture', 'photo', 'photo_url', 'img', 'imagePath',
         'imageStoragePath', 'image_storage_path',
@@ -1971,6 +2000,7 @@ class _Question {
       correctAnswer: correctAnswer ?? this.correctAnswer,
       options: options ?? this.options,
       blankText: blankText,
+      blankAnswer: blankAnswer,
       imageUrl: imageUrl ?? this.imageUrl,
       videoUrl: videoUrl ?? this.videoUrl,
       audioUrl: audioUrl ?? this.audioUrl,

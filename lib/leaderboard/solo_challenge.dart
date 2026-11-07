@@ -1,3 +1,4 @@
+import '/widgets/activity_feedback.dart';
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
 import '/widgets/button_3d.dart';
 import 'dart:async';
@@ -682,7 +683,16 @@ class _GameProperScreenState extends State<GameProperScreen> {
     'imagePath',
   ])?.toString();
 
-  String _extractCorrectAnswer(Map<String, dynamic> q) => (_getValueCaseInsensitive(q, ['correct_answer', 'correctAnswer', 'answer', 'correct']) ?? '').toString();
+  // Fill in the blank: blank_answer is the right piece (correct_answer is
+  // then the text with its "_", shown by _blankSentence).
+  String _extractCorrectAnswer(Map<String, dynamic> q) =>
+      (_getValueCaseInsensitive(q, ['blank_answer', 'blankAnswer', 'correct_answer', 'correctAnswer', 'answer', 'correct']) ?? '').toString();
+
+  String? _blankSentence(Map<String, dynamic> q) {
+    final b = _getValueCaseInsensitive(q, ['blank_answer', 'blankAnswer']);
+    final text = (_getValueCaseInsensitive(q, ['correct_answer', 'correctAnswer']) ?? '').toString();
+    return b != null && '$b'.trim().isNotEmpty && text.contains('_') ? text : null;
+  }
 
   List<dynamic> _extractOptions(Map<String, dynamic> q) {
     final opts = _getValueCaseInsensitive(q, ['options', 'choices', 'answers']);
@@ -1015,93 +1025,69 @@ class _GameProperScreenState extends State<GameProperScreen> {
   }
 
   Widget _buildSequenceLayout(ThemeData theme, Color textColor) {
-    return Column(
-      children: [
-        Container(
-          height: 64,
-          width: double.infinity,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.primaryColor),
-          ),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _currentSequence.map((item) {
-              final isImg = _isImageString(item);
-              return Chip(
-                backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                label: isImg
-                    ? SizedBox(height: 26, width: 26, child: _buildSafeImage(item))
-                    : Text(
-                        item,
-                        style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
-                      ),
-                onDeleted: _hasAnswered
-                    ? null
-                    : () => setState(() {
-                          _currentSequence.remove(item);
-                          _availableSequenceOptions.add(item);
-                        }),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _availableSequenceOptions.map((item) {
-            final isImg = _isImageString(item);
-            return ActionChip(
-              backgroundColor: theme.cardColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: theme.primaryColor.withValues(alpha: 0.2)),
-              ),
-              label: isImg
-                  ? SizedBox(height: 28, width: 28, child: _buildSafeImage(item))
-                  : Text(
-                      item,
-                      style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
-                    ),
-              onPressed: _hasAnswered
-                  ? null
-                  : () => setState(() {
-                        _availableSequenceOptions.remove(item);
-                        _currentSequence.add(item);
-                      }),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton(
-            onPressed: _hasAnswered
-                ? null
-                : () => _submitAnswer(_currentSequence.join(',')),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              shape: Button3DBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+    Widget content(String o) => _isMatchMedia(o) ? _buildSafeImage(o, fit: BoxFit.cover) : Text(o, style: TextStyle(color: textColor));
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(minHeight: 72),
+            padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.5), width: 2),
             ),
-            child: Text(
-              "SUBMIT SEQUENCE",
-              style: TextStyle(
-                color: theme.colorScheme.onPrimary,
-                fontWeight: FontWeight.w900,
-                fontSize: 15,
-              ),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 14,
+              alignment: WrapAlignment.center,
+              children: [
+                for (var pos = 0; pos < _currentSequence.length; pos++)
+                  SequencePiece(
+                    isMedia: _isMatchMedia(_currentSequence[pos]),
+                    placed: true,
+                    order: pos + 1,
+                    onTap: _hasAnswered
+                        ? null
+                        : () => setState(() => _availableSequenceOptions.add(_currentSequence.removeAt(pos))),
+                    child: content(_currentSequence[pos]),
+                  ),
+              ],
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 12,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final item in List.of(_availableSequenceOptions))
+                SequencePiece(
+                  isMedia: _isMatchMedia(item),
+                  onTap: _hasAnswered
+                      ? null
+                      : () => setState(() {
+                            _availableSequenceOptions.remove(item);
+                            _currentSequence.add(item);
+                          }),
+                  child: content(item),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _hasAnswered ? null : () => _submitAnswer(_currentSequence.join(',')),
+              style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: Button3DBorder(borderRadius: BorderRadius.circular(28))),
+              child: Text("SUBMIT SEQUENCE", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1360,6 +1346,11 @@ class _GameProperScreenState extends State<GameProperScreen> {
                     child: Column(
                       children: [
                         Text(_extractQuestionText(currentQuestion), textAlign: TextAlign.center, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: textColor)),
+                        if (_blankSentence(currentQuestion) != null) ...[
+                          const SizedBox(height: 10),
+                          Text(_blankSentence(currentQuestion)!.replaceFirst(RegExp(r'_+'), _hasAnswered ? _extractCorrectAnswer(currentQuestion) : '_____'),
+                              textAlign: TextAlign.center, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: theme.primaryColor)),
+                        ],
                         if (imageUrl != null && imageUrl.isNotEmpty) ...[
                           const SizedBox(height: 14),
                           _buildSafeImage(imageUrl, height: 130),

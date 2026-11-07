@@ -709,8 +709,6 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
                             itemCount: levelKeys.length, 
                             itemBuilder: (context, index) { 
                               final levelId = levelKeys[index];
-                              final levelData = levelsMap[levelId]!;
-                              final String title = levelData['title'];
 
                               final int earnedStars = progressMap[levelId] ?? 0; 
 
@@ -745,7 +743,7 @@ class _CivicActivityInterfaceState extends State<CivicActivityInterface> {
                                                     MaterialPageRoute(
                                                       builder: (context) => civic_act.CivicActivityInterface(
                                                         levelId: levelId,
-                                                        title: title,
+                                                        title: 'Civic Activities',
                                                       ),
                                                     ),
                                                   );

@@ -1,3 +1,4 @@
+import '/widgets/activity_feedback.dart';
 import 'dart:math' as math;
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
 import '/widgets/button_3d.dart';
@@ -643,10 +644,18 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   }
 
   String _extractCorrectAnswer(Map<String, dynamic> q) {
+    // Fill in the blank: blank_answer is the right piece (correct_answer is
+    // then the text with its "_", shown by _blankSentence).
     final val = _getValueCaseInsensitive(q, [
-      'correct_answer', 'correctAnswer', 'answer', 'correct', 'right_answer', 'rightAnswer', 'solution'
+      'blank_answer', 'blankAnswer', 'correct_answer', 'correctAnswer', 'answer', 'correct', 'right_answer', 'rightAnswer', 'solution'
     ]);
     return val?.toString().trim() ?? '';
+  }
+
+  String? _blankSentence(Map<String, dynamic> q) {
+    final b = _getValueCaseInsensitive(q, ['blank_answer', 'blankAnswer']);
+    final text = (_getValueCaseInsensitive(q, ['correct_answer', 'correctAnswer']) ?? '').toString();
+    return b != null && '$b'.trim().isNotEmpty && text.contains('_') ? text : null;
   }
 
   List<dynamic> _extractOptions(Map<String, dynamic> q) {
@@ -1277,65 +1286,66 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   }
 
   Widget _buildSequenceLayout(ThemeData theme, Color textColor) {
-    return Column(
-      children: [
-        Container(
-          width: double.infinity, height: 60,
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: theme.cardColor.withAlpha(200),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: theme.primaryColor, width: 2),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
-          ),
-          child: Wrap(
-            spacing: 8, runSpacing: 8,
-            children: _currentSequence.map((item) {
-              return Chip(
-                backgroundColor: theme.primaryColor.withAlpha(50),
-                side: BorderSide(color: theme.primaryColor),
-                label: Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                onDeleted: _hasAnswered ? null : () {
-                  setState(() {
-                    _currentSequence.remove(item);
-                    _availableSequenceOptions.add(item);
-                  });
-                },
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 18),
-        Wrap(
-          spacing: 10, runSpacing: 10,
-          children: _availableSequenceOptions.map((item) {
-            return InkWell(
-              onTap: _hasAnswered ? null : () {
-                setState(() {
-                  _currentSequence.add(item);
-                  _availableSequenceOptions.remove(item);
-                });
-              },
-              child: Chip(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                label: Text(item, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                backgroundColor: theme.cardColor,
-                side: BorderSide(color: theme.colorScheme.outline),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 16),
-        if (!_hasAnswered)
-          ElevatedButton(
-            onPressed: _availableSequenceOptions.isNotEmpty ? null : () => _submitAnswer(_currentSequence.join(',')),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.primaryColor,
-              shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
+    Widget content(String o) => _isMatchMedia(o) ? _buildSafeImage(o, fit: BoxFit.cover) : Text(o, style: TextStyle(color: textColor));
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(minHeight: 72),
+            padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.5), width: 2),
             ),
-            child: Text("SUBMIT ORDER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
-          )
-      ],
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 14,
+              alignment: WrapAlignment.center,
+              children: [
+                for (var pos = 0; pos < _currentSequence.length; pos++)
+                  SequencePiece(
+                    isMedia: _isMatchMedia(_currentSequence[pos]),
+                    placed: true,
+                    order: pos + 1,
+                    onTap: _hasAnswered
+                        ? null
+                        : () => setState(() => _availableSequenceOptions.add(_currentSequence.removeAt(pos))),
+                    child: content(_currentSequence[pos]),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 12,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final item in List.of(_availableSequenceOptions))
+                SequencePiece(
+                  isMedia: _isMatchMedia(item),
+                  onTap: _hasAnswered
+                      ? null
+                      : () => setState(() {
+                            _availableSequenceOptions.remove(item);
+                            _currentSequence.add(item);
+                          }),
+                  child: content(item),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (!_hasAnswered)
+            ElevatedButton(
+              onPressed: _availableSequenceOptions.isNotEmpty ? null : () => _submitAnswer(_currentSequence.join(',')),
+              style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor, shape: Button3DBorder(borderRadius: BorderRadius.circular(28))),
+              child: Text("SUBMIT ORDER", style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+            ),
+        ],
+      ),
     );
   }
 
@@ -2083,6 +2093,15 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor, height: 1.3),
                                   textAlign: TextAlign.center,
                                 ),
+                              // Fill in the blank: the text with its blank.
+                              if (_blankSentence(currentQuestion) != null) ...[
+                                const SizedBox(height: 10),
+                                Text(
+                                  _blankSentence(currentQuestion)!.replaceFirst(RegExp(r'_+'), _hasAnswered ? _extractCorrectAnswer(currentQuestion) : '_____'),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: theme.primaryColor),
+                                ),
+                              ],
                               if (questionImageUrl != null) ...[
                                 const SizedBox(height: 12),
                                 ClipRRect(

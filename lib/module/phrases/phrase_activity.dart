@@ -323,8 +323,6 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                             itemCount: levelKeys.length,
                             itemBuilder: (context, index) {
                               final levelId = levelKeys[index];
-                              final levelData = levelsMap[levelId]!;
-                              final String title = levelData['title'];
 
                               final int earnedStars = progressMap[levelId] ?? 0;
 
@@ -358,10 +356,10 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                                                     context,
                                                     MaterialPageRoute(
                                                       builder: (context) => widget.config.categoryId == null
-                                                          ? PhraseActivityInterface(levelId: levelId, title: title)
+                                                          ? PhraseActivityInterface(levelId: levelId, title: '${widget.config.title} Activities')
                                                           : PhraseActivityInterface(
                                                               levelId: levelId,
-                                                              title: '${widget.config.title} · $title',
+                                                              title: '${widget.config.title} Activities',
                                                               category: widget.config.categoryId!,
                                                               moduleKey: widget.config.moduleKey ?? widget.config.categoryId!,
                                                               xpField: widget.config.xpField ?? 'xp',

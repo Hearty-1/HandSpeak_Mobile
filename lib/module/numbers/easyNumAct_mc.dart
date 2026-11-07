@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import '/widgets/activity_feedback.dart';
 import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -55,6 +56,10 @@ class QuizQuestion {
   final String correctAnswer;
   final List<GivenFslItem> givenFsl;
 
+  /// Fill in the blank: the piece that fills the blank (web app
+  /// `blank_answer`); [correctAnswer] is then the text with its "_".
+  final String blankAnswer;
+
   QuizQuestion({
     required this.id,
     required this.type,
@@ -63,6 +68,7 @@ class QuizQuestion {
     required this.options,
     required this.correctAnswer,
     required this.givenFsl,
+    this.blankAnswer = '',
   });
 
   factory QuizQuestion.fromJson(Map<String, dynamic> json) {
@@ -73,6 +79,7 @@ class QuizQuestion {
       questionText: json['question_text'] ?? '',
       options: List<String>.from(json['options'] ?? []),
       correctAnswer: (json['correct_answer'] ?? '').toString(),
+      blankAnswer: (json['blank_answer'] ?? json['blankAnswer'] ?? '').toString().trim(),
       givenFsl: (json['given_fsl'] as List<dynamic>?)?.map((e) => GivenFslItem.fromJson(e as Map<String, dynamic>)).toList() ?? [],
     );
   }
@@ -398,7 +405,11 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   bool _isCameraQuestion(QuizQuestion q) {
-    return q.type == 'camera' || q.type == 'camera_spell' || _isCameraLevel;
+    if (q.type == 'camera' || q.type == 'camera_spell') return true;
+    // A camera level's own question types (fill in the blank, typing, ...)
+    // keep their CHECK button.
+    const answered = {'typing', 'fill_in_the_blank', 'sequence_order', 'matching_type'};
+    return _isCameraLevel && !answered.contains(q.type);
   }
 
   /// Numbers 11-100 are signed with movement (decade models); 1-10 are
@@ -873,7 +884,9 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       final userWord = _userAnswerSlots.join('');
       isCorrect = userWord.toUpperCase() == q.correctAnswer.toUpperCase();
     } else if (q.type == 'fill_in_the_blank') {
-      isCorrect = _selectedAnswer?.toUpperCase() == q.correctAnswer.toUpperCase();
+      // blank_answer is the right piece (correct_answer then has the "_").
+      isCorrect = _selectedAnswer?.trim().toUpperCase() ==
+          (q.blankAnswer.isNotEmpty ? q.blankAnswer : q.correctAnswer).toUpperCase();
     } else if (q.type == 'sequence_order') {
       if (_currentSequence.length != q.options.length) {
         isCorrect = false;
@@ -1299,12 +1312,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
-                          child: LinearProgressIndicator(
-                            value: progress,
-                            backgroundColor: theme.dividerColor,
-                            valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor),
-                            minHeight: 12,
-                          ),
+                          child: ProgressBar3D(value: (progress).toDouble(), color: theme.primaryColor, height: 12, trackColor: theme.dividerColor),
                         ),
                         const SizedBox(height: 24),
 
@@ -1532,51 +1540,49 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   Widget _buildSequenceLayout(QuizQuestion currentQuestion, ThemeData theme) {
+    Widget content(String o) => _isMatchMedia(o) ? _buildImageWidget(o, fit: BoxFit.cover, size: 40, fallbackText: o) : Text(o);
     return Column(
       children: [
-        const Text("Tap words below to build the correct sequence:", style: TextStyle(fontWeight: FontWeight.w600)),
+        const Text("Tap the pieces in the correct order:", style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 16),
-
         Container(
           width: double.infinity,
-          height: 60,
-          padding: const EdgeInsets.all(12),
+          constraints: const BoxConstraints(minHeight: 72),
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
           decoration: BoxDecoration(
             color: theme.cardColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: theme.dividerColor),
           ),
           child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _currentSequence.map((option) {
-              return GestureDetector(
-                onTap: () => _removeFromSequence(option),
-                child: Chip(
-                  label: Text(option, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
-                  side: BorderSide(color: theme.primaryColor),
+            spacing: 12,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
+            children: [
+              for (var pos = 0; pos < _currentSequence.length; pos++)
+                SequencePiece(
+                  isMedia: _isMatchMedia(_currentSequence[pos]),
+                  placed: true,
+                  order: pos + 1,
+                  onTap: () => _removeFromSequence(_currentSequence[pos]),
+                  child: content(_currentSequence[pos]),
                 ),
-              );
-            }).toList(),
+            ],
           ),
         ),
         const SizedBox(height: 24),
-
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 12,
+          runSpacing: 14,
           alignment: WrapAlignment.center,
-          children: _availableSequenceOptions.map((option) {
-            return GestureDetector(
-              onTap: () => _addToSequence(option),
-              child: Chip(
-                label: Text(option, style: const TextStyle(fontWeight: FontWeight.bold)),
-                backgroundColor: theme.cardColor,
-                side: BorderSide(color: theme.dividerColor),
+          children: [
+            for (final option in _availableSequenceOptions)
+              SequencePiece(
+                isMedia: _isMatchMedia(option),
+                onTap: () => _addToSequence(option),
+                child: content(option),
               ),
-            );
-          }).toList(),
+          ],
         ),
       ],
     );

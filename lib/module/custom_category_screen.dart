@@ -1,3 +1,5 @@
+import '/widgets/sign_recording.dart';
+import '/widgets/activity_feedback.dart';
 import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -159,6 +161,7 @@ class CloudCategoriesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textColor = Theme.of(context).colorScheme.onSurface;
+    final canProgress = context.roles.can(AppFeature.progress);
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance.collection('activity_categories').snapshots(),
       builder: (context, snap) {
@@ -167,83 +170,426 @@ class CloudCategoriesSection extends StatelessWidget {
             ?CloudCategory.fromDoc(d),
         ]..sort((a, b) => a.order != b.order ? a.order.compareTo(b.order) : a.title.compareTo(b.title));
         if (cats.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16 * scale),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('More Categories',
-                  style: TextStyle(color: textColor, fontSize: 22 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
-              SizedBox(height: 4 * scale),
-              Text('Added by your teachers',
-                  style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13 * scale, fontWeight: FontWeight.w500)),
-              SizedBox(height: 14 * scale),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.zero,
-                mainAxisSpacing: 14 * scale,
-                crossAxisSpacing: 14 * scale,
-                childAspectRatio: 0.82,
-                children: [for (final c in cats) _CategoryCard(category: c, scale: scale)],
+        // The student's progress (tutorialMastery / activity stars).
+        return StreamBuilder<DocumentSnapshot>(
+          stream: ProgressService().getUserProgressStream(),
+          builder: (context, user) {
+            final data = (user.data?.data() as Map<String, dynamic>?) ?? const {};
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16 * scale),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(L.t('More Categories', 'Iba pang Kategorya'),
+                      style: TextStyle(color: textColor, fontSize: 22 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.8)),
+                  SizedBox(height: 4 * scale),
+                  Text(L.t('Added by your teachers', 'Idinagdag ng iyong mga guro'),
+                      style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13 * scale, fontWeight: FontWeight.w500)),
+                  SizedBox(height: 14 * scale),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    mainAxisSpacing: 14 * scale,
+                    crossAxisSpacing: 14 * scale,
+                    childAspectRatio: canProgress ? 0.66 : 0.78,
+                    children: [
+                      for (final c in cats)
+                        ModuleCard(
+                          scale: scale,
+                          title: c.title,
+                          subtitle: c.description,
+                          picture: ClipRRect(borderRadius: BorderRadius.circular(14 * scale), child: _CloudMedia(source: c.cover)),
+                          source: ModuleSource.cloud(c),
+                          userData: data,
+                          showProgress: canProgress,
+                          onTap: () {
+                            ProgressService().trackRecentModule(c.id);
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => CloudCategoryScreen(category: c)));
+                          },
+                        ),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 }
 
-class _CategoryCard extends StatelessWidget {
-  final CloudCategory category;
+/// Completion of a module: how much of its content the student has done.
+/// Signs = tutorial lessons mastered; stars = activity stars earned out of 3
+/// per level. [percent] weighs every lesson and every star the same, out of
+/// what the module has now (new content raises the totals by itself).
+class ModuleProgress {
+  final int mastered, lessons, stars, levels;
+  const ModuleProgress({required this.mastered, required this.lessons, required this.stars, required this.levels});
+
+  int get maxStars => levels * 3;
+  int get total => lessons + maxStars;
+  double get percent => total == 0 ? 0 : ((mastered.clamp(0, lessons) + stars.clamp(0, maxStars)) / total).clamp(0.0, 1.0);
+  bool get completed => total > 0 && percent >= 1.0;
+}
+
+/// Where a module's content and progress live: tutorial_lessons /
+/// activity_questions `category` values, and its `tutorialMastery.<key>`.
+class ModuleSource {
+  final List<String> categories;
+  final String masteryKey;
+  const ModuleSource({required this.categories, required this.masteryKey});
+
+  static const alphabet = ModuleSource(categories: ['alphabet', 'Alphabet'], masteryKey: 'alphabet');
+  static const numbers = ModuleSource(categories: ['numbers', 'Numbers'], masteryKey: 'numbers');
+  static const greetings = ModuleSource(categories: ['phrases', 'phrase', 'Phrases'], masteryKey: 'phrases');
+  static const civic = ModuleSource(categories: ['civic', 'Civic'], masteryKey: 'civic_lupang_hinirang');
+  static ModuleSource cloud(CloudCategory c) => ModuleSource(categories: c.aliases, masteryKey: c.id);
+
+  static final Map<String, Future<({int lessons, List<String> levels})>> _totals = {};
+
+  /// Lessons and activity levels of the module (read once per session).
+  Future<({int lessons, List<String> levels})> totals() => _totals[masteryKey] ??= () async {
+        final db = FirebaseFirestore.instance;
+        final cats = categories.take(30).toList();
+        final lessons = await db.collection('tutorial_lessons').where('category', whereIn: cats).get();
+        final questions = await db.collection('activity_questions').where('category', whereIn: cats).get();
+        final levels = {
+          for (final d in questions.docs)
+            if ('${d.data()['level'] ?? ''}'.trim().isNotEmpty) '${d.data()['level']}'.trim(),
+        }.toList();
+        return (lessons: lessons.size, levels: levels);
+      }()
+          .catchError((Object e) {
+        _totals.remove(masteryKey);
+        throw e;
+      });
+
+  /// The student's completion from users/{uid} [data].
+  ModuleProgress progress(Map<String, dynamic> data, ({int lessons, List<String> levels}) t) {
+    final m = (data['tutorialMastery'] as Map?)?[masteryKey];
+    final progress = data['progress'];
+    var stars = 0;
+    if (progress is Map) {
+      for (final l in t.levels) {
+        final v = progress[l];
+        if (v is num) stars += v.toInt().clamp(0, 3);
+      }
+    }
+    return ModuleProgress(mastered: m is Map ? m.length : 0, lessons: t.lessons, stars: stars, levels: t.levels.length);
+  }
+}
+
+/// Top panel of a module page (Alphabet, Numbers, Greetings, Civic and every
+/// web app category): the module's completion, the same number as its card
+/// on the Modules page, with what makes it up: tutorial signs mastered and
+/// activity stars earned. Live (users/{uid}).
+class ModuleProgressPanel extends StatefulWidget {
+  final ModuleSource source;
+  final String title;
   final double scale;
-  const _CategoryCard({required this.category, required this.scale});
+
+  const ModuleProgressPanel({super.key, required this.source, required this.title, this.scale = 1.0});
+
+  @override
+  State<ModuleProgressPanel> createState() => _ModuleProgressPanelState();
+}
+
+/// The header (title, % and the big bar) is always shown; tapping it opens
+/// or closes the breakdown (tutorials / activities) like a dropdown.
+class _ModuleProgressPanelState extends State<ModuleProgressPanel> {
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
-    return GestureDetector(
-      onTap: () {
-        ProgressService().trackRecentModule(category.id);
-        Navigator.push(context, MaterialPageRoute(builder: (_) => CloudCategoryScreen(category: category)));
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22 * scale),
-        child: SmartBlur(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            decoration: BoxDecoration(
-              color: theme.cardColor.withValues(alpha: 0.75),
-              borderRadius: BorderRadius.circular(22 * scale),
-              border: Border.all(color: theme.primaryColor.withValues(alpha: 0.25)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: _CloudMedia(source: category.cover)),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(12 * scale, 10 * scale, 12 * scale, 12 * scale),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    final scale = widget.scale;
+    return StreamBuilder<DocumentSnapshot>(
+      stream: ProgressService().getUserProgressStream(),
+      builder: (context, user) {
+        final data = (user.data?.data() as Map<String, dynamic>?) ?? const {};
+        return FutureBuilder<({int lessons, List<String> levels})>(
+          future: widget.source.totals(),
+          builder: (context, t) {
+            final p = t.hasData ? widget.source.progress(data, t.data!) : null;
+            final done = p?.completed ?? false;
+            final accent = done ? Colors.green : theme.primaryColor;
+            final pct = ((p?.percent ?? 0) * 100).round();
+
+            Widget row(IconData icon, Color color, String label, String value, double ratio) => Padding(
+                  padding: EdgeInsets.only(top: 12 * scale),
+                  child: Row(
                     children: [
-                      Text(category.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.4)),
-                      if (category.description.isNotEmpty) ...[
-                        SizedBox(height: 2 * scale),
-                        Text(category.description,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12 * scale, fontWeight: FontWeight.w600)),
-                      ],
+                      Container(
+                        padding: EdgeInsets.all(7 * scale),
+                        decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10 * scale)),
+                        child: Icon(icon, size: 16 * scale, color: color),
+                      ),
+                      SizedBox(width: 10 * scale),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(label,
+                                      style: TextStyle(color: textColor.withValues(alpha: 0.85), fontSize: 13 * scale, fontWeight: FontWeight.w700)),
+                                ),
+                                Text(value, style: TextStyle(color: textColor, fontSize: 13 * scale, fontWeight: FontWeight.w900)),
+                              ],
+                            ),
+                            SizedBox(height: 5 * scale),
+                            ProgressBar3D(value: ratio, color: color, height: 8 * scale),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                ),
+                );
+
+            final breakdown = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(height: 6 * scale),
+                Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.4)),
+                row(Icons.back_hand_rounded, theme.primaryColor, L.t('Tutorials', 'Mga Tutorial'),
+                    p == null ? '…' : L.t('${p.mastered.clamp(0, p.lessons)} / ${p.lessons} signs', '${p.mastered.clamp(0, p.lessons)} / ${p.lessons} senyas'),
+                    p == null || p.lessons == 0 ? 0 : p.mastered / p.lessons),
+                row(Icons.star_rounded, const Color(0xFFFFB300), L.t('Activities', 'Mga Aktibidad'),
+                    p == null ? '…' : L.t('${p.stars} / ${p.maxStars} stars', '${p.stars} / ${p.maxStars} bituin'),
+                    p == null || p.maxStars == 0 ? 0 : p.stars / p.maxStars),
               ],
+            );
+
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(22 * scale),
+              child: SmartBlur(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.cardColor.withValues(alpha: 0.78),
+                    borderRadius: BorderRadius.circular(22 * scale),
+                    border: Border.all(color: accent.withValues(alpha: 0.35), width: 1.5),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, 6))],
+                  ),
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: InkWell(
+                      onTap: () => setState(() => _open = !_open),
+                      child: Padding(
+                        padding: EdgeInsets.all(16 * scale),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(L.t('${widget.title} progress', 'Progreso sa ${widget.title}'),
+                                      style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.3)),
+                                ),
+                                if (done) ...[
+                                  Icon(Icons.check_circle_rounded, color: Colors.green, size: 18 * scale),
+                                  SizedBox(width: 4 * scale),
+                                  Text(L.t('Completed', 'Tapos na'),
+                                      style: TextStyle(color: Colors.green, fontSize: 14 * scale, fontWeight: FontWeight.w900)),
+                                ] else
+                                  Text(p == null ? '…' : '$pct%', style: TextStyle(color: accent, fontSize: 20 * scale, fontWeight: FontWeight.w900)),
+                                SizedBox(width: 6 * scale),
+                                AnimatedRotation(
+                                  turns: _open ? 0.5 : 0,
+                                  duration: const Duration(milliseconds: 220),
+                                  child: Container(
+                                    padding: EdgeInsets.all(2 * scale),
+                                    decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), shape: BoxShape.circle),
+                                    child: Icon(Icons.keyboard_arrow_down_rounded, color: accent, size: 22 * scale),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 12 * scale),
+                            ProgressBar3D(value: p?.percent ?? 0, color: accent, height: 16 * scale, label: p == null ? null : '$pct%'),
+                            AnimatedCrossFade(
+                              firstChild: const SizedBox(width: double.infinity),
+                              secondChild: breakdown,
+                              crossFadeState: _open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                              duration: const Duration(milliseconds: 240),
+                              sizeCurve: Curves.easeOut,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// A module on the Modules page (the 4 built-in modules and every web app
+/// category) as a glass card: its picture, name and completion, the
+/// industry-standard progress of a course (Duolingo units, Khan Academy
+/// mastery): % complete, signs mastered and activity stars, out of what the
+/// module has now. Locked modules are dimmed with a lock; guests (no
+/// progress) see an Explore pill. Pushes in when tapped.
+class ModuleCard extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Widget picture;
+  final ModuleSource source;
+  final Map<String, dynamic> userData;
+  final bool locked;
+  final String? lockedHint;
+  final bool showProgress;
+  final VoidCallback? onTap;
+  final double scale;
+
+  const ModuleCard({
+    super.key,
+    required this.title,
+    required this.picture,
+    required this.source,
+    required this.userData,
+    this.subtitle,
+    this.locked = false,
+    this.lockedHint,
+    this.showProgress = true,
+    this.onTap,
+    this.scale = 1.0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final r = BorderRadius.circular(22 * scale);
+    if (!showProgress) return _card(context, r, null);
+    return FutureBuilder<({int lessons, List<String> levels})>(
+      future: source.totals(),
+      builder: (context, snap) => _card(context, r, snap.hasData ? source.progress(userData, snap.data!) : null),
+    );
+  }
+
+  Widget _card(BuildContext context, BorderRadius r, ModuleProgress? p) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    final done = p?.completed ?? false;
+    final accent = done ? Colors.green : theme.primaryColor;
+    final pct = ((p?.percent ?? 0) * 100).round();
+
+    Widget stat(IconData icon, Color color, String text) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14 * scale, color: color),
+            SizedBox(width: 3 * scale),
+            Text(text, style: TextStyle(color: textColor.withValues(alpha: 0.75), fontSize: 11.5 * scale, fontWeight: FontWeight.w800)),
+          ],
+        );
+
+    return Pressable3D(
+      radius: r,
+      enabled: !locked,
+      child: GestureDetector(
+        onTap: locked ? null : onTap,
+        child: ClipRRect(
+          borderRadius: r,
+          child: SmartBlur(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.cardColor.withValues(alpha: 0.78),
+                borderRadius: r,
+                border: Border.all(color: (locked ? theme.dividerColor : accent).withValues(alpha: 0.35), width: 1.5),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 14, offset: const Offset(0, 6))],
+              ),
+              child: Opacity(
+                opacity: locked ? 0.55 : 1.0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Padding(padding: EdgeInsets.all(10 * scale), child: picture),
+                          if (locked)
+                            Center(
+                              child: Container(
+                                padding: EdgeInsets.all(12 * scale),
+                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), shape: BoxShape.circle),
+                                child: Icon(Icons.lock_rounded, color: Colors.white, size: 30 * scale),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(12 * scale, 0, 12 * scale, 12 * scale),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.w900, letterSpacing: -0.4, height: 1.1)),
+                          if (subtitle != null && subtitle!.isNotEmpty) ...[
+                            SizedBox(height: 2 * scale),
+                            Text(subtitle!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 11.5 * scale, fontWeight: FontWeight.w600)),
+                          ],
+                          SizedBox(height: 8 * scale),
+                          if (showProgress) ...[
+                            Wrap(
+                              spacing: 10 * scale,
+                              runSpacing: 2 * scale,
+                              children: [
+                                stat(Icons.back_hand_rounded, theme.primaryColor,
+                                    p == null ? '…' : '${p.mastered.clamp(0, p.lessons)}/${p.lessons}'),
+                                stat(Icons.star_rounded, const Color(0xFFFFC107), p == null ? '…' : '${p.stars}/${p.maxStars}'),
+                              ],
+                            ),
+                            SizedBox(height: 6 * scale),
+                            ProgressBar3D(value: p?.percent ?? 0, color: accent, height: 10 * scale),
+                            SizedBox(height: 5 * scale),
+                            Text(
+                              locked
+                                  ? (lockedHint ?? L.t('Locked', 'Naka-lock'))
+                                  : (p == null
+                                      ? L.t('Loading...', 'Kinukuha...')
+                                      : (done ? L.t('Completed', 'Tapos na') : L.t('$pct% complete', '$pct% tapos'))),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: done ? Colors.green : textColor.withValues(alpha: 0.55), fontSize: 11 * scale, fontWeight: FontWeight.w700),
+                            ),
+                          ] else
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 6 * scale),
+                              decoration: BoxDecoration(color: theme.primaryColor, borderRadius: BorderRadius.circular(20 * scale)),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(L.t('Explore', 'Tuklasin'),
+                                      style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 13 * scale, fontWeight: FontWeight.w800)),
+                                  SizedBox(width: 4 * scale),
+                                  Icon(Icons.arrow_forward_rounded, size: 15 * scale, color: theme.colorScheme.onPrimary),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -311,25 +657,6 @@ class CloudCategoryScreen extends StatelessWidget {
     return StreamBuilder<DocumentSnapshot>(
       stream: ProgressService().getUserProgressStream(),
       builder: (context, snapshot) {
-        int moduleXp = 0, challengeXp = 0, stars = 0;
-        final data = snapshot.data?.data() as Map<String, dynamic>?;
-        if (data != null) {
-          moduleXp = (data[category.xpField] as num?)?.toInt() ?? 0;
-          final progress = data['progress'];
-          if (progress is Map) {
-            challengeXp = (progress['${category.id}_challenge_xp'] as num?)?.toInt() ?? 0;
-            progress.forEach((k, v) {
-              final key = k.toString().toLowerCase();
-              if (key.startsWith('${category.id.toLowerCase()}_') && !key.contains('xp') && !key.contains('challenge') && v is num) {
-                stars += v.toInt().clamp(0, 3);
-              }
-            });
-          }
-        }
-        final total = moduleXp + challengeXp;
-        final level = total ~/ targetXp + 1;
-        final xpInLevel = total % targetXp;
-
         return Scaffold(
           extendBodyBehindAppBar: true,
           backgroundColor: theme.scaffoldBackgroundColor,
@@ -371,7 +698,7 @@ class CloudCategoryScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (canProgress) ...[
-                            _MainProgressPanel(scale: scale, level: level, currentXp: xpInLevel, targetXp: targetXp),
+                            ModuleProgressPanel(source: ModuleSource.cloud(category), title: category.title, scale: scale),
                             SizedBox(height: 24 * scale),
                           ],
                           if (canTutorials) ...[
@@ -441,20 +768,6 @@ class CloudCategoryScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            SizedBox(height: 32 * scale),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _SubMetricPanel(scale: scale, value: '$stars Stars', progress: (stars / 27).clamp(0.0, 1.0),
-                                      icon: Icons.star_rounded),
-                                ),
-                                SizedBox(width: 12 * scale),
-                                Expanded(
-                                  child: _SubMetricPanel(scale: scale, value: '$challengeXp XP',
-                                      progress: (challengeXp / targetXp).clamp(0.0, 1.0), icon: Icons.bolt_rounded),
-                                ),
-                              ],
-                            ),
                           ],
                         ],
                       ),
@@ -516,127 +829,6 @@ class _SectionRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-Widget _glassIcon(BuildContext context, double scale, double size, IconData icon, Color color) {
-  final theme = Theme.of(context);
-  return Container(
-    padding: EdgeInsets.all(6 * scale),
-    decoration: BoxDecoration(
-      color: theme.cardColor.withValues(alpha: 0.8),
-      shape: BoxShape.circle,
-      boxShadow: [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 8, spreadRadius: 1)],
-    ),
-    child: Icon(icon, color: color, size: size),
-  );
-}
-
-Widget _bar(BuildContext context, double scale, double height, double ratio) {
-  final theme = Theme.of(context);
-  return Stack(
-    alignment: Alignment.centerLeft,
-    children: [
-      Container(height: height * scale, decoration: BoxDecoration(color: theme.colorScheme.onSurface.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(25 * scale))),
-      FractionallySizedBox(
-        widthFactor: ratio,
-        child: Container(
-          height: height * scale,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.secondary,
-            borderRadius: BorderRadius.circular(25 * scale),
-            boxShadow: [BoxShadow(color: theme.colorScheme.secondary.withValues(alpha: 0.5), blurRadius: 4)],
-          ),
-        ),
-      ),
-    ],
-  );
-}
-
-BoxDecoration _glassBox(BuildContext context, double scale) {
-  final theme = Theme.of(context);
-  return BoxDecoration(
-    color: theme.cardColor.withValues(alpha: 0.65),
-    borderRadius: BorderRadius.circular(16 * scale),
-    border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
-    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 5))],
-  );
-}
-
-class _MainProgressPanel extends StatelessWidget {
-  final double scale;
-  final int level, currentXp, targetXp;
-  const _MainProgressPanel({required this.scale, required this.level, required this.currentXp, required this.targetXp});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16 * scale),
-      child: SmartBlur(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
-          decoration: _glassBox(context, scale),
-          child: Row(
-            children: [
-              _glassIcon(context, scale, 24 * scale, Icons.bolt_rounded, Colors.amber.shade500),
-              SizedBox(width: 16 * scale),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Category Level $level',
-                      style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 13 * scale, fontFamily: 'Google Sans Flex', fontWeight: FontWeight.w700)),
-                  Text('$currentXp / $targetXp XP',
-                      style: TextStyle(color: theme.primaryColor, fontSize: 15 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400)),
-                ],
-              ),
-              SizedBox(width: 16 * scale),
-              Expanded(child: _bar(context, scale, 8, (currentXp / targetXp).clamp(0.0, 1.0))),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SubMetricPanel extends StatelessWidget {
-  final double scale;
-  final String value;
-  final double progress;
-  final IconData icon;
-  const _SubMetricPanel({required this.scale, required this.value, required this.progress, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16 * scale),
-      child: SmartBlur(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: EdgeInsets.all(12 * scale),
-          decoration: _glassBox(context, scale),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                _glassIcon(context, scale, 18 * scale, icon, Colors.amber.shade500),
-                SizedBox(width: 8 * scale),
-                Expanded(
-                  child: Text(value,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: theme.primaryColor, fontSize: 13 * scale, fontFamily: 'Holtwood One SC', fontWeight: FontWeight.w400)),
-                ),
-              ]),
-              SizedBox(height: 12 * scale),
-              _bar(context, scale, 6, progress),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -970,12 +1162,7 @@ class _CloudLessonScreenState extends State<CloudLessonScreen> {
                             borderRadius: BorderRadius.circular(25 * scale),
                             child: SizedBox(
                               width: 295 * scale,
-                              child: LinearProgressIndicator(
-                                value: (_i + 1) / n,
-                                minHeight: 14 * scale,
-                                color: theme.colorScheme.secondary,
-                                backgroundColor: theme.cardColor.withValues(alpha: 0.4),
-                              ),
+                              child: ProgressBar3D(value: ((_i + 1) / n).toDouble(), color: theme.colorScheme.secondary, height: 14 * scale, trackColor: theme.cardColor.withValues(alpha: 0.4)),
                             ),
                           ),
                           SizedBox(height: 26 * scale),
@@ -1681,7 +1868,7 @@ class CloudActivityLevelsScreen extends StatelessWidget {
                         MaterialPageRoute(
                           builder: (_) => PhraseActivityInterface(
                             levelId: levels[i],
-                            title: '${category.title} · Level $n',
+                            title: '${category.title} Activities',
                             category: category.id,
                             moduleKey: category.id,
                             xpField: category.xpField,
@@ -2835,7 +3022,11 @@ class PublishedCameraSign extends StatefulWidget {
   final bool enabled;
   final ValueChanged<ChallengeSignResult> onResult;
 
-  const PublishedCameraSign({super.key, required this.category, required this.sign, required this.onResult, this.enabled = true});
+  /// The main button goes to the activity's bottom bar (as in the Alphabet /
+  /// Numbers camera levels); without it, the button is shown here.
+  final CameraButtonBridge? bridge;
+
+  const PublishedCameraSign({super.key, required this.category, required this.sign, required this.onResult, this.enabled = true, this.bridge});
 
   @override
   State<PublishedCameraSign> createState() => _PublishedCameraSignState();
@@ -2863,6 +3054,8 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
   bool _recording = false;
   bool _evaluating = false;
   bool _answered = false;
+  DateTime? _recStart;
+  Timer? _tick;
   final List<RawFrame> _frames = [];
   bool _sawHands = false;
   int _lastHandMs = 0;
@@ -2921,6 +3114,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
     _disposed = true;
     _countdownTimer?.cancel();
     _maxTimer?.cancel();
+    _tick?.cancel();
     final c = _camera;
     _camera = null;
     if (c != null) {
@@ -2995,6 +3189,12 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
           t.cancel();
           _frames.clear();
           _sawHands = false;
+          _recStart = DateTime.now();
+          _tick?.cancel();
+          _tick = Timer.periodic(const Duration(milliseconds: 100), (_) {
+            if (!mounted || !_recording) return _tick?.cancel();
+            setState(() {});
+          });
           setState(() {
             _countdown = 0;
             _recording = true;
@@ -3149,27 +3349,46 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
   Widget Function(VoidCallback onPassed)? get _builtIn {
     final cat = publishedCategoryId(widget.category);
     final sign = widget.sign.trim();
+    // Embedded: their own camera, recording and model check, right here in
+    // the question (no other screen opens).
     if (cat == 'phrases' && PhraseRecognizer.classIndexFor(sign) != -1) {
-      return (onPassed) => PhraseTutorialPractice(targetPhrase: sign, onPassed: onPassed);
+      return (onPassed) => PhraseTutorialPractice(
+            key: ValueKey('greet_$sign'),
+            targetPhrase: sign,
+            onPassed: onPassed,
+            onFailed: _builtInFailed,
+            embedded: true,
+            bridge: widget.bridge,
+          );
     }
     if (cat == 'civic') {
-      return (onPassed) => CivicTutorialPractice(questions: [{'question': sign, 'label': sign}], onPassed: onPassed);
+      return (onPassed) => CivicTutorialPractice(
+            key: ValueKey('civic_$sign'),
+            questions: [{'question': sign, 'label': sign}],
+            onPassed: onPassed,
+            onFailed: _builtInFailed,
+            embedded: true,
+            bridge: widget.bridge,
+          );
     }
     return null;
   }
 
-  Future<void> _openBuiltIn() async {
-    final builder = _builtIn;
-    if (builder == null || !widget.enabled || _answered) return;
-    HapticFeedback.selectionClick();
-    var passed = false;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (ctx) => builder(() {
-        passed = true;
-        Navigator.of(ctx).pop();
-      }),
+  /// The embedded built-in check answered a wrong sign: the question is
+  /// answered wrong (as in the Numbers camera levels).
+  void _builtInFailed() {
+    if (_answered) return;
+    _finish(ChallengeSignResult(
+      correct: false,
+      score: 0,
+      isDynamic: true,
+      model: publishedCategoryId(widget.category) == 'civic' ? 'lupang_hinirang' : 'greetings',
     ));
-    if (!mounted || !passed) return; // closed without passing: try again later
+  }
+
+  /// The embedded built-in check passed: the question is answered right.
+  void _builtInPassed() {
+    if (_answered) return;
     _finish(ChallengeSignResult(
       correct: true,
       score: 100,
@@ -3178,46 +3397,47 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
     ));
   }
 
+  /// The live square camera, as in the Alphabet / Numbers camera levels:
+  /// 60% of the screen width, a 4 px border that glows while hands are seen
+  /// (red while recording).
+  Widget _cameraBox(ThemeData theme) {
+    final c = _camera;
+    final side = math.min(MediaQuery.sizeOf(context).width * 0.60, 320.0);
+    return Center(
+            child: Container(
+              width: side,
+              height: side,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(width: 4, color: _recording || _handsVisible ? theme.primaryColor : theme.dividerColor.withValues(alpha: 0.6)),
+                boxShadow: [
+                  if (_handsVisible || _recording)
+                    BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 15, spreadRadius: 1),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: c == null || !c.value.isInitialized
+                    ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                    : FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: c.value.previewSize?.shortestSide ?? 1,
+                          height: c.value.previewSize?.longestSide ?? 1,
+                          child: CameraPreview(c),
+                        ),
+                      ),
+              ),
+            ),
+          );
+  }
+
+  /// Greetings / Civic (built-in Cloud Run models): their own practice check
+  /// embedded here (the live square camera, RECORD, the model's check and
+  /// feedback), like the Alphabet / Numbers camera levels; nothing navigates.
   Widget _buildBuiltIn(ThemeData theme) {
-    final onSurface = theme.colorScheme.onSurface;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.videocam_rounded, size: 56, color: theme.primaryColor),
-        const SizedBox(height: 10),
-        Text(
-          L.t('Sign "${widget.sign}" to the camera.', 'Ikumpas ang "${widget.sign}" sa camera.'),
-          textAlign: TextAlign.center,
-          style: TextStyle(color: onSurface, fontWeight: FontWeight.w800, fontSize: 16),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          L.t('The camera opens: record the sign, it is checked, and a correct sign answers this question.',
-              'Bubukas ang camera: i-record ang kumpas, susuriin ito, at ang tamang kumpas ang sagot sa tanong.'),
-          textAlign: TextAlign.center,
-          style: TextStyle(color: onSurface.withValues(alpha: 0.7), fontSize: 13),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton.icon(
-            onPressed: widget.enabled && !_answered ? _openBuiltIn : null,
-            icon: Icon(Icons.fiber_manual_record_rounded, color: theme.colorScheme.onPrimary),
-            label: Text(L.t('RECORD SIGN', 'I-RECORD ANG KUMPAS'),
-                style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
-            style: ElevatedButton.styleFrom(backgroundColor: theme.primaryColor),
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: widget.enabled && !_answered
-              ? () => _finish(const ChallengeSignResult(correct: false, score: 0, isDynamic: true, model: 'none'))
-              : null,
-          child: Text(L.t("I can't sign it yet", 'Hindi ko pa kaya'), style: TextStyle(color: onSurface.withValues(alpha: 0.7))),
-        ),
-      ],
-    );
+    return IgnorePointer(ignoring: !widget.enabled || _answered, child: _builtIn!(_builtInPassed));
   }
 
   @override
@@ -3253,63 +3473,33 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
       );
     }
     final c = _camera;
-    final side = math.min(MediaQuery.sizeOf(context).width * 0.60, 320.0);
-    final label = _evaluating
-        ? L.t('CHECKING...', 'SINUSURI...')
-        : _countdown > 0
-            ? L.t('GET READY... $_countdown', 'HUMANDA... $_countdown')
-            : _recording
-                ? L.t('STOP', 'ITIGIL')
-                : L.t('RECORD SIGN', 'I-RECORD ANG KUMPAS');
+    final buttonState = CameraButtonState(
+      label: cameraButtonLabel(checking: _evaluating, countdown: _countdown, recording: _recording),
+      recording: _recording,
+      onPressed: widget.enabled && !_answered && !_evaluating && c != null ? _onButton : null,
+    );
+    widget.bridge?.publish(buttonState);
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
-          Center(
-            child: Container(
-              width: side,
-              height: side,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(width: 4, color: _recording ? Colors.redAccent : (_handsVisible ? theme.primaryColor : theme.dividerColor)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: c == null || !c.value.isInitialized
-                    ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-                    : FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: c.value.previewSize?.shortestSide ?? 1,
-                          height: c.value.previewSize?.longestSide ?? 1,
-                          child: CameraPreview(c),
-                        ),
-                      ),
-              ),
-            ),
+          _cameraBox(theme),
+          const SizedBox(height: 20),
+          // Exactly the Numbers moving-sign status.
+          SignRecordingStatus.view(
+            theme,
+            countdown: _countdown,
+            recording: _recording,
+            progress: _recStart == null ? 0 : DateTime.now().difference(_recStart!).inMilliseconds / _maxRecording.inMilliseconds,
+            sign: widget.sign,
+            checking: _evaluating,
+            handsVisible: _handsVisible,
+            message: _note,
           ),
-          const SizedBox(height: 12),
-          if (_countdown > 0)
-            Text('$_countdown', style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 40))
-          else
-            Text(
-              _note.isNotEmpty
-                  ? _note
-                  : L.t('Tap RECORD SIGN, do the whole "${widget.sign}" sign, then lower your hands.',
-                      'Pindutin ang RECORD SIGN, gawin ang buong "${widget.sign}", saka ibaba ang mga kamay.'),
-              textAlign: TextAlign.center,
-              style: TextStyle(color: _recording ? Colors.redAccent : onSurface.withValues(alpha: 0.8), fontWeight: FontWeight.w700, fontSize: 14),
-            ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: widget.enabled && !_answered && !_evaluating && c != null ? _onButton : null,
-              style: ElevatedButton.styleFrom(backgroundColor: _recording ? Colors.redAccent : theme.primaryColor),
-              child: Text(label, style: TextStyle(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 15)),
-            ),
-          ),
+          if (widget.bridge == null) ...[
+            const SizedBox(height: 16),
+            cameraLevelButton(theme, label: buttonState.label, recording: _recording, onPressed: buttonState.onPressed),
+          ],
         ],
       ),
     );

@@ -352,12 +352,7 @@ class _DailyQuestsSectionState extends State<DailyQuestsSection> {
                           SizedBox(height: 6 * s),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(6),
-                            child: LinearProgressIndicator(
-                              value: total == 0 ? 0 : done / total,
-                              minHeight: 6 * s,
-                              backgroundColor: textColor.withValues(alpha: 0.08),
-                              valueColor: AlwaysStoppedAnimation(info.color),
-                            ),
+                            child: ProgressBar3D(value: (total == 0 ? 0 : done / total).toDouble(), color: info.color, height: 6 * s, trackColor: textColor.withValues(alpha: 0.08)),
                           ),
                         ]),
                       ),
@@ -589,12 +584,7 @@ class _QuestCard extends StatelessWidget {
                       tween: Tween(begin: 0, end: progress),
                       duration: const Duration(milliseconds: 600),
                       curve: Curves.easeOutCubic,
-                      builder: (_, p, _) => LinearProgressIndicator(
-                        value: p,
-                        minHeight: 8 * s,
-                        backgroundColor: textColor.withValues(alpha: 0.08),
-                        valueColor: AlwaysStoppedAnimation(claimed ? const Color(0xFF4CAF50) : info.color),
-                      ),
+                      builder: (_, p, _) => ProgressBar3D(value: (p).toDouble(), color: claimed ? const Color(0xFF4CAF50) : info.color, height: 8 * s, trackColor: textColor.withValues(alpha: 0.08)),
                     ),
                   ),
                 ),

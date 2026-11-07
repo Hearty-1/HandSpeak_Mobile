@@ -177,12 +177,7 @@ class DifficultyCard extends StatelessWidget {
                                   Expanded(
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(10),
-                                      child: LinearProgressIndicator(
-                                        value: progress,
-                                        minHeight: big ? 10 : 8,
-                                        backgroundColor: Colors.white.withValues(alpha: 0.25),
-                                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
+                                      child: ProgressBar3D(value: (progress).toDouble(), color: Colors.white, height: big ? 10 : 8, trackColor: Colors.white.withValues(alpha: 0.25)),
                                     ),
                                   ),
                                   const SizedBox(width: 10),

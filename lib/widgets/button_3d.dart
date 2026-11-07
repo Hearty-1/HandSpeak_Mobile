@@ -366,3 +366,79 @@ class _MenuCapsuleState extends State<MenuCapsule> {
     );
   }
 }
+
+/// A raised progress bar used for every progress bar in the app: a recessed track, a glossy gradient fill in
+/// [color] with a soft glow and a highlight along the top, that animates to
+/// [value]. With [label], the % is written inside the fill when it fits.
+class ProgressBar3D extends StatelessWidget {
+  final double value;
+  final Color color;
+  final double height;
+  final String? label;
+
+  /// Track colour (default: a faint divider tint); e.g. translucent white on
+  /// a coloured banner.
+  final Color? trackColor;
+
+  /// Colour of [label] inside the fill (default white).
+  final Color? labelColor;
+
+  const ProgressBar3D({super.key, required this.value, required this.color, required this.height, this.label, this.trackColor, this.labelColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final r = BorderRadius.circular(height);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: value.clamp(0.0, 1.0)),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOutCubic,
+      // No LayoutBuilder: the bar sits in IntrinsicHeight rows (Home cards),
+      // which cannot measure a LayoutBuilder (an error on every frame).
+      builder: (context, v, _) => Container(
+        height: height,
+        decoration: BoxDecoration(
+          borderRadius: r,
+          color: trackColor ?? theme.dividerColor.withValues(alpha: 0.18),
+          // Recessed track
+          border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        ),
+        alignment: Alignment.centerLeft,
+        child: v <= 0
+            ? null
+            : FractionallySizedBox(
+                widthFactor: v,
+                heightFactor: 1,
+                child: Container(
+                  constraints: BoxConstraints(minWidth: height),
+                  decoration: BoxDecoration(
+                    borderRadius: r,
+                    gradient: LinearGradient(colors: [Color.lerp(color, Colors.white, 0.35)!, color]),
+                    boxShadow: [BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 8, offset: const Offset(0, 2))],
+                  ),
+                  child: Stack(
+                    children: [
+                      // Glossy highlight along the top half
+                      Positioned(
+                        left: height * 0.4,
+                        right: height * 0.4,
+                        top: height * 0.15,
+                        height: height * 0.3,
+                        child: DecoratedBox(decoration: BoxDecoration(borderRadius: r, color: Colors.white.withValues(alpha: 0.35))),
+                      ),
+                      if (label != null && v >= 0.2)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Padding(
+                            padding: EdgeInsets.only(right: height * 0.5),
+                            child: Text(label!, style: TextStyle(color: labelColor ?? Colors.white, fontSize: height * 0.62, fontWeight: FontWeight.w900, height: 1)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+}

@@ -613,14 +613,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     SizedBox(height: 12 * scale),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8 * scale),
-                      child: LinearProgressIndicator(
-                        value: badge.progressPercent,
-                        minHeight: 8 * scale,
-                        backgroundColor: textColor.withValues(alpha: 0.1),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          badge.isUnlocked ? badge.themeColor : badge.themeColor.withValues(alpha: 0.6),
-                        ),
-                      ),
+                      child: ProgressBar3D(value: (badge.progressPercent).toDouble(), color: badge.isUnlocked ? badge.themeColor : badge.themeColor.withValues(alpha: 0.6), height: 8 * scale, trackColor: textColor.withValues(alpha: 0.1)),
                     ),
                   ],
                 ),

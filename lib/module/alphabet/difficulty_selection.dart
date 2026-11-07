@@ -1,3 +1,4 @@
+import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
 import '/widgets/difficulty_card.dart';
 import 'package:flutter/services.dart';
@@ -308,12 +309,7 @@ class _DifficultySelectionScreenState extends State<DifficultySelectionScreen> {
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: maxTotal > 0 ? (total / maxTotal).clamp(0.0, 1.0) : 0.0,
-              minHeight: 8,
-              backgroundColor: textColor.withValues(alpha: 0.08),
-              valueColor: const AlwaysStoppedAnimation(Color(0xFFFFC107)),
-            ),
+            child: ProgressBar3D(value: (maxTotal > 0 ? (total / maxTotal).clamp(0.0, 1.0) : 0.0).toDouble(), color: Color(0xFFFFC107), height: 8, trackColor: textColor.withValues(alpha: 0.08)),
           ),
           const SizedBox(height: 12),
           Row(
