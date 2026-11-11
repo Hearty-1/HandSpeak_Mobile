@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '/services/performance_monitor.dart';
+
 /// Activity level map: the levels sit along a winding 3D pathway of raised
 /// stepping stones (each with a darker side, a top-lit face and a shine, in
 /// the theme's node colours) over a soft glowing trail, with props of the
@@ -148,11 +150,27 @@ class _Prop extends StatefulWidget {
 
 class _PropState extends State<_Prop> with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))
-    ..value = widget.phase % 1
-    ..repeat(reverse: true);
+    ..value = widget.phase % 1;
+
+  // Light mode (slow phone, PerformanceSettings): the props stay still (no endless animation).
+  void _apply() {
+    if (PerformanceSettings.on) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _apply();
+    PerformanceSettings.reduceEffects.addListener(_apply);
+  }
 
   @override
   void dispose() {
+    PerformanceSettings.reduceEffects.removeListener(_apply);
     _c.dispose();
     super.dispose();
   }

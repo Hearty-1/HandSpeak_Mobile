@@ -12,6 +12,8 @@ import 'civic_tutorial_interface.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
+import '/widgets/responsive.dart';
+import '/providers/sound_provider.dart';
 
 class CivicTutorialDetail extends StatefulWidget {
   final List<CivicLesson> civicList;
@@ -76,7 +78,6 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
 
     final currentLesson = widget.civicList[_currentIndex];
 
-    const double baseWidth = 393;
     const double baseHeight = 693;
     const double maxProgressWidth = 295.0;
 
@@ -179,7 +180,7 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final double scale = constraints.maxWidth / baseWidth;
+                final double scale = Responsive.scale(constraints.maxWidth);
                 final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
 
                 return SizedBox(
@@ -235,25 +236,6 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
                               ),
                             ),
                           ),
-
-                          if (currentLesson.description.isNotEmpty)
-                            Positioned(
-                              left: 47 * scale,
-                              top: 350 * scale,
-                              child: Container(
-                                width: 299 * scale,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: theme.cardColor.withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  currentLesson.description,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontSize: 13 * scale, color: textColor.withValues(alpha: 0.8)),
-                                ),
-                              ),
-                            ),
 
                           Positioned(
                             left: 49 * scale,
@@ -423,6 +405,8 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
       }
 
       await _controller!.initialize();
+      // Music dips while the demo plays (SoundProvider).
+      _controller!.addListener(_onPlayback);
       if (!_speedLoaded) {
         try {
           final saved = (await SharedPreferences.getInstance()).getDouble(_speedPrefKey);
@@ -499,8 +483,19 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
     );
   }
 
+  bool _videoPlaying = false;
+
+  void _onPlayback() {
+    final p = _controller?.value.isPlaying ?? false;
+    if (p == _videoPlaying) return;
+    _videoPlaying = p;
+    SoundProvider.videoPlaybackChanged(this, p);
+  }
+
   @override
   void dispose() {
+    SoundProvider.videoPlaybackChanged(this, false);
+    _controller?.removeListener(_onPlayback);
     _controller?.dispose();
     super.dispose();
   }

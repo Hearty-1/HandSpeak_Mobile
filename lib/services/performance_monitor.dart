@@ -11,27 +11,52 @@ import 'package:shared_preferences/shared_preferences.dart';
 // PERFORMANCE MODE
 // =============================================================================
 
-/// App-wide "Performance Mode": turns off the expensive blur effects
-/// (79 BackdropFilters across the app) so the GPU is free for the camera
-/// models. Persisted on the device.
+/// Automatic smoothness (no setting; the lag warning's tips also offer it as
+/// "Performance Mode"): every phone gets the full experience;
+/// when the app sees sustained lag (slow camera tracking or dropped screen
+/// updates, [PerformanceMonitor]), it switches by itself to a lighter mode
+/// for the rest of the session:
+/// - hand tracking on [lightCameraFps] frames / s instead of [cameraFps]
+///   (still more than the ~10 frames / s the motion models sample);
+/// - no blur effects (SmartBlur), no looping decorations (avatar, props);
+/// - no background pre-loading of the next questions' media.
 class PerformanceSettings {
   PerformanceSettings._();
-  static const String _prefKey = 'performance_mode';
+
+  /// True once the phone was seen struggling (this session).
   static final ValueNotifier<bool> reduceEffects = ValueNotifier(false);
 
+  /// Camera frames / s sent to hand tracking: normal, and in the light mode.
+  /// Phone cameras deliver up to 30; tracking cannot use more than this, and
+  /// skipping the rest before their copy keeps the screen smooth.
+  static const int cameraFps = 24;
+  static const int lightCameraFps = 14;
+
+  static bool get on => reduceEffects.value;
+
+  static const String _prefKey = 'performance_mode';
+
+  /// The Settings switch, saved on the phone (on at start when chosen there).
   static Future<void> load() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      reduceEffects.value = prefs.getBool(_prefKey) ?? false;
+      if ((await SharedPreferences.getInstance()).getBool(_prefKey) ?? false) reduceEffects.value = true;
     } catch (_) {}
   }
 
+  /// Settings > Performance Mode.
   static Future<void> set(bool on) async {
     reduceEffects.value = on;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_prefKey, on);
+      await (await SharedPreferences.getInstance()).setBool(_prefKey, on);
     } catch (_) {}
+  }
+
+  /// Light mode on (warning button / automatic; until the app restarts).
+  static void lighten() {
+    if (!reduceEffects.value) {
+      debugPrint('Performance: the phone is struggling, switching to the light mode.');
+      reduceEffects.value = true;
+    }
   }
 }
 
@@ -96,6 +121,7 @@ class PerformanceMonitor {
   static const double maxJankRatio = 0.30;
   static const Duration persistFor = Duration(seconds: 4); // ignore short spikes
   static const Duration snooze = Duration(minutes: 3);
+  static const Duration autoLightAfter = Duration(seconds: 15); // lag this long: light mode by itself
 
   void start() {
     if (_started) return;
@@ -149,7 +175,7 @@ class PerformanceMonitor {
           'Camera is running slowly',
           '${fps.toStringAsFixed(0)} checks per second · ${latency.round()} ms delay',
           [
-            if (!PerformanceSettings.reduceEffects.value) 'Turn on Performance Mode to free up your phone for the camera.',
+            if (!PerformanceSettings.on) 'Turn on Performance Mode to free up your phone for the camera.',
             'Close other apps running in the background.',
             'Turn off Battery Saver, or plug in your phone.',
             'Use bright, even lighting so your hands are easy to see.',
@@ -184,7 +210,7 @@ class PerformanceMonitor {
           'The app is lagging',
           '${(slow * 100).round()}% of screen updates are slow',
           [
-            if (!PerformanceSettings.reduceEffects.value) 'Turn on Performance Mode to reduce visual effects.',
+            if (!PerformanceSettings.on) 'Turn on Performance Mode to reduce visual effects.',
             'Close other apps running in the background.',
             'Restart HandSpeak if it has been open for a long time.',
             'Free up some storage space on your phone.',
@@ -200,6 +226,13 @@ class PerformanceMonitor {
       } else {
         _since.remove(issue);
       }
+    }
+    // The phone keeps struggling (camera or screen, not the network): the
+    // warning offers Performance Mode first; if the lag goes on, it is
+    // turned on by itself.
+    for (final issue in [PerfIssue.slowCamera, PerfIssue.jank]) {
+      final since = _since[issue];
+      if (since != null && now.difference(since) >= autoLightAfter) PerformanceSettings.lighten();
     }
     PerfStatus? show;
     for (final issue in PerfIssue.values) {
@@ -306,7 +339,6 @@ class _PerformanceHintOverlayState extends State<PerformanceHintOverlay> {
     const amber = Color(0xFFFFB020);
     final bg = isDark ? const Color(0xF21E1B3A) : const Color(0xF7FFFFFF);
     final text = isDark ? Colors.white : const Color(0xFF2A2340);
-    final perfOn = PerformanceSettings.reduceEffects.value;
 
     return Material(
       key: ValueKey(s.issue),
@@ -363,7 +395,8 @@ class _PerformanceHintOverlayState extends State<PerformanceHintOverlay> {
                         Expanded(child: Text(tip, style: TextStyle(color: text.withValues(alpha: 0.85), fontSize: 12.5, height: 1.35))),
                       ]),
                     ),
-                  if (!perfOn && s.issue != PerfIssue.slowNetwork)
+                  // Performance Mode: the light mode now (until the app restarts).
+                  if (!PerformanceSettings.on && s.issue != PerfIssue.slowNetwork)
                     Padding(
                       padding: const EdgeInsets.only(top: 4, right: 8),
                       child: SizedBox(
@@ -375,7 +408,7 @@ class _PerformanceHintOverlayState extends State<PerformanceHintOverlay> {
                             shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
                           ),
                           onPressed: () {
-                            PerformanceSettings.set(true);
+                            PerformanceSettings.lighten();
                             PerformanceMonitor.instance.dismiss(s.issue);
                           },
                           icon: const Icon(Icons.bolt_rounded, size: 18),

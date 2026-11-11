@@ -11,6 +11,7 @@ import '/services/role_service.dart';
 
 import 'phrase_tutorial_practice.dart'; // Updated import
 import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
+import '/widgets/responsive.dart';
 
 class TutorialSign {
   final String label;
@@ -166,7 +167,6 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
     final isDark = theme.brightness == Brightness.dark;
     final currentSign = _phraseList[_currentIndex];
 
-    const double baseWidth = 393;
     const double baseHeight = 693;
     const double maxProgressWidth = 295.0;
 
@@ -277,7 +277,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final double scale = constraints.maxWidth / baseWidth;
+                final double scale = Responsive.scale(constraints.maxWidth);
                 final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
 
                 return SizedBox(

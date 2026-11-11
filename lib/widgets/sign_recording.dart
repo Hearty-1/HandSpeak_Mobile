@@ -32,8 +32,13 @@ class SignRecordingController {
   /// (clear old frames there), [onDone] when it ends (check the sign).
   void start({required VoidCallback onRecordingStarted, required VoidCallback onDone}) {
     if (busy) return;
-    countdown = countdownSeconds;
     progress = 0;
+    // No countdown (timed challenges): record at once.
+    if (countdownSeconds <= 0) {
+      _record(onRecordingStarted, onDone);
+      return;
+    }
+    countdown = countdownSeconds;
     onChanged();
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       countdown--;
@@ -42,23 +47,28 @@ class SignRecordingController {
         return;
       }
       t.cancel();
-      recording = true;
-      _start = DateTime.now();
-      onRecordingStarted();
-      onChanged();
-      _timer = Timer.periodic(const Duration(milliseconds: 50), (t) {
-        final s = DateTime.now().difference(_start!).inMilliseconds / 1000.0;
-        progress = (s / recordSeconds).clamp(0.0, 1.0);
-        if (s >= recordSeconds) {
-          t.cancel();
-          recording = false;
-          progress = 0;
-          onChanged();
-          onDone();
-        } else {
-          onChanged();
-        }
-      });
+      _record(onRecordingStarted, onDone);
+    });
+  }
+
+  void _record(VoidCallback onRecordingStarted, VoidCallback onDone) {
+    countdown = 0;
+    recording = true;
+    _start = DateTime.now();
+    onRecordingStarted();
+    onChanged();
+    _timer = Timer.periodic(const Duration(milliseconds: 50), (t) {
+      final s = DateTime.now().difference(_start!).inMilliseconds / 1000.0;
+      progress = (s / recordSeconds).clamp(0.0, 1.0);
+      if (s >= recordSeconds) {
+        t.cancel();
+        recording = false;
+        progress = 0;
+        onChanged();
+        onDone();
+      } else {
+        onChanged();
+      }
     });
   }
 
@@ -82,24 +92,18 @@ class SignRecordingStatus extends StatelessWidget {
   final bool checking;
   final bool handsVisible;
 
-  const SignRecordingStatus({
-    super.key,
-    required this.controller,
-    required this.sign,
-    required this.checking,
-    required this.handsVisible,
-  });
+  const SignRecordingStatus({super.key, required this.controller, required this.sign, required this.checking, required this.handsVisible});
 
   @override
   Widget build(BuildContext context) => view(
-        Theme.of(context),
-        countdown: controller.countdown,
-        recording: controller.recording,
-        progress: controller.progress,
-        sign: sign,
-        checking: checking,
-        handsVisible: handsVisible,
-      );
+    Theme.of(context),
+    countdown: controller.countdown,
+    recording: controller.recording,
+    progress: controller.progress,
+    sign: sign,
+    checking: checking,
+    handsVisible: handsVisible,
+  );
 
   /// The status for any camera check (activities' camera questions use it
   /// for every category, so they all look like the Numbers moving signs):
@@ -118,10 +122,14 @@ class SignRecordingStatus extends StatelessWidget {
     if (countdown > 0) {
       return Column(
         children: [
-          Text(L.t('Get ready...', 'Humanda...'),
-              style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7), fontWeight: FontWeight.w700, fontSize: 15)),
-          Text('$countdown',
-              style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 44, height: 1.1)),
+          Text(
+            L.t('Get ready...', 'Humanda...'),
+            style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7), fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+          Text(
+            '$countdown',
+            style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 44, height: 1.1),
+          ),
         ],
       );
     }
@@ -133,8 +141,15 @@ class SignRecordingStatus extends StatelessWidget {
             children: [
               Icon(Icons.fiber_manual_record_rounded, color: theme.primaryColor, size: 18),
               const SizedBox(width: 6),
-              Text(L.t('Recording - sign "$sign" now', 'Nagre-record - ikumpas ang "$sign"'),
-                  style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 16)),
+              // Wraps for long signs (greetings, anthem lines) instead of
+              // running past the screen edge.
+              Flexible(
+                child: Text(
+                  L.t('Recording - sign "$sign" now', 'Nagre-record - ikumpas ang "$sign"'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 16),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -156,10 +171,10 @@ class SignRecordingStatus extends StatelessWidget {
     final text = checking
         ? L.t('Checking your "$sign"...', 'Sinusuri ang "$sign"...')
         : (message != null && message.trim().isNotEmpty)
-            ? message
-            : (handsVisible
-            ? L.t('Tap RECORD SIGN, then do the whole "$sign" sign.', 'Pindutin ang RECORD SIGN, saka gawin ang buong "$sign".')
-            : L.t('Position your hand in the frame, then tap RECORD SIGN.', 'Ilagay ang kamay sa frame, saka pindutin ang RECORD SIGN.'));
+        ? message
+        : (handsVisible
+              ? L.t('Tap RECORD SIGN, then do the whole "$sign" sign.', 'Pindutin ang RECORD SIGN, saka gawin ang buong "$sign".')
+              : L.t('Position your hand in the frame, then tap RECORD SIGN.', 'Ilagay ang kamay sa frame, saka pindutin ang RECORD SIGN.'));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
@@ -175,11 +190,14 @@ class SignRecordingStatus extends StatelessWidget {
               : Icon(Icons.videocam_rounded, color: handsVisible ? theme.primaryColor : Colors.grey, size: 20),
           const SizedBox(width: 8),
           Flexible(
-            child: Text(text,
-                style: TextStyle(
-                    color: handsVisible ? theme.primaryColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14)),
+            child: Text(
+              text,
+              style: TextStyle(
+                color: handsVisible ? theme.primaryColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
           ),
         ],
       ),

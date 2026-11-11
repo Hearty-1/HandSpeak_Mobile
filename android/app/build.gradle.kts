@@ -1,3 +1,16 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+// Release signing key (kept private, not in git): android/key.properties
+//   storePassword=...
+//   keyPassword=...
+//   keyAlias=handspeak
+//   storeFile=C:\Users\<you>\handspeak-release.jks
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("key.properties")
+    if (f.exists()) load(FileInputStream(f))
+}
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -30,8 +43,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.flutter_application_1"
+        // Permanent app ID (never change it: installed copies could not update).
+        applicationId = "com.techspartan.handspeak"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 26
@@ -40,11 +53,23 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProperties.isNotEmpty()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // The release key when android/key.properties exists; otherwise the
+            // debug key (test builds only, never share those).
+            signingConfig = if (keystoreProperties.isNotEmpty()) signingConfigs.getByName("release")
+                            else signingConfigs.getByName("debug")
             // Test builds: no R8 shrinking. With the MediaPipe / TFLite / ONNX
             // libraries, R8 needs more memory than this PC has (the build ran
             // 89 min and the Gradle daemon was killed). Turn back on, with

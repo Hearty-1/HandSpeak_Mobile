@@ -37,6 +37,8 @@ import '/providers/language_provider.dart';
 import '/widgets/practice_feedback.dart';
 import '/widgets/practice_success.dart';
 import '/widgets/challenge_camera_sign.dart' show ChallengeSignResult;
+import '/module/tutorial_session_practice.dart' show TutorialSessionPractice, PracticeSign;
+import '/widgets/responsive.dart';
 
 /// A category added in the web app (Firestore `activity_categories/{id}`):
 /// label, description, cover image, isActive. The four built-in modules have
@@ -434,6 +436,173 @@ class _ModuleProgressPanelState extends State<ModuleProgressPanel> {
   }
 }
 
+/// Tutorial / Practice card of a module page (every category): picture,
+/// title, the button, and for the tutorial the signs learned so far
+/// ([progress]: tutorial signs mastered of the module's lessons, live).
+class ModuleLearnCard extends StatelessWidget {
+  final double scale;
+  final String image;
+  final String title;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  /// Shows "Signs learned" with its bar (the tutorial card).
+  final ModuleSource? progress;
+
+  /// Size of the picture inside its round tile (1 = fills it). The two
+  /// pictures have different margins, so each is sized to look the same.
+  final double imageScale;
+
+  const ModuleLearnCard({
+    super.key,
+    required this.scale,
+    required this.image,
+    required this.title,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.progress,
+    this.imageScale = 1.0,
+  });
+
+  Widget _signs(BuildContext context, ModuleSource source) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    return StreamBuilder<DocumentSnapshot>(
+      stream: ProgressService().getUserProgressStream(),
+      builder: (context, user) {
+        final data = (user.data?.data() as Map<String, dynamic>?) ?? const {};
+        return FutureBuilder<({int lessons, List<String> levels})>(
+          future: source.totals(),
+          builder: (context, t) {
+            final p = t.hasData ? source.progress(data, t.data!) : null;
+            final learned = p == null ? 0 : p.mastered.clamp(0, p.lessons);
+            final ratio = p == null || p.lessons == 0 ? 0.0 : learned / p.lessons;
+            final done = p != null && p.lessons > 0 && learned >= p.lessons;
+            final color = done ? Colors.green : theme.primaryColor;
+            return Padding(
+              padding: EdgeInsets.only(bottom: 10 * scale),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(L.t('Signs learned', 'Natutunang senyas'),
+                            style: TextStyle(color: textColor.withValues(alpha: 0.75), fontSize: 12.5 * scale, fontWeight: FontWeight.w700)),
+                      ),
+                      Text(p == null ? '…' : '$learned / ${p.lessons}',
+                          style: TextStyle(color: color, fontSize: 13 * scale, fontWeight: FontWeight.w900)),
+                    ],
+                  ),
+                  SizedBox(height: 5 * scale),
+                  ProgressBar3D(value: ratio, color: color, height: 10 * scale),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.primaryColor;
+    final textColor = theme.colorScheme.onSurface;
+    // Practice has no progress bar: a short line keeps both cards the same height.
+    final subtitle = progress == null
+        ? L.t('Sign with the camera and get instant feedback.', 'Kumumpas sa camera at alamin agad ang resulta.')
+        : null;
+    return Container(
+      height: 172 * scale,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24 * scale),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [theme.cardColor, Color.lerp(theme.cardColor, accent, 0.08)!],
+        ),
+        border: Border.all(color: accent.withValues(alpha: 0.22), width: 1.5),
+        boxShadow: [
+          BoxShadow(color: accent.withValues(alpha: 0.18), offset: Offset(0, 5 * scale)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 16, offset: Offset(0, 8 * scale)),
+        ],
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24 * scale),
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.all(14 * scale),
+            child: Row(
+              children: [
+                // Same tile for every picture, whatever its own size / shape.
+                Container(
+                  width: 124 * scale,
+                  height: 124 * scale,
+                  padding: EdgeInsets.all(6 * scale),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [accent.withValues(alpha: 0.10), accent.withValues(alpha: 0.26)],
+                    ),
+                    border: Border.all(color: accent.withValues(alpha: 0.35), width: 2),
+                  ),
+                  child: ClipOval(child: Transform.scale(scale: imageScale, child: Image.asset(image, fit: BoxFit.contain))),
+                ),
+                SizedBox(width: 14 * scale),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: textColor, fontSize: 22 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1)),
+                      SizedBox(height: 6 * scale),
+                      if (progress != null)
+                        _signs(context, progress!)
+                      else
+                        Padding(
+                          padding: EdgeInsets.only(bottom: 10 * scale),
+                          child: Text(subtitle!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 12.5 * scale, fontWeight: FontWeight.w600, height: 1.25)),
+                        ),
+                      SizedBox(
+                        height: 38 * scale,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: accent,
+                            foregroundColor: theme.colorScheme.onPrimary,
+                            elevation: 0,
+                            shape: Button3DBorder(borderRadius: BorderRadius.circular(20 * scale)),
+                            padding: EdgeInsets.symmetric(horizontal: 14 * scale),
+                          ),
+                          icon: Icon(icon, size: 18 * scale),
+                          label: Text(label, style: TextStyle(fontSize: 13.5 * scale, fontWeight: FontWeight.w800)),
+                          onPressed: onTap,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A module on the Modules page (the 4 built-in modules and every web app
 /// category) as a glass card: its picture, name and completion, the
 /// industry-standard progress of a course (Duolingo units, Khan Academy
@@ -676,7 +845,7 @@ class CloudCategoryScreen extends StatelessWidget {
           ),
           body: LayoutBuilder(
             builder: (context, constraints) {
-              final double scale = constraints.maxWidth / 393;
+              final double scale = Responsive.scale(constraints.maxWidth);
               return Stack(
                 fit: StackFit.expand,
                 children: [
@@ -697,15 +866,12 @@ class CloudCategoryScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (canProgress) ...[
-                            ModuleProgressPanel(source: ModuleSource.cloud(category), title: category.title, scale: scale),
-                            SizedBox(height: 24 * scale),
-                          ],
                           if (canTutorials) ...[
-                            _SectionRow(
+                            ModuleLearnCard(
                               scale: scale,
                               image: "assets/pictures/tutor.png",
-                              imageWidth: 130, imageHeight: 110, fit: BoxFit.fill,
+                              imageScale: 0.82,
+                              progress: canProgress ? ModuleSource.cloud(category) : null,
                               title: 'Tutorial',
                               icon: Icons.play_arrow_rounded,
                               label: 'Start Learn',
@@ -715,10 +881,10 @@ class CloudCategoryScreen extends StatelessWidget {
                             SizedBox(height: 16 * scale),
                           ],
                           if (canPractice) ...[
-                            _SectionRow(
+                            ModuleLearnCard(
                               scale: scale,
                               image: "assets/pictures/practice.png",
-                              imageWidth: 135, imageHeight: 135, fit: BoxFit.cover,
+                              imageScale: 1.3,
                               title: 'Practice',
                               icon: Icons.camera_alt_rounded,
                               label: 'Train Sign',
@@ -779,56 +945,6 @@ class CloudCategoryScreen extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _SectionRow extends StatelessWidget {
-  final double scale;
-  final String image;
-  final double imageWidth, imageHeight;
-  final BoxFit fit;
-  final String title;
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _SectionRow({
-    required this.scale, required this.image, required this.imageWidth, required this.imageHeight, required this.fit,
-    required this.title, required this.icon, required this.label, required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Image.asset(image, width: imageWidth * scale, height: imageHeight * scale, fit: fit),
-        SizedBox(width: 22 * scale),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5)),
-              SizedBox(height: 8 * scale),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  foregroundColor: theme.colorScheme.onPrimary,
-                  elevation: 4,
-                  shadowColor: theme.primaryColor.withValues(alpha: 0.5),
-                  padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
-                  shape: Button3DBorder(borderRadius: BorderRadius.circular(20 * scale)),
-                ),
-                icon: Icon(icon, size: 18 * scale),
-                label: Text(label, style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w800, fontSize: 14 * scale)),
-                onPressed: onTap,
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1121,7 +1237,7 @@ class _CloudLessonScreenState extends State<CloudLessonScreen> {
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final scale = (constraints.maxWidth / 393).clamp(0.6, 1.4).toDouble();
+                final scale = Responsive.scale(constraints.maxWidth);
                 return SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.symmetric(vertical: 10 * scale),
@@ -1253,7 +1369,7 @@ class _PublishedOrBuiltIn extends StatelessWidget {
   final CloudLesson lesson;
   final VoidCallback? onDone;
   final String? progressLabel;
-  const _PublishedOrBuiltIn({super.key, required this.category, required this.lesson, this.onDone, this.progressLabel});
+  const _PublishedOrBuiltIn({required this.category, required this.lesson, this.onDone, this.progressLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -1317,44 +1433,14 @@ class CloudPracticeScreen extends StatelessWidget {
             body: const _EmptyNote(text: 'Nothing to practise yet. Lessons will appear here once added.'),
           );
         }
-        return _ContinuousPractice(category: category, lessons: lessons);
+        return TutorialSessionPractice(
+          title: '${category.label} Practice',
+          category: category.id,
+          categoryName: category.label,
+          xpField: category.xpField,
+          signs: [for (final l in lessons) PracticeSign(l.title, media: l.media)],
+        );
       },
-    );
-  }
-}
-
-class _ContinuousPractice extends StatefulWidget {
-  final CloudCategory category;
-  final List<CloudLesson> lessons;
-  const _ContinuousPractice({required this.category, required this.lessons});
-
-  @override
-  State<_ContinuousPractice> createState() => _ContinuousPracticeState();
-}
-
-class _ContinuousPracticeState extends State<_ContinuousPractice> {
-  int _i = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    ProgressService().masteredTutorialLines(widget.category.id).first.then((mastered) {
-      final first = widget.lessons.indexWhere((l) => !mastered.contains(l.key));
-      if (mounted && first > 0) setState(() => _i = first);
-    });
-  }
-
-  void _next() => setState(() => _i = (_i + 1) % widget.lessons.length);
-
-  @override
-  Widget build(BuildContext context) {
-    final lesson = widget.lessons[_i];
-    return _PublishedOrBuiltIn(
-      key: ValueKey('step/${lesson.id}'),
-      category: widget.category,
-      lesson: lesson,
-      onDone: _next,
-      progressLabel: 'Sign ${_i + 1} of ${widget.lessons.length}',
     );
   }
 }
@@ -2298,6 +2384,8 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
   /// of the sign probability and a lead over the next sign.
   /// Whether [result] passes the practice check (as in [_judge]) and the
   /// practised sign's share of the sign probability.
+  // The confidence pass also needs the server's own verdict (accepted): its
+  // margin vs "not recognised" check is what the web app's test passes on.
   ({bool passed, double share}) _assess(RawPredictResponse result) {
     double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
     bool isSign(Prediction p) => p.index != _model.invalidIndex && _model.classAt(p.index) != null;
@@ -2310,7 +2398,7 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
     final target = signs.where((p) => p.index == _target.index).firstOrNull;
     final passed = best != null &&
         best.index == _target.index &&
-        (pct(best) >= _target.practice.minConfidence ||
+        ((result.accepted && pct(best) >= _target.practice.minConfidence) ||
             (invalid <= _target.practice.maxInvalid &&
                 share(best) >= _target.practice.minSignShare &&
                 share(best) - share(next) >= _target.practice.minSignLead));
@@ -2330,7 +2418,7 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
     final lead = share(best) - share(next);
     final passed = best != null &&
         best.index == _target.index &&
-        (pct(best) >= _target.practice.minConfidence ||
+        ((result.accepted && pct(best) >= _target.practice.minConfidence) ||
             (invalid <= _target.practice.maxInvalid && share(best) >= _target.practice.minSignShare && lead >= _target.practice.minSignLead));
 
     var debug = '';
@@ -2985,14 +3073,19 @@ class _TrainingClip {
 /// XP field. Returns the XP actually awarded.
 Future<int> _cloudAwardMastery(CloudCategory category, CloudLesson lesson, {required bool continuous}) async {
   final module = category.id;
-  await ProgressService().markTutorialMastered(module, lesson.title);
-  return ProgressService().awardFirstMastery(
+  // XP first: awardFirstMastery gives the first-time XP only while the sign is
+  // not yet marked mastered, and marks it itself (as Alphabet / Numbers do).
+  // Marking it before (as this did) made every first time count as a repeat.
+  final xp = await ProgressService().awardFirstMastery(
     moduleKey: continuous ? XpRewards.practiceKey(module) : module,
     itemKey: ProgressService.masteryKey(lesson.title),
     xp: continuous ? XpRewards.practiceSign : XpRewards.tutorialSign,
     xpField: category.xpField,
     countsAsLesson: !continuous,
   );
+  // Practice also counts the sign as learned in the tutorial list.
+  if (continuous) await ProgressService().markTutorialMastered(module, lesson.title);
+  return xp;
 }
 
 // =============================================================================
@@ -3026,7 +3119,14 @@ class PublishedCameraSign extends StatefulWidget {
   /// Numbers camera levels); without it, the button is shown here.
   final CameraButtonBridge? bridge;
 
-  const PublishedCameraSign({super.key, required this.category, required this.sign, required this.onResult, this.enabled = true, this.bridge});
+  /// A new value starts a new try of the same sign with the same camera
+  /// (practice TRY AGAIN).
+  final int attempt;
+
+  /// Seconds of "get ready" before recording (0 in the timed challenges).
+  final int countdown;
+
+  const PublishedCameraSign({super.key, required this.category, required this.sign, required this.onResult, this.enabled = true, this.bridge, this.attempt = 0, this.countdown = 3});
 
   @override
   State<PublishedCameraSign> createState() => _PublishedCameraSignState();
@@ -3070,7 +3170,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
   @override
   void didUpdateWidget(covariant PublishedCameraSign old) {
     super.didUpdateWidget(old);
-    if (old.sign != widget.sign || old.category != widget.category) {
+    if (old.sign != widget.sign || old.category != widget.category || old.attempt != widget.attempt) {
       _cancel();
       _answered = false;
       _note = '';
@@ -3179,14 +3279,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
       _stopAndEvaluate(manual: true);
     } else {
       HapticFeedback.selectionClick();
-      setState(() {
-        _countdown = 3;
-        _note = L.t('Lower your hands and get ready...', 'Ibaba ang mga kamay at pumwesto...');
-      });
-      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-        if (!mounted || _disposed) return t.cancel();
-        if (_countdown <= 1) {
-          t.cancel();
+      void begin() {
           _frames.clear();
           _sawHands = false;
           _recStart = DateTime.now();
@@ -3201,6 +3294,21 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
             _note = L.t('Sign now! Lower your hands when you are done.', 'Kumpas na! Ibaba ang mga kamay kapag tapos na.');
           });
           _maxTimer = Timer(_maxRecording, () => _stopAndEvaluate());
+      }
+      // No countdown (timed challenges): record at once.
+      if (widget.countdown <= 0) {
+        begin();
+        return;
+      }
+      setState(() {
+        _countdown = widget.countdown;
+        _note = L.t('Lower your hands and get ready...', 'Ibaba ang mga kamay at pumwesto...');
+      });
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted || _disposed) return t.cancel();
+        if (_countdown <= 1) {
+          t.cancel();
+          begin();
         } else {
           setState(() => _countdown--);
         }
@@ -3240,7 +3348,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
     final t = signs.where((p) => p.index == target.index).firstOrNull;
     final passed = best != null &&
         best.index == target.index &&
-        (pct(best) >= target.practice.minConfidence ||
+        ((result.accepted && pct(best) >= target.practice.minConfidence) ||
             (invalid <= target.practice.maxInvalid &&
                 share(best) >= target.practice.minSignShare &&
                 share(best) - share(next) >= target.practice.minSignLead));
@@ -3353,7 +3461,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
     // the question (no other screen opens).
     if (cat == 'phrases' && PhraseRecognizer.classIndexFor(sign) != -1) {
       return (onPassed) => PhraseTutorialPractice(
-            key: ValueKey('greet_$sign'),
+            key: ValueKey('greet_${sign}_${widget.attempt}'),
             targetPhrase: sign,
             onPassed: onPassed,
             onFailed: _builtInFailed,
@@ -3363,7 +3471,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
     }
     if (cat == 'civic') {
       return (onPassed) => CivicTutorialPractice(
-            key: ValueKey('civic_$sign'),
+            key: ValueKey('civic_${sign}_${widget.attempt}'),
             questions: [{'question': sign, 'label': sign}],
             onPassed: onPassed,
             onFailed: _builtInFailed,

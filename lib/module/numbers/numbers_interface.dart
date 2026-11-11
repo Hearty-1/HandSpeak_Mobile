@@ -1,4 +1,4 @@
-import '/module/custom_category_screen.dart' show ModuleProgressPanel, ModuleSource;
+import '/module/custom_category_screen.dart' show ModuleLearnCard, ModuleSource;
 import '/widgets/button_3d.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -13,6 +13,7 @@ import '/leaderboard/arena.dart';
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
 import '/providers/language_provider.dart';
+import '/widgets/responsive.dart';
 
 class NumbersInterface extends StatelessWidget {
   final int currentXp;
@@ -83,7 +84,7 @@ class NumbersInterface extends StatelessWidget {
           
           body: LayoutBuilder(
             builder: (context, constraints) {
-              final double scale = constraints.maxWidth / 393;
+              final double scale = Responsive.scale(constraints.maxWidth);
 
               // Fill the screen: with only Tutorial + Practice (guests) the page is
               // short, and the background circles were cut where the content ended.
@@ -113,40 +114,18 @@ class NumbersInterface extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           
-                          // 1. MAIN PROGRESS PANEL (Combined Level)
-                          if (canProgress) ...[
-                          ModuleProgressPanel(source: ModuleSource.numbers, title: L.t('Numbers', 'Mga Numero'), scale: scale),
-                          
-                          SizedBox(height: 24 * scale),
-                          ],
 
                           // 2. TUTORIAL SECTION
                           if (canTutorials) ...[
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Image.asset("assets/pictures/tutor.png", width: 130 * scale, height: 110 * scale, fit: BoxFit.fill),
-                              SizedBox(width: 24 * scale),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      L.t('Tutorial', 'Tutorial'),
-                                      style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5),
-                                    ),
-                                    SizedBox(height: 8 * scale),
-                                    _buildActionButton(
-                                      context: context,
-                                      scale: scale,
-                                      icon: Icons.play_arrow_rounded,
-                                      label: L.t('Start Learn', 'Simulang Matuto'),
-                                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => NumbersTutorialInterface())),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          ModuleLearnCard(
+                            scale: scale,
+                            image: "assets/pictures/tutor.png",
+                            imageScale: 0.82,
+                            title: L.t('Tutorial', 'Tutorial'),
+                            progress: canProgress ? ModuleSource.numbers : null,
+                            icon: Icons.play_arrow_rounded,
+                            label: L.t('Start Learn', 'Simulang Matuto'),
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => NumbersTutorialInterface())),
                           ),
 
                           SizedBox(height: 16 * scale),
@@ -154,31 +133,14 @@ class NumbersInterface extends StatelessWidget {
 
                           // 3. PRACTICE SECTION
                           if (canPractice) ...[
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Image.asset("assets/pictures/practice.png", width: 135 * scale, height: 135 * scale, fit: BoxFit.cover),
-                              SizedBox(width: 20 * scale),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      L.t('Practice', 'Pagsasanay'),
-                                      style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 28 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.5),
-                                    ),
-                                    SizedBox(height: 8 * scale),
-                                    _buildActionButton(
-                                      context: context,
-                                      scale: scale,
-                                      icon: Icons.camera_alt_rounded,
-                                      label: L.t('Train Sign', 'Sanayin ang Senyas'),
-                                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NumbersPractice())),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          ModuleLearnCard(
+                            scale: scale,
+                            image: "assets/pictures/practice.png",
+                            imageScale: 1.3,
+                            title: L.t('Practice', 'Pagsasanay'),
+                            icon: Icons.camera_alt_rounded,
+                            label: L.t('Train Sign', 'Sanayin ang Senyas'),
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NumbersPractice())),
                           ),
 
                           SizedBox(height: 24 * scale),
@@ -242,24 +204,6 @@ class NumbersInterface extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton({required BuildContext context, required double scale, required IconData icon, required String label, required VoidCallback onTap}) {
-    final theme = Theme.of(context);
-    return ElevatedButton.icon(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: theme.primaryColor,
-        foregroundColor: theme.colorScheme.onPrimary,
-        elevation: 4,
-        shadowColor: theme.primaryColor.withValues(alpha: 0.5),
-        padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 12 * scale),
-        shape: Button3DBorder(borderRadius: BorderRadius.circular(20 * scale)),
-      ),
-      icon: Icon(icon, size: 18 * scale),
-      label: Text(
-        label,
-        style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w800, fontSize: 14 * scale),
-      ),
-      onPressed: onTap,
-    );
-  }
+
 
 }

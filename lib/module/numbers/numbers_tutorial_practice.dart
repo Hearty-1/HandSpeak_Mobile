@@ -693,7 +693,7 @@ class NumbersTutorialPractice extends StatefulWidget {
 }
 
 class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with WidgetsBindingObserver {
-  // Game music while this screen is open (see SoundProvider.claimBgm).
+  // No music while this screen is open (see SoundProvider.claimBgm).
   late final SoundProvider _bgm;
 
   CameraController? _controller;
@@ -778,7 +778,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   @override
   void initState() {
     super.initState();
-    _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.activity); // gamebgm.mp3
+    _bgm = Provider.of<SoundProvider>(context, listen: false)..claimBgm(this, BgmType.none); // quiet while learning (as the other tutorials)
     WidgetsBinding.instance.addObserver(this);
 
     if (!_isStaticSign) {

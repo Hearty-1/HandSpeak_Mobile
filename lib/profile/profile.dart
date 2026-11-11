@@ -1,3 +1,4 @@
+import 'dart:async';
 import '/widgets/button_3d.dart';
 import 'dart:convert';
 import 'dart:ui';
@@ -14,8 +15,11 @@ import '../home/notification_bell.dart';
 import 'add_friend_screen.dart';
 import '../widgets/app_nav_bar.dart';
 import 'achievements.dart';
+import '/services/badge_catalog.dart';
+import '/services/activity_log.dart';
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
+import '/widgets/responsive.dart';
 
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
@@ -35,6 +39,23 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  // Badge definitions edited from the web (badges collection): rebuild on change.
+  void _onCatalog() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    BadgeCatalog.instance.start();
+    BadgeCatalog.instance.docs.addListener(_onCatalog);
+  }
+
+  @override
+  void dispose() {
+    BadgeCatalog.instance.docs.removeListener(_onCatalog);
+    super.dispose();
+  }
 
   Widget _buildAvatarImage(BuildContext context, String avatarData, double scale, {double size = 100}) {
     final theme = Theme.of(context);
@@ -85,8 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final User? currentUser = FirebaseAuth.instance.currentUser;
     final double screenWidth = MediaQuery.of(context).size.width;
-    const double baseWidth = 393;
-    final double scale = screenWidth / baseWidth > 1.2 ? 1.2 : screenWidth / baseWidth;
+    final double scale = Responsive.scale(screenWidth);
     
     if (currentUser == null) {
       return Scaffold(
@@ -269,18 +289,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // Every achievement (achievements.dart): learning, mastery,
                 // consistency, arena, social and daily-quest badges.
                 final List<BadgeData> badges = buildAchievements(userData);
+                // All badge pictures load at once (saved on the phone after).
+                BadgeArt.prefetch(badges);
                 final List<BadgeData> previewBadges = highlightBadges(badges);
 
                 // Sync newly unlocked badges to Firestore for web reporting tracking
                 Map<String, dynamic> newBadgesToSync = {};
                 for (var badge in badges) {
-                  if (badge.isUnlocked && !storedBadgesMap.containsKey(badge.title)) {
-                    newBadgesToSync[badge.title] = FieldValue.serverTimestamp();
+                  if (badge.isUnlocked && !storedBadgesMap.containsKey(badge.key)) {
+                    newBadgesToSync[badge.key] = FieldValue.serverTimestamp();
                   }
                 }
 
                 if (newBadgesToSync.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
+                    for (final b in badges.where((b) => newBadgesToSync.containsKey(b.key))) {
+                      ActivityLog.instance.log('achievement.badge_unlocked',
+                          category: ActivityCategory.achievement,
+                          title: 'Unlocked the "${b.title}" badge',
+                          details: {'badge': b.key},
+                          dedupeKey: b.key);
+                    }
                     FirebaseFirestore.instance.collection('users').doc(currentUser.uid).set({
                       'badges': newBadgesToSync, 
                       'unlockedBadgesList': FieldValue.arrayUnion(newBadgesToSync.keys.toList()),
@@ -323,7 +352,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () => _showEditAvatarDialog(context, currentUser, currentAvatar: avatarUrl, scale: scale),
+                            onTap: () => _showEditAvatarDialog(context, currentUser, currentAvatar: avatarUrl, currentName: name, scale: scale),
                             child: Container(
                               height: 32 * scale,
                               width: 32 * scale,
@@ -344,6 +373,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       SizedBox(height: 16 * scale),
                       Text(
                         name,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           color: textColor,
                           fontSize: 24 * scale,
@@ -417,8 +447,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
                                 _buildStatItem(context, scale, "Streak", "$streak", Icons.local_fire_department_rounded, theme.colorScheme.secondary),
-                                _buildStatItem(context, scale, "Stars", "$stars", Icons.star_rounded, theme.primaryColor),
+                                // Same order as everywhere else: streak, XP, stars.
                                 _buildStatItem(context, scale, "XP Total", "$xp", Icons.bolt_rounded, const Color(0xFF2196F3)),
+                                _buildStatItem(context, scale, "Stars", "$stars", Icons.star_rounded, theme.primaryColor),
                               ],
                             ),
                           ),
@@ -803,8 +834,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showEditAvatarDialog(BuildContext context, User user, {String? currentAvatar, required double scale}) {
+  /// Edit profile: the display name and the avatar.
+  void _showEditAvatarDialog(BuildContext context, User user, {String? currentAvatar, String? currentName, required double scale}) {
     final ImagePicker picker = ImagePicker();
+    final nameController = TextEditingController(text: currentName ?? '');
+    String? nameError;
     Uint8List? pickedImageBytes;
     String? pickedMimeType;
     String existingAvatarUrl = currentAvatar ?? "";
@@ -828,10 +862,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     padding: EdgeInsets.all(6 * scale),
                     decoration: BoxDecoration(color: theme.primaryColor.withValues(alpha: 0.15), shape: BoxShape.circle),
-                    child: Icon(Icons.photo_camera_rounded, color: theme.primaryColor, size: 22 * scale)
+                    child: Icon(Icons.manage_accounts_rounded, color: theme.primaryColor, size: 22 * scale)
                   ),
                   SizedBox(width: 10 * scale),
-                  Text("Update Avatar", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19 * scale, fontFamily: 'Inter', color: textColor)),
+                  Text("Edit Profile", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19 * scale, fontFamily: 'Inter', color: textColor)),
                 ],
               ),
               content: Column(
@@ -873,7 +907,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   SizedBox(height: 8 * scale),
-                  Text("Tap to upload photo", style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 11 * scale, fontWeight: FontWeight.w600)),
+                  Text("Tap to change photo", style: TextStyle(color: textColor.withValues(alpha: 0.5), fontSize: 11 * scale, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 18 * scale),
+                  TextField(
+                    controller: nameController,
+                    maxLength: 30,
+                    textCapitalization: TextCapitalization.words,
+                    style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      labelText: 'Display name',
+                      errorText: nameError,
+                      prefixIcon: Icon(Icons.badge_rounded, color: theme.primaryColor),
+                      filled: true,
+                      fillColor: textColor.withValues(alpha: 0.04),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14 * scale)),
+                    ),
+                  ),
                 ],
               ),
               actions: [
@@ -885,13 +934,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: isSaving 
                     ? null 
                     : () async {
-                        if (pickedImageBytes == null) {
+                        final newName = nameController.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+                        final nameChanged = newName != (currentName ?? '').trim();
+                        if (nameChanged && (newName.length < 2 || !RegExp(r"^[\p{L}\p{M} .'-]+$", unicode: true).hasMatch(newName))) {
+                          setState(() => nameError = 'Use 2-30 letters (spaces, . \' - allowed).');
+                          return;
+                        }
+                        if (pickedImageBytes == null && !nameChanged) {
                           Navigator.pop(context);
                           return;
                         }
 
-                        setState(() => isSaving = true);
+                        setState(() {
+                          isSaving = true;
+                          nameError = null;
+                        });
                         try {
+                          if (nameChanged) {
+                            // Shown on the profile, home and leaderboards.
+                            await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+                              'name': newName,
+                              'displayName': newName,
+                            }, SetOptions(merge: true));
+                            await user.updateDisplayName(newName);
+                            unawaited(ActivityLog.instance.log('account.name_changed',
+                                category: ActivityCategory.account, title: 'Changed display name'));
+                          }
+                          if (pickedImageBytes == null) {
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile updated!"), backgroundColor: Colors.green));
+                            }
+                            return;
+                          }
                           final storageRef = FirebaseStorage.instance
                               .ref()
                               .child('user_avatars')
@@ -910,15 +985,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               .set({
                                 'avatar': downloadUrl,
                               }, SetOptions(merge: true));
+                          unawaited(ActivityLog.instance.log('account.avatar_changed',
+                              category: ActivityCategory.account, title: 'Changed profile picture'));
 
                           if (context.mounted) {
                             Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Avatar updated successfully!"), backgroundColor: Colors.green));
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile updated!"), backgroundColor: Colors.green));
                           }
                         } catch (e) {
                           setState(() => isSaving = false);
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error uploading avatar: $e"), backgroundColor: Colors.red));
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Profile not saved: $e"), backgroundColor: Colors.red));
                           }
                         }
                       },

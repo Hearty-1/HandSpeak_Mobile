@@ -23,6 +23,7 @@ import 'custom_category_screen.dart';
 
 import '/services/performance_monitor.dart';
 import '/providers/language_provider.dart';
+import '/widgets/responsive.dart';
 
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
@@ -57,7 +58,6 @@ class SnedInterface2 extends StatelessWidget {
     final bool canProgress = roles.can(AppFeature.progress);
 
 
-    const double baseWidth = 393; 
     const int targetXp = 1000; 
 
     SystemChrome.setSystemUIOverlayStyle(
@@ -125,7 +125,7 @@ class SnedInterface2 extends StatelessWidget {
 
         return LayoutBuilder(
           builder: (context, constraints) { 
-            final double scale = constraints.maxWidth / baseWidth; 
+            final double scale = Responsive.scale(constraints.maxWidth); 
 
             return Scaffold(
               extendBodyBehindAppBar: true, 

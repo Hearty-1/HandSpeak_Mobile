@@ -26,6 +26,54 @@ class ChallengeCategories {
     }
   }
 
+  /// Values the questions of [target] are stored under (activity_questions
+  /// `category`), for a filtered query instead of reading every question.
+  static List<String> _storedAs(String target) {
+    final t = target.trim();
+    final k = t.toLowerCase();
+    final out = <String>{t, k, '${k.isEmpty ? '' : k[0].toUpperCase()}${k.length > 1 ? k.substring(1) : ''}'};
+    if (k.contains('alphabet')) out.addAll(['alphabet', 'Alphabet']);
+    if (k.contains('number')) out.addAll(['numbers', 'Numbers', 'number']);
+    if (k.contains('phrase') || k.contains('greeting')) {
+      out.addAll(['phrases', 'phrase', 'Phrases', 'Phrase', 'greetings', 'Greetings', 'Common Phrases']);
+    }
+    if (k.contains('civic')) out.addAll(['civic', 'Civic', 'civics', 'Civic Observances']);
+    return out.where((v) => v.isNotEmpty).take(30).toList();
+  }
+
+  static final Map<String, Future<List<Map<String, dynamic>>>> _cache = {};
+
+  /// Questions of the challenge category [target] (read once per session,
+  /// filtered by category on the server). If none are stored under the
+  /// expected names, every question is read and matched (rare fallback).
+  static Future<List<Map<String, dynamic>>> questionsFor(String target) {
+    final key = target.trim().toLowerCase();
+    return _cache[key] ??= () async {
+      final col = FirebaseFirestore.instance.collection('activity_questions');
+      bool keep(Map<String, dynamic> q) => matches(_categoryOf(q), target);
+      var docs = (await col.where('category', whereIn: _storedAs(target)).get()).docs;
+      var out = [for (final d in docs) {...d.data(), 'id': d.data()['id'] ?? d.id}].where(keep).toList();
+      if (out.isEmpty) {
+        docs = (await col.get()).docs;
+        out = [for (final d in docs) {...d.data(), 'id': d.data()['id'] ?? d.id}].where(keep).toList();
+      }
+      return out;
+    }()
+        .catchError((Object e) {
+      _cache.remove(key);
+      throw e;
+    });
+  }
+
+  static String? _categoryOf(Map<String, dynamic> q) {
+    for (final k in ['category', 'topic', 'subject', 'group', 'tag']) {
+      for (final e in q.entries) {
+        if (e.key.toLowerCase() == k && e.value != null) return e.value.toString();
+      }
+    }
+    return null;
+  }
+
   /// Whether a question's `category` belongs to the challenge [target].
   /// A question without a category never matches.
   static bool matches(String? questionCategory, String target) {

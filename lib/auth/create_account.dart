@@ -12,6 +12,23 @@ class CreateAccount extends StatefulWidget {
 }
 
 class _CreateAccountState extends State<CreateAccount> {
+  // ---- Input rules (industry practice, W3C "Personal names around the world") ----
+  // Names: letters of any language (ñ, é, ...), marks, digits, spaces, and
+  // . ' - (Jr., D'Souza, Dela Cruz-Santos). At least one letter.
+  static final _nameChars = FilteringTextInputFormatter.allow(RegExp(r"[\p{L}\p{M}\p{N} .'’\-]", unicode: true));
+  static final RegExp _namePattern = RegExp(r"^[\p{L}\p{M}\p{N} .'’\-]+$", unicode: true);
+  static final RegExp _hasLetter = RegExp(r'\p{L}', unicode: true);
+
+  /// Email: something@domain.tld (any length of top-level domain, + allowed).
+  static final RegExp _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@.]{2,}$');
+
+  static String? _nameProblem(String v) {
+    final t = v.trim();
+    if (!_namePattern.hasMatch(t)) return "Letters, numbers, spaces, and . ' - only";
+    if (!_hasLetter.hasMatch(t)) return "Must include at least one letter";
+    return null;
+  }
+
   final _formKey = GlobalKey<FormState>();
 
   final TextEditingController _firstNameController = TextEditingController();
@@ -145,11 +162,10 @@ class _CreateAccountState extends State<CreateAccount> {
                   controller: _firstNameController,
                   keyboardType: TextInputType.name,
                   maxLength: 50, // Industry standard for single name fields
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s\-\.]'))],
+                  inputFormatters: [_nameChars],
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return "First name is required";
-                    if (!RegExp(r'^[a-zA-Z\s\-\.]+$').hasMatch(v)) return "Letters, spaces, and hyphens only";
-                    return null;
+                    return _nameProblem(v);
                   },
                 ),
                 
@@ -160,12 +176,10 @@ class _CreateAccountState extends State<CreateAccount> {
                   keyboardType: TextInputType.name,
                   isRequired: false, 
                   maxLength: 50,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s\-\.]'))],
+                  inputFormatters: [_nameChars],
                   validator: (v) {
-                    if (v != null && v.trim().isNotEmpty && !RegExp(r'^[a-zA-Z\s\-\.]+$').hasMatch(v)) {
-                      return "Letters, spaces, and hyphens only";
-                    }
-                    return null;
+                    if (v == null || v.trim().isEmpty) return null; // optional
+                    return _nameProblem(v);
                   },
                 ),
                 
@@ -175,11 +189,10 @@ class _CreateAccountState extends State<CreateAccount> {
                   controller: _lastNameController,
                   keyboardType: TextInputType.name,
                   maxLength: 50,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s\-\.]'))],
+                  inputFormatters: [_nameChars],
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return "Last name is required";
-                    if (!RegExp(r'^[a-zA-Z\s\-\.]+$').hasMatch(v)) return "Letters, spaces, and hyphens only";
-                    return null;
+                    return _nameProblem(v);
                   },
                 ),
 
@@ -191,7 +204,7 @@ class _CreateAccountState extends State<CreateAccount> {
                   maxLength: 254, // RFC 5321 Standard for maximum email length
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return "Email is required";
-                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v)) {
+                    if (!_emailPattern.hasMatch(v.trim()) || v.contains('..')) {
                       return "Enter a valid email format (e.g. name@domain.com)";
                     }
                     return null;
@@ -219,10 +232,13 @@ class _CreateAccountState extends State<CreateAccount> {
                           controller: _sectionController,
                           isBottomPadded: false, 
                           maxLength: 20, 
-                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s\-\.]'))],
+                          inputFormatters: [_nameChars],
                           validator: (v) {
                             if (v == null || v.trim().isEmpty) return "Section required";
-                            if (!RegExp(r'^[a-zA-Z\s\-\.]+$').hasMatch(v)) return "Letters only";
+                            // Sections often have numbers ("6-A", "Grade 5 - Rizal").
+                            if (!RegExp(r"^[\p{L}\p{M}\p{N} .'’\-]+$", unicode: true).hasMatch(v.trim())) {
+                              return "Letters, numbers, spaces and - only";
+                            }
                             return null;
                           },
                         ),
@@ -236,7 +252,12 @@ class _CreateAccountState extends State<CreateAccount> {
                   hintText: "e.g. 26001",
                   controller: _idController,
                   maxLength: 20, // Standard limit for alphanumeric IDs
-                  validator: (v) => v == null || v.trim().isEmpty ? "Student ID is required" : null,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]'))],
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return "Student ID is required";
+                    if (!RegExp(r'^[A-Za-z0-9\-]+$').hasMatch(v.trim())) return "Letters, numbers and - only";
+                    return null;
+                  },
                 ),
                 
                 _buildInputField(
@@ -246,8 +267,10 @@ class _CreateAccountState extends State<CreateAccount> {
                   obscureText: _obscurePassword,
                   maxLength: 128, // Complies with NIST SP 800-63B allowing long passphrases
                   validator: (v) {
-                    if (v == null || v.isEmpty) return "Password is required";
-                    if (v.length < 8) return "Must be at least 8 characters long";
+                    // Counted as saved (spaces at the ends are removed on sign-up and login).
+                    final p = v?.trim() ?? '';
+                    if (p.isEmpty) return "Password is required";
+                    if (p.length < 8) return "Must be at least 8 characters long";
                     return null;
                   },
                   suffixIcon: Padding(

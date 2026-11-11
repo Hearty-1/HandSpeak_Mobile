@@ -27,6 +27,7 @@ import '/module/alphabet/tutorial_practice.dart' show TutorialPractice;
 import '/providers/language_provider.dart';
 
 import '../home/notification_bell.dart'; // Added import for the standardized bell
+import '/widgets/responsive.dart';
 
 void main() {
   runApp(const FigmaToCodeApp());
@@ -745,7 +746,7 @@ class SnedInterafce1 extends StatelessWidget {
     final double screenWidth = MediaQuery.of(context).size.width;
     // Screen width can be 0 for a frame (startup / resize): never scale to 0
     // (a 0-height progress bar is an assertion error).
-    final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble();
+    final double scale = Responsive.scale(screenWidth);
 
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark),
@@ -1522,7 +1523,7 @@ class _InfoDetailScreenState extends State<InfoDetailScreen> {
     final textColor = theme.colorScheme.onSurface;
     final double screenWidth = MediaQuery.of(context).size.width;
     // Screen width can be 0 for a frame (startup / resize): never scale to 0.
-    final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble();
+    final double scale = Responsive.scale(screenWidth);
     final primary = theme.primaryColor;
     final t = widget.title.toLowerCase();
     final isTerms = t.contains('term') || t.contains('tuntunin');
@@ -1714,7 +1715,7 @@ class AboutUsScreen extends StatelessWidget {
     final double screenWidth = MediaQuery.of(context).size.width;
     // Screen width can be 0 for a frame (startup / resize): never scale to 0
     // (a 0-height progress bar is an assertion error).
-    final double scale = (screenWidth / 393).clamp(0.6, 1.2).toDouble();
+    final double scale = Responsive.scale(screenWidth);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,

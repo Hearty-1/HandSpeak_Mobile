@@ -5,11 +5,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
-import '/services/performance_monitor.dart';
 import '../services/auth_service.dart';
 import '../providers/theme_provider.dart';
 import '../providers/sound_provider.dart';
 import '/providers/language_provider.dart';
+import '/services/performance_monitor.dart';
+import '/services/activity_log.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -290,25 +291,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.all(24.0),
         children: [
-          _buildSectionHeader(context.tr(context.tr('Account & Profile', 'Account at Profile'), 'Account at Profile'), textColor),
-          _buildSettingsCard(
-            context: context,
-            children: [
-              Pressable3D(child: ListTile(
-                leading: const Icon(CupertinoIcons.person_alt_circle, color: Color(0xFFFFB800)),
-                title: Text(context.tr(context.tr('Edit Personal Details', 'I-edit ang Personal na Detalye'), 'I-edit ang Personal na Detalye'), style: TextStyle(color: textColor)),
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
-                onTap: () {
-                  _showEditProfileDialog(context);
-                },
-              )),
-            ],
-          ),
-
           _buildSectionHeader(context.tr(context.tr('Game Settings', 'Mga Setting ng Laro'), 'Mga Setting ng Laro'), textColor),
           _buildSettingsCard(
             context: context,
             children: [
+              // Same light mode as the lag warning's button (saved on the phone).
               ValueListenableBuilder<bool>(
                 valueListenable: PerformanceSettings.reduceEffects,
                 builder: (context, on, _) => Pressable3D(child: SwitchListTile(
@@ -316,11 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   inactiveThumbColor: Colors.grey.shade400,
                   inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
                   secondary: const Icon(CupertinoIcons.bolt_fill, color: Color(0xFFFFB800)),
-                  title: Text(context.tr(context.tr('Performance Mode', 'Performance Mode'), context.tr('Performance Mode', 'Performance Mode')), style: TextStyle(color: textColor)),
-                  subtitle: Text(
-                    context.tr(context.tr('Turns off blur effects so the camera and app run faster on slower phones.', 'Pinapatay ang blur effects para bumilis ang camera at app sa mabagal na phone.'), 'Pinapatay ang blur effects para bumilis ang camera at app sa mabagal na phone.'),
-                    style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 12),
-                  ),
+                  title: Text(context.tr('Performance Mode', 'Performance Mode'), style: TextStyle(color: textColor)),
                   value: on,
                   onChanged: (val) => PerformanceSettings.set(val),
                 )),
@@ -541,147 +524,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showEditProfileDialog(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
-        builder: (context, snapshot) {
-          final theme = Theme.of(context);
-          final textColor = theme.colorScheme.onSurface;
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return AlertDialog(
-              backgroundColor: theme.cardColor,
-              content: const SizedBox(
-                height: 120,
-                child: Center(child: CircularProgressIndicator(color: Color(0xFFFFB800))),
-              ),
-            );
-          }
-
-          if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
-            return AlertDialog(
-              backgroundColor: theme.cardColor,
-              title: Text("Error", style: TextStyle(color: textColor)),
-              content: Text("Could not load user details.", style: TextStyle(color: textColor)),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr(context.tr('Close', 'Isara'), 'Isara'))),
-              ],
-            );
-          }
-
-          final userData = snapshot.data!.data() as Map<String, dynamic>;
-          final emailController = TextEditingController(text: user.email ?? userData['email'] ?? '');
-          final studentIdController = TextEditingController(text: userData['studentId'] ?? '');
-          final firstNameController = TextEditingController(text: userData['firstName'] ?? '');
-          final middleNameController = TextEditingController(text: userData['middleName'] ?? '');
-          final lastNameController = TextEditingController(text: userData['lastName'] ?? '');
-          final gradeController = TextEditingController(text: userData['grade'] ?? '');
-          final sectionController = TextEditingController(text: userData['section'] ?? '');
-          
-          bool isUpdating = false;
-
-          return StatefulBuilder(
-            builder: (context, setState) {
-              return AlertDialog(
-                backgroundColor: theme.cardColor,
-                surfaceTintColor: Colors.transparent,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-                titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
-                title: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFFFF9E5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(CupertinoIcons.person_crop_circle_fill, color: Color(0xFFFFB800), size: 48),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(context.tr(context.tr('Personal Details', 'Personal na Detalye'), 'Personal na Detalye'), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: textColor)),
-                  ],
-                ),
-                contentPadding: const EdgeInsets.all(24),
-                content: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildEnhancedTextField(context: context, controller: emailController, label: context.tr(context.tr('Email Address', 'Email Address'), context.tr('Email Address', 'Email Address')), icon: CupertinoIcons.mail_solid, readOnly: true),
-                      const SizedBox(height: 16),
-                      _buildEnhancedTextField(context: context, controller: studentIdController, label: "Student ID", icon: CupertinoIcons.doc_text_fill, readOnly: true),
-                      const SizedBox(height: 16),
-                      _buildEnhancedTextField(context: context, controller: firstNameController, label: context.tr(context.tr('First Name', 'Pangalan'), 'Pangalan'), icon: CupertinoIcons.person_fill),
-                      const SizedBox(height: 16),
-                      _buildEnhancedTextField(context: context, controller: middleNameController, label: context.tr(context.tr('Middle Name', 'Gitnang Pangalan'), 'Gitnang Pangalan'), icon: CupertinoIcons.person_fill),
-                      const SizedBox(height: 16),
-                      _buildEnhancedTextField(context: context, controller: lastNameController, label: context.tr(context.tr('Last Name', 'Apelyido'), 'Apelyido'), icon: CupertinoIcons.person_fill),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(child: _buildEnhancedTextField(context: context, controller: gradeController, label: context.tr(context.tr('Grade', 'Baitang'), 'Baitang'), icon: CupertinoIcons.chart_bar_alt_fill)),
-                          const SizedBox(width: 12),
-                          Expanded(child: _buildEnhancedTextField(context: context, controller: sectionController, label: context.tr(context.tr('Section', 'Seksyon'), 'Seksyon'), icon: CupertinoIcons.group_solid)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                actionsPadding: const EdgeInsets.only(bottom: 24, right: 24, left: 24),
-                actions: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: isUpdating ? null : () => Navigator.pop(context), 
-                          child: Text(context.tr(context.tr('Cancel', 'Kanselahin'), 'Kanselahin'), style: TextStyle(color: textColor.withValues(alpha: 0.6), fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB800)),
-                          onPressed: isUpdating ? null : () async {
-                            setState(() => isUpdating = true);
-                            try {
-                              String fullName = '${firstNameController.text.trim()} ${middleNameController.text.trim()} ${lastNameController.text.trim()}'.replaceAll('  ', ' ').trim();
-
-                              await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-                                'firstName': firstNameController.text.trim(),
-                                'middleName': middleNameController.text.trim(),
-                                'lastName': lastNameController.text.trim(),
-                                'grade': gradeController.text.trim(),
-                                'section': sectionController.text.trim(),
-                                'name': fullName, 
-                              });
-
-                              if (context.mounted) Navigator.pop(context);
-                            } catch (e) {
-                              setState(() => isUpdating = false);
-                            }
-                          }, 
-                          child: isUpdating 
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                              : Text(context.tr(context.tr('Save', 'I-save'), 'I-save'), style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            }
-          );
-        },
-      ),
-    );
-  }
-
   void _showChangePasswordDialog(BuildContext context) {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
@@ -786,15 +628,165 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildActivityLogsTab(String uid, ScrollController scrollController) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(uid).collection('login_activity').snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        return ListView(
-          controller: scrollController,
-          children: snapshot.data!.docs.map((doc) => ListTile(title: Text(doc['action'] ?? 'Action'))).toList(),
-        );
-      },
+    return _ActivityLogView(uid: uid, scrollController: scrollController);
+  }
+}
+
+/// Settings > Activity Logs: the user's activity (ActivityLog), live, newest
+/// first, grouped by day, with a filter per kind of activity.
+class _ActivityLogView extends StatefulWidget {
+  final String uid;
+  final ScrollController scrollController;
+  const _ActivityLogView({required this.uid, required this.scrollController});
+
+  @override
+  State<_ActivityLogView> createState() => _ActivityLogViewState();
+}
+
+class _ActivityLogViewState extends State<_ActivityLogView> {
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _stream = ActivityLog.stream(widget.uid, limit: 200);
+  ActivityCategory? _filter;
+
+  static const Map<ActivityCategory, (String, IconData, Color)> _kinds = {
+    ActivityCategory.auth: ('Sign-in', Icons.login_rounded, Color(0xFF5C6BC0)),
+    ActivityCategory.learning: ('Learning', Icons.school_rounded, Color(0xFF42A5F5)),
+    ActivityCategory.practice: ('Practice', Icons.camera_alt_rounded, Color(0xFF26A69A)),
+    ActivityCategory.activity: ('Activities', Icons.extension_rounded, Color(0xFFFFA726)),
+    ActivityCategory.challenge: ('Challenges', Icons.sports_esports_rounded, Color(0xFFEF5350)),
+    ActivityCategory.achievement: ('Badges', Icons.emoji_events_rounded, Color(0xFFFFC107)),
+    ActivityCategory.account: ('Account', Icons.manage_accounts_rounded, Color(0xFF8D6E63)),
+  };
+
+  static String _two(int v) => v.toString().padLeft(2, '0');
+
+  static String _time(DateTime d) {
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    return '$h:${_two(d.minute)} ${d.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  static String _day(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+
+  /// One line of facts from an entry's details.
+  static String _facts(Map<String, dynamic> d) {
+    final parts = <String>[];
+    if (d['correct'] != null && (d['total'] ?? d['attempts']) != null) parts.add('${d['correct']}/${d['total'] ?? d['attempts']} correct');
+    if (d['heartsLeft'] != null) parts.add('${d['heartsLeft']} ♥ left');
+    if (d['accuracy'] is num) parts.add('${(d['accuracy'] as num).round()}% accuracy');
+    if (parts.isEmpty && d['description'] is String) parts.add(d['description'] as String);
+    return parts.join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    return Column(
+      children: [
+        SizedBox(
+          height: 48,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            children: [
+              for (final k in [null, ...ActivityCategory.values])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(k == null ? 'All' : _kinds[k]!.$1),
+                    selected: _filter == k,
+                    onSelected: (_) => setState(() => _filter = k),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _stream,
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return Center(child: Text('Activity could not be loaded.', style: TextStyle(color: textColor.withValues(alpha: 0.6))));
+              }
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              final entries = [
+                for (final doc in snap.data!.docs)
+                  if (_filter == null || doc.data()['category'] == _filter!.name) doc.data(),
+              ];
+              if (entries.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'No activity yet. Your sign-ins, lessons, practice, activities, challenges and badges will appear here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: textColor.withValues(alpha: 0.6)),
+                    ),
+                  ),
+                );
+              }
+              final rows = <Widget>[];
+              String? lastDay;
+              for (final e in entries) {
+                final ts = (e['clientTime'] ?? e['timestamp']);
+                final when = ts is Timestamp ? ts.toDate() : DateTime.now();
+                final day = _day(when);
+                if (day != lastDay) {
+                  lastDay = day;
+                  rows.add(Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
+                    child: Text(day, style: TextStyle(fontWeight: FontWeight.w900, color: textColor.withValues(alpha: 0.6), fontSize: 13)),
+                  ));
+                }
+                final cat = ActivityCategory.values.where((c) => c.name == e['category']).firstOrNull ?? ActivityCategory.account;
+                final (_, icon, color) = _kinds[cat]!;
+                final facts = _facts(Map<String, dynamic>.from(e['details'] as Map? ?? const {}));
+                rows.add(Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: color.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withValues(alpha: 0.18), shape: BoxShape.circle),
+                        child: Icon(icon, color: color, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${e['title'] ?? e['eventType'] ?? 'Activity'}',
+                                style: TextStyle(fontWeight: FontWeight.w800, color: textColor, fontSize: 14)),
+                            if (facts.isNotEmpty)
+                              Text(facts, style: TextStyle(color: textColor.withValues(alpha: 0.65), fontSize: 12.5)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(_time(when), style: TextStyle(color: textColor.withValues(alpha: 0.55), fontSize: 12, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ));
+              }
+              return ListView(controller: widget.scrollController, children: rows);
+            },
+          ),
+        ),
+      ],
     );
   }
 }

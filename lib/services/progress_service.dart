@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '/services/activity_log.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -169,6 +170,10 @@ class ProgressService {
     if (currentUser == null) return;
 
     final normalizedCat = _normalizeCategory(category);
+    unawaited(ActivityLog.instance.log('challenge.solo_completed',
+        category: ActivityCategory.challenge,
+        title: 'Finished a ${ActivityLog.moduleName(normalizedCat)} Solo Challenge ($correctCount/$totalQuestions)',
+        details: {'category': normalizedCat, 'score': score, 'correct': correctCount, 'total': totalQuestions, 'accuracy': accuracy}));
     final batch = _db.batch();
     final userRef = _db.collection('users').doc(currentUser.uid);
 
@@ -177,7 +182,7 @@ class ProgressService {
       userRef,
       {
         'xp': FieldValue.increment(score),
-        'dailyXp': FieldValue.increment(score),
+        ...periodXp(score),
         // Counts toward the category's module XP (and its unlock).
         if (moduleXpField(category).isNotEmpty) moduleXpField(category): FieldValue.increment(score),
         'totalGamesPlayed': FieldValue.increment(1),
@@ -193,18 +198,8 @@ class ProgressService {
       SetOptions(merge: true),
     );
 
-    // 2. Add session entry to progress history subcollection
-    final historyRef = userRef.collection('progress_history').doc();
-    batch.set(historyRef, {
-      'category': normalizedCat,
-      'score': score,
-      'correctCount': correctCount,
-      'totalQuestions': totalQuestions,
-      'accuracy': accuracy,
-      'peakStreak': peakStreak,
-      'completedAt': FieldValue.serverTimestamp(),
-      'mode': 'solo_challenge',
-    });
+    // The game itself is recorded once, in the root 'solo_challenges'
+    // collection (solo_challenge.dart), not in users/{uid}/progress_history.
 
     // 3. Update category progress aggregate inside the `category_progress` subcollection
     final catProgressRef = userRef
@@ -231,23 +226,69 @@ class ProgressService {
     }
   }
 
-  /// Record activity attempt and completion summary for any module category
+  /// Full activity records, one per play (kept apart from the older,
+  /// larger activity_attempts so new records are easy to find).
+  static const String activitySessions = 'activity_sessions';
+
+  /// Records one play of an activity level (activity_sessions): completion,
+  /// stars, hearts left, score, which try of the level this is, how long it
+  /// took, and every answer:
+  ///   { userId, levelId, category, isCompleted, starsEarned, heartsLeft,
+  ///     correctCount, totalQuestions, attemptNumber, durationSec,
+  ///     answers: [ { questionId, type, sign, chosen, correct } ], timestamp }
   Future<void> recordActivityAttempt({
     required String levelId,
     required String category,
     required bool isCompleted,
     required int starsEarned,
+    int? heartsLeft,
+    int? totalQuestions,
+    DateTime? startedAt,
+    List<Map<String, dynamic>> answers = const [],
   }) async {
     User? currentUser = _studentUser;
     if (currentUser == null) return;
 
     try {
-      await _db.collection('activity_attempts').add({
+      // This play's number for the level (1 = first time).
+      var attemptNumber = 1;
+      try {
+        final prev = await _db
+            .collection(activitySessions)
+            .where('userId', isEqualTo: currentUser.uid)
+            .where('levelId', isEqualTo: levelId)
+            .count()
+            .get();
+        attemptNumber = (prev.count ?? 0) + 1;
+      } catch (e) {
+        debugPrint('activity attempt number unavailable: $e');
+      }
+      final correct = answers.where((a) => a['correct'] == true).length;
+      unawaited(ActivityLog.instance.log(isCompleted ? 'activity.completed' : 'activity.failed',
+          category: ActivityCategory.activity,
+          title: isCompleted
+              ? 'Completed ${ActivityLog.levelName(levelId)} ($starsEarned★)'
+              : 'Ran out of hearts in ${ActivityLog.levelName(levelId)}',
+          details: {
+            'levelId': levelId,
+            'category': _normalizeCategory(category),
+            'stars': starsEarned,
+            'heartsLeft': heartsLeft,
+            'correct': correct,
+            'total': totalQuestions,
+          }));
+      await _db.collection(activitySessions).add({
         'userId': currentUser.uid,
         'levelId': levelId,
         'category': _normalizeCategory(category),
         'isCompleted': isCompleted,
         'starsEarned': starsEarned,
+        'heartsLeft': ?heartsLeft,
+        'correctCount': answers.where((a) => a['correct'] == true).length,
+        'totalQuestions': ?totalQuestions,
+        'attemptNumber': attemptNumber,
+        if (startedAt != null) 'durationSec': DateTime.now().difference(startedAt).inSeconds,
+        'answers': answers,
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -261,6 +302,11 @@ class ProgressService {
     if (currentUser == null) return;
 
     DocumentReference userRef = _db.collection('users').doc(currentUser.uid);
+    unawaited(ActivityLog.instance.log('learning.module_opened',
+        category: ActivityCategory.learning,
+        title: 'Opened ${ActivityLog.moduleName(moduleKey)}',
+        details: {'module': moduleKey},
+        dedupeKey: moduleKey));
 
     try {
       await userRef.set({
@@ -302,6 +348,8 @@ class ProgressService {
     try {
       await userRef.set({
         'xp': FieldValue.increment(xpToAdd),
+        // Group challenges: counts for today's quests and the Weekly League too.
+        ...periodXp(xpToAdd),
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
@@ -426,8 +474,34 @@ class ProgressService {
       : {
           xpField: FieldValue.increment(xp),
           'xp': FieldValue.increment(xp),
+          ...periodXp(xp),
+        };
+
+  /// This week's id, e.g. "2026-W46" (ISO weeks: Monday to Sunday).
+  static String weekKey([DateTime? when]) {
+    final d = DateTime.utc((when ?? DateTime.now()).year, (when ?? DateTime.now()).month, (when ?? DateTime.now()).day);
+    final thursday = d.add(Duration(days: 4 - d.weekday)); // the ISO week's year is its Thursday's
+    final firstThursday = DateTime.utc(thursday.year, 1, 4);
+    final week = 1 + thursday.difference(firstThursday.subtract(Duration(days: firstThursday.weekday - 4))).inDays ~/ 7;
+    return '${thursday.year}-W${week.toString().padLeft(2, '0')}';
+  }
+
+  /// Weekly League field: XP earned this week ("weekXp.2026-W46"). A new
+  /// week is a new field, so everyone starts the week at 0 and inactive
+  /// students drop off the league by themselves (no reset needed).
+  static String weekXpField([DateTime? when]) => 'weekXp.${weekKey(when)}';
+
+  /// This week's XP in a user document (0 if none yet).
+  static int weekXpOf(Map<String, dynamic> user) => ((user['weekXp'] as Map?)?[weekKey()] as num?)?.toInt() ?? 0;
+
+  /// Every XP gain also counts for today (daily quests) and this week
+  /// (Weekly League). Use in set(..., merge: true) writes.
+  static Map<String, dynamic> periodXp(int xp) => xp <= 0
+      ? const {}
+      : {
           'dailyXp': FieldValue.increment(xp),
-          'weeklyXp': FieldValue.increment(xp),
+          'weeklyXp': FieldValue.increment(xp), // running total (kept for old reports)
+          'weekXp': {weekKey(): FieldValue.increment(xp)},
         };
 
   static String _today() {
@@ -478,6 +552,10 @@ class ProgressService {
           moduleKey: {key: FieldValue.serverTimestamp()},
         },
       }, SetOptions(merge: true));
+      unawaited(ActivityLog.instance.log('learning.sign_learned',
+          category: ActivityCategory.learning,
+          title: 'Learned "$sign" in ${ActivityLog.moduleName(moduleKey)}',
+          details: {'module': moduleKey, 'sign': sign}));
     } catch (e) {
       debugPrint('Error recording tutorial mastery: $e');
     }

@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:video_player/video_player.dart';
+
+import '/providers/sound_provider.dart';
 
 /// Sign video in an activity question / answer option (all categories):
 /// shows the first frame, plays and loops after a tap on the centred play
@@ -11,6 +16,26 @@ class ActivityVideo extends StatefulWidget {
   final Widget fallback;
 
   const ActivityVideo({super.key, required this.url, required this.fit, required this.fallback});
+
+  /// Sign videos kept on the phone (30 days, up to 300 files).
+  static final CacheManager _cache = CacheManager(Config('handspeak_sign_videos', stalePeriod: const Duration(days: 30), maxNrOfCacheObjects: 300));
+  static final Set<String> _downloading = {};
+
+  /// The saved copy of [url], if it was downloaded before.
+  static Future<File?> cachedFile(String url) async {
+    try {
+      return (await _cache.getFileFromCache(url))?.file;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Downloads [url] in the background (e.g. the next questions' videos), so
+  /// it plays at once when it is shown.
+  static void prefetch(String url) {
+    if (!url.startsWith('http') || !_downloading.add(url)) return;
+    _cache.downloadFile(url).then((_) {}, onError: (Object e) => debugPrint('Video not saved ($url): $e')).whenComplete(() => _downloading.remove(url));
+  }
 
   @override
   State<ActivityVideo> createState() => _ActivityVideoState();
@@ -32,9 +57,16 @@ class _ActivityVideoState extends State<ActivityVideo> {
     // starts, which pauses the others, so only one of several option
     // videos kept playing. These videos are muted anyway.
     final options = VideoPlayerOptions(mixWithOthers: true);
+    // A video seen before plays from the phone (no download); a new one
+    // streams now and is saved in the background for next time.
+    final cached = url.startsWith('http') ? await ActivityVideo.cachedFile(url) : null;
+    if (!mounted || url != widget.url) return;
     final c = url.startsWith('assets/')
         ? VideoPlayerController.asset(url, videoPlayerOptions: options)
-        : VideoPlayerController.networkUrl(Uri.parse(url), videoPlayerOptions: options);
+        : cached != null
+            ? VideoPlayerController.file(cached, videoPlayerOptions: options)
+            : VideoPlayerController.networkUrl(Uri.parse(url), videoPlayerOptions: options);
+    if (cached == null && url.startsWith('http')) ActivityVideo.prefetch(url);
     _controller = c;
     try {
       await c.initialize();
@@ -72,7 +104,10 @@ class _ActivityVideoState extends State<ActivityVideo> {
 
   void _onTick() {
     final p = _controller?.value.isPlaying ?? false;
-    if (p != _wasPlaying && mounted) setState(() => _wasPlaying = p);
+    if (p != _wasPlaying) {
+      SoundProvider.videoPlaybackChanged(this, p); // music dips while it plays
+      if (mounted) setState(() => _wasPlaying = p);
+    }
   }
 
   void _toggle() {
@@ -90,6 +125,7 @@ class _ActivityVideoState extends State<ActivityVideo> {
 
   @override
   void dispose() {
+    SoundProvider.videoPlaybackChanged(this, false);
     if (_playing == this) _playing = null;
     _controller?.removeListener(_onTick);
     _controller?.dispose();

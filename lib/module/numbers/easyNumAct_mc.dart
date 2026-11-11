@@ -957,6 +957,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
       isCorrect = _selectedAnswer == q.correctAnswer;
     }
 
+    _logAnswer(q, isCorrect, predicted: _isDynamicLetter ? _lastPredictedLabel : null);
     setState(() {
       _isAnswered = true;
       _isCorrect = isCorrect;
@@ -973,8 +974,43 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     _feedbackAnimController.forward(from: 0.0);
   }
 
+
+  /// This play's answers (activity_attempts.answers) and start time.
+  final List<Map<String, dynamic>> _answerLog = [];
+  final DateTime _playStartedAt = DateTime.now();
+
+  /// One answered question: what was asked and what the student gave.
+  void _logAnswer(QuizQuestion q, bool isCorrect, {String? predicted}) {
+    final camera = _isCameraQuestion(q);
+    final chosen = camera
+        ? (isCorrect ? q.correctAnswer : (predicted ?? ''))
+        : switch (q.type) {
+            'typing' => _userAnswerSlots.map((e) => e ?? '').join(),
+            'sequence_order' => _currentSequence.join(' > '),
+            'matching_type' => _matchingAnswers.entries.map((e) => '${e.key} = ${e.value ?? ''}').join('; '),
+            _ => _selectedAnswer ?? '',
+          };
+    _answerLog.add({
+      'questionId': q.id,
+      'type': camera ? 'camera' : q.type,
+      'sign': q.type == 'fill_in_the_blank' && q.blankAnswer.isNotEmpty ? q.blankAnswer : q.correctAnswer,
+      'chosen': chosen,
+      'correct': isCorrect,
+    });
+  }
+
   void _showGameOverDialog() {
     _gestureTracker?.finish(outcome: 'game_over', heartsLeft: 0, starsEarned: 0, totalQuestions: _questions.length);
+    ProgressService().recordActivityAttempt(
+      levelId: widget.levelId,
+      category: 'numbers',
+      isCompleted: false,
+      starsEarned: 0,
+      heartsLeft: 0,
+      totalQuestions: _questions.length,
+      startedAt: _playStartedAt,
+      answers: _answerLog,
+    );
     if (!mounted) return;
     Provider.of<SoundProvider>(context, listen: false).playGameOver();
     showDialog(
@@ -1019,10 +1055,19 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
     final db = FirebaseFirestore.instance;
     final userRef = db.collection('users').doc(user.uid);
-    final attemptRef = db.collection('activity_attempts').doc();
     // Stars (best per level) and XP: fixed XP per new star, small repeat XP
     // within the daily cap (ProgressService.saveActivityStars, xp_rewards.dart).
     await ProgressService().saveActivityStars(levelId: widget.levelId, stars: starsEarned, xpField: 'numbersXp');
+    await ProgressService().recordActivityAttempt(
+      levelId: widget.levelId,
+      category: 'numbers',
+      isCompleted: true,
+      starsEarned: starsEarned,
+      heartsLeft: _hearts,
+      totalQuestions: _questions.length,
+      startedAt: _playStartedAt,
+      answers: _answerLog,
+    );
 
     try {
       await OfflineSync.run((transaction) async {
@@ -1057,17 +1102,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
           'lastActive': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        // 5. Append Record directly to Top-Level 'activity_attempts' Collection
-        transaction.set(attemptRef, {
-          'category': 'numbers',
-          'isCompleted': true,
-          'levelId': widget.levelId,
-          'starsEarned': starsEarned,
-          'timestamp': FieldValue.serverTimestamp(),
-          'userId': user.uid,
-        });
       });
-      debugPrint("Saved document successfully to activity_attempts.");
+      debugPrint("Saved numbers progress.");
     } catch (e) {
       debugPrint("Progress Tracking Transaction Failed: $e");
     }
@@ -1287,7 +1323,12 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
     final progress = (_currentIndex + 1) / _questions.length;
     final feedbackData = _getThemeFeedbackVisuals(context, _isCorrect);
 
-    final String correctAnswerValue = currentQuestion.correctAnswer.toLowerCase();
+    // Fill in the blank: the answer is the blank's piece, not the sentence.
+    final String shownAnswer = currentQuestion.type == 'fill_in_the_blank' && currentQuestion.blankAnswer.isNotEmpty
+        ? currentQuestion.blankAnswer
+        : currentQuestion.correctAnswer;
+    final bool isVideoAnswer = RegExp(r'\.(mp4|mov|webm|m4v)$', caseSensitive: false).hasMatch(Uri.decodeComponent(shownAnswer.split('?').first));
+    final String correctAnswerValue = shownAnswer.toLowerCase();
     final bool isImageAnswer =
         correctAnswerValue.startsWith('data:image') ||
         correctAnswerValue.endsWith('.png') ||
@@ -1317,7 +1358,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                         const SizedBox(height: 24),
 
                         if (currentQuestion.imageUrl.isNotEmpty) ...[
-                          Center(child: SizedBox.square(dimension: 220, child: Container(
+                          Center(child: SizedBox(width: double.infinity, height: 260, child: Container(
                             
                                                         decoration: BoxDecoration(
                               color: theme.cardColor,
@@ -1326,14 +1367,17 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.cover, size: 40),
+                              child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.contain, size: 40),
                             ),
                           ))),
                           const SizedBox(height: 24),
                         ],
 
                         Text(
-                          currentQuestion.questionText,
+                          // Camera spell: don't give away the number ("...sign? 100").
+                          _isCameraQuestion(currentQuestion)
+                              ? currentQuestion.questionText.replaceFirst(RegExp(r'\?\s*\d+\s*$'), '?')
+                              : currentQuestion.questionText,
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: textColor),
                           textAlign: TextAlign.center,
                         ),
@@ -1409,10 +1453,21 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                                   style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.3),
                                 ),
                                 const SizedBox(height: 2),
-                                if (_isCorrect)
+                                // No answer line where the answer is not something to read:
+                                // sequence / matching (shown on the pieces), camera signs,
+                                // and placeholders like "_" / SEQUENCE_SET.
+                                if (_isCorrect ||
+                                    const {'sequence_order', 'matching_type'}.contains(currentQuestion.type) ||
+                                    _isCameraQuestion(currentQuestion) ||
+                                    (!isImageAnswer && !isVideoAnswer && (shownAnswer.contains('_') || shownAnswer.trim().isEmpty)))
                                   Text(
                                     feedbackData['subtitle'] as String,
                                     style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                                  )
+                                else if (isVideoAnswer)
+                                  const Text(
+                                    "Correct answer: the sign marked green",
+                                    style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
                                   )
                                 else if (isImageAnswer)
                                   Row(
@@ -1426,13 +1481,13 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                                         width: 28,
                                         padding: const EdgeInsets.all(2),
                                         decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                                        child: _buildImageWidget(currentQuestion.correctAnswer, fit: BoxFit.cover, size: 24),
+                                        child: _buildImageWidget(shownAnswer, fit: BoxFit.contain, size: 24),
                                       ),
                                     ],
                                   )
                                 else
                                   Text(
-                                    "Correct Answer: ${currentQuestion.correctAnswer}",
+                                    "Correct Answer: $shownAnswer",
                                     style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
                                   ),
                               ],
@@ -1489,14 +1544,65 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   Widget _buildFillInBlankLayout(QuizQuestion currentQuestion, ThemeData theme) {
+    final mediaOptions = currentQuestion.options.any(_isMatchMedia);
+    final answer = currentQuestion.blankAnswer.isNotEmpty ? currentQuestion.blankAnswer : currentQuestion.correctAnswer;
+    // The sentence repeats the question when its picture already shows it.
+    final showSentence = currentQuestion.imageUrl.isEmpty && currentQuestion.correctAnswer.trim().isNotEmpty;
     String displayedText = currentQuestion.correctAnswer;
-    if (_selectedAnswer != null && displayedText.contains('_')) {
+    if (_selectedAnswer != null && displayedText.contains('_') && !_isMatchMedia(_selectedAnswer!)) {
       displayedText = displayedText.replaceFirst('_', _selectedAnswer!);
+    }
+
+    if (mediaOptions) {
+      // Sign videos / pictures as options: 2 per row, tap the tile to pick.
+      final w = MediaQuery.of(context).size.width;
+      final tile = ((w - 48 - 14) / 2).clamp(120.0, 220.0);
+      return Column(
+        children: [
+          if (showSentence) ...[
+            Text(displayedText.replaceAll(RegExp(r'_+'), '___'),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+            const SizedBox(height: 20),
+          ],
+          Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
+            children: currentQuestion.options.map((option) {
+              final isSelected = _selectedAnswer == option;
+              final isRight = option == answer;
+              Color border = isSelected ? theme.primaryColor : theme.dividerColor;
+              if (_isAnswered && isRight) border = const Color(0xFF58CC02);
+              if (_isAnswered && isSelected && !isRight) border = const Color(0xFFEA2B2B);
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _handleOptionSelected(option),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: tile,
+                  height: tile,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: isSelected ? theme.primaryColor.withValues(alpha: 0.2) : theme.cardColor,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: border, width: isSelected || (_isAnswered && isRight) ? 4 : 2),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: _buildImageWidget(option, fit: BoxFit.contain, size: 40, fallbackText: option),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      );
     }
 
     return Column(
       children: [
-        Container(
+        if (showSentence) Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           decoration: BoxDecoration(
             color: theme.cardColor,
@@ -1540,7 +1646,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
   }
 
   Widget _buildSequenceLayout(QuizQuestion currentQuestion, ThemeData theme) {
-    Widget content(String o) => _isMatchMedia(o) ? _buildImageWidget(o, fit: BoxFit.cover, size: 40, fallbackText: o) : Text(o);
+    Widget content(String o) => _isMatchMedia(o) ? _buildImageWidget(o, fit: BoxFit.contain, size: 40, fallbackText: o) : Text(o);
     return Column(
       children: [
         const Text("Tap the pieces in the correct order:", style: TextStyle(fontWeight: FontWeight.w600)),
@@ -1564,12 +1670,39 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                   isMedia: _isMatchMedia(_currentSequence[pos]),
                   placed: true,
                   order: pos + 1,
-                  onTap: () => _removeFromSequence(_currentSequence[pos]),
+                  // After CHECK: green in the right place, red if not.
+                  border: !_isAnswered
+                      ? null
+                      : (pos < currentQuestion.options.length && _currentSequence[pos] == currentQuestion.options[pos]
+                          ? const Color(0xFF58CC02)
+                          : const Color(0xFFEA2B2B)),
+                  onTap: _isAnswered ? null : () => _removeFromSequence(_currentSequence[pos]),
                   child: content(_currentSequence[pos]),
                 ),
             ],
           ),
         ),
+        // After CHECK, a wrong order: the right one, numbered, in green.
+        if (_isAnswered && !_isCorrect) ...[
+          const SizedBox(height: 16),
+          const Text('Correct order:', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF58CC02))),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
+            children: [
+              for (var pos = 0; pos < currentQuestion.options.length; pos++)
+                SequencePiece(
+                  isMedia: _isMatchMedia(currentQuestion.options[pos]),
+                  placed: true,
+                  order: pos + 1,
+                  border: const Color(0xFF58CC02),
+                  child: content(currentQuestion.options[pos]),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 24),
         Wrap(
           spacing: 12,
@@ -1627,8 +1760,13 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
 
     // Same tile size in both columns: all square when either has media.
     final anyMedia = [...leftItems, ...rightItems].any(_isMatchMedia);
+    // After CHECK: each correct pair gets its own border color (left item and
+    // its right answer), the fill says whether the learner matched it right.
+    const pairColors = [Color(0xFF4DD0E1), Color(0xFFFFB74D), Color(0xFFBA68C8), Color(0xFFAED581), Color(0xFFFF8A80), Color(0xFF90CAF9)];
+    Color colorOf(int leftIndex) => pairColors[leftIndex % pairColors.length];
+    const green = Color(0xFF58CC02), red = Color(0xFFEA2B2B);
     Widget content(String item) => _isMatchMedia(item)
-        ? _buildImageWidget(item, fit: BoxFit.cover, size: 40, fallbackText: item)
+        ? _buildImageWidget(item, fit: BoxFit.contain, size: 40, fallbackText: item)
         : Text(item, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface));
 
     return Column(
@@ -1645,10 +1783,20 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
             Expanded(
               child: Column(
                 children: [
-                  for (final item in leftItems)
+                  for (var li = 0; li < leftItems.length; li++)
                     () {
+                      final item = leftItems[li];
                       final isSelected = _selectedLeftMatch == item;
                       final isMatched = _matchingAnswers[item] != null;
+                      if (_isAnswered) {
+                        return _MatchTile(
+                          isMedia: _isMatchMedia(item),
+                          square: anyMedia,
+                          fill: (_matchingAnswers[item] == rightItems[li] ? green : red).withValues(alpha: 0.22),
+                          border: colorOf(li),
+                          child: content(item),
+                        );
+                      }
                       return _MatchTile(
                         isMedia: _isMatchMedia(item),
                         square: anyMedia,
@@ -1673,6 +1821,22 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                       final used = _matchingAnswers.values.where((v) => v == item).length;
                       final k = [for (var j = 0; j < ri; j++) if (_matchingRightOrder[j] == item) j].length;
                       final isMatched = k < used;
+                      if (_isAnswered) {
+                        // The left item this tile really belongs to (k-th one when
+                        // the same answer is there more than once).
+                        final rightful = [for (var j = 0; j < leftItems.length; j++) if (rightItems[j] == item) j];
+                        final belongs = k < rightful.length ? rightful[k] : null;
+                        final owners = [for (final e in _matchingAnswers.entries) if (e.value == item) e.key];
+                        final owner = k < owners.length ? owners[k] : null;
+                        final ok = owner != null && rightItems[leftItems.indexOf(owner)] == item;
+                        return _MatchTile(
+                          isMedia: _isMatchMedia(item),
+                          square: anyMedia,
+                          fill: (ok ? green : red).withValues(alpha: 0.22),
+                          border: belongs == null ? theme.dividerColor : colorOf(belongs),
+                          child: content(item),
+                        );
+                      }
                       return _MatchTile(
                         isMedia: _isMatchMedia(item),
                         square: anyMedia,
@@ -1786,7 +1950,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
             child: isImageOption
                 ? Padding(
                     padding: const EdgeInsets.all(2.0),
-                    child: ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: _buildImageWidget(option, fit: BoxFit.cover, size: 24, fallbackText: option))),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: _buildImageWidget(option, fit: BoxFit.contain, size: 24, fallbackText: option))),
                   )
                 : Text(
                     option,
@@ -1827,7 +1991,7 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                     ? Padding(
                         padding: const EdgeInsets.all(4.0),
                         child: givenItem.image.isNotEmpty
-                            ? _buildImageWidget(givenItem.image, fit: BoxFit.cover, size: 22, fallbackText: char)
+                            ? _buildImageWidget(givenItem.image, fit: BoxFit.contain, size: 22, fallbackText: char)
                             : Text(
                                 char,
                                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
@@ -1867,8 +2031,8 @@ class _EasyNumActMcState extends State<EasyNumActMc> with SingleTickerProviderSt
                   child: Padding(
                     padding: const EdgeInsets.all(6.0),
                     child: optionValue.startsWith('data:image') || optionValue.contains('/') || optionValue.contains('.')
-                        ? _buildImageWidget(optionValue, fit: BoxFit.cover, size: 24, fallbackText: optionValue)
-                        : _buildImageWidget('$optionValue.jpg', fit: BoxFit.cover, size: 30, fallbackText: optionValue),
+                        ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24, fallbackText: optionValue)
+                        : _buildImageWidget('$optionValue.jpg', fit: BoxFit.contain, size: 30, fallbackText: optionValue),
                   ),
                 ),
               ),
@@ -1972,7 +2136,8 @@ class _MatchTile extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          height: sq ? null : 64,
+          // Text tiles grow with long answers (phrases) instead of cutting them.
+          constraints: sq ? null : const BoxConstraints(minHeight: 64),
           padding: EdgeInsets.all(sq ? 3 : 8),
           decoration: BoxDecoration(
             color: fill,

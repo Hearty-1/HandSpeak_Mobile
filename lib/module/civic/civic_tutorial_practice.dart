@@ -1158,15 +1158,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 height: 1.15,
               ),
             ),
-            if ('${currentItem['instruction'] ?? ''}'.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                '${currentItem['instruction']}',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.7), fontStyle: FontStyle.italic),
-              ),
-            ],
             const SizedBox(height: 12),
             SizedBox(
               width: screenWidth * 0.60,
@@ -1186,7 +1177,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                         : _isImageLoading
                         ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
                         : _templateImageBytes != null
-                            ? Image.memory(_templateImageBytes!, fit: BoxFit.cover)
+                            ? Image.memory(_templateImageBytes!, fit: BoxFit.contain)
                             : Container(
                                 color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
                                 child: Icon(visuals.ambientIcon1, color: Colors.grey, size: 50),
@@ -1196,8 +1187,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               ),
             ),
             const SizedBox(height: 24),
-            // Same camera size as the civic tutorial (220 x 220).
-            if (!landscape) SizedBox(width: 220, height: 220, child: cameraPane),
+            // Same camera size as every category: a square 60% of the screen width.
+            if (!landscape) SizedBox(width: _side, height: _side, child: cameraPane),
             const SizedBox(height: 16),
             if (_isSuccessAchieved)
               ClipRRect(
@@ -1255,7 +1246,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 bodyVisible: _poseVisible,
                 showButton: _isInitialized,
                 onRecord: _toggleRecording,
-                width: 220,
+                width: _side,
               ),
               const SizedBox(height: 16),
               PracticeFeedback(message: _currentFeedback, tone: _feedbackTone),
@@ -1353,7 +1344,11 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (widget.continuous) return _buildContinuousUI(theme);
-    if (widget.embedded) return _buildEmbeddedUI(theme);
+    // Scrolls if the space is short (challenge questions): the status line
+    // grows while recording.
+    if (widget.embedded) {
+      return SingleChildScrollView(physics: const BouncingScrollPhysics(), child: _buildEmbeddedUI(theme));
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -1466,6 +1461,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     );
   }
 
+  /// Demo and camera size, the same as every category's practice: a square
+  /// 60% of the screen width.
+  double get _side => MediaQuery.sizeOf(context).width * 0.60;
+
   Widget _buildPracticeUI(ThemeData theme) {
     bool isPassing = _currentScore >= successThreshold;
     final currentItem = _activeQuestions[_currentStep];
@@ -1521,23 +1520,12 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
           ),
-          if (currentItem['instruction'] != null && currentItem['instruction'].toString().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                currentItem['instruction'],
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withValues(alpha: 0.8), fontStyle: FontStyle.italic),
-              ),
-            ),
-          ],
           const SizedBox(height: 16),
 
-          // Reference Image
+          // Reference video / picture: same square as the camera (all categories).
           SizedBox(
-            width: 220,
-            height: 220,
+            width: _side,
+            height: _side,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: _lineVideo(currentItem).isNotEmpty
@@ -1545,7 +1533,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 : _isImageLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _templateImageBytes != null
-                    ? Image.memory(_templateImageBytes!, fit: BoxFit.cover)
+                    ? Image.memory(_templateImageBytes!, fit: BoxFit.contain)
                     : Container(
                         color: Colors.grey.shade300,
                         child: const Icon(Icons.image, size: 50, color: Colors.grey),
@@ -1555,7 +1543,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           const SizedBox(height: 20),
 
           // Camera Preview Box with Dynamic Success Highlight
-          if (!landscape) SizedBox(width: 220, height: 220, child: cameraPane),
+          if (!landscape) SizedBox(width: _side, height: _side, child: cameraPane),
           const SizedBox(height: 8),
           _RecordControls(
             heroTag: 'civic_record_button',
@@ -1567,7 +1555,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             bodyVisible: _poseVisible,
             showButton: _isInitialized && !_isSuccessAchieved,
             onRecord: _toggleRecording,
-            width: 220,
+            width: _side,
           ),
           const SizedBox(height: 16),
           PracticeFeedback(message: _currentFeedback, tone: _feedbackTone),

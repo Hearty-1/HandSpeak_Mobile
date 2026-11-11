@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import '/services/activity_log.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -61,6 +62,14 @@ class AuthService {
     } catch (e) {
       debugPrint("Failed to log activity: $e");
     }
+    final (type, cat) = switch (action) {
+      'Account Created' => ('auth.signup', ActivityCategory.auth),
+      'User Logged In' => ('auth.login', ActivityCategory.auth),
+      'User Logged Out' => ('auth.logout', ActivityCategory.auth),
+      'Google Linked' => ('account.google_linked', ActivityCategory.account),
+      _ => ('account.${action.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_')}', ActivityCategory.account),
+    };
+    await ActivityLog.instance.log(type, category: cat, title: action, details: {'description': description}, uid: uid);
   }
 
   // --- PUBLIC DEVICE HISTORY HELPER ---

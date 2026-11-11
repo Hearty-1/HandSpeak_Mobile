@@ -602,6 +602,18 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
 
   /// A camera answer (PublishedCameraSign): graded like CHECK. A sign the
   /// category's model cannot check yet is skipped, without losing a heart.
+  /// This play's answers (activity_attempts.answers) and start time.
+  final List<Map<String, dynamic>> _answerLog = [];
+  final DateTime _playStartedAt = DateTime.now();
+
+  void _logAnswer(_Question q, bool correct, String chosen) => _answerLog.add({
+        'questionId': q.id,
+        'type': q.isCamera ? 'camera' : q.type,
+        'sign': q.type == _QType.fillInTheBlank && q.blankAnswer.trim().isNotEmpty ? q.blankAnswer : q.correctAnswer,
+        'chosen': chosen,
+        'correct': correct,
+      });
+
   void _answerCamera(ChallengeSignResult r) {
     if (_isAnswered) return;
     if (r.skipped) {
@@ -610,6 +622,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
     }
     final correct = r.correct;
     final q = _questions[_currentIndex];
+    _logAnswer(q, correct, correct ? q.correctAnswer : (r.predicted ?? ''));
     // gesture_attempts, like the alphabet / numbers camera levels.
     _progress
         .recordGestureAttempt(
@@ -637,6 +650,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
   void _check() {
     if (_isAnswered || !_answer.isReady) return;
     final correct = _answer.grade();
+    _logAnswer(_questions[_currentIndex], correct, _answer.chosen());
     final sound = Provider.of<SoundProvider>(context, listen: false);
     correct ? sound.playCorrect() : sound.playIncorrect();
     FocusScope.of(context).unfocus();
@@ -661,7 +675,16 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
     if (_finished) return;
     _finished = true;
     _progress
-        .recordActivityAttempt(levelId: widget.levelId, category: widget.category, isCompleted: false, starsEarned: 0)
+        .recordActivityAttempt(
+          levelId: widget.levelId,
+          category: widget.category,
+          isCompleted: false,
+          starsEarned: 0,
+          heartsLeft: 0,
+          totalQuestions: _questions.length,
+          startedAt: _playStartedAt,
+          answers: _answerLog,
+        )
         .catchError((e) => debugPrint('Error saving ${widget.category} activity attempt: $e'));
     Provider.of<SoundProvider>(context, listen: false).playGameOver();
     showDialog(
@@ -709,6 +732,10 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
         category: widget.category,
         isCompleted: true,
         starsEarned: _starsEarned,
+        heartsLeft: _hearts,
+        totalQuestions: _questions.length,
+        startedAt: _playStartedAt,
+        answers: _answerLog,
       );
       // Best stars per level (the activity map reads progress.<levelId> as
       // stars); fixed XP per new star, small repeat XP (xp_rewards.dart).
@@ -797,19 +824,24 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
                   // Same as the Alphabet / Numbers camera levels: the question,
                   // its picture / video if any, then the square camera.
                   Text(
-                    q.questionText.trim().isNotEmpty ? q.questionText : 'Sign "${q.correctAnswer}" to the camera.',
+                    q.questionText.trim().isNotEmpty ? questionWithoutAnswer(q.questionText, q.correctAnswer) : 'Sign "${q.correctAnswer}" to the camera.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: theme.colorScheme.onSurface),
                   ),
                   if (q.videoUrl.isNotEmpty || q.imageUrl.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Center(
-                      child: SizedBox.square(
-                        dimension: 160,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
-                          child: _Media(source: q.videoUrl.isNotEmpty ? q.videoUrl : q.imageUrl, iconSize: 40),
-                        ),
+                    // Full width, whole picture / video visible (not cropped).
+                    Container(
+                      width: double.infinity,
+                      height: 260,
+                      decoration: BoxDecoration(
+                        color: theme.cardColor,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: theme.dividerColor),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(17),
+                        child: _Media(source: q.videoUrl.isNotEmpty ? q.videoUrl : q.imageUrl, iconSize: 40, fit: BoxFit.contain),
                       ),
                     ),
                   ],
@@ -969,9 +1001,17 @@ class _AnswerController extends ChangeNotifier {
 
   bool get isReady => _ready;
 
+  String Function()? _chooser;
+
   bool grade() => _grader?.call() ?? false;
 
-  void _attach(bool Function() grader) => _grader = grader;
+  /// What the student gave (activity_attempts.answers[].chosen).
+  String chosen() => _chooser?.call() ?? '';
+
+  void _attach(bool Function() grader, String Function() chooser) {
+    _grader = grader;
+    _chooser = chooser;
+  }
 
   void _setReady(bool ready) {
     if (_ready == ready) return;
@@ -981,6 +1021,7 @@ class _AnswerController extends ChangeNotifier {
 
   void reset() {
     _grader = null;
+    _chooser = null;
     _ready = false;
     notifyListeners();
   }
@@ -1007,15 +1048,19 @@ class _QuestionView extends StatefulWidget {
   /// The correct answer as text for the feedback ('' when it is a picture).
   static String answerLabel(_Question q) {
     switch (q.type) {
+      // Shown on the pieces / pairs themselves (border colors), or the sign
+      // itself (camera): no answer line.
       case _QType.sequenceOrder:
-        final parts = q.sequenceAnswer;
-        return parts.any(_Media.isMedia) ? '' : parts.join(' → ');
       case _QType.matching:
+      case _QType.camera:
         return '';
       case _QType.fillInTheBlank when q.blankAnswer.trim().isNotEmpty:
         return _Media.isMedia(q.blankAnswer) ? '' : q.blankAnswer;
       default:
-        return _Media.isMedia(q.correctAnswer) ? '' : q.correctAnswer;
+        final a = q.correctAnswer.trim();
+        // Placeholders ("_", "SEQUENCE_SET") are not an answer to show.
+        if (_Media.isMedia(a) || a.contains('_') || a.isEmpty) return '';
+        return a;
     }
   }
 
@@ -1063,7 +1108,7 @@ class _QuestionViewState extends State<_QuestionView> {
     _leftItems = pairs.keys.toList();
     _rightItems = pairs.values.toList()..shuffle();
     if (q.type == _QType.typing) _setupTyping();
-    widget.controller._attach(_grade);
+    widget.controller._attach(_grade, _chosen);
     WidgetsBinding.instance.addPostFrameCallback((_) => _notifyReady());
   }
 
@@ -1186,6 +1231,14 @@ class _QuestionViewState extends State<_QuestionView> {
     return _same(display.replaceFirst(RegExp(r'_+'), picked), answer) || _same(picked, answer);
   }
 
+  String _chosen() => switch (q.type) {
+        _QType.typing => _slots.map((e) => e ?? '').join(),
+        _QType.identification => _textController.text.trim(),
+        _QType.sequenceOrder => [for (final i in _sequence) _sequencePool[i]].join(' > '),
+        _QType.matching => _matches.entries.map((e) => '${e.key} = ${e.value}').join('; '),
+        _ => _selected ?? '',
+      };
+
   bool _grade() {
     switch (q.type) {
       case _QType.typing:
@@ -1242,7 +1295,7 @@ class _QuestionViewState extends State<_QuestionView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (q.videoUrl.isNotEmpty || q.imageUrl.isNotEmpty) ...[
-          Center(child: SizedBox.square(dimension: 220, child: Container(
+          Center(child: SizedBox(width: double.infinity, height: 260, child: Container(
             
             decoration: BoxDecoration(
               color: theme.cardColor,
@@ -1359,7 +1412,12 @@ class _QuestionViewState extends State<_QuestionView> {
       children: [
         for (var i = 0; i < _choices.length; i++) ...[
           if (i > 0) const SizedBox(width: 14),
-          Expanded(child: SizedBox(height: 80, child: _choiceTile(_choices[i], theme))),
+          // Picture / video options are square (1:1); text stays a short button.
+          Expanded(
+            child: _choices.any(_Media.isMedia)
+                ? AspectRatio(aspectRatio: 1, child: _choiceTile(_choices[i], theme))
+                : SizedBox(height: 80, child: _choiceTile(_choices[i], theme)),
+          ),
         ],
       ],
     );
@@ -1372,7 +1430,8 @@ class _QuestionViewState extends State<_QuestionView> {
     }
     return Column(
       children: [
-        if (display.isNotEmpty) ...[
+        // The sentence repeats the question when its picture / video shows it.
+        if (display.isNotEmpty && q.imageUrl.isEmpty && q.videoUrl.isEmpty) ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             decoration: BoxDecoration(
@@ -1498,7 +1557,7 @@ class _QuestionViewState extends State<_QuestionView> {
       placed: placed,
       order: order,
       border: border,
-      child: media ? _Media(source: value, fit: BoxFit.cover) : Text(value),
+      child: media ? _Media(source: value, fit: BoxFit.contain) : Text(value),
     );
   }
 
@@ -1546,6 +1605,21 @@ class _QuestionViewState extends State<_QuestionView> {
             ],
           ),
         ),
+        // After CHECK, a wrong order: the right one, numbered, in green.
+        if (_locked && !_grade() && answer.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text('Correct order:', style: TextStyle(fontWeight: FontWeight.w800, color: _green)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
+            children: [
+              for (var pos = 0; pos < answer.length; pos++)
+                _sequenceChip(answer[pos], theme, placed: true, order: pos + 1, border: _green),
+            ],
+          ),
+        ],
         const SizedBox(height: 20),
         Wrap(
           spacing: 12,
@@ -1580,7 +1654,7 @@ class _QuestionViewState extends State<_QuestionView> {
       border: border,
       onTap: onTap,
       child: media
-          ? _Media(source: item, iconSize: 32, fit: BoxFit.cover)
+          ? _Media(source: item, iconSize: 32, fit: BoxFit.contain)
           : Text(item, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
     );
   }
@@ -1611,8 +1685,13 @@ class _QuestionViewState extends State<_QuestionView> {
                       final picked = _pickedLeft == left;
                       Color border = picked ? theme.primaryColor : theme.dividerColor;
                       Color fill = picked ? theme.primaryColor.withValues(alpha: 0.25) : theme.cardColor;
-                      if (matched) {
-                        border = _locked ? (_matches[left] == pairs[left] ? _green : _red) : colorOf(left);
+                      if (_locked) {
+                        // Border: this pair's color (its right answer has it too);
+                        // fill: green if matched right, red if not.
+                        border = colorOf(left);
+                        fill = (_matches[left] == pairs[left] ? _green : _red).withValues(alpha: 0.22);
+                      } else if (matched) {
+                        border = colorOf(left);
                         fill = border.withValues(alpha: 0.18);
                       }
                       return _matchTile(left, theme, fill: fill, border: border, onTap: _locked
@@ -1648,8 +1727,15 @@ class _QuestionViewState extends State<_QuestionView> {
                       final owner = k < owners.length ? owners[k] : null;
                       Color border = theme.dividerColor;
                       Color fill = theme.cardColor;
-                      if (owner != null) {
-                        border = _locked ? (pairs[owner] == right ? _green : _red) : colorOf(owner);
+                      if (_locked) {
+                        // The left item this tile really belongs to (k-th one
+                        // when the same answer is there more than once).
+                        final rightful = [for (final l in _leftItems) if (pairs[l] == right) l];
+                        final belongs = k < rightful.length ? rightful[k] : null;
+                        if (belongs != null) border = colorOf(belongs);
+                        fill = (owner != null && pairs[owner] == right ? _green : _red).withValues(alpha: 0.22);
+                      } else if (owner != null) {
+                        border = colorOf(owner);
                         fill = border.withValues(alpha: 0.18);
                       }
                       return _matchTile(right, theme, fill: fill, border: border, onTap: (_locked || owner != null || _pickedLeft == null)
@@ -1701,7 +1787,7 @@ class _Media extends StatelessWidget {
   final double iconSize;
   final Widget? fallback;
 
-  const _Media({required this.source, this.iconSize = 24, this.fallback, this.fit = BoxFit.cover});
+  const _Media({required this.source, this.iconSize = 24, this.fallback, this.fit = BoxFit.contain});
 
   static final RegExp _imageExt = RegExp(r'\.(png|jpe?g|webp|gif)$', caseSensitive: false);
   static final RegExp _videoExt = RegExp(r'\.(mp4|mov|webm|m4v)$', caseSensitive: false);
@@ -2219,7 +2305,8 @@ class _MatchTile extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          height: sq ? null : 64,
+          // Text tiles grow with long answers (phrases) instead of cutting them.
+          constraints: sq ? null : const BoxConstraints(minHeight: 64),
           padding: EdgeInsets.all(sq ? 3 : 8),
           decoration: BoxDecoration(
             color: fill,

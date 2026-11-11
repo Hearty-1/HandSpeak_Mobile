@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '/services/performance_monitor.dart';
+
 /// The student's avatar on the activity map, on top of the level they are
 /// up to (the furthest unlocked level), so the map shows where they are as
 /// they progress. It hops on the node (a jump, a squash on landing and a
@@ -25,10 +27,28 @@ class LevelAvatar extends StatefulWidget {
 }
 
 class _LevelAvatarState extends State<LevelAvatar> with SingleTickerProviderStateMixin {
-  late final AnimationController _hop = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
+  late final AnimationController _hop = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+
+  // Light mode (slow phone, PerformanceSettings): the avatar stands still (no endless animation).
+  void _apply() {
+    if (PerformanceSettings.on) {
+      _hop.stop();
+      _hop.value = 0;
+    } else if (!_hop.isAnimating) {
+      _hop.repeat();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _apply();
+    PerformanceSettings.reduceEffects.addListener(_apply);
+  }
 
   @override
   void dispose() {
+    PerformanceSettings.reduceEffects.removeListener(_apply);
     _hop.dispose();
     super.dispose();
   }

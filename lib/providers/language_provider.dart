@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '/services/activity_log.dart';
 
 /// App language: English (default) or Filipino.
 ///
@@ -111,6 +112,10 @@ class LanguageProvider extends ChangeNotifier {
     _apply(code);
     await _saveLocal(code);
     await _saveToAccount(code);
+    await ActivityLog.instance.log('account.language_changed',
+        category: ActivityCategory.account,
+        title: code == 'fil' || code == 'tl' ? 'Changed language to Filipino' : 'Changed language to English',
+        details: {'language': code});
   }
 
   @override

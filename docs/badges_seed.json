@@ -1,0 +1,333 @@
+{
+  "first_sign": {
+    "title": "First Sign",
+    "description": "Complete your very first lesson.",
+    "category": "learning",
+    "metric": "xp",
+    "target": 50,
+    "color": "#448AFF",
+    "order": 1,
+    "active": true
+  },
+  "alphabet_explorer": {
+    "title": "Alphabet Explorer",
+    "description": "Complete 5 Alphabet levels.",
+    "category": "learning",
+    "metric": "alphabet_levels",
+    "target": 5,
+    "color": "#42A5F5",
+    "order": 2,
+    "active": true,
+    "icon": "abc"
+  },
+  "number_navigator": {
+    "title": "Number Navigator",
+    "description": "Complete 5 Numbers levels.",
+    "category": "learning",
+    "metric": "numbers_levels",
+    "target": 5,
+    "color": "#26C6DA",
+    "order": 3,
+    "active": true,
+    "icon": "pin"
+  },
+  "phrase_speaker": {
+    "title": "Phrase Speaker",
+    "description": "Complete 5 Greetings levels.",
+    "category": "learning",
+    "metric": "phrases_levels",
+    "target": 5,
+    "color": "#66BB6A",
+    "order": 4,
+    "active": true,
+    "icon": "chat_bubble"
+  },
+  "civic_champion": {
+    "title": "Civic Champion",
+    "description": "Complete 5 Civic levels.",
+    "category": "learning",
+    "metric": "civic_levels",
+    "target": 5,
+    "color": "#EF5350",
+    "order": 5,
+    "active": true,
+    "icon": "flag"
+  },
+  "well_rounded": {
+    "title": "Well-Rounded",
+    "description": "Complete a level in all 4 categories.",
+    "category": "learning",
+    "metric": "categories_tried",
+    "target": 4,
+    "color": "#7E57C2",
+    "order": 6,
+    "active": true,
+    "icon": "public"
+  },
+  "hard_hitter": {
+    "title": "Hard Hitter",
+    "description": "Complete your first Hard level.",
+    "category": "learning",
+    "metric": "hard_levels",
+    "target": 1,
+    "color": "#FF7043",
+    "order": 7,
+    "active": true,
+    "icon": "terrain"
+  },
+  "summit_seeker": {
+    "title": "Summit Seeker",
+    "description": "Complete 10 Hard levels.",
+    "category": "learning",
+    "metric": "hard_levels",
+    "target": 10,
+    "color": "#D84315",
+    "order": 8,
+    "active": true,
+    "icon": "landscape"
+  },
+  "star_scholar": {
+    "title": "Star Scholar",
+    "description": "Collect 10 total stars from modules.",
+    "category": "mastery",
+    "metric": "stars",
+    "target": 10,
+    "color": "#FFC107",
+    "order": 9,
+    "active": true
+  },
+  "star_collector": {
+    "title": "Star Collector",
+    "description": "Collect 50 total stars.",
+    "category": "mastery",
+    "metric": "stars",
+    "target": 50,
+    "color": "#FFB300",
+    "order": 10,
+    "active": true,
+    "icon": "stars"
+  },
+  "constellation": {
+    "title": "Constellation",
+    "description": "Collect 150 total stars.",
+    "category": "mastery",
+    "metric": "stars",
+    "target": 150,
+    "color": "#FFA000",
+    "order": 11,
+    "active": true,
+    "icon": "auto_awesome"
+  },
+  "perfectionist": {
+    "title": "Perfectionist",
+    "description": "Achieve a perfect score on 5 lessons.",
+    "category": "mastery",
+    "metric": "perfect_scores",
+    "target": 5,
+    "color": "#4CAF50",
+    "order": 12,
+    "active": true
+  },
+  "triple_threat": {
+    "title": "Triple Threat",
+    "description": "Finish 10 levels with 3 stars.",
+    "category": "mastery",
+    "metric": "three_star_levels",
+    "target": 10,
+    "color": "#43A047",
+    "order": 13,
+    "active": true,
+    "icon": "military_tech"
+  },
+  "flawless": {
+    "title": "Flawless",
+    "description": "Finish 25 levels with 3 stars.",
+    "category": "mastery",
+    "metric": "three_star_levels",
+    "target": 25,
+    "color": "#2E7D32",
+    "order": 14,
+    "active": true,
+    "icon": "diamond"
+  },
+  "rising_star": {
+    "title": "Rising Star",
+    "description": "Earn 250 XP.",
+    "category": "mastery",
+    "metric": "xp",
+    "target": 250,
+    "color": "#AB47BC",
+    "order": 15,
+    "active": true,
+    "icon": "trending_up"
+  },
+  "sign_master": {
+    "title": "Sign Master",
+    "description": "Earn 1,000 XP through lessons and arenas.",
+    "category": "mastery",
+    "metric": "xp",
+    "target": 1000,
+    "color": "#E040FB",
+    "order": 16,
+    "active": true
+  },
+  "grandmaster": {
+    "title": "Grandmaster",
+    "description": "Earn 5,000 XP.",
+    "category": "mastery",
+    "metric": "xp",
+    "target": 5000,
+    "color": "#6A1B9A",
+    "order": 17,
+    "active": true
+  },
+  "spark": {
+    "title": "Spark",
+    "description": "Keep a 3-day learning streak.",
+    "category": "consistency",
+    "metric": "streak",
+    "target": 3,
+    "color": "#FFA726",
+    "order": 18,
+    "active": true,
+    "icon": "bolt"
+  },
+  "streak_keeper": {
+    "title": "Streak Keeper",
+    "description": "Maintain a 7-day learning streak.",
+    "category": "consistency",
+    "metric": "streak",
+    "target": 7,
+    "color": "#FF5722",
+    "order": 19,
+    "active": true
+  },
+  "fortnight_flame": {
+    "title": "Fortnight Flame",
+    "description": "Keep a 14-day learning streak.",
+    "category": "consistency",
+    "metric": "streak",
+    "target": 14,
+    "color": "#F4511E",
+    "order": 20,
+    "active": true,
+    "icon": "whatshot"
+  },
+  "unstoppable": {
+    "title": "Unstoppable",
+    "description": "Keep a 30-day learning streak.",
+    "category": "consistency",
+    "metric": "streak",
+    "target": 30,
+    "color": "#BF360C",
+    "order": 21,
+    "active": true,
+    "icon": "local_fire_department"
+  },
+  "first_duel": {
+    "title": "First Duel",
+    "description": "Complete your first Solo Challenge.",
+    "category": "arena",
+    "metric": "solo_challenges",
+    "target": 1,
+    "color": "#E57373",
+    "order": 22,
+    "active": true,
+    "icon": "sports_martial_arts"
+  },
+  "challenger": {
+    "title": "Challenger",
+    "description": "Complete 10 Solo Challenges.",
+    "category": "arena",
+    "metric": "solo_challenges",
+    "target": 10,
+    "color": "#FF5252",
+    "order": 23,
+    "active": true
+  },
+  "arena_veteran": {
+    "title": "Arena Veteran",
+    "description": "Play 50 Arena games.",
+    "category": "arena",
+    "metric": "games_played",
+    "target": 50,
+    "color": "#C62828",
+    "order": 24,
+    "active": true,
+    "icon": "shield"
+  },
+  "sharp_eye": {
+    "title": "Sharp Eye",
+    "description": "Answer 100 Arena questions correctly.",
+    "category": "arena",
+    "metric": "correct_answers",
+    "target": 100,
+    "color": "#EC407A",
+    "order": 25,
+    "active": true,
+    "icon": "gps_fixed"
+  },
+  "friendly_hand": {
+    "title": "Friendly Hand",
+    "description": "Follow your first classmate.",
+    "category": "social",
+    "metric": "following",
+    "target": 1,
+    "color": "#4DB6AC",
+    "order": 26,
+    "active": true,
+    "icon": "waving_hand"
+  },
+  "socialite": {
+    "title": "Socialite",
+    "description": "Connect with 10 other students.",
+    "category": "social",
+    "metric": "followers",
+    "target": 10,
+    "color": "#009688",
+    "order": 27,
+    "active": true
+  },
+  "community_star": {
+    "title": "Community Star",
+    "description": "Have 25 followers.",
+    "category": "social",
+    "metric": "followers",
+    "target": 25,
+    "color": "#00796B",
+    "order": 28,
+    "active": true,
+    "icon": "groups"
+  },
+  "quest_starter": {
+    "title": "Quest Starter",
+    "description": "Complete your first daily quest.",
+    "category": "quests",
+    "metric": "quests_completed",
+    "target": 1,
+    "color": "#29B6F6",
+    "order": 29,
+    "active": true,
+    "icon": "flag_circle"
+  },
+  "quest_master": {
+    "title": "Quest Master",
+    "description": "Complete 25 daily quests.",
+    "category": "quests",
+    "metric": "quests_completed",
+    "target": 25,
+    "color": "#FFC107",
+    "order": 30,
+    "active": true
+  },
+  "quest_legend": {
+    "title": "Quest Legend",
+    "description": "Complete 50 daily quests.",
+    "category": "quests",
+    "metric": "quests_completed",
+    "target": 50,
+    "color": "#FF8F00",
+    "order": 31,
+    "active": true
+  }
+}

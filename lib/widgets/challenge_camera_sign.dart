@@ -53,7 +53,15 @@ class ChallengeCameraSign extends StatefulWidget {
   final bool enabled;
   final ValueChanged<ChallengeSignResult> onResult;
 
-  const ChallengeCameraSign({super.key, required this.sign, required this.onResult, this.enabled = true});
+  /// A new value starts a new try of the same sign with the same camera
+  /// (practice TRY AGAIN), without restarting the camera and hand tracker.
+  final int attempt;
+
+  /// Seconds of "get ready" before a moving sign is recorded (0 in the timed
+  /// challenges: recording starts at once).
+  final int countdown;
+
+  const ChallengeCameraSign({super.key, required this.sign, required this.onResult, this.enabled = true, this.attempt = 0, this.countdown = 3});
 
   /// Numbers 11-100 and J / Z are signed with movement.
   static bool isDynamicSign(String sign) {
@@ -82,7 +90,7 @@ class _ChallengeCameraSignState extends State<ChallengeCameraSign> {
   final DynamicSignJudge _judge = DynamicSignJudge();
   final StaticLetterChecker _shapeChecker = StaticLetterChecker();
   final StaticServerCheck _serverCheck = StaticServerCheck();
-  late final SignRecordingController _recorder = SignRecordingController(onChanged: () {
+  late final SignRecordingController _recorder = SignRecordingController(countdownSeconds: widget.countdown, onChanged: () {
     if (mounted) setState(() {});
   });
 
@@ -108,7 +116,7 @@ class _ChallengeCameraSignState extends State<ChallengeCameraSign> {
   @override
   void didUpdateWidget(covariant ChallengeCameraSign old) {
     super.didUpdateWidget(old);
-    if (old.sign != widget.sign) {
+    if (old.sign != widget.sign || old.attempt != widget.attempt) {
       _recorder.cancel();
       _judge.clear();
       _serverCheck.clear();

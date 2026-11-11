@@ -17,6 +17,7 @@ import 'services/local_notification_service.dart';
 import 'services/performance_monitor.dart';
 import 'widgets/app_status_overlay.dart';
 import 'providers/language_provider.dart';
+import '/widgets/responsive.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,11 +37,11 @@ void main() async {
   await LocalNotificationService.initialize();
 
   // Saved Performance Mode (reduced visual effects) before the first frame.
-  await PerformanceSettings.load();
 
   // Remembered Faculty / Parent (guest) choice, so they re-enter without the intro.
   final roleProvider = RoleProvider();
   await roleProvider.load();
+  await PerformanceSettings.load(); // Settings > Performance Mode
 
   runApp(
     MultiProvider(
@@ -66,8 +67,12 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           // Live lag detection with tips + one-tap Performance Mode, on every screen.
           // + offline / synced / low-light notices on every screen.
-          builder: (context, child) => AppStatusOverlay(
-            child: PerformanceHintOverlay(child: child ?? const SizedBox.shrink()),
+          // Bounded font size + tablet column (responsive.dart), then the
+          // status / performance overlays.
+          builder: (context, child) => ResponsiveApp(
+            child: AppStatusOverlay(
+              child: PerformanceHintOverlay(child: child ?? const SizedBox.shrink()),
+            ),
           ),
           theme: themeProvider.activeTheme, 
           themeMode: themeProvider.activeThemeMode,

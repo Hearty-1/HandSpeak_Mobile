@@ -12,6 +12,7 @@ import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
 import '/providers/language_provider.dart';
+import '/widgets/responsive.dart';
 
 class TutorialSign {
   final String label;
@@ -190,7 +191,6 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
     final isDark = theme.brightness == Brightness.dark;
     final currentSign = _alphabetList[_currentIndex];
 
-    const double baseWidth = 393;
     const double baseHeight = 693;
     const double maxProgressWidth = 295.0;
 
@@ -301,7 +301,7 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final double scale = constraints.maxWidth / baseWidth;
+                final double scale = Responsive.scale(constraints.maxWidth);
                 final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
 
                 return SizedBox(

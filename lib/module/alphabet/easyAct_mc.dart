@@ -502,6 +502,15 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     return false;
   }
 
+  /// A camera question: camera types, or a camera level's questions that
+  /// have no choices. Choice questions (fill in the blank, picture choices,
+  /// typing, sequence, matching) keep their own layout and CHECK button.
+  bool _isCameraQ(QuizQuestion q) {
+    if (q.type == 'camera' || q.type == 'camera_spell') return true;
+    const answered = {'typing', 'fill_in_the_blank', 'sequence_order', 'matching_type'};
+    return _isCameraLevel && !answered.contains(q.type) && q.options.isEmpty;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -951,7 +960,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         }
       }
       _shuffledOptions = List<String>.from(q.options)..shuffle();
-    } else if (_isCameraLevel && q.type != 'sequence_order' && q.type != 'matching_type') {
+    } else if (_isCameraQ(q)) {
       _loadGestureLibrary(q.correctAnswer.toUpperCase());
     } else if (q.type == 'sequence_order') {
       _currentSequence = [];
@@ -1056,9 +1065,9 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     double? modelConfidence;
     String? usedModel = _templateSource.isEmpty ? null : _templateSource;
     final bool handsInView = _latestDetectedHands.isNotEmpty || _judge.hasFrames;
-    final bool usedDynamicModel = _isCameraLevel && _isDynamicLetter;
+    final bool usedDynamicModel = _isCameraQ(q) && _isDynamicLetter;
 
-    if (_isCameraLevel) {
+    if (_isCameraQ(q)) {
       final now = DateTime.now().millisecondsSinceEpoch;
       final recentStatic = _recentScores.where((e) => now - e.t <= _staticWindowMs).toList();
       final bool sawHand = _latestDetectedHands.isNotEmpty ||
@@ -1142,7 +1151,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       isCorrect = _selectedAnswer == q.correctAnswer;
     }
 
-    if (_isCameraLevel) {
+    if (_isCameraQ(q)) {
       _gestureTracker?.recordAttempt(
         sign: q.correctAnswer,
         questionId: q.id,
@@ -1160,6 +1169,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       );
     }
 
+    _logAnswer(q, isCorrect, predicted: predictedLabel);
     setState(() {
       _isAnswered = true;
       _isCorrect = isCorrect;
@@ -1176,6 +1186,31 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     _feedbackAnimController.forward(from: 0.0);
   }
 
+
+  /// This play's answers (activity_attempts.answers) and start time.
+  final List<Map<String, dynamic>> _answerLog = [];
+  final DateTime _playStartedAt = DateTime.now();
+
+  /// One answered question: what was asked and what the student gave.
+  void _logAnswer(QuizQuestion q, bool isCorrect, {String? predicted}) {
+    final camera = _isCameraQ(q);
+    final chosen = camera
+        ? (isCorrect ? q.correctAnswer : (predicted ?? ''))
+        : switch (q.type) {
+            'typing' => _userAnswerSlots.map((e) => e ?? '').join(),
+            'sequence_order' => _currentSequence.join(' > '),
+            'matching_type' => _matchingAnswers.entries.map((e) => '${e.key} = ${e.value ?? ''}').join('; '),
+            _ => _selectedAnswer ?? '',
+          };
+    _answerLog.add({
+      'questionId': q.id,
+      'type': camera ? 'camera' : q.type,
+      'sign': q.type == 'fill_in_the_blank' && q.blankAnswer.isNotEmpty ? q.blankAnswer : q.correctAnswer,
+      'chosen': chosen,
+      'correct': isCorrect,
+    });
+  }
+
   void _showGameOverDialog() {
     _gestureTracker?.finish(outcome: 'game_over', heartsLeft: 0, starsEarned: 0, totalQuestions: _questions.length);
     _progressService.recordActivityAttempt(
@@ -1183,6 +1218,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
       category: 'alphabet',
       isCompleted: false,
       starsEarned: 0,
+      heartsLeft: 0,
+      totalQuestions: _questions.length,
+      startedAt: _playStartedAt,
+      answers: _answerLog,
     );
 
     Provider.of<SoundProvider>(context, listen: false).playGameOver();
@@ -1233,6 +1272,10 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
         category: 'alphabet',
         isCompleted: true,
         starsEarned: starsEarned,
+        heartsLeft: _hearts,
+        totalQuestions: _questions.length,
+        startedAt: _playStartedAt,
+        answers: _answerLog,
       );
       _gestureTracker?.finish(
           outcome: 'completed', heartsLeft: _hearts, starsEarned: starsEarned, totalQuestions: _questions.length);
@@ -1368,7 +1411,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
     if (q.type == 'typing') return !_userAnswerSlots.contains(null);
     if (q.type == 'sequence_order') return _currentSequence.length == q.options.length;
     if (q.type == 'matching_type') return !_matchingAnswers.values.contains(null);
-    if (_isCameraLevel) {
+    if (_isCameraQ(q)) {
       // A hand seen in the last moments counts too: the hand often moves away to tap.
       if (_isJudging) return false;
       return _latestDetectedHands.isNotEmpty || _recentScores.isNotEmpty || _judge.hasFrames;
@@ -1471,7 +1514,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   const SizedBox(height: 24),
 
                   if (currentQuestion.imageUrl.isNotEmpty) ...[
-                    Center(child: SizedBox.square(dimension: 220, child: Container(
+                    Center(child: SizedBox(width: double.infinity, height: 260, child: Container(
                       
                                             decoration: BoxDecoration(
                         color: theme.cardColor,
@@ -1486,14 +1529,15 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(20),
-                        child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.cover, size: 40),
+                        child: _buildImageWidget(currentQuestion.imageUrl, fit: BoxFit.contain, size: 40),
                       ),
                     ))),
                     const SizedBox(height: 24),
                   ],
 
                   Text(
-                    currentQuestion.questionText,
+                    // Don't give away the answer ("What is this sign? A").
+                    questionWithoutAnswer(currentQuestion.questionText, currentQuestion.correctAnswer),
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: textColor),
                     textAlign: TextAlign.center,
                   ),
@@ -1507,14 +1551,14 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     _buildSequenceLayout(currentQuestion, theme)
                   else if (currentQuestion.type == 'matching_type')
                     _buildMatchingLayout(currentQuestion, theme)
-                  else if (_isCameraLevel)
+                  else if (_isCameraQ(currentQuestion))
                     _buildCameraLayout(currentQuestion, theme)
                   else
                     _buildMultipleChoiceLayout(currentQuestion, theme), 
                 ],
               ),
             )),
-                if (_isLandscape(context) && _isCameraLevel &&
+                if (_isLandscape(context) && _isCameraQ(currentQuestion) &&
                     !const {'typing', 'fill_in_the_blank', 'sequence_order', 'matching_type'}.contains(currentQuestion.type))
                   Expanded(
                     flex: 6,
@@ -1591,7 +1635,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                           ? null
                           : (_isAnswered
                               ? _handleNext
-                              : (_isCameraLevel && _isDynamicLetter
+                              : (_isCameraQ(currentQuestion) && _isDynamicLetter
                                   ? (_isCameraInitialized && !_isJudging && !_recorder.busy ? _recordDynamicSign : null)
                                   : (_isCheckButtonEnabled ? _verifyCurrentAnswer : null))),
                       style: ElevatedButton.styleFrom(
@@ -1605,7 +1649,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                           : Text(
                               _isAnswered
                                   ? "CONTINUE"
-                                  : (_isCameraLevel
+                                  : (_isCameraQ(currentQuestion)
                                       ? (_isDynamicLetter ? signRecordingButtonLabel(_recorder, checking: _isJudging) : "CAPTURE & CHECK")
                                       : "CHECK"),
                               style: TextStyle(
@@ -1627,13 +1671,19 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
   Widget _buildFillInBlankLayout(QuizQuestion currentQuestion, ThemeData theme) {
     String displayedText = currentQuestion.correctAnswer;
-    if (_selectedAnswer != null && displayedText.contains('_')) {
+    if (_selectedAnswer != null && displayedText.contains('_') && !_isMatchMedia(_selectedAnswer!)) {
       displayedText = displayedText.replaceFirst('_', _selectedAnswer!);
     }
+    final answer = currentQuestion.blankAnswer;
+    final media = currentQuestion.options.any(_isMatchMedia);
+    final tile = media ? ((MediaQuery.of(context).size.width - 48 - 16) / 2).clamp(110.0, 200.0) : 70.0;
+    // The sentence repeats the question when its picture shows it, and a
+    // lone "_" says nothing.
+    final showSentence = currentQuestion.imageUrl.isEmpty && displayedText.replaceAll('_', '').trim().isNotEmpty;
 
     return Column(
       children: [
-        Container(
+        if (showSentence) Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           decoration: BoxDecoration(
             color: theme.cardColor,
@@ -1652,22 +1702,30 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
           alignment: WrapAlignment.center,
           children: currentQuestion.options.map((option) {
             bool isSelected = _selectedAnswer == option;
+            final isRight = answer.isNotEmpty && option.trim().toUpperCase() == answer.toUpperCase();
+            Color border = isSelected ? theme.primaryColor : theme.dividerColor;
+            if (_isAnswered && isRight) border = const Color(0xFF58CC02);
+            if (_isAnswered && isSelected && !isRight) border = const Color(0xFFEA2B2B);
             return GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: () => _handleOptionSelected(option),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: 70,
-                height: 70,
+                width: tile,
+                height: tile,
+                padding: EdgeInsets.all(media ? 4 : 0),
                 decoration: BoxDecoration(
                   color: isSelected ? theme.primaryColor.withValues(alpha: 0.3) : theme.cardColor,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isSelected ? theme.primaryColor : theme.dividerColor,
-                    width: 2,
-                  ),
+                  border: Border.all(color: border, width: isSelected || (_isAnswered && isRight) ? 4 : 2),
                 ),
                 alignment: Alignment.center,
-                child: Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                child: _isMatchMedia(option)
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: _buildImageWidget(option, fit: BoxFit.contain, size: 40, fallbackText: option),
+                      )
+                    : Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
               ),
             );
           }).toList(),
@@ -1677,7 +1735,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   Widget _buildSequenceLayout(QuizQuestion currentQuestion, ThemeData theme) {
-    Widget content(String o) => _isMatchMedia(o) ? _buildImageWidget(o, fit: BoxFit.cover, size: 40, fallbackText: o) : Text(o);
+    Widget content(String o) => _isMatchMedia(o) ? _buildImageWidget(o, fit: BoxFit.contain, size: 40, fallbackText: o) : Text(o);
     return Column(
       children: [
         const Text("Tap the pieces in the correct order:", style: TextStyle(fontWeight: FontWeight.w600)),
@@ -1701,12 +1759,39 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   isMedia: _isMatchMedia(_currentSequence[pos]),
                   placed: true,
                   order: pos + 1,
-                  onTap: () => _removeFromSequence(_currentSequence[pos]),
+                  // After CHECK: green in the right place, red if not.
+                  border: !_isAnswered
+                      ? null
+                      : (pos < currentQuestion.options.length && _currentSequence[pos] == currentQuestion.options[pos]
+                          ? const Color(0xFF58CC02)
+                          : const Color(0xFFEA2B2B)),
+                  onTap: _isAnswered ? null : () => _removeFromSequence(_currentSequence[pos]),
                   child: content(_currentSequence[pos]),
                 ),
             ],
           ),
         ),
+        // After CHECK, a wrong order: the right one, numbered, in green.
+        if (_isAnswered && !_isCorrect) ...[
+          const SizedBox(height: 16),
+          const Text('Correct order:', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF58CC02))),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
+            children: [
+              for (var pos = 0; pos < currentQuestion.options.length; pos++)
+                SequencePiece(
+                  isMedia: _isMatchMedia(currentQuestion.options[pos]),
+                  placed: true,
+                  order: pos + 1,
+                  border: const Color(0xFF58CC02),
+                  child: content(currentQuestion.options[pos]),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 24),
         Wrap(
           spacing: 12,
@@ -1764,8 +1849,13 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
     // Same tile size in both columns: all square when either has media.
     final anyMedia = [...leftItems, ...rightItems].any(_isMatchMedia);
+    // After CHECK: each correct pair gets its own border color (left item and
+    // its right answer), the fill says whether the learner matched it right.
+    const pairColors = [Color(0xFF4DD0E1), Color(0xFFFFB74D), Color(0xFFBA68C8), Color(0xFFAED581), Color(0xFFFF8A80), Color(0xFF90CAF9)];
+    Color colorOf(int leftIndex) => pairColors[leftIndex % pairColors.length];
+    const green = Color(0xFF58CC02), red = Color(0xFFEA2B2B);
     Widget content(String item) => _isMatchMedia(item)
-        ? _buildImageWidget(item, fit: BoxFit.cover, size: 40, fallbackText: item)
+        ? _buildImageWidget(item, fit: BoxFit.contain, size: 40, fallbackText: item)
         : Text(item, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface));
 
     return Column(
@@ -1782,10 +1872,20 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
             Expanded(
               child: Column(
                 children: [
-                  for (final item in leftItems)
+                  for (var li = 0; li < leftItems.length; li++)
                     () {
+                      final item = leftItems[li];
                       final isSelected = _selectedLeftMatch == item;
                       final isMatched = _matchingAnswers[item] != null;
+                      if (_isAnswered) {
+                        return _MatchTile(
+                          isMedia: _isMatchMedia(item),
+                          square: anyMedia,
+                          fill: (_matchingAnswers[item] == rightItems[li] ? green : red).withValues(alpha: 0.22),
+                          border: colorOf(li),
+                          child: content(item),
+                        );
+                      }
                       return _MatchTile(
                         isMedia: _isMatchMedia(item),
                         square: anyMedia,
@@ -1810,6 +1910,22 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                       final used = _matchingAnswers.values.where((v) => v == item).length;
                       final k = [for (var j = 0; j < ri; j++) if (_matchingRightOrder[j] == item) j].length;
                       final isMatched = k < used;
+                      if (_isAnswered) {
+                        // The left item this tile really belongs to (k-th one when
+                        // the same answer is there more than once).
+                        final rightful = [for (var j = 0; j < leftItems.length; j++) if (rightItems[j] == item) j];
+                        final belongs = k < rightful.length ? rightful[k] : null;
+                        final owners = [for (final e in _matchingAnswers.entries) if (e.value == item) e.key];
+                        final owner = k < owners.length ? owners[k] : null;
+                        final ok = owner != null && rightItems[leftItems.indexOf(owner)] == item;
+                        return _MatchTile(
+                          isMedia: _isMatchMedia(item),
+                          square: anyMedia,
+                          fill: (ok ? green : red).withValues(alpha: 0.22),
+                          border: belongs == null ? theme.dividerColor : colorOf(belongs),
+                          child: content(item),
+                        );
+                      }
                       return _MatchTile(
                         isMedia: _isMatchMedia(item),
                         square: anyMedia,
@@ -1948,7 +2064,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
             child: _isImageString(option)
                 ? Padding(
                     padding: const EdgeInsets.all(2.0),
-                    child: ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: _buildImageWidget(option, fit: BoxFit.cover, size: 24))),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(13), child: SizedBox.expand(child: _buildImageWidget(option, fit: BoxFit.contain, size: 24))),
                   )
                 : Text(option, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: _getButtonTextColor(option, currentQuestion.correctAnswer, theme))),
           ),
@@ -1984,7 +2100,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                     ? Padding(
                         padding: const EdgeInsets.all(4.0),
                         child: givenItem.image.isNotEmpty
-                            ? _buildImageWidget(givenItem.image, fit: BoxFit.cover, size: 22)
+                            ? _buildImageWidget(givenItem.image, fit: BoxFit.contain, size: 22)
                             : Text(char, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                       )
                     : Text(char ?? '', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
@@ -2018,8 +2134,8 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   child: Padding(
                     padding: const EdgeInsets.all(6.0), 
                     child: _isImageString(optionValue)
-                        ? _buildImageWidget(optionValue, fit: BoxFit.cover, size: 24)
-                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.cover, size: 30),
+                        ? _buildImageWidget(optionValue, fit: BoxFit.contain, size: 24)
+                        : _buildImageWidget('assets/pictures/${optionValue.toUpperCase()}.jpg', fit: BoxFit.contain, size: 30),
                   ),
                 ),
               ),
@@ -2130,7 +2246,8 @@ class _MatchTile extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          height: sq ? null : 64,
+          // Text tiles grow with long answers (phrases) instead of cutting them.
+          constraints: sq ? null : const BoxConstraints(minHeight: 64),
           padding: EdgeInsets.all(sq ? 3 : 8),
           decoration: BoxDecoration(
             color: fill,

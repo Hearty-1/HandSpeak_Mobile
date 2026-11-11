@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:just_audio/just_audio.dart' as ja;
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum BgmType { none, menu, activity }
 
@@ -49,9 +50,78 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const String _gameOverSfxAsset = 'assets/sounds/gameover.mp3';
   static const String _levelCompleteSfxAsset = 'assets/sounds/levelcomplete.wav';
 
+  // Music level while a sign video plays (the video has the learner's focus).
+  static const double _videoFactor = 0.15;
+  static const Duration _fade = Duration(milliseconds: 300);
+
+  /// Videos playing now (see [videoPlaybackChanged]).
+  final Set<Object> _videos = {};
+
+  static SoundProvider? _instance;
+
+  static const _kBgmMuted = 'sound.bgmMuted', _kSfxMuted = 'sound.sfxMuted';
+  static const _kBgmVolume = 'sound.bgmVolume', _kSfxVolume = 'sound.sfxVolume';
+
   SoundProvider() {
+    _instance = this;
     WidgetsBinding.instance.addObserver(this);
     _safeExecute(() => _bgmPlayer.setLoopMode(ja.LoopMode.one));
+    _loadSettings();
+  }
+
+  /// The learner's music / sound settings, kept between app launches.
+  Future<void> _loadSettings() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      _isBgmMuted = p.getBool(_kBgmMuted) ?? _isBgmMuted;
+      _isSfxMuted = p.getBool(_kSfxMuted) ?? _isSfxMuted;
+      _bgmVolume = (p.getDouble(_kBgmVolume) ?? _bgmVolume).clamp(0.0, 1.0);
+      _sfxVolume = (p.getDouble(_kSfxVolume) ?? _sfxVolume).clamp(0.0, 1.0);
+    } catch (e) {
+      debugPrint('Sound settings not loaded: $e');
+    }
+    notifyListeners();
+    _sync();
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(_kBgmMuted, _isBgmMuted);
+      await p.setBool(_kSfxMuted, _isSfxMuted);
+      await p.setDouble(_kBgmVolume, _bgmVolume);
+      await p.setDouble(_kSfxVolume, _sfxVolume);
+    } catch (e) {
+      debugPrint('Sound settings not saved: $e');
+    }
+  }
+
+  /// Music volume right now: lower under a playing video, and under a
+  /// feedback sound.
+  double get _targetVolume => _bgmVolume * (_videos.isNotEmpty ? _videoFactor : (_isDucked ? _duckingFactor : 1.0));
+
+  double _currentVolume = 0;
+
+  /// Smoothly changes the music volume (no abrupt cuts).
+  Future<void> _fadeTo(double target, {Duration duration = _fade}) async {
+    const steps = 6;
+    final from = _currentVolume;
+    for (var i = 1; i <= steps; i++) {
+      if (_isDisposed) return;
+      final v = from + (target - from) * i / steps;
+      _currentVolume = v;
+      await _safeExecute(() => _bgmPlayer.setVolume(v));
+      await Future<void>.delayed(duration ~/ steps);
+    }
+  }
+
+  /// A sign video started / stopped playing ([owner] = the player): the
+  /// music dips while any video plays and comes back after.
+  static void videoPlaybackChanged(Object owner, bool playing) {
+    final s = _instance;
+    if (s == null || s._isDisposed) return;
+    final changed = playing ? s._videos.add(owner) : s._videos.remove(owner);
+    if (changed && s._playing) s._fadeTo(s._targetVolume);
   }
 
   /// Centralized exception wrapper preventing unhandled platform channel crashes.
@@ -152,7 +222,10 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
         _dirty = false;
         final want = (_isBgmMuted || _inBackground) ? BgmType.none : currentBgm;
         if (want == BgmType.none) {
-          if (_playing) await _safeExecute(() => _bgmPlayer.pause());
+          if (_playing) {
+            await _fadeTo(0);
+            await _safeExecute(() => _bgmPlayer.pause());
+          }
           _playing = false;
           // Nobody wants this track any more: start it from the top next time.
           if (currentBgm == BgmType.none && _loaded != BgmType.none) {
@@ -163,6 +236,7 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
           if (_loaded != want) {
             // Switching tracks (bgm.mp3 <-> gamebgm.mp3): stop() ends the old
             // track, so the new one must be started below.
+            if (_playing) await _fadeTo(0);
             _playing = false;
             await _safeExecute(() async {
               await _bgmPlayer.stop();
@@ -172,10 +246,12 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
             });
           }
           if (_loaded == want && !_playing) {
-            await _safeExecute(() => _bgmPlayer.setVolume(_isDucked ? _bgmVolume * _duckingFactor : _bgmVolume));
+            _currentVolume = 0;
+            await _safeExecute(() => _bgmPlayer.setVolume(0));
             // play() completes only when playback stops, so it is not awaited.
             _bgmPlayer.play().catchError((e) => debugPrint("BGM playback error: $e"));
             _playing = true;
+            await _fadeTo(_targetVolume);
           }
         }
       } while (_dirty && !_isDisposed);
@@ -202,6 +278,7 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_isDisposed) return;
     _isBgmMuted = !_isBgmMuted;
     notifyListeners();
+    _saveSettings();
     _sync();
   }
 
@@ -209,6 +286,7 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_isDisposed) return;
     _isSfxMuted = !_isSfxMuted;
     notifyListeners();
+    _saveSettings();
   }
 
   void toggleSound() => toggleSfxMute();
@@ -216,14 +294,19 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
   void setBgmVolume(double volume) {
     if (_isDisposed) return;
     _bgmVolume = volume.clamp(0.0, 1.0);
-    _safeExecute(() => _bgmPlayer.setVolume(_isDucked ? _bgmVolume * _duckingFactor : _bgmVolume));
+    if (_playing) {
+      _currentVolume = _targetVolume;
+      _safeExecute(() => _bgmPlayer.setVolume(_currentVolume));
+    }
     notifyListeners();
+    _saveSettings();
   }
 
   void setSfxVolume(double volume) {
     if (_isDisposed) return;
     _sfxVolume = volume.clamp(0.0, 1.0);
     notifyListeners();
+    _saveSettings();
   }
 
   // ---------------------------------------------------------------------------
@@ -251,14 +334,15 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _duckBgm() async {
     if (!_playing || _isDisposed) return;
     _isDucked = true;
-    await _safeExecute(() => _bgmPlayer.setVolume(_bgmVolume * _duckingFactor));
+    _currentVolume = _targetVolume;
+    await _safeExecute(() => _bgmPlayer.setVolume(_currentVolume));
   }
 
   /// Restores background music volume to normal level.
   Future<void> _restoreBgm() async {
     if (!_isDucked || _isDisposed) return;
     _isDucked = false;
-    await _safeExecute(() => _bgmPlayer.setVolume(_bgmVolume));
+    await _fadeTo(_targetVolume);
   }
 
   /// Plays feedback SFX over BGM without interrupting the background track.
@@ -282,6 +366,7 @@ class SoundProvider extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _isDisposed = true;
+    if (identical(_instance, this)) _instance = null;
     WidgetsBinding.instance.removeObserver(this);
     _bgmPlayer.dispose();
     _sfxPlayer.dispose();

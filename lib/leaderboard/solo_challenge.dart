@@ -1,10 +1,12 @@
 import '/widgets/activity_feedback.dart';
+import '/widgets/challenge_feedback.dart';
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
 import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
 import '/services/challenge_categories.dart';
 import '/widgets/activity_video.dart';
+import '/widgets/media_prefetch.dart';
 import 'package:flutter/material.dart';
 import '/widgets/challenge_camera_sign.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +14,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '/providers/sound_provider.dart';
+import '/providers/theme_provider.dart';
 import '/services/progress_service.dart';
 
 
@@ -322,6 +325,12 @@ class _GameProperScreenState extends State<GameProperScreen> {
   int _streak = 0;
   int _correctCount = 0;
 
+  // For the solo_challenges record: best streak, one entry per question, start.
+  int _peakStreak = 0;
+  int _lastPoints = 0; // shown in the feedback (+N pts)
+  final List<Map<String, dynamic>> _questionLogs = [];
+  DateTime _startedAt = DateTime.now();
+
   bool _isLoading = true;
   bool _hasAnswered = false;
   bool _isLastAnswerCorrect = false;
@@ -436,9 +445,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
         }
       }
 
-      final snapshot = await FirebaseFirestore.instance.collection('activity_questions').get();
-      if (snapshot.docs.isNotEmpty) {
-        var allQuestions = snapshot.docs.map((d) => d.data()).toList();
+      // This category's questions only (cached for the session).
+      final allQuestions = await ChallengeCategories.questionsFor(_category);
+      if (allQuestions.isNotEmpty) {
         var filtered = allQuestions.where((q) {
           return ChallengeCategories.matches(_getValueCaseInsensitive(q, ['category', 'topic', 'group', 'tag'])?.toString(), _category);
         }).toList();
@@ -453,9 +462,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
             _score = 0;
             _streak = 0;
             _correctCount = 0;
+            _peakStreak = 0;
+            _questionLogs.clear();
+            _startedAt = DateTime.now();
           });
         }
 
+        // This round's pictures / videos load in the background now.
+        if (mounted) MediaPrefetch.questions(context, _questions);
         _setupCurrentQuestionState();
         _startTimer();
       } else {
@@ -629,6 +643,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
       if (isCorrect) {
         _streak++;
         _correctCount++;
+        if (_streak > _peakStreak) _peakStreak = _streak;
       } else {
         _streak = 0;
       }
@@ -643,7 +658,34 @@ class _GameProperScreenState extends State<GameProperScreen> {
 
     _timer?.cancel();
     // Same points as the group challenge (ChallengeScoring).
-    _score += ChallengeScoring.points(correct: isCorrect, timeLeft: _timeLeft, maxTime: _maxTime, streak: _streak);
+    final points = ChallengeScoring.points(correct: isCorrect, timeLeft: _timeLeft, maxTime: _maxTime, streak: _streak);
+    _score += points;
+    _lastPoints = points;
+    // Timed game: the feedback shows briefly, then the next round starts.
+    final answeredIndex = _currentQuestionIndex;
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (mounted && _hasAnswered && _currentQuestionIndex == answeredIndex) _moveToNextQuestion();
+    });
+    // What the student gave, per question type (solo_challenges.questionBreakdown).
+    final given = switch (type) {
+      'sequence_order' => _currentSequence.join(' > '),
+      'matching_type' => _matchingAnswers.entries.map((e) => '${e.key} = ${e.value ?? ''}').join('; '),
+      'camera_spell' => isCorrect ? _extractCorrectAnswer(q) : '',
+      _ => answer,
+    };
+    _questionLogs.add({
+      'questionIndex': _currentQuestionIndex + 1,
+      'questionId': (q['id'] ?? q['docId'] ?? q['questionId'] ?? '').toString(),
+      'type': type,
+      'questionText': _extractQuestionText(q),
+      'userAnswer': given,
+      'correctAnswer': _extractCorrectAnswer(q),
+      'isCorrect': isCorrect,
+      'points': points,
+      'timeLeft': _timeLeft,
+      if (type == 'camera_spell') 'cameraScore': double.parse(_currentScore.toStringAsFixed(1)),
+      if (type == 'camera_spell' && _lastCameraModel != null) 'model': _lastCameraModel,
+    });
 
     if (widget.roomCode != 'SOLO') {
       FirebaseFirestore.instance
@@ -665,7 +707,14 @@ class _GameProperScreenState extends State<GameProperScreen> {
     }
   }
 
-  String _extractQuestionText(Map<String, dynamic> q) => (_getValueCaseInsensitive(q, ['question_text', 'questionText', 'question', 'title', 'prompt']) ?? '').toString();
+  String _rawQuestionText(Map<String, dynamic> q) => (_getValueCaseInsensitive(q, ['question_text', 'questionText', 'question', 'title', 'prompt']) ?? '').toString();
+
+  String _extractQuestionText(Map<String, dynamic> q) {
+    final t = _rawQuestionText(q);
+    final ans = _extractCorrectAnswer(q).trim();
+    // Don't give away the answer ("What is this sign? 100").
+    return ans.isEmpty ? t : questionWithoutAnswer(t, ans);
+  }
 
   String? _extractQuestionImage(Map<String, dynamic> q) => _getValueCaseInsensitive(q, [
     'main_image', // typing questions (web app content tool)
@@ -691,7 +740,9 @@ class _GameProperScreenState extends State<GameProperScreen> {
   String? _blankSentence(Map<String, dynamic> q) {
     final b = _getValueCaseInsensitive(q, ['blank_answer', 'blankAnswer']);
     final text = (_getValueCaseInsensitive(q, ['correct_answer', 'correctAnswer']) ?? '').toString();
-    return b != null && '$b'.trim().isNotEmpty && text.contains('_') ? text : null;
+    final img = (_getValueCaseInsensitive(q, ['image_url', 'imageUrl', 'main_image', 'video_url', 'videoUrl']) ?? '').toString();
+    // The sentence repeats the question when its picture / video shows it.
+    return img.trim().isEmpty && b != null && '$b'.trim().isNotEmpty && text.contains('_') ? text : null;
   }
 
   List<dynamic> _extractOptions(Map<String, dynamic> q) {
@@ -725,7 +776,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
     final cleanSource = source.trim();
     // Sign videos play with the shared activity player (play / pause).
     if (RegExp(r'\.(mp4|mov|webm|m4v)$', caseSensitive: false).hasMatch(Uri.decodeComponent(cleanSource.split('?').first))) {
-      return SizedBox(height: height, width: width, child: ActivityVideo(url: cleanSource, fit: BoxFit.cover, fallback: const Icon(Icons.videocam_off_rounded, size: 40, color: Colors.grey)));
+      return SizedBox(height: height, width: width, child: ActivityVideo(url: cleanSource, fit: fit, fallback: const Icon(Icons.videocam_off_rounded, size: 40, color: Colors.grey)));
     }
 
     if (cleanSource.startsWith('http://') || cleanSource.startsWith('https://')) {
@@ -1025,7 +1076,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
   }
 
   Widget _buildSequenceLayout(ThemeData theme, Color textColor) {
-    Widget content(String o) => _isMatchMedia(o) ? _buildSafeImage(o, fit: BoxFit.cover) : Text(o, style: TextStyle(color: textColor));
+    Widget content(String o) => _isMatchMedia(o) ? _buildSafeImage(o, fit: BoxFit.contain) : Text(o, style: TextStyle(color: textColor));
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
@@ -1098,7 +1149,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
     // column has pictures / videos, which fill their tile.
     final anyMedia = [..._matchingLeftItems, ..._matchingRightItems].any(_isMatchMedia);
     Widget content(String item) => _isMatchMedia(item)
-        ? _buildSafeImage(item, fit: BoxFit.cover)
+        ? _buildSafeImage(item, fit: BoxFit.contain)
         : Text(item, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: textColor));
     return Column(
       children: [
@@ -1215,10 +1266,42 @@ class _GameProperScreenState extends State<GameProperScreen> {
         correctCount: _correctCount,
         totalQuestions: _questions.length,
         accuracy: accuracy,
-        peakStreak: _streak,
+        peakStreak: _peakStreak,
       );
     } catch (e) {
       debugPrint("Failed to record progress to Firestore: $e");
+    }
+
+    // One document per game in the root 'solo_challenges' collection, laid
+    // out like 'group_challenges' (for the web dashboard / reports).
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get();
+      final data = userDoc.data() ?? const <String, dynamic>{};
+      final name = (data['displayName'] ?? data['name'] ?? user?.displayName ?? 'Student').toString();
+      final section = (data['section'] ?? data['sectionId'] ?? '').toString().trim();
+      await FirebaseFirestore.instance.collection('solo_challenges').add({
+        'userId': _currentUserId,
+        'userName': name,
+        if (section.isNotEmpty) 'sectionId': section,
+        'roomId': widget.roomCode,
+        'challengeTitle': 'Solo Challenge: $_category',
+        'category': _category,
+        'score': _score,
+        'xpEarned': _score,
+        'correctCount': _correctCount,
+        'mistakesCount': _questionLogs.where((l) => l['isCorrect'] != true).length,
+        'totalQuestions': _questions.length,
+        'answeredCount': _questionLogs.length,
+        'accuracy': double.parse(accuracy.toStringAsFixed(1)),
+        'peakStreak': _peakStreak,
+        'durationSec': DateTime.now().difference(_startedAt).inSeconds,
+        'questionBreakdown': _questionLogs,
+        'startedAt': Timestamp.fromDate(_startedAt),
+        'completedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint("Error saving solo challenge record: $e");
     }
   }
 
@@ -1290,26 +1373,43 @@ class _GameProperScreenState extends State<GameProperScreen> {
     final correctAnswer = _extractCorrectAnswer(currentQuestion);
     final imageUrl = _extractQuestionImage(currentQuestion);
 
+    final glass = theme.extension<GlassThemeExtension>();
+    final danger = _timeLeft < 5 ? theme.colorScheme.error : theme.primaryColor;
+    // Answer line in the feedback: only a readable answer (not pictures /
+    // videos, placeholders, or sequence / matching shown on the pieces).
+    final readable = !const {'sequence_order', 'matching_type', 'camera_spell'}.contains(type) &&
+        !_isMatchMedia(correctAnswer) &&
+        !correctAnswer.contains('_') &&
+        correctAnswer.trim().isNotEmpty;
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      // Same header as the group challenge: round pill + close.
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(icon: Icon(Icons.close_rounded, color: textColor), onPressed: () => Navigator.pop(context)),
-        title: Text("Round ${_currentQuestionIndex + 1} / ${_questions.length}", style: TextStyle(color: textColor, fontWeight: FontWeight.w900, fontSize: 18)),
+        automaticallyImplyLeading: false,
+        centerTitle: true,
+        title: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: glass?.glassCard ?? theme.cardColor.withAlpha(180),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: glass?.glassBorder ?? textColor.withAlpha(30)),
+          ),
+          child: Text(
+            "ROUND ${_currentQuestionIndex + 1} OF ${_questions.length}",
+            style: TextStyle(color: textColor, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1.0),
+          ),
+        ),
         actions: [
-          if (_streak > 1)
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFF34B1B).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
-                child: Text("🔥 $_streak", style: const TextStyle(color: Color(0xFFF34B1B), fontWeight: FontWeight.w900, fontSize: 14)),
-              ),
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(color: theme.cardColor, shape: BoxShape.circle),
+              child: Icon(Icons.close_rounded, color: textColor, size: 20),
             ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(child: Text("Score: $_score", style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.w900, fontSize: 16))),
+            onPressed: () => Navigator.pop(context),
           ),
         ],
       ),
@@ -1317,48 +1417,94 @@ class _GameProperScreenState extends State<GameProperScreen> {
         children: [
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Score and streak (where the group shows its players).
+                  Row(
+                    children: [
+                      _soloChip(theme, Icons.bolt_rounded, '$_score pts', theme.primaryColor),
+                      const SizedBox(width: 8),
+                      if (_streak > 1) _soloChip(theme, Icons.local_fire_department_rounded, '$_streak streak', const Color(0xFFF34B1B)),
+                      const Spacer(),
+                      _soloChip(theme, Icons.check_circle_rounded, '$_correctCount / ${_questions.length}', const Color(0xFF58CC02)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   if (_maxTime > 0) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(
-                        value: (_timeLeft / _maxTime).clamp(0.0, 1.0),
-                        backgroundColor: textColor.withValues(alpha: 0.1),
-                        valueColor: AlwaysStoppedAnimation<Color>(_timeLeft <= 3 ? const Color(0xFFF34B1B) : theme.primaryColor),
-                        minHeight: 8,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: theme.cardColor,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: theme.primaryColor.withValues(alpha: 0.1)),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
+                    Row(
+                      children: [
+                        Icon(Icons.timer_sharp, size: 18, color: danger),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: (_timeLeft / _maxTime).clamp(0.0, 1.0),
+                              backgroundColor: textColor.withAlpha(30),
+                              valueColor: AlwaysStoppedAnimation<Color>(danger),
+                              minHeight: 10,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text("${_timeLeft}s",
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: _timeLeft < 5 ? theme.colorScheme.error : textColor)),
                       ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  // Question card (group challenge style).
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [glass?.glassCard ?? theme.cardColor.withAlpha(220), theme.cardColor.withAlpha(160)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: glass?.glassBorder ?? textColor.withAlpha(30), width: 1.5),
+                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 4))],
                     ),
                     child: Column(
                       children: [
-                        Text(_extractQuestionText(currentQuestion), textAlign: TextAlign.center, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: textColor)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(color: theme.primaryColor.withAlpha(35), borderRadius: BorderRadius.circular(12)),
+                          child: Text(_category.toUpperCase(),
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: theme.primaryColor, letterSpacing: 1.0)),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(_extractQuestionText(currentQuestion),
+                            textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor, height: 1.3)),
                         if (_blankSentence(currentQuestion) != null) ...[
                           const SizedBox(height: 10),
                           Text(_blankSentence(currentQuestion)!.replaceFirst(RegExp(r'_+'), _hasAnswered ? _extractCorrectAnswer(currentQuestion) : '_____'),
-                              textAlign: TextAlign.center, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: theme.primaryColor)),
+                              textAlign: TextAlign.center, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: theme.primaryColor)),
                         ],
                         if (imageUrl != null && imageUrl.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          _buildSafeImage(imageUrl, height: 130),
-                        ]
+                          const SizedBox(height: 12),
+                          // Whole picture / video, never cropped.
+                          Container(
+                            height: 170,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: theme.cardColor,
+                              border: Border.all(color: textColor.withAlpha(30)),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(15),
+                              child: _buildSafeImage(imageUrl, fit: BoxFit.contain),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Expanded(
                     child: Builder(
                       builder: (_) {
@@ -1375,8 +1521,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
                             return _buildIdentificationInput(correctAnswer, theme, textColor);
                           case 'camera_spell':
                             return (RegExp(r'^([A-Za-z]|\d+)$').hasMatch(correctAnswer.trim())
-                                ? ChallengeCameraSign(sign: correctAnswer, enabled: !_hasAnswered, onResult: _onCameraResult)
-                                : PublishedCameraSign(category: _category, sign: correctAnswer, enabled: !_hasAnswered, onResult: _onCameraResult));
+                                ? ChallengeCameraSign(sign: correctAnswer, enabled: !_hasAnswered, countdown: 0, onResult: _onCameraResult)
+                                : PublishedCameraSign(category: _category, sign: correctAnswer, enabled: !_hasAnswered, countdown: 0, onResult: _onCameraResult));
                           case 'multiple_choice':
                           default:
                             return _buildMultipleChoiceOptions(options, correctAnswer, theme, textColor);
@@ -1384,7 +1530,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
                       },
                     ),
                   ),
-                  if (_hasAnswered) const SizedBox(height: 120),
+                  if (_hasAnswered) const SizedBox(height: 150),
                 ],
               ),
             ),
@@ -1394,164 +1540,37 @@ class _GameProperScreenState extends State<GameProperScreen> {
               left: 0,
               right: 0,
               bottom: 0,
-              child: AnimatedThemedFeedbackBanner(
+              child: ChallengeFeedbackBanner(
                 isCorrect: _isLastAnswerCorrect,
-                correctAnswer: correctAnswer,
+                correctAnswer: readable ? correctAnswer : '',
                 streak: _streak,
-                onContinue: _moveToNextQuestion,
+                points: _lastPoints,
               ),
             ),
         ],
       ),
     );
   }
-}
 
-// ==========================================
-// 3. ANIMATED THEMED FEEDBACK BANNER WIDGET
-// ==========================================
-class AnimatedThemedFeedbackBanner extends StatelessWidget {
-  final bool isCorrect;
-  final String correctAnswer;
-  final int streak;
-  final VoidCallback onContinue;
-
-  const AnimatedThemedFeedbackBanner({
-    super.key,
-    required this.isCorrect,
-    required this.correctAnswer,
-    this.streak = 0,
-    required this.onContinue,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final Color backgroundColor = isCorrect
-        ? (isDark ? const Color(0xFF133B23) : const Color(0xFFE8F5E9))
-        : (isDark ? const Color(0xFF3E1415) : const Color(0xFFFFEBEE));
-
-    final Color accentColor = isCorrect
-        ? (isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32))
-        : (isDark ? const Color(0xFFE57373) : const Color(0xFFC62828));
-
-    String title = isCorrect ? "Fantastic! 🎉" : "Not Quite! 💡";
-    if (isCorrect && streak > 2) {
-      title = "On Fire! 🔥 ($streak Streak)";
-    } else if (isCorrect && streak == 2) {
-      title = "Double Streak! ⚡";
-    }
-
-    return TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutBack,
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      builder: (context, value, child) {
-        return Transform.translate(
-          offset: Offset(0, (1 - value) * 120),
-          child: Opacity(
-            opacity: value.clamp(0.0, 1.0),
-            child: child,
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+  Widget _soloChip(ThemeData theme, IconData icon, String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 24,
-              offset: const Offset(0, -6),
-            ),
+          color: color.withAlpha(30),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withAlpha(90)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 4),
+            Text(text, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: theme.colorScheme.onSurface)),
           ],
         ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: accentColor.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      isCorrect ? Icons.check_circle_rounded : Icons.close_rounded,
-                      color: accentColor,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text( 
-                          title,
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            fontFamily: 'Inter',
-                            color: accentColor,
-                          ),
-                        ),
-                        // Removed the incorrect correct answer display block here
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: onContinue,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accentColor,
-                    elevation: 3,
-                    shadowColor: accentColor.withValues(alpha: 0.4),
-                    shape: Button3DBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  child: const Text(
-                    "CONTINUE",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      fontFamily: 'Inter',
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+      );
 }
 
-// =============================================================================
-// CAMERA HELPERS (local to this screen)
-// =============================================================================
-
-/// One item of a matching question (all categories). A picture or video is
-/// a square tile the width of its column, filled edge to edge (videos keep
-/// their play button; a tap on the rest of the tile selects it), so it is
-/// big enough to read; text is a compact tile. [fill] / [border] show the
-/// item's state (selected, matched, right / wrong).
+/// One item of a matching question (all categories).
 class _MatchTile extends StatelessWidget {
   final bool isMedia;
   final Widget child;
@@ -1581,7 +1600,8 @@ class _MatchTile extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          height: sq ? null : 64,
+          // Text tiles grow with long answers (phrases) instead of cutting them.
+          constraints: sq ? null : const BoxConstraints(minHeight: 64),
           padding: EdgeInsets.all(sq ? 3 : 8),
           decoration: BoxDecoration(
             color: fill,

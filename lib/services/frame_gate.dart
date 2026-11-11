@@ -23,12 +23,19 @@ class FrameGate {
   FrameGate({this.maxInFlight = 3, this.timeout = const Duration(milliseconds: 500)});
 
   final List<DateTime> _inFlight = []; // send times, oldest first (results come back in order)
+  DateTime? _lastSent;
 
   /// True (and marks a frame in flight) when a new frame may be sent.
+  /// At most [PerformanceSettings.cameraFps] frames a second (fewer in the
+  /// light mode): the others are skipped before the costly copy.
   bool tryEnter() {
     final now = DateTime.now();
     _inFlight.removeWhere((t) => now.difference(t) > timeout);
     if (_inFlight.length >= maxInFlight) return false;
+    final fps = PerformanceSettings.on ? PerformanceSettings.lightCameraFps : PerformanceSettings.cameraFps;
+    final last = _lastSent;
+    if (last != null && now.difference(last).inMilliseconds < 1000 ~/ fps) return false;
+    _lastSent = now;
     _inFlight.add(now);
     return true;
   }

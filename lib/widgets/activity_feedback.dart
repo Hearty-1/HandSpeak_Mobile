@@ -199,3 +199,16 @@ Widget cameraLevelButton(ThemeData theme, {required String label, required VoidC
     ),
   );
 }
+
+/// The question text without its own answer tacked on after the "?"
+/// ("What is this sign? 100" -> "What is this sign?"). Plain text compare
+/// (no pattern built from the answer: answers can be whole pictures stored as
+/// text). Long or picture answers are never part of the text.
+String questionWithoutAnswer(String text, String answer) {
+  final a = answer.trim();
+  if (a.isEmpty || a.length > 60 || a.contains('\n')) return text;
+  final t = text.trimRight();
+  if (!t.toLowerCase().endsWith(a.toLowerCase())) return text;
+  final head = t.substring(0, t.length - a.length).trimRight();
+  return head.endsWith('?') ? head : text;
+}

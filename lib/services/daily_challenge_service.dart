@@ -292,15 +292,31 @@ class DailyChallengeService {
   static const Duration _sessionGap = Duration(minutes: 30);
 
   // ---------------------------------------------------------------- data ---
+  /// Activity plays: activity_sessions (current records), plus the older
+  /// activity_attempts for earlier history. A play saved in both (while both
+  /// were written) counts once.
   Future<List<_Attempt>> _activityAttempts() async {
-    final snap = await _db.collection('activity_attempts').where('userId', isEqualTo: _uid).get();
     final out = <_Attempt>[];
-    for (final d in snap.docs) {
-      final m = d.data();
-      final ts = m['timestamp'];
-      if (ts is! Timestamp) continue;
-      out.add(_Attempt(ts.toDate(), _categoryOf('${m['category'] ?? m['levelId'] ?? ''}'), '${m['levelId'] ?? ''}',
-          m['isCompleted'] == true, (m['starsEarned'] as num?)?.toInt() ?? 0));
+    final seen = <String>{};
+    for (final col in ['activity_sessions', 'activity_attempts']) {
+      QuerySnapshot<Map<String, dynamic>> snap;
+      try {
+        snap = await _db.collection(col).where('userId', isEqualTo: _uid).get();
+      } catch (e) {
+        debugPrint('Daily quests: $col unavailable: $e');
+        continue;
+      }
+      for (final d in snap.docs) {
+        final m = d.data();
+        final ts = m['timestamp'];
+        if (ts is! Timestamp) continue;
+        final level = '${m['levelId'] ?? ''}';
+        // Same level within a minute = the same play.
+        final id = '$level|${ts.toDate().millisecondsSinceEpoch ~/ 60000}';
+        if (!seen.add(id)) continue;
+        out.add(_Attempt(ts.toDate(), _categoryOf('${m['category'] ?? level}'), level, m['isCompleted'] == true,
+            (m['starsEarned'] as num?)?.toInt() ?? 0));
+      }
     }
     out.sort((a, b) => a.time.compareTo(b.time));
     return out;
@@ -339,16 +355,23 @@ class DailyChallengeService {
     return out;
   }
 
+  /// Solo games since [start]: the root solo_challenges records, plus older
+  /// games kept in users/{uid}/progress_history (written before 2026-11-11).
   Future<int> _soloChallengesToday(DateTime start) async {
+    int count(Iterable<Map<String, dynamic>> docs) => docs.where((d) {
+          final ts = d['completedAt'];
+          return ts is Timestamp && !ts.toDate().isBefore(start);
+        }).length;
+    var n = 0;
+    try {
+      final snap = await _db.collection('solo_challenges').where('userId', isEqualTo: _uid).get();
+      n += count(snap.docs.map((d) => d.data()));
+    } catch (_) {}
     try {
       final snap = await _userRef.collection('progress_history').where('mode', isEqualTo: 'solo_challenge').get();
-      return snap.docs.where((d) {
-        final ts = d.data()['completedAt'];
-        return ts is Timestamp && !ts.toDate().isBefore(start);
-      }).length;
-    } catch (_) {
-      return 0;
-    }
+      n += count(snap.docs.map((d) => d.data()));
+    } catch (_) {}
+    return n;
   }
 
   static int _sessionsIn(List<DateTime> times) {
@@ -632,7 +655,7 @@ class DailyChallengeService {
               'completedDailyChallenges': FieldValue.arrayUnion([q.id]),
               'dailyChallengesCompletedCount': FieldValue.increment(1),
               'xp': FieldValue.increment(q.reward),
-              'dailyXp': FieldValue.increment(q.reward),
+              ...ProgressService.periodXp(q.reward),
               moduleField: FieldValue.increment(q.reward),
             },
             SetOptions(merge: true));

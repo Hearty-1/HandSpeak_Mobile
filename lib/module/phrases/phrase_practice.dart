@@ -2,16 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'phrase_recognizer.dart';
-import 'phrase_tutorial_practice.dart';
+import '/module/tutorial_session_practice.dart';
 
 /// Continuous practice for the Words/Phrases category, like the alphabet
 /// (practice.dart) and numbers (numbers_practice.dart) continuous practice:
 /// the phrases come one after another, each success gives XP and moves on to
 /// the next phrase, and the list loops.
 ///
-/// Phrases are signs with movement, so each one is recorded and evaluated
-/// by the same pipeline as the phrase tutorial (PhraseTutorialPractice in
-/// continuous mode). Months (calendar) are left out: the calendar model
+/// Phrases are signs with movement: checked like the Hard camera activities
+/// (RECORD SIGN -> the greetings model), with ◀ / ▶ and the session stored
+/// in the Practice Sessions (tutorial_session_practice.dart). Months (calendar) are left out: the calendar model
 /// does not recognise new signers yet (2026-10-14 phone replay).
 class PhrasePractice extends StatefulWidget {
   const PhrasePractice({super.key});
@@ -34,8 +34,6 @@ class _PhrasePracticeState extends State<PhrasePractice> {
     'Salamat',
     'Magkita Tayo Bukas',
   ];
-
-  int _currentIdx = 0;
 
   /// Lesson demo (image / video) per phrase from Firestore tutorial_lessons.
   final Map<String, String> _media = {};
@@ -76,24 +74,12 @@ class _PhrasePracticeState extends State<PhrasePractice> {
     }
   }
 
-  void _next() {
-    if (!mounted) return;
-    setState(() => _currentIdx = (_currentIdx + 1) % _phrases.length);
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final phrase = _phrases[_currentIdx];
-    return PhraseTutorialPractice(
-      // A new key per phrase: each phrase gets a fresh capture pipeline
-      // (greetings and months use different recognisers).
-      key: ValueKey('phrase_practice_$_currentIdx'),
-      targetPhrase: phrase,
-      mediaUrl: _media[_keyOf(phrase)] ?? '',
-      continuous: true,
-      onMastered: _next,
-      onSkip: _next,
-      progressLabel: 'Phrase ${_currentIdx + 1} of ${_phrases.length}',
-    );
-  }
+  Widget build(BuildContext context) => TutorialSessionPractice(
+        title: 'Greetings Practice',
+        category: 'phrases',
+        categoryName: 'Greetings',
+        xpField: 'phraseXp',
+        signs: [for (final p in _phrases) PracticeSign(p, media: _media[_keyOf(p)] ?? '')],
+      );
 }

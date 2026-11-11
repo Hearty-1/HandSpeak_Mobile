@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:ui';
 import '/services/challenge_categories.dart';
 import 'package:flutter/material.dart';
+import '/services/progress_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../home/home.dart';
@@ -19,6 +20,7 @@ import '../home/notification_bell.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
+import '/widgets/responsive.dart';
 
 Route _fadeRoute(Widget page) {
   return PageRouteBuilder(
@@ -50,11 +52,45 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   final String _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
+  // Leaderboard paging: [_pageSize] more students each time the list is
+  // scrolled to its end, up to [_maxRanked] (only the loaded page is read).
+  static const int _pageSize = 50;
+  static const int _maxRanked = 1000;
+  int _leaderLimit = _pageSize;
+  int _lastLoaded = 0;
+  final ScrollController _leaderScroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _mainHubTab = widget.initialTab;
     _checkAndResetDailyStats();
+    _leaderScroll.addListener(_maybeLoadMore);
+  }
+
+  @override
+  void dispose() {
+    _leaderScroll.dispose();
+    super.dispose();
+  }
+
+  void _maybeLoadMore() {
+    final pos = _leaderScroll.position;
+    // Near the end, the last page was full (more may exist): load the next one.
+    if (pos.pixels >= pos.maxScrollExtent - 200 && _lastLoaded >= _leaderLimit && _leaderLimit < _maxRanked) {
+      setState(() => _leaderLimit += _pageSize);
+    }
+  }
+
+  /// The student's own place: how many have more XP, plus one (a count
+  /// query, so it works however many students there are).
+  Future<int?> _myRank(String field, int myXp) async {
+    try {
+      final c = await FirebaseFirestore.instance.collection('users').where(field, isGreaterThan: myXp).count().get();
+      return (c.count ?? 0) + 1;
+    } catch (_) {
+      return null;
+    }
   }
 
   Widget _buildSafeAvatar({
@@ -180,8 +216,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final double screenWidth = MediaQuery.of(context).size.width;
-    const double baseWidth = 393;
-    final double scale = screenWidth / baseWidth > 1.2 ? 1.2 : screenWidth / baseWidth;
+    final double scale = Responsive.scale(screenWidth);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -272,7 +307,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
       body: LayoutBuilder(
         builder: (context, constraints) {
+          // Fill the whole screen: with a short page (e.g. an empty Weekly
+          // League) the background glows were cut where the content ended.
           return Stack(
+            fit: StackFit.expand,
             children: [
               Positioned(
                 top: 100 * scale, right: -30 * scale,
@@ -432,8 +470,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       ),
       child: Row(
         children: [
-          _buildSubTabOption(theme, 'weekly', '⚡ Weekly League', _rankTimeframe, (val) => setState(() => _rankTimeframe = val), scale),
-          _buildSubTabOption(theme, 'alltime', '🌍 Global Rank', _rankTimeframe, (val) => setState(() => _rankTimeframe = val), scale),
+          _buildSubTabOption(theme, 'weekly', '⚡ Weekly League', _rankTimeframe, (val) => setState(() {
+                _rankTimeframe = val;
+                _leaderLimit = _pageSize;
+              }), scale),
+          _buildSubTabOption(theme, 'alltime', '🌍 Global Rank', _rankTimeframe, (val) => setState(() {
+                _rankTimeframe = val;
+                _leaderLimit = _pageSize;
+              }), scale),
         ],
       ),
     );
@@ -473,63 +517,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
     return Column(
       children: [
-        StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance.collection('users').doc(_currentUserId).snapshots(),
-          builder: (context, userSnapshot) {
-            int currentUserXp = 0;
-            int currentUserStreak = 0;
-
-            if (userSnapshot.hasData && userSnapshot.data != null && userSnapshot.data!.exists) {
-              final userData = userSnapshot.data!.data() as Map<String, dynamic>;
-              currentUserXp = userData[_rankTimeframe == 'weekly' ? 'dailyXp' : 'xp'] ?? 0;
-              currentUserStreak = userData['streak'] ?? 0;
-            }
-
-            return Container(
-              padding: EdgeInsets.all(16 * scale),
-              decoration: BoxDecoration(
-                color: theme.cardColor.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(24 * scale),
-                border: Border.all(color: theme.primaryColor.withValues(alpha: 0.25), width: 1.0 * scale),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.primaryColor.withValues(alpha: 0.1),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  )
-                ],
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildEnhancedStatBadge(
-                      theme,
-                      Icons.local_fire_department_rounded,
-                      "$currentUserStreak",
-                      "Day Streak",
-                      const Color(0xFFF34B1B),
-                      scale,
-                    ),
-                  ),
-                  SizedBox(width: 12 * scale),
-                  Expanded(
-                    child: _buildEnhancedStatBadge(
-                      theme,
-                      Icons.bolt_rounded,
-                      "$currentUserXp",
-                      _rankTimeframe == 'weekly' ? "Weekly XP" : "Total XP",
-                      theme.primaryColor,
-                      scale,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-
-        SizedBox(height: 24 * scale),
-
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -545,8 +532,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('users')
-              .orderBy(_rankTimeframe == 'weekly' ? 'dailyXp' : 'xp', descending: true)
-              .limit(50)
+              .orderBy(_rankTimeframe == 'weekly' ? ProgressService.weekXpField() : 'xp', descending: true)
+              .limit(_leaderLimit)
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -559,35 +546,86 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return Padding(
                 padding: EdgeInsets.all(20 * scale),
-                child: Text("No leaderboard data available.", style: TextStyle(color: textColor)),
+                child: Text(
+                  _rankTimeframe == 'weekly'
+                      ? "No one has earned XP this week yet. Finish a lesson, level or challenge to top the league!"
+                      : "No leaderboard data available.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: textColor),
+                ),
               );
             }
 
             final docs = snapshot.data!.docs;
+            _lastLoaded = docs.length;
+            final field = _rankTimeframe == 'weekly' ? ProgressService.weekXpField() : 'xp';
             final top3 = docs.take(3).toList();
             final remainingDocs = docs.skip(3).toList();
+            final myIndex = docs.indexWhere((d) => d.id == _currentUserId);
+            final more = docs.length >= _leaderLimit && _leaderLimit < _maxRanked;
 
             return Column(
               children: [
                 if (top3.isNotEmpty) _buildPodium(theme, top3, scale),
                 SizedBox(height: 20 * scale),
 
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: remainingDocs.length,
+                // The rest in its own scroll area with a scrollbar; more
+                // students load at its end.
+                if (remainingDocs.isNotEmpty)
+                  SizedBox(
+                    height: 440 * scale,
+                    child: Scrollbar(
+                      controller: _leaderScroll,
+                      thumbVisibility: true,
+                      interactive: true,
+                      radius: Radius.circular(8 * scale),
+                      thickness: 6 * scale,
+                      child: ListView.builder(
+                  controller: _leaderScroll,
+                  padding: EdgeInsets.only(right: 10 * scale),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: remainingDocs.length + (more ? 1 : 0),
                   itemBuilder: (context, index) {
+                    if (index >= remainingDocs.length) {
+                      return Padding(
+                        padding: EdgeInsets.all(14 * scale),
+                        child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: theme.primaryColor))),
+                      );
+                    }
                     final data = remainingDocs[index].data() as Map<String, dynamic>;
                     final int rank = index + 4;
                     final String playerName = data['displayName'] ?? data['name'] ?? "Student";
-                    final int playerXp = data[_rankTimeframe == 'weekly' ? 'dailyXp' : 'xp'] ?? 0;
+                    final int playerXp = _rankTimeframe == 'weekly' ? ProgressService.weekXpOf(data) : ((data['xp'] as num?)?.toInt() ?? 0);
                     final String playerGrade = data['grade'] ?? "Player";
                     
                     final String? photoUrl = data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'];
 
                     return _buildLeaderboardTile(theme, rank, playerName, playerGrade, playerXp, photoUrl, scale);
                   },
-                ),
+                      ),
+                    ),
+                  ),
+
+                // Your place, also when you are below the loaded students.
+                if (_currentUserId.isNotEmpty && myIndex == -1)
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('users').doc(_currentUserId).snapshots(),
+                    builder: (context, me) {
+                      final data = (me.data?.data() as Map<String, dynamic>?) ?? const {};
+                      final myXp = _rankTimeframe == 'weekly' ? ProgressService.weekXpOf(data) : ((data['xp'] as num?)?.toInt() ?? 0);
+                      return FutureBuilder<int?>(
+                        future: _myRank(field, myXp),
+                        builder: (context, r) {
+                          if (r.data == null) return const SizedBox.shrink();
+                          return Padding(
+                            padding: EdgeInsets.only(top: 12 * scale),
+                            child: _buildLeaderboardTile(theme, r.data!, '${data['displayName'] ?? data['name'] ?? 'You'} (you)',
+                                '${data['grade'] ?? 'Player'}', myXp, data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'], scale),
+                          );
+                        },
+                      );
+                    },
+                  ),
               ],
             );
           },
@@ -747,49 +785,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
 
-  Widget _buildEnhancedStatBadge(ThemeData theme, IconData icon, String value, String label, Color color, double scale) {
-    final textColor = theme.colorScheme.onSurface;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 10 * scale),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16 * scale),
-        border: Border.all(color: color.withValues(alpha: 0.2), width: 1.0 * scale),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: EdgeInsets.all(6 * scale),
-            decoration: BoxDecoration(
-              color: theme.cardColor.withValues(alpha: 0.8),
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 4, offset: const Offset(0, 2))],
-            ),
-            child: Icon(icon, color: color, size: 20 * scale),
-          ),
-          SizedBox(width: 10 * scale),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18 * scale, color: textColor, height: 1.1),
-                ),
-                Text(
-                  label,
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11 * scale, color: color, height: 1.1),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPodium(ThemeData theme, List<QueryDocumentSnapshot> top3Docs, double scale) {
     Map<String, dynamic>? rank1 = top3Docs.isNotEmpty ? top3Docs[0].data() as Map<String, dynamic> : null;
     Map<String, dynamic>? rank2 = top3Docs.length > 1 ? top3Docs[1].data() as Map<String, dynamic> : null;
@@ -816,7 +811,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   Widget _buildPodiumProfile(ThemeData theme, Map<String, dynamic> data, int rank, double height, Color color, double scale) {
     final textColor = theme.colorScheme.onSurface;
     String name = data['displayName'] ?? data['name'] ?? "User";
-    int xp = data[_rankTimeframe == 'weekly' ? 'dailyXp' : 'xp'] ?? 0;
+    int xp = _rankTimeframe == 'weekly' ? ProgressService.weekXpOf(data) : ((data['xp'] as num?)?.toInt() ?? 0);
     
     String? photoUrl = data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'];
 

@@ -1718,7 +1718,11 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
         onPressed: _isInitialized && !_isSuccessAchieved && !_isEvaluating ? _toggleRecording : null,
       );
       widget.bridge?.publish(buttonState);
-      return Column(
+      // Scrolls if the space is short (challenge questions): the status line
+      // grows while recording.
+      return SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
@@ -1751,6 +1755,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
             cameraLevelButton(theme, label: buttonState.label, recording: _isRecording, onPressed: buttonState.onPressed),
           ],
         ],
+      ),
       );
     }
 
