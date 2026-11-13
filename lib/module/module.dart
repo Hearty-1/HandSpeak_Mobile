@@ -114,15 +114,13 @@ class SnedInterface2 extends StatelessWidget {
           }
         }
 
-        // XP unlock chain applies to students only; guests have no XP to unlock with.
-        final bool isWordsLocked = canProgress && alphabetXp < targetXp; 
-        final bool isCivicsLocked = canProgress && (isWordsLocked || (wordsXp < targetXp)); 
 
         int displayAlpXp = alphabetXp > targetXp ? targetXp : alphabetXp; 
         int displayNumXp = numbersXp > targetXp ? targetXp : numbersXp; 
         int displayWordsXp = wordsXp > targetXp ? targetXp : wordsXp; 
         int displayCivicsXp = civicsXp > targetXp ? targetXp : civicsXp;
 
+        // Every module is open to everyone (no unlock order).
         return LayoutBuilder(
           builder: (context, constraints) { 
             final double scale = Responsive.scale(constraints.maxWidth); 
@@ -196,7 +194,7 @@ class SnedInterface2 extends StatelessWidget {
                               Navigator.push(context, _fadeRoute(InfoDetailScreen(
                                 title: L.t('Help & Support', 'Tulong at Suporta'),
                                 sections: [
-                                  InfoSection(title: L.t('The Learning Loop', 'Ang Paraan ng Pag-aaral'), body: L.t('Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.', 'Ang pag-aaral mo ng Filipino Sign Language ay may apat na yugto: Tutorials, Practice, Activities at Challenges. Makakuha ng 1000 XP para mabuksan ang susunod na module.'), icon: Icons.loop_rounded),
+                                  InfoSection(title: L.t('The Learning Loop', 'Ang Paraan ng Pag-aaral'), body: L.t('Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges.', 'Ang pag-aaral mo ng Filipino Sign Language ay may apat na yugto: Tutorials, Practice, Activities at Challenges.'), icon: Icons.loop_rounded),
                                   InfoSection(title: L.t('Camera Combat', 'Camera Combat'), body: L.t('Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.', 'Siguraduhing maliwanag ang lugar at gamitin ang Mirror-Mode Camera. Ang berdeng tsek ay tama, at ang pulang "X" ay kailangan pang ayusin ang porma.'), icon: Icons.camera_alt_rounded),
                                   InfoSection(title: L.t('Leveling Up & Streaks', 'Pag-level Up at Streaks'), body: L.t('Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.', 'Patuloy na magsanay para makakuha ng XP at mapuno ang Level Progress Bar. I-on ang Streak Reminders para tuloy-tuloy ang pag-aaral.'), icon: Icons.local_fire_department_rounded),
                                   InfoSection(title: L.t('Multiplayer Challenges', 'Multiplayer Challenges'), body: L.t('Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".', 'Hamunin ang mga kaklase: pindutin ang "Join a Room" at ilagay ang Room Code, o maging host sa pagpili ng "Create a Room".'), icon: Icons.group_rounded),
@@ -395,8 +393,6 @@ class SnedInterface2 extends StatelessWidget {
                               picture: Image.asset("assets/pictures/words.png", fit: BoxFit.contain),
                               source: ModuleSource.greetings,
                               userData: userData,
-                              lockedHint: L.t('Finish Alphabet to unlock', 'Tapusin ang Alpabeto para mabuksan'),
-                              locked: isWordsLocked,
                               showProgress: canProgress,
                               onTap: () => _openModule(context, 'common words', _fadeRoute(PhraseInterface(currentXp: displayWordsXp, targetXp: targetXp))),
                             ),
@@ -406,8 +402,6 @@ class SnedInterface2 extends StatelessWidget {
                               picture: Image.asset("assets/pictures/civic.png", fit: BoxFit.contain),
                               source: ModuleSource.civic,
                               userData: userData,
-                              lockedHint: L.t('Finish Greetings to unlock', 'Tapusin ang Mga Pagbati para mabuksan'),
-                              locked: isCivicsLocked,
                               showProgress: canProgress,
                               onTap: () => _openModule(context, 'civic', _fadeRoute(CivicInterface(currentXp: displayCivicsXp, targetXp: targetXp))),
                             ),

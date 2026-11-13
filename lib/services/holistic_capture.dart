@@ -58,9 +58,21 @@ class HolisticCapture {
 
   /// Sends the camera planes to native code (converted there once) and
   /// returns the raw landmarks, or null when the frame could not be read.
+  static int _lastSentMs = 0;
+
+  /// Frames / s in the light mode (slow phone, PerformanceSettings): full-body
+  /// tracking is the heaviest work in the app; 12 / s still gives the
+  /// movement checks a proper path (~3 / s was too few).
+  static const int lightFps = 12;
+
   static Future<HolisticResult?> process(CameraImage image, int rotation) async {
     final planes = image.planes;
     if (planes.length < 3) return null;
+    if (PerformanceSettings.on) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastSentMs < 1000 ~/ lightFps) return null; // skipped before the costly copy
+      _lastSentMs = now;
+    }
     // Capture time, not result time: frames are processed in a pipeline, so
     // the result arrives a variable ~100-200 ms later.
     final capturedMs = DateTime.now().millisecondsSinceEpoch;

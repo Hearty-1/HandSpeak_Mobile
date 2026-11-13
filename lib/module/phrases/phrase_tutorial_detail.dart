@@ -13,6 +13,9 @@ import 'phrase_tutorial_practice.dart'; // Updated import
 import '/module/civic/civic_tutorial_detail.dart' show CustomVideoPlayer;
 import '/widgets/responsive.dart';
 
+/// Resolved lesson media addresses (Storage path -> download URL), per session.
+final Map<String, Future<String>> _resolvedMedia = {};
+
 class TutorialSign {
   final String label;
   final String gestureKey;
@@ -91,7 +94,9 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
 
   Widget _buildDynamicImage(String path, double width, double height) {
     return FutureBuilder<String>(
-      future: _resolveImageUrl(path),
+      // One lookup per address for the session: a new Future on every
+      // rebuild reset this builder and reloaded the video (flicker).
+      future: _resolvedMedia.putIfAbsent(path, () => _resolveImageUrl(path)),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
@@ -110,7 +115,7 @@ class _PhraseTutorialDetailState extends State<PhraseTutorialDetail> {
           return SizedBox(
             width: width,
             height: height,
-            child: ColoredBox(color: Colors.black, child: Center(child: CustomVideoPlayer(videoUrl: resolvedUrl))),
+            child: ColoredBox(color: Colors.black, child: Center(child: CustomVideoPlayer(key: ValueKey(resolvedUrl), videoUrl: resolvedUrl))),
           );
         }
 

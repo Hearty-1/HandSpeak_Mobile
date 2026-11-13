@@ -61,7 +61,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBkDXo4sQfoqzR9cinlc90e1Av8mjyF1WY',
-    appId: '1:238765289233:android:42cedb071cad0cf7ff66b0',
+    appId: '1:238765289233:android:f180acc359a1c43cff66b0', // com.techspartan.handspeak
     messagingSenderId: '238765289233',
     projectId: 'handspeak-96d8d',
     storageBucket: 'handspeak-96d8d.firebasestorage.app',

@@ -5,10 +5,18 @@
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 <uses-permission android:name="android.permission.INTERNET"/>
 <uses-permission android:name="android.permission.VIBRATE" />
+<!-- Android 13+: needed to show reminders and challenge invites. -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="HandSpeak"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Use Flutter's older, stable renderer (Skia) instead of Impeller.
+             On some phones' GPUs Impeller drops letters from text and makes
+             the camera / video previews flicker and lag (seen 2026-11-13). -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

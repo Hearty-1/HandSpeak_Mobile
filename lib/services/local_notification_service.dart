@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -20,6 +21,14 @@ class LocalNotificationService {
         InitializationSettings(android: androidSettings, iOS: iosSettings);
         
     await _notificationsPlugin.initialize(settings);
+    // Android 13+ shows notifications only after the user allows them.
+    try {
+      await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+    } catch (e) {
+      debugPrint('Notification permission request failed: $e');
+    }
   }
 
   // NEW: Instant notification for Friend Challenge Invites

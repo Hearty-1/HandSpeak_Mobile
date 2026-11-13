@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 /// small phones do not get unreadable text, tablets do not get giant UI.
 class Responsive {
   static const double designWidth = 393;
-  static const double minScale = 0.85;
+  static const double minScale = 0.75; // 320-wide phones: ~0.81
   static const double maxScale = 1.25;
 
   /// Widest the app content gets on tablets / landscape (a centered column).
@@ -35,7 +35,10 @@ class ResponsiveApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final text = mq.textScaler.clamp(minScaleFactor: 0.85, maxScaleFactor: 1.3);
+    // Small / narrow phones get a lower cap: a large system font there made
+    // dialogs and cards too big for the screen.
+    final small = mq.size.shortestSide < 360;
+    final text = mq.textScaler.clamp(minScaleFactor: 0.85, maxScaleFactor: small ? 1.1 : 1.3);
     Widget app = MediaQuery(data: mq.copyWith(textScaler: text), child: child);
 
     final size = mq.size;

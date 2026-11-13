@@ -13,6 +13,9 @@ import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
 import '/widgets/responsive.dart';
 
+/// Resolved lesson media addresses (Storage path -> download URL), per session.
+final Map<String, Future<String>> _resolvedMedia = {};
+
 class TutorialSign {
   final String label;
   final String gestureKey;
@@ -99,7 +102,9 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
 
   Widget _buildDynamicImage(String path, double width, double height) {
     return FutureBuilder<String>(
-      future: _resolveImageUrl(path),
+      // One lookup per address for the session: a new Future on every
+      // rebuild reset this builder and reloaded the video (flicker).
+      future: _resolvedMedia.putIfAbsent(path, () => _resolveImageUrl(path)),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(

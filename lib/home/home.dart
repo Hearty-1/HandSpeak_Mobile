@@ -151,9 +151,8 @@ class SnedInterafce1 extends StatelessWidget {
       });
     }
 
-    final wordsLocked = moduleXp['alphabet']! < _moduleTargetXp;
-    final civicLocked = wordsLocked || moduleXp['common words']! < _moduleTargetXp;
-    bool unlocked(String m) => !(m == 'common words' && wordsLocked) && !(m == 'civic' && civicLocked);
+    // Every module is open (no unlock order).
+    bool unlocked(String m) => true;
 
     final byTime = lastOpened.keys.toList()..sort((a, b) => lastOpened[b]!.compareTo(lastOpened[a]!));
     final legacy = [for (final e in ((data['recentModules'] as List?) ?? const []).reversed) _moduleOf('$e')];

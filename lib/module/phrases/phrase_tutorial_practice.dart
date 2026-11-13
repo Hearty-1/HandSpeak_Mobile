@@ -1437,7 +1437,10 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     final url = widget.mediaUrl.trim();
     final path = url.split('?').first.toLowerCase();
     if (url.isNotEmpty && const ['.mp4', '.mov', '.webm', '.m4v', '.3gp', '.mkv'].any(path.endsWith)) {
-      return ColoredBox(color: Colors.black, child: Center(child: CustomVideoPlayer(videoUrl: url)));
+      // Own layer + stable key: camera redraws never repaint or recreate it.
+      return RepaintBoundary(
+        child: ColoredBox(color: Colors.black, child: Center(child: CustomVideoPlayer(key: ValueKey(url), videoUrl: url))),
+      );
     }
     final fallback = _templateImage != null
         ? Image.memory(_templateImage!, fit: BoxFit.cover)

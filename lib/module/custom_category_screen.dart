@@ -109,8 +109,15 @@ class _CloudMedia extends StatelessWidget {
 
   static final Map<String, Future<String>> _urls = {};
 
+  /// Already a usable address (no lookup needed).
+  static bool _direct(String s) => s.isEmpty || s.startsWith('http') || s.startsWith('data:') || s.startsWith('assets/');
+
+  /// One lookup per source for the whole session. Returning a new Future on
+  /// every rebuild (as before) reset the FutureBuilder each frame: camera
+  /// screens rebuild many times a second, so the demo video was torn down
+  /// and reloaded again and again (flicker, lag).
   static Future<String> _resolve(String s) {
-    if (s.isEmpty || s.startsWith('http') || s.startsWith('data:') || s.startsWith('assets/')) return Future.value(s);
+    if (_direct(s)) return Future.value(s);
     return _urls[s] ??= (s.startsWith('gs://')
             ? FirebaseStorage.instance.refFromURL(s)
             : FirebaseStorage.instance.ref(s))
@@ -129,15 +136,26 @@ class _CloudMedia extends StatelessWidget {
       alignment: Alignment.center,
       child: Icon(Icons.category_rounded, color: theme.primaryColor, size: 40),
     );
+    final src = source.trim();
+    // Direct addresses are shown at once (no waiting state, no rebuild of
+    // the video player); Storage paths are looked up once and cached.
+    final Future<String> lookup = _direct(src) ? (_urls[src] ??= Future.value(src)) : _resolve(src);
     return FutureBuilder<String>(
-      future: _resolve(source.trim()),
+      future: lookup,
+      initialData: _direct(src) ? src : null,
       builder: (context, snap) {
         final url = snap.data ?? '';
-        if (snap.connectionState != ConnectionState.done) {
+        if (snap.data == null && snap.connectionState != ConnectionState.done) {
           return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
         }
         if (url.isEmpty) return fallback;
-        if (isVideo(url)) return ColoredBox(color: Colors.black, child: Center(child: CustomVideoPlayer(videoUrl: url)));
+        // Own layer + stable key: the camera's frequent redraws do not repaint
+        // or recreate the video.
+        if (isVideo(url)) {
+          return RepaintBoundary(
+            child: ColoredBox(color: Colors.black, child: Center(child: CustomVideoPlayer(key: ValueKey(url), videoUrl: url))),
+          );
+        }
         if (url.startsWith('data:image')) {
           try {
             return Image.memory(base64Decode(url.split(',').last), fit: fit);
@@ -251,6 +269,30 @@ class ModuleSource {
   static ModuleSource cloud(CloudCategory c) => ModuleSource(categories: c.aliases, masteryKey: c.id);
 
   static final Map<String, Future<({int lessons, List<String> levels})>> _totals = {};
+  static final Map<String, int> _knownLessons = {};
+
+  /// Whether every tutorial sign of this module is learned (the unlock rule
+  /// for the next module). Null while the lesson count is not loaded yet
+  /// (it starts loading here). No tutorial signs = done.
+  /// "learned/total" of this module's tutorial signs ('' while loading).
+  String tutorialCount(Map<String, dynamic> user) {
+    final lessons = _knownLessons[masteryKey];
+    if (lessons == null) return '';
+    final m = (user['tutorialMastery'] as Map?)?[masteryKey];
+    final learned = (m is Map ? m.length : 0).clamp(0, lessons);
+    return '$learned/$lessons';
+  }
+
+  bool? tutorialDone(Map<String, dynamic> user) {
+    final lessons = _knownLessons[masteryKey];
+    if (lessons == null) {
+      totals().then((_) {}, onError: (_) {});
+      return null;
+    }
+    if (lessons == 0) return true;
+    final m = (user['tutorialMastery'] as Map?)?[masteryKey];
+    return (m is Map ? m.length : 0) >= lessons;
+  }
 
   /// Lessons and activity levels of the module (read once per session).
   Future<({int lessons, List<String> levels})> totals() => _totals[masteryKey] ??= () async {
@@ -262,6 +304,7 @@ class ModuleSource {
           for (final d in questions.docs)
             if ('${d.data()['level'] ?? ''}'.trim().isNotEmpty) '${d.data()['level']}'.trim(),
         }.toList();
+        _knownLessons[masteryKey] = lessons.size;
         return (lessons: lessons.size, levels: levels);
       }()
           .catchError((Object e) {

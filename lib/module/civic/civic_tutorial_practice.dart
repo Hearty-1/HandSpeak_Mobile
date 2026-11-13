@@ -1495,26 +1495,6 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     final Widget tutorial = SingleChildScrollView(
       child: Column(
         children: [
-          // Line label (no Prev / Next: the line is chosen in the tutorial list)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                  color: theme.primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _activeQuestions.length == 1 && currentItem['line_number'] != null
-                      ? '${L.t('Line', 'Linya')} ${currentItem['line_number']}${context.rolesRead.isStudent ? ' • +$xpReward XP' : ''}'
-                      : L.t('Line ${_currentStep + 1} of ${_activeQuestions.length}', 'Linya ${_currentStep + 1} sa ${_activeQuestions.length}'),
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.primaryColor),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           Text(
             currentItem['question'] ?? '',
             textAlign: TextAlign.center,

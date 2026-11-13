@@ -1,3 +1,4 @@
+import 'dart:ui' show PlatformDispatcher;
 import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,27 +22,46 @@ import '/widgets/responsive.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+
+  // Every startup step is guarded: if one fails on a phone (old Play
+  // services, storage, notifications...), the app still opens instead of
+  // closing on launch. Errors are logged.
+  Future<void> step(String name, Future<void> Function() run) async {
+    try {
+      await run();
+    } catch (e, st) {
+      debugPrint('Startup step "$name" failed: $e\n$st');
+    }
+  }
+
+  await step('firebase', () => Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform));
 
   // Offline use: keep the user's data on the phone (no size limit), so the
   // app works without internet and syncs when it is back (OfflineSync).
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-  );
+  await step('firestore cache', () async {
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+  });
 
-  // Initialize notifications and timezone setup
-  await LocalNotificationService.initialize();
-
-  // Saved Performance Mode (reduced visual effects) before the first frame.
+  // Notifications (and the Android 13+ permission prompt).
+  await step('notifications', LocalNotificationService.initialize);
 
   // Remembered Faculty / Parent (guest) choice, so they re-enter without the intro.
   final roleProvider = RoleProvider();
-  await roleProvider.load();
-  await PerformanceSettings.load(); // Settings > Performance Mode
+  await step('role', roleProvider.load);
+  await step('performance mode', PerformanceSettings.load); // Settings > Performance Mode
+
+  // Uncaught errors are logged instead of ending the app.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('Flutter error: ${details.exceptionAsString()}');
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught error: $error\n$stack');
+    return true; // handled
+  };
 
   runApp(
     MultiProvider(

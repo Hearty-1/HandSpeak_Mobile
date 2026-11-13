@@ -2358,7 +2358,8 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
                           ),
                         ],
                       )
-                    ] else ...[
+                    // Score only for still letters: J / Z are recorded and judged whole.
+                    ] else if (!_isDynamicLetter) ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(30),
                         child: SmartBlur(

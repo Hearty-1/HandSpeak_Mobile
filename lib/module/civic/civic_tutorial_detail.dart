@@ -14,6 +14,7 @@ import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
 import '/widgets/responsive.dart';
 import '/providers/sound_provider.dart';
+import '/widgets/activity_video.dart';
 
 class CivicTutorialDetail extends StatefulWidget {
   final List<CivicLesson> civicList;
@@ -399,7 +400,16 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
       }
 
       if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
-        _controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
+        // A demo seen before plays from the phone (no download, no buffering
+        // flicker); a new one streams now and is saved for next time.
+        final saved = await ActivityVideo.cachedFile(resolvedUrl);
+        if (!mounted) return;
+        if (saved != null) {
+          _controller = VideoPlayerController.file(saved);
+        } else {
+          _controller = VideoPlayerController.networkUrl(Uri.parse(resolvedUrl));
+          ActivityVideo.prefetch(resolvedUrl);
+        }
       } else {
         _controller = VideoPlayerController.asset(resolvedUrl);
       }

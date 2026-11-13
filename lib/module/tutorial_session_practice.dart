@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
 import '/providers/language_provider.dart';
+import '/providers/sound_provider.dart';
 import '/services/progress_service.dart';
 import '/services/tutorial_session_recorder.dart';
 import '/services/xp_rewards.dart';
@@ -132,9 +134,11 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
     ));
     if (!r.correct) {
       HapticFeedback.heavyImpact();
+      Provider.of<SoundProvider>(context, listen: false).playIncorrect();
       return;
     }
     HapticFeedback.mediumImpact();
+    Provider.of<SoundProvider>(context, listen: false).playCorrect();
     final xp = await ProgressService().awardFirstMastery(
       moduleKey: XpRewards.practiceKey(widget.category),
       itemKey: sign.itemKey ?? ProgressService.masteryKey(sign.sign),
@@ -145,7 +149,7 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
     if (!mounted) return;
     setState(() => _xp = xp);
     // A pass moves on by itself, as the old continuous practice did.
-    _advance = Timer(const Duration(milliseconds: 1800), () {
+    _advance = Timer(_advanceAfter, () {
       if (mounted) _go(1);
     });
   }
@@ -188,46 +192,172 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
     );
   }
 
+  /// How long a correct sign stays on screen before the next one.
+  static const Duration _advanceAfter = Duration(milliseconds: 1800);
+
+  /// Result card in practice's own coaching style (not the activities' game
+  /// look): a calm card in the app colours, green when right, soft amber (not
+  /// red) when it needs another try. A pass shows the XP and a countdown bar
+  /// to the next sign; a miss shows the match score, a hint and TRY AGAIN.
   Widget _feedback(ThemeData theme) {
     final r = _result;
     if (r == null) return const SizedBox.shrink();
-    final (Color color, IconData icon, String title, String text) = r.skipped
-        ? (theme.dividerColor, Icons.info_outline_rounded, L.t('Not checked yet', 'Hindi pa masusuri'),
-            L.t('This sign has no model yet. Use ▶ for the next sign.', 'Wala pang model ang kumpas na ito. Pindutin ang ▶.'))
-        : r.correct
-            ? (const Color(0xFF58CC02), Icons.check_circle_rounded, L.t('Great job!', 'Mahusay!'),
-                _xp > 0 ? '+$_xp XP' : L.t('Correct sign!', 'Tumpak ang kumpas!'))
-            : (const Color(0xFFEA2B2B), Icons.cancel_rounded, L.t('Not quite', 'Hindi pa tama'),
-                (r.predicted ?? '').isNotEmpty && r.predicted!.trim().toUpperCase() != _sign.sign.trim().toUpperCase()
-                    ? L.t('That looked like ${r.predicted}. Try again.', 'Mukhang ${r.predicted} iyon. Subukang muli.')
-                    : L.t('Follow the example and try again.', 'Sundan ang halimbawa at subukang muli.'));
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color, width: 2),
+    final onSurface = theme.colorScheme.onSurface;
+
+    // No model for this sign yet: a neutral note.
+    if (r.skipped) {
+      return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: theme.dividerColor, width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline_rounded, color: onSurface.withValues(alpha: 0.6), size: 26),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                L.t('This sign cannot be checked yet. Use ▶ for the next sign.', 'Hindi pa masusuri ang kumpas na ito. Pindutin ang ▶.'),
+                style: TextStyle(fontWeight: FontWeight.w600, color: onSurface.withValues(alpha: 0.75)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Practice colours: green = right, amber = try again (no red: mistakes
+    // are part of practising).
+    final badge = r.correct ? const Color(0xFF2E9E4F) : const Color(0xFFE59A1A);
+    final sign = _sign.label;
+    final title = r.correct
+        ? L.t('Nice signing!', 'Magaling ang pagkumpas!')
+        : L.t('Almost there, keep going', 'Malapit na, ituloy mo');
+    final lookedLike = (r.predicted ?? '').trim().isNotEmpty && r.predicted!.trim().toUpperCase() != _sign.sign.trim().toUpperCase();
+    final hint = r.correct
+        ? L.t('"$sign" is correct.', 'Tama ang "$sign".')
+        : lookedLike
+            ? L.t('That looked like "${r.predicted}". Watch the example of "$sign" and try again.',
+                'Mukhang "${r.predicted}" iyon. Panoorin ang halimbawa ng "$sign" at subukang muli.')
+            : L.t('Watch the example of "$sign", then try again.', 'Panoorin ang halimbawa ng "$sign", saka subukang muli.');
+    // A live match score only means something for still signs.
+    final showScore = !r.correct && !r.isDynamic && r.score > 0;
+
+    Widget pill(IconData icon, String text) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: badge.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, color: badge, size: 15),
+            const SizedBox(width: 4),
+            Text(text, style: TextStyle(color: badge, fontWeight: FontWeight.w900, fontSize: 13)),
+          ]),
+        );
+
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('fb_${_i}_$_attempt'),
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeOutBack,
+      builder: (context, t, child) => Transform.translate(
+        offset: Offset(0, (1 - t) * 40),
+        child: Opacity(opacity: t.clamp(0.0, 1.0), child: child),
       ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 30),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(badge.withValues(alpha: 0.07), theme.cardColor),
+          borderRadius: BorderRadius.circular(18),
+          border: Border(left: BorderSide(color: badge, width: 5)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               children: [
-                Text(title, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: theme.colorScheme.onSurface)),
-                Text(text, style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withValues(alpha: 0.75))),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: badge.withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: Icon(r.correct ? Icons.thumb_up_alt_rounded : Icons.lightbulb_rounded, color: badge, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: onSurface, fontWeight: FontWeight.w900, fontSize: 17)),
+                      const SizedBox(height: 2),
+                      Text(hint,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: onSurface.withValues(alpha: 0.7), fontWeight: FontWeight.w600, fontSize: 13)),
+                    ],
+                  ),
+                ),
               ],
             ),
-          ),
-          if (!r.correct && !r.skipped)
-            TextButton(
-              onPressed: _retry,
-              child: Text(L.t('TRY AGAIN', 'ULITIN'), style: TextStyle(fontWeight: FontWeight.w900, color: theme.primaryColor)),
-            ),
-        ],
+            const SizedBox(height: 10),
+            if (r.correct) ...[
+              Row(children: [
+                if (_xp > 0) pill(Icons.bolt_rounded, '+$_xp XP') else pill(Icons.check_rounded, L.t('Correct!', 'Tama!')),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(L.t('Next sign coming up...', 'Susunod na kumpas...'),
+                      textAlign: TextAlign.right,
+                      style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w700, fontSize: 12)),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              // Fills while the screen waits to show the next sign.
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: TweenAnimationBuilder<double>(
+                  key: ValueKey('adv_${_i}_$_attempt'),
+                  tween: Tween(begin: 0, end: 1),
+                  duration: _advanceAfter,
+                  builder: (context, p, _) => LinearProgressIndicator(
+                    value: p,
+                    minHeight: 6,
+                    backgroundColor: badge.withValues(alpha: 0.15),
+                    valueColor: AlwaysStoppedAnimation(badge),
+                  ),
+                ),
+              ),
+            ] else ...[
+              if (showScore) ...[
+                Row(children: [
+                  pill(Icons.speed_rounded, L.t('Match ${r.score.round()}%', 'Tugma ${r.score.round()}%')),
+                  const SizedBox(width: 8),
+                  Text(L.t('need 70%', 'kailangan 70%'),
+                      style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w700, fontSize: 12)),
+                ]),
+                const SizedBox(height: 10),
+              ],
+              SizedBox(
+                height: 46,
+                child: ElevatedButton.icon(
+                  onPressed: _retry,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.primaryColor,
+                    foregroundColor: theme.colorScheme.onPrimary,
+                    elevation: 0,
+                    shape: Button3DBorder(borderRadius: BorderRadius.circular(23)),
+                  ),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: Text(L.t('TRY AGAIN', 'ULITIN'), style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
