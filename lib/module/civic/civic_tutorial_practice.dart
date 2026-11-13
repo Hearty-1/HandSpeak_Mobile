@@ -1493,7 +1493,11 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     );
 
     final Widget tutorial = SingleChildScrollView(
-      child: Column(
+      // Full width: a shrink-wrapped column moved sideways whenever the
+      // status line under the camera changed width (tapping record).
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
         children: [
           Text(
             currentItem['question'] ?? '',
@@ -1540,6 +1544,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
           const SizedBox(height: 16),
           PracticeFeedback(message: _currentFeedback, tone: _feedbackTone),
         ],
+      ),
       ),
     );
     if (!landscape) return tutorial;
