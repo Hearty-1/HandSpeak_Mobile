@@ -1,5 +1,5 @@
+import '/services/app_haptics.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '/providers/language_provider.dart';
 import '/widgets/button_3d.dart';
@@ -74,7 +74,7 @@ class DifficultyCard extends StatelessWidget {
         radius: r,
         child: GestureDetector(
           onTap: () {
-            HapticFeedback.selectionClick();
+            AppHaptics.selection();
             if (isUnlocked) {
               onTap();
             } else {

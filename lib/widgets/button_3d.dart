@@ -1,5 +1,5 @@
+import '/services/app_haptics.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 /// 3D button shape used by every Elevated / Filled / Outlined button in the
 /// app: a soft raised pill, lit from the top (a sheen and a thin rim of
@@ -131,7 +131,7 @@ class _Pressable3DState extends State<Pressable3D> {
 
   void _set(bool v) {
     if (!widget.enabled || v == _down) return;
-    if (v) HapticFeedback.selectionClick();
+    if (v) AppHaptics.selection();
     setState(() => _down = v);
   }
 
@@ -219,7 +219,7 @@ class _PictureButton3DState extends State<PictureButton3D> {
 
   void _set(bool v) {
     if (v == _down) return;
-    if (v) HapticFeedback.selectionClick();
+    if (v) AppHaptics.selection();
     setState(() => _down = v);
   }
 
@@ -282,7 +282,7 @@ class _MenuCapsuleState extends State<MenuCapsule> {
 
   void _set(bool v) {
     if (v == _down) return;
-    if (v) HapticFeedback.selectionClick();
+    if (v) AppHaptics.selection();
     setState(() => _down = v);
   }
 

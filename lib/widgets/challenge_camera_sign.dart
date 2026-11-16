@@ -1,7 +1,9 @@
+import '/services/app_haptics.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
+import '/services/latency_probe.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
@@ -61,7 +63,12 @@ class ChallengeCameraSign extends StatefulWidget {
   /// challenges: recording starts at once).
   final int countdown;
 
-  const ChallengeCameraSign({super.key, required this.sign, required this.onResult, this.enabled = true, this.attempt = 0, this.countdown = 3});
+  /// When set, the button is not drawn here: its state is published so the
+  /// screen can place it (practice landscape: between the demo and camera).
+  final CameraButtonBridge? bridge;
+
+  const ChallengeCameraSign(
+      {super.key, required this.sign, required this.onResult, this.enabled = true, this.attempt = 0, this.countdown = 3, this.bridge});
 
   /// Numbers 11-100 and J / Z are signed with movement.
   static bool isDynamicSign(String sign) {
@@ -237,13 +244,14 @@ class _ChallengeCameraSignState extends State<ChallengeCameraSign> {
 
   Future<void> _captureAndCheck() async {
     if (_answered || _judging || !widget.enabled) return;
-    HapticFeedback.selectionClick();
+    AppHaptics.selection();
     final score = _liveScore;
     if (score < _threshold) {
       _finish(ChallengeSignResult(correct: false, score: score, isDynamic: false, model: _templateSource));
       return;
     }
     setState(() => _judging = true);
+    LatencyProbe.markInput(); // gesture input time (System Testing latency)
     final v = await _serverCheck.verify(_sign, number: _isNumber);
     if (!mounted) return;
     final ok = v != null && v.ok;
@@ -271,6 +279,7 @@ class _ChallengeCameraSignState extends State<ChallengeCameraSign> {
           return;
         }
         setState(() => _judging = true);
+    LatencyProbe.markInput(); // gesture input time (System Testing latency)
         final n = int.tryParse(_sign);
         final v = n != null ? await _judge.judgeNumber(n) : await _judge.judgeLetter(_sign);
         if (!mounted) return;
@@ -403,6 +412,13 @@ class _ChallengeCameraSignState extends State<ChallengeCameraSign> {
           );
 
     final canAct = widget.enabled && !_answered && _ready && !_judging;
+    final VoidCallback? onPress = !canAct
+        ? null
+        : (_isDynamic ? (_recorder.busy ? null : _record) : ((_handsVisible || _recent.isNotEmpty) ? _captureAndCheck : null));
+    final String label = _isDynamic
+        ? signRecordingButtonLabel(_recorder, checking: _judging)
+        : (_judging ? L.t('CHECKING...', 'SINUSURI...') : 'CAPTURE & CHECK');
+    widget.bridge?.publish(CameraButtonState(label: label, onPressed: onPress, recording: _recorder.recording));
     final button = SizedBox(
       width: double.infinity,
       height: 52,
@@ -422,6 +438,13 @@ class _ChallengeCameraSignState extends State<ChallengeCameraSign> {
 
     return LayoutBuilder(builder: (context, box) {
       final landscape = MediaQuery.of(context).orientation == Orientation.landscape;
+      if (landscape && widget.bridge != null) {
+        // Button lives outside: the camera fills its square, status on it.
+        return Stack(fit: StackFit.expand, children: [
+          camera,
+          Positioned(left: 8, right: 8, bottom: 8, child: status),
+        ]);
+      }
       if (landscape) {
         return Row(
           children: [
@@ -431,7 +454,7 @@ class _ChallengeCameraSignState extends State<ChallengeCameraSign> {
           ],
         );
       }
-      final side = math.min(MediaQuery.sizeOf(context).width * 0.60, box.maxHeight.isFinite ? box.maxHeight - 140 : double.infinity);
+      final side = math.min(MediaQuery.sizeOf(context).width * 0.60, box.maxHeight.isFinite ? box.maxHeight - 140 : MediaQuery.sizeOf(context).height * 0.38);
       return SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
         child: Column(
@@ -439,8 +462,7 @@ class _ChallengeCameraSignState extends State<ChallengeCameraSign> {
             Center(child: SizedBox(width: math.max(side, 120), height: math.max(side, 120), child: camera)),
             const SizedBox(height: 14),
             status,
-            const SizedBox(height: 14),
-            button,
+            if (widget.bridge == null) ...[const SizedBox(height: 14), button],
           ],
         ),
       );

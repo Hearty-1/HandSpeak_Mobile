@@ -1,3 +1,4 @@
+import '/services/app_haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -53,6 +54,8 @@ class ChallengeFeedbackBanner extends StatelessWidget {
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutBack,
       tween: Tween<double>(begin: 0.0, end: 1.0),
+      // Correct / wrong (or timeout) felt as the banner arrives.
+      onEnd: () => isCorrect ? AppHaptics.correct() : AppHaptics.wrong(),
       builder: (context, value, child) => Transform.translate(
         offset: Offset(0, (1 - value) * 120),
         child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),

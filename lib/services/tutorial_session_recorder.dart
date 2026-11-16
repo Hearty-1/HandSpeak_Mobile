@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '/services/activity_log.dart';
 import 'package:flutter/foundation.dart';
+import '/services/latency_probe.dart';
 
 /// "Practice Sessions": one Firestore document per continuous-practice run
 /// (collection `practice_sessions`), for the web dashboard.
@@ -25,9 +26,22 @@ import 'package:flutter/foundation.dart';
 /// by [finish] ("completed"). Students only: guests and runs without an
 /// attempt write nothing.
 class TutorialSessionRecorder {
-  TutorialSessionRecorder({required this.category, required this.levelId, this.difficulty = 'other', this.passMark = 70});
+  TutorialSessionRecorder(
+      {required this.category, required this.levelId, this.difficulty = 'other', this.passMark = 70, this.kind = practiceKind});
+
+  /// Practice Sessions (all signs of a category) -> `practice_sessions`.
+  static const String practiceKind = 'practice';
+
+  /// Tutorial practice (one sign inside a lesson) -> `tutorial_practice_sessions`,
+  /// a separate collection with the same document layout (source "tutorial").
+  static const String tutorialKind = 'tutorial';
 
   static const String collection = 'practice_sessions';
+  static const String tutorialCollection = 'tutorial_practice_sessions';
+
+  /// 'practice' or 'tutorial' (see [practiceKind] / [tutorialKind]).
+  final String kind;
+  String get _collection => kind == tutorialKind ? tutorialCollection : collection;
   static const Duration keepFor = Duration(days: 90);
 
   final String category;
@@ -47,13 +61,17 @@ class TutorialSessionRecorder {
   final Map<String, _SignStats> _signs = {};
   final Set<String> _models = {};
   bool _finished = false;
+  // Response latency (System Testing): measured checks of this session.
+  int _latencyCount = 0, _latencySum = 0, _serverCount = 0, _serverSum = 0;
+  /// Every measured check, in order (for the latency results table).
+  final List<Map<String, dynamic>> _latencyLog = [];
 
   User? get _user {
     final u = FirebaseAuth.instance.currentUser;
     return u == null || u.isAnonymous ? null : u;
   }
 
-  DocumentReference<Map<String, dynamic>> get _ref => _db.collection(collection).doc(sessionId);
+  DocumentReference<Map<String, dynamic>> get _ref => _db.collection(_collection).doc(sessionId);
 
   static String _two(int v) => v.toString().padLeft(2, '0');
 
@@ -61,7 +79,7 @@ class TutorialSessionRecorder {
     final d = _startedAt;
     final uid = _user?.uid ?? 'anon';
     final level = levelId.replaceAll(RegExp(r'[/\s]+'), '_');
-    return 'practice_${d.year}-${_two(d.month)}-${_two(d.day)}_${_two(d.hour)}${_two(d.minute)}${_two(d.second)}'
+    return '${kind}_${d.year}-${_two(d.month)}-${_two(d.day)}_${_two(d.hour)}${_two(d.minute)}${_two(d.second)}'
         '_${level}_${uid.substring(0, uid.length < 6 ? uid.length : 6)}';
   }
 
@@ -96,9 +114,27 @@ class TutorialSessionRecorder {
     String? model,
     int durationMs = 0,
   }) async {
+    final latency = LatencyProbe.take(); // gesture input -> this verdict
     if (_user == null || _finished) return;
+    if (latency != null) {
+      _latencyCount++;
+      _latencySum += latency['responseLatencyMs']!;
+      if (latency['serverCalls']! > 0) {
+        _serverCount++;
+        _serverSum += latency['serverRoundTripMs']!;
+      }
+    }
     final s = score.clamp(0.0, 100.0).toDouble();
     final key = signKey(sign);
+    if (latency != null && _latencyLog.length < 200) {
+      _latencyLog.add({
+        'attempt': _attempts + 1,
+        'sign': key,
+        'result': correct ? 'correct' : 'wrong',
+        'responseLatencyMs': latency['responseLatencyMs'],
+        if (latency['serverCalls']! > 0) 'serverRoundTripMs': latency['serverRoundTripMs'],
+      });
+    }
     final guess = (predicted ?? '').trim().isEmpty ? null : signKey(predicted!);
     String code = '';
     if (!correct) {
@@ -147,7 +183,7 @@ class TutorialSessionRecorder {
     try {
       await _ref.set(await _doc(user, outcome));
     } catch (e) {
-      debugPrint('practice_sessions: session not saved: $e');
+      debugPrint('$_collection: session not saved: $e');
     }
   }
 
@@ -164,7 +200,7 @@ class TutorialSessionRecorder {
         if (e.value > 0) '${e.value} ${names[e.key]}'
     ];
     return {
-      'source': 'practice',
+      'source': kind,
       'sessionId': sessionId,
       'userId': user.uid,
       'student': {
@@ -188,6 +224,11 @@ class TutorialSessionRecorder {
         'wrong': wrong,
         'accuracyPercent': _round(acc),
         'averageScore': _attempts == 0 ? 0 : _round(_scoreSum / _attempts),
+        // Response latency: output time - gesture input time (ms).
+        if (_latencyCount > 0) 'averageResponseLatencyMs': (_latencySum / _latencyCount).round(),
+        if (_serverCount > 0) 'averageServerRoundTripMs': (_serverSum / _serverCount).round(),
+        if (_latencyCount > 0) 'latencyMeasurements': _latencyCount,
+        if (_latencyLog.isNotEmpty) 'latencyLog': List<Map<String, dynamic>>.of(_latencyLog),
       },
       'mistakes': Map<String, int>.from(_mistakes),
       'signs': {for (final e in _signs.entries) e.key: e.value.toMap()},
@@ -243,4 +284,49 @@ class _SignStats {
         'confusedWith': Map<String, int>.from(confusedWith),
         'mistakes': Map<String, int>.from(mistakes),
       };
+}
+
+
+/// Tutorial practice (one sign inside a lesson): every check of the sign is
+/// saved to `tutorial_practice_sessions` (one document per visit, the same
+/// layout as Practice Sessions, including response latency).
+///
+/// [begin] when the student submits the sign for checking; [pass] when it is
+/// correct; [fail] when the check said no (ignored without a [begin], so
+/// other messages are not counted as attempts); [finish] on dispose.
+/// Disabled ([enabled] false) when the screen is embedded in an activity or
+/// a Practice Session, which keep their own records.
+class TutorialAttemptLog {
+  TutorialAttemptLog({required String category, required this.sign, bool enabled = true})
+      : _rec = enabled
+            ? TutorialSessionRecorder(
+                category: category,
+                levelId: 'tutorial_${sign.trim().replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')}',
+                difficulty: 'tutorial',
+                kind: TutorialSessionRecorder.tutorialKind,
+              )
+            : null;
+
+  /// The sign being practised (Civic: the current line).
+  String sign;
+  final TutorialSessionRecorder? _rec;
+  bool _pending = false;
+
+  static double _pct(double v) => v <= 1.0 ? v * 100 : v;
+
+  void begin() => _pending = true;
+
+  void pass({double score = 100, String? model}) {
+    _pending = false;
+    _rec?.recordAttempt(sign: sign, correct: true, score: _pct(score), handsDetected: true, model: model);
+  }
+
+  void fail({double score = 0, String? predicted, bool handsDetected = true, String? model}) {
+    if (!_pending) return;
+    _pending = false;
+    _rec?.recordAttempt(
+        sign: sign, correct: false, score: _pct(score), handsDetected: handsDetected, predicted: predicted, model: model);
+  }
+
+  void finish() => _rec?.finish();
 }

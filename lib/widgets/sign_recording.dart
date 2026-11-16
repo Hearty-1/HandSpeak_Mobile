@@ -1,3 +1,4 @@
+import '/services/app_haptics.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ class SignRecordingController {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       countdown--;
       if (countdown > 0) {
+        AppHaptics.tick();
         onChanged();
         return;
       }
@@ -54,6 +56,7 @@ class SignRecordingController {
   void _record(VoidCallback onRecordingStarted, VoidCallback onDone) {
     countdown = 0;
     recording = true;
+    AppHaptics.recordStart();
     _start = DateTime.now();
     onRecordingStarted();
     onChanged();
@@ -65,6 +68,7 @@ class SignRecordingController {
         recording = false;
         progress = 0;
         onChanged();
+        AppHaptics.recordStop();
         onDone();
       } else {
         onChanged();

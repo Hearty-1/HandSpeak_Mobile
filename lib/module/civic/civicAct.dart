@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import '/services/app_haptics.dart';
 import '/widgets/sign_recording.dart';
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
 import '/widgets/challenge_camera_sign.dart' show ChallengeSignResult;
@@ -302,6 +303,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
         .catchError((e) => debugPrint('gesture attempt not saved: $e'));
     final sound = Provider.of<SoundProvider>(context, listen: false);
     correct ? sound.playCorrect() : sound.playIncorrect();
+    correct ? AppHaptics.correct() : AppHaptics.wrong(); // wrong = heart lost
     setState(() {
       _isAnswered = true;
       _isCorrect = correct;
@@ -317,6 +319,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
     _logAnswer(_questions[_currentIndex], correct, _answer.chosen());
     final sound = Provider.of<SoundProvider>(context, listen: false);
     correct ? sound.playCorrect() : sound.playIncorrect();
+    correct ? AppHaptics.correct() : AppHaptics.wrong(); // wrong = heart lost
     FocusScope.of(context).unfocus();
     setState(() {
       _isAnswered = true;
@@ -336,6 +339,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
   }
 
   void _showGameOverDialog() {
+    AppHaptics.failed();
     if (_finished) return;
     _finished = true;
     _progress
@@ -497,7 +501,7 @@ class _QuizScreenState extends State<_QuizScreen> with SingleTickerProviderState
                     // Full width, whole picture / video visible (not cropped).
                     Container(
                       width: double.infinity,
-                      height: 260,
+                      height: MediaQuery.sizeOf(context).height < 600 ? MediaQuery.sizeOf(context).height * 0.45 : 260,
                       decoration: BoxDecoration(
                         color: theme.cardColor,
                         borderRadius: BorderRadius.circular(18),
@@ -959,7 +963,7 @@ class _QuestionViewState extends State<_QuestionView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (q.videoUrl.isNotEmpty || q.imageUrl.isNotEmpty) ...[
-          Center(child: SizedBox(width: double.infinity, height: 260, child: Container(
+          Center(child: SizedBox(width: double.infinity, height: MediaQuery.sizeOf(context).height < 600 ? MediaQuery.sizeOf(context).height * 0.45 : 260, child: Container(
             
             decoration: BoxDecoration(
               color: theme.cardColor,

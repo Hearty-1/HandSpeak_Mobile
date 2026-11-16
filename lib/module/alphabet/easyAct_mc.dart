@@ -1,4 +1,5 @@
 // ignore_for_file: file_names
+import '/services/app_haptics.dart';
 import '/widgets/activity_feedback.dart';
 import '/widgets/button_3d.dart';
 import 'dart:convert';
@@ -205,6 +206,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
   @override
   void initState() {
     super.initState();
+    AppHaptics.celebrate(); // level complete
     _starControllers = List.generate(
       3,
       (index) => AnimationController(
@@ -1176,6 +1178,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
 
       final soundProvider = Provider.of<SoundProvider>(context, listen: false);
       _isCorrect ? soundProvider.playCorrect() : soundProvider.playIncorrect();
+      _isCorrect ? AppHaptics.correct() : AppHaptics.wrong(); // wrong = heart lost
 
       if (!_isCorrect) {
         _hearts--;
@@ -1212,6 +1215,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
   }
 
   void _showGameOverDialog() {
+    AppHaptics.failed();
     _gestureTracker?.finish(outcome: 'game_over', heartsLeft: 0, starsEarned: 0, totalQuestions: _questions.length);
     _progressService.recordActivityAttempt(
       levelId: widget.levelId,
@@ -1514,7 +1518,7 @@ class _EasyActMcState extends State<EasyActMc> with SingleTickerProviderStateMix
                   const SizedBox(height: 24),
 
                   if (currentQuestion.imageUrl.isNotEmpty) ...[
-                    Center(child: SizedBox(width: double.infinity, height: 260, child: Container(
+                    Center(child: SizedBox(width: double.infinity, height: MediaQuery.sizeOf(context).height < 600 ? MediaQuery.sizeOf(context).height * 0.45 : 260, child: Container(
                       
                                             decoration: BoxDecoration(
                         color: theme.cardColor,

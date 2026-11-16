@@ -1,3 +1,4 @@
+import '/services/app_haptics.dart';
 import '/widgets/button_3d.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -306,6 +307,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: Text(context.tr('Performance Mode', 'Performance Mode'), style: TextStyle(color: textColor)),
                   value: on,
                   onChanged: (val) => PerformanceSettings.set(val),
+                )),
+              ),
+              Divider(height: 1, color: theme.dividerColor),
+              // Haptic feedback for answers, recording, rewards (saved on the phone).
+              ValueListenableBuilder<bool>(
+                valueListenable: AppHaptics.enabled,
+                builder: (context, on, _) => Pressable3D(child: SwitchListTile(
+                  activeThumbColor: const Color(0xFFFFB800),
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
+                  secondary: const Icon(Icons.vibration_rounded, color: Color(0xFFFFB800)),
+                  title: Text(context.tr('Vibration', 'Pag-vibrate'), style: TextStyle(color: textColor)),
+                  value: on,
+                  onChanged: (val) => AppHaptics.set(val),
                 )),
               ),
               Divider(height: 1, color: theme.dividerColor),

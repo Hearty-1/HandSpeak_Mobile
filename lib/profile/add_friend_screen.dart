@@ -1,3 +1,4 @@
+import '/profile/public_profile.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -177,7 +178,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                   followingList = data['following'] ?? [];
                   incomingRequests = data['incomingRequests'] ?? [];
                   followersList = data['followers'] ?? [];
-                  currentUserName = data['name'] ?? data['displayName'] ?? 'Someone';
+                  currentUserName = PublicProfileScreen.publicName(data);
                 }
 
                 final users = snapshot.data!.docs.where((doc) {
@@ -303,13 +304,15 @@ class _UserCardState extends State<_UserCard> {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
 
-    String name = widget.userData['name'] ?? 'Student';
+    String name = PublicProfileScreen.publicName(widget.userData);
     String avatarUrl = widget.userData['avatar'] ?? '';
     int xp = widget.userData['xp'] ?? 0;
     
     bool isFriends = isFollowing && widget.isTargetFollowingMe;
 
-    return Container(
+    return GestureDetector(
+      onTap: () => PublicProfileScreen.open(context, widget.targetUserId),
+      child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.cardColor,
@@ -425,6 +428,6 @@ class _UserCardState extends State<_UserCard> {
           ),
         ],
       ),
-    );
+    ));
   }
 }

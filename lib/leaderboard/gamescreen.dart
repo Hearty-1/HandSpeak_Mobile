@@ -1,3 +1,5 @@
+import '/profile/public_profile.dart';
+import '/services/app_haptics.dart';
 import '/widgets/activity_feedback.dart';
 import '/widgets/challenge_feedback.dart';
 import 'dart:math' as math;
@@ -43,7 +45,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   final ProgressService _progressService = ProgressService();
 
   late final String _currentUserId;
-  late final String _displayName;
+  late String _displayName;
 
   List<Map<String, dynamic>> _questions = [];
   int _currentQuestionIndex = 0;
@@ -97,6 +99,17 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
 
 
   Timer? _timer;
+
+  // Presence (group play is self-paced: nobody waits for anyone). Every
+  // ~20 s the player writes `lastSeen`; others show the player as Away when
+  // that stops (app closed / no connection) or when no answer came for a
+  // long time (AFK, even in untimed rooms: they are never skipped, only
+  // marked). `status`: playing -> finished, or left.
+  Timer? _heartbeat;
+  bool _finished = false;
+  static const Duration _heartbeatEvery = Duration(seconds: 20);
+  static const Duration _awayNoHeartbeat = Duration(seconds: 60);
+  static const Duration _awayIdle = Duration(minutes: 3);
   int _timeLeft = 15;
   int _maxTime = 15;
   int _totalRounds = 10;
@@ -124,6 +137,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     _imageProviderCache.clear();
     _pulseController.dispose();
     _timer?.cancel();
+    _heartbeat?.cancel();
     _identificationController.dispose();
     super.dispose();
   }
@@ -250,15 +264,20 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       final user = FirebaseAuth.instance.currentUser;
       String? avatarUrl = user?.photoURL;
 
-      if (avatarUrl == null || avatarUrl.isEmpty) {
-        try {
-          final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get();
-          if (userDoc.exists) {
-            final userData = userDoc.data();
-            avatarUrl = userData?['avatarUrl'] ?? userData?['photoUrl'] ?? userData?['avatar'];
+      // The name other players see: the display name the student set in
+      // their profile, never the full name (privacy). No display name yet:
+      // the login's display name, else the first name only.
+      try {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get();
+        final userData = userDoc.data();
+        if (userData != null) {
+          if (avatarUrl == null || avatarUrl.isEmpty) {
+            avatarUrl = userData['avatarUrl'] ?? userData['photoUrl'] ?? userData['avatar'];
           }
-        } catch (_) {}
-      }
+          final chosen = PublicProfileScreen.publicName(userData);
+          if (chosen != 'Student') _displayName = chosen;
+        }
+      } catch (_) {}
 
       await roomRef.collection('players').doc(_currentUserId).set({
         'uid': _currentUserId,
@@ -269,6 +288,9 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         'currentAnswer': '',
         'questionsCompleted': 0,
         'currentQuestionIndex': -1,
+        'status': 'playing',
+        'lastSeen': FieldValue.serverTimestamp(),
+        'lastAnswerAt': FieldValue.serverTimestamp(),
         'joinedAt': FieldValue.serverTimestamp(),
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -327,6 +349,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         if (mounted) MediaPrefetch.questions(context, _questions); // videos too
         _setupCurrentQuestionState();
         _startTimer();
+        _startHeartbeat();
       } else {
         if (mounted) setState(() => _isLoading = false);
       }
@@ -334,6 +357,17 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       debugPrint("Error setting up game: $e");
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  DocumentReference<Map<String, dynamic>> get _playerRef =>
+      FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).collection('players').doc(_currentUserId);
+
+  void _startHeartbeat() {
+    _heartbeat?.cancel();
+    _heartbeat = Timer.periodic(_heartbeatEvery, (_) {
+      if (_finished) return;
+      _playerRef.set({'lastSeen': FieldValue.serverTimestamp()}, SetOptions(merge: true)).catchError((_) {});
+    });
   }
 
   void _setupCurrentQuestionState() {
@@ -390,6 +424,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         setState(() {
           if (_timeLeft > 0) {
             _timeLeft--;
+            if (_timeLeft > 0 && _timeLeft <= 3) AppHaptics.tick(); // time almost up
           } else {
             _timer?.cancel();
             _handleTimeOut();
@@ -540,6 +575,14 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       _startTimer();
     } else {
       _timer?.cancel();
+      _finished = true;
+      _heartbeat?.cancel();
+      _playerRef.set({
+        'status': 'finished',
+        'questionsCompleted': _questions.length,
+        'totalQuestions': _questions.length,
+        'lastSeen': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).catchError((_) {});
       _saveChallengeHistoryAndXP();
       _showFinalLeaderboard();
     }
@@ -556,6 +599,9 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       'currentAnswer': answer,
       'questionsCompleted': _currentQuestionIndex + 1,
       'currentQuestionIndex': _currentQuestionIndex,
+      'totalQuestions': _questions.length,
+      'lastAnswerAt': FieldValue.serverTimestamp(),
+      'lastSeen': FieldValue.serverTimestamp(),
       'lastUpdated': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -816,6 +862,14 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
   }) {
     final String initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'P';
     final theme = Theme.of(context);
+    final Widget initialBox = Container(
+      color: theme.primaryColor.withAlpha(50),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(fontWeight: FontWeight.w900, fontSize: radius * 0.8, color: theme.primaryColor),
+      ),
+    );
 
     return Container(
       width: radius * 2,
@@ -825,22 +879,33 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         border: border,
         boxShadow: boxShadow,
       ),
-      child: ClipOval(
-        child: (avatarUrl != null && avatarUrl.trim().isNotEmpty)
-            ? _buildSafeImage(avatarUrl, fit: BoxFit.cover)
-            : Container(
-                color: theme.primaryColor.withAlpha(50),
-                alignment: Alignment.center,
-                child: Text(
-                  initial,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: radius * 0.8,
-                    color: theme.primaryColor,
-                  ),
-                ),
-              ),
-      ),
+      child: ClipOval(child: _avatarImage(avatarUrl, radius, initialBox)),
+    );
+  }
+
+  /// Avatar pictures decoded at the size they are shown (not the full
+  /// photo), cached per url, with the initial letter shown while loading or
+  /// on error instead of a spinner: they appear at once and stay fast when
+  /// the player list updates.
+  final Map<String, ImageProvider> _avatarCache = {};
+
+  Widget _avatarImage(String? url, double radius, Widget initialBox) {
+    final src = (url ?? '').replaceAll(RegExp(r'\s'), '').trim();
+    if (src.isEmpty) return initialBox;
+    final px = (radius * 2 * MediaQuery.devicePixelRatioOf(context)).round().clamp(32, 256);
+    final key = '$px|$src';
+    var provider = _avatarCache[key];
+    if (provider == null) {
+      final base = _getImageProvider(src);
+      if (base == null) return initialBox;
+      provider = _avatarCache[key] = ResizeImage(base, width: px, height: px, allowUpscaling: false);
+    }
+    return Image(
+      image: provider,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, sync) => (sync || frame != null) ? child : initialBox,
+      errorBuilder: (_, _, _) => initialBox,
     );
   }
 
@@ -1405,7 +1470,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         final docs = snapshot.data!.docs;
 
         return SizedBox(
-          height: 96,
+          height: 108, // avatar 44 + rank badge + name + score pill
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -1418,8 +1483,10 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
               final int score = player['score'] ?? 0;
               final String? avatarUrl = player['avatarUrl'] ?? player['photoUrl'] ?? player['avatar'];
 
-              return Tooltip(
-                message: isMe ? "$name (You)" : name,
+              return GestureDetector(
+                onTap: isMe ? null : () => PublicProfileScreen.open(context, player['uid']?.toString()),
+                child: Tooltip(
+                message: name,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   margin: const EdgeInsets.only(right: 12),
@@ -1486,12 +1553,12 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        isMe ? "$name (You)" : name,
+                        name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: isMe ? FontWeight.w900 : FontWeight.bold,
                           color: isMe ? theme.primaryColor : textColor,
                         ),
@@ -1518,12 +1585,42 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                     ],
                   ),
                 ),
+              ),
               );
             },
           ),
         );
       },
     );
+  }
+
+  /// 'finished' | 'left' | 'away' | 'playing' for a player document.
+  String _playerState(Map<String, dynamic> p) {
+    final status = (p['status'] ?? 'playing').toString();
+    if (status == 'finished' || status == 'left') return status;
+    final total = (p['totalQuestions'] as num?)?.toInt() ?? _questions.length;
+    if (total > 0 && ((p['questionsCompleted'] as num?)?.toInt() ?? 0) >= total) return 'finished';
+    final now = DateTime.now();
+    DateTime? t(String k) => p[k] is Timestamp ? (p[k] as Timestamp).toDate() : null;
+    final seen = t('lastSeen') ?? t('lastUpdated') ?? t('joinedAt');
+    final answered = t('lastAnswerAt') ?? t('joinedAt');
+    if (seen != null && now.difference(seen) > _awayNoHeartbeat) return 'away';
+    if (answered != null && now.difference(answered) > _awayIdle) return 'away';
+    return 'playing';
+  }
+
+  /// The status line under a player's name on the board.
+  Widget _statusChip(Map<String, dynamic> p, ThemeData theme) {
+    final state = _playerState(p);
+    final total = (p['totalQuestions'] as num?)?.toInt() ?? _questions.length;
+    final done = ((p['questionsCompleted'] as num?)?.toInt() ?? 0).clamp(0, total);
+    final (String text, Color color) = switch (state) {
+      'finished' => ('\u2713 Finished', const Color(0xFF2E9E4F)),
+      'left' => ('Left', theme.colorScheme.onSurface.withAlpha(140)),
+      'away' => ('Away \u00B7 $done/$total', const Color(0xFFE59A1A)),
+      _ => ('Answering $done/$total', theme.primaryColor),
+    };
+    return Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color));
   }
 
   void _showFinalLeaderboard() {
@@ -1534,7 +1631,10 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return StreamBuilder<QuerySnapshot>(
+        // Rebuilds every 10 s so "Away" appears without any new write.
+        return StreamBuilder<int>(
+          stream: Stream<int>.periodic(const Duration(seconds: 10), (i) => i),
+          builder: (context, _) => StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('rooms')
               .doc(widget.roomCode)
@@ -1557,6 +1657,9 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
 
             final top3 = players.take(3).toList();
             final remaining = players.length > 3 ? players.sublist(3) : <Map<String, dynamic>>[];
+            // Final only when every player finished, left, or is away.
+            final waiting = players.where((p) => _playerState(p) == 'playing').length;
+            final isFinal = waiting == 0;
 
             return AlertDialog(
               backgroundColor: theme.scaffoldBackgroundColor,
@@ -1577,6 +1680,16 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      Text(
+                        isFinal ? 'Final results' : 'Waiting for $waiting player${waiting == 1 ? '' : 's'} to finish\u2026',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: isFinal ? const Color(0xFF2E9E4F) : textColor.withAlpha(170),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       _buildPodiumSection(top3, theme, textColor),
                       const SizedBox(height: 18),
                       if (remaining.isNotEmpty) ...[
@@ -1592,6 +1705,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                             final String? avatarUrl = player['avatarUrl'] ?? player['photoUrl'] ?? player['avatar'];
 
                             return ListTile(
+                              onTap: player['uid'] == _currentUserId ? null : () => PublicProfileScreen.open(context, player['uid']?.toString()),
                               dense: true,
                               contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                               leading: Row(
@@ -1624,6 +1738,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                                 name,
                                 style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
                               ),
+                              subtitle: _statusChip(player, theme),
                               trailing: Text(
                                 "${player['score']} pts",
                                 style: TextStyle(
@@ -1652,15 +1767,16 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
                         borderRadius: BorderRadius.circular(18),
                       ),
                     ),
-                    child: const Text(
-                      "EXIT TO MAIN MENU",
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15),
+                    child: Text(
+                      isFinal ? "EXIT TO MAIN MENU" : "LEAVE (YOUR SCORE IS SAVED)",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15),
                     ),
                   ),
                 ),
               ],
             );
           },
+          ),
         );
       },
     );
@@ -1741,7 +1857,9 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     final double avatarRadius = rank == 1 ? 26 : 22;
 
     return Expanded(
-      child: Column(
+      child: GestureDetector(
+        onTap: player['uid'] == _currentUserId ? null : () => PublicProfileScreen.open(context, player['uid']?.toString()),
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(icon, style: TextStyle(fontSize: rank == 1 ? 28 : 22)),
@@ -1786,6 +1904,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
               color: theme.primaryColor,
             ),
           ),
+          _statusChip(player, theme),
           const SizedBox(height: 6),
 
           Container(
@@ -1812,7 +1931,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 
@@ -1820,10 +1939,16 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     if (_isCleaningUp) return;
     setState(() => _isCleaningUp = true);
 
+    _heartbeat?.cancel();
     try {
       final roomRef = FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode);
-      if (widget.isHost) {
-        final playersSnapshot = await roomRef.collection('players').get();
+      final playersSnapshot = await roomRef.collection('players').get();
+      // Still playing: anyone except me who has not finished, left or gone away.
+      final othersPlaying = playersSnapshot.docs
+          .where((d) => d.id != _currentUserId && _playerState(d.data()) == 'playing')
+          .isNotEmpty;
+      if (widget.isHost && !othersPlaying) {
+        // Everyone is done: the host removes the room.
         final batch = FirebaseFirestore.instance.batch();
         for (var doc in playersSnapshot.docs) {
           batch.delete(doc.reference);
@@ -1831,7 +1956,12 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         batch.delete(roomRef);
         await batch.commit();
       } else {
-        await roomRef.collection('players').doc(_currentUserId).delete();
+        // Others are still answering: keep the room (also when the host
+        // leaves) so their match goes on; my row stays as Finished / Left.
+        await _playerRef.set({
+          'status': _finished ? 'finished' : 'left',
+          'lastSeen': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       }
     } catch (e) {
       debugPrint("Error deleting room data: $e");

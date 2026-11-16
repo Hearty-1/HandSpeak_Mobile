@@ -181,8 +181,158 @@ class _CivicTutorialDetailState extends State<CivicTutorialDetail> {
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final double scale = Responsive.scale(constraints.maxWidth);
+                // Landscape (wider than tall): sized by the height, side by side.
+                final bool wide = constraints.maxWidth > constraints.maxHeight;
+                final double scale = wide ? (constraints.maxHeight / 380).clamp(0.55, 1.2) : Responsive.scale(constraints.maxWidth);
                 final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
+
+                if (wide) {
+                  return Center(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 12 * scale),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                              width: 299 * scale,
+                              height: 299 * scale,
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                child: CustomVideoPlayer(key: ValueKey(currentLesson.videoUrl), videoUrl: currentLesson.videoUrl),
+                              ),
+                            ),
+                          SizedBox(width: 36 * scale),
+                          SizedBox(
+                            width: 299 * scale,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Center(
+                              child: Text(
+                                currentLesson.title,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: textColor,
+                                  fontSize: 26 * scale,
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ),
+                                SizedBox(height: 18 * scale),
+                                ClipRRect(
+                              borderRadius: BorderRadius.circular(25 * scale),
+                              child: SmartBlur(
+                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                child: Container(
+                                  width: maxProgressWidth * scale,
+                                  height: 14 * scale,
+                                  decoration: BoxDecoration(
+                                    color: theme.cardColor.withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(25 * scale),
+                                    border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2), width: 1.0),
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      AnimatedContainer(
+                                        duration: const Duration(milliseconds: 250),
+                                        width: calculatedProgressWidth * scale,
+                                        height: 14 * scale,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF4CAF50),
+                                          borderRadius: BorderRadius.circular(25 * scale),
+                                          boxShadow: [BoxShadow(color: const Color(0xFF4CAF50).withValues(alpha: 0.4), blurRadius: 4)],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                                SizedBox(height: 10 * scale),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    TextButton.icon(
+                              onPressed: _goToPrevious,
+                              icon: Icon(Icons.arrow_back, color: textColor, size: 18 * scale),
+                              label: Text(
+                                'Previous',
+                                style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                                    TextButton(
+                              onPressed: _goToNext,
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'Next',
+                                    style: TextStyle(color: textColor, fontSize: 16 * scale, fontWeight: FontWeight.bold),
+                                  ),
+                                  SizedBox(width: 8 * scale),
+                                  Icon(Icons.arrow_forward, color: textColor, size: 18 * scale),
+                                ],
+                              ),
+                            ),
+                                  ],
+                                ),
+                                SizedBox(height: 16 * scale),
+                                Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(25 * scale),
+                                boxShadow: [
+                                  BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 5)),
+                                ],
+                              ),
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.primaryColor,
+                                  foregroundColor: theme.colorScheme.onPrimary,
+                                  minimumSize: Size(299 * scale, 50 * scale),
+                                  shape: Button3DBorder(borderRadius: BorderRadius.circular(25 * scale)),
+                                  elevation: 0,
+                                ),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => CivicTutorialPractice(
+                                        // A Lupang Hinirang line lesson has the line as its
+                                        // title; the practice screen needs the category.
+                                        category: currentLesson.category.isNotEmpty ? currentLesson.category : currentLesson.title,
+                                        questions: currentLesson.questions,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Text(
+                                  'Practice',
+                                  style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter'),
+                                ),
+                              ),
+                            ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
 
                 return SizedBox(
                   width: double.infinity,

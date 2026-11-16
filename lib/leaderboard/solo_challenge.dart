@@ -1,3 +1,4 @@
+import '/services/app_haptics.dart';
 import '/widgets/activity_feedback.dart';
 import '/widgets/challenge_feedback.dart';
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
@@ -547,6 +548,7 @@ class _GameProperScreenState extends State<GameProperScreen> {
         setState(() {
           if (_timeLeft > 0) {
             _timeLeft--;
+            if (_timeLeft > 0 && _timeLeft <= 3) AppHaptics.tick(); // time almost up
           } else {
             _timer?.cancel();
             _handleTimeOut();

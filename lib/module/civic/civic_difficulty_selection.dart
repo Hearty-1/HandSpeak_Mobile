@@ -1,7 +1,7 @@
+import '/services/app_haptics.dart';
 import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
 import '/widgets/difficulty_card.dart';
-import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '/providers/sound_provider.dart';
@@ -820,7 +820,7 @@ class _PressableCardState extends State<_PressableCard> {
       onTapCancel: () => setState(() => _down = false),
       onTapUp: (_) => setState(() => _down = false),
       onTap: () {
-        HapticFeedback.selectionClick();
+        AppHaptics.selection();
         widget.onTap();
       },
       child: AnimatedScale(

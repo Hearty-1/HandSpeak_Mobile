@@ -1,3 +1,4 @@
+import '/profile/public_profile.dart';
 import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -594,13 +595,17 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     }
                     final data = remainingDocs[index].data() as Map<String, dynamic>;
                     final int rank = index + 4;
-                    final String playerName = data['displayName'] ?? data['name'] ?? "Student";
+                    final String playerName = PublicProfileScreen.publicName(data);
                     final int playerXp = _rankTimeframe == 'weekly' ? ProgressService.weekXpOf(data) : ((data['xp'] as num?)?.toInt() ?? 0);
                     final String playerGrade = data['grade'] ?? "Player";
                     
                     final String? photoUrl = data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'];
 
-                    return _buildLeaderboardTile(theme, rank, playerName, playerGrade, playerXp, photoUrl, scale);
+                    return GestureDetector(
+                      // Tap a student: their public profile.
+                      onTap: () => PublicProfileScreen.open(context, remainingDocs[index].id),
+                      child: _buildLeaderboardTile(theme, rank, playerName, playerGrade, playerXp, photoUrl, scale),
+                    );
                   },
                       ),
                     ),
@@ -619,7 +624,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                           if (r.data == null) return const SizedBox.shrink();
                           return Padding(
                             padding: EdgeInsets.only(top: 12 * scale),
-                            child: _buildLeaderboardTile(theme, r.data!, '${data['displayName'] ?? data['name'] ?? 'You'} (you)',
+                            child: _buildLeaderboardTile(theme, r.data!, '${PublicProfileScreen.publicName(data)} (you)',
                                 '${data['grade'] ?? 'Player'}', myXp, data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'], scale),
                           );
                         },
@@ -796,13 +801,13 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (rank2 != null) _buildPodiumProfile(theme, rank2, 2, 100, const Color(0xFFB0BEC5), scale),
+          if (rank2 != null) GestureDetector(onTap: () => PublicProfileScreen.open(context, rank2['uid']?.toString()), child: _buildPodiumProfile(theme, rank2, 2, 100, const Color(0xFFB0BEC5), scale)),
           if (rank2 != null) SizedBox(width: 12 * scale),
 
-          if (rank1 != null) _buildPodiumProfile(theme, rank1, 1, 140, const Color(0xFFFFD700), scale),
+          if (rank1 != null) GestureDetector(onTap: () => PublicProfileScreen.open(context, rank1['uid']?.toString()), child: _buildPodiumProfile(theme, rank1, 1, 140, const Color(0xFFFFD700), scale)),
 
           if (rank3 != null) SizedBox(width: 12 * scale),
-          if (rank3 != null) _buildPodiumProfile(theme, rank3, 3, 80, const Color(0xFFD88C51), scale),
+          if (rank3 != null) GestureDetector(onTap: () => PublicProfileScreen.open(context, rank3['uid']?.toString()), child: _buildPodiumProfile(theme, rank3, 3, 80, const Color(0xFFD88C51), scale)),
         ],
       ),
     );
@@ -810,7 +815,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   Widget _buildPodiumProfile(ThemeData theme, Map<String, dynamic> data, int rank, double height, Color color, double scale) {
     final textColor = theme.colorScheme.onSurface;
-    String name = data['displayName'] ?? data['name'] ?? "User";
+    String name = PublicProfileScreen.publicName(data);
     int xp = _rankTimeframe == 'weekly' ? ProgressService.weekXpOf(data) : ((data['xp'] as num?)?.toInt() ?? 0);
     
     String? photoUrl = data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'];
@@ -1081,7 +1086,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
       final String code = _generateRoomCode();
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get();
       final userData = userDoc.data();
-      final hostName = userData?['displayName'] ?? userData?['name'] ?? 'Host';
+      final hostName = userData == null ? 'Host' : PublicProfileScreen.publicName(userData);
       final String roomTitle = "$hostName's Room";
 
       await FirebaseFirestore.instance.collection('rooms').doc(code).set({
@@ -1208,7 +1213,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                           itemBuilder: (context, index) {
                             final userData = users[index].data() as Map<String, dynamic>;
                             final String uid = users[index].id;
-                            final String name = userData['firstName'] ?? userData['displayName'] ?? userData['name'] ?? 'Student';
+                            final String name = PublicProfileScreen.publicName(userData);
                             final String? photoUrl = userData['avatar'] ?? userData['photoUrl'] ?? userData['avatarUrl'];
                             final bool isSelected = _invitedFriendUids.contains(uid);
 

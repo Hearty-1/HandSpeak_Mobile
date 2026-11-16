@@ -176,12 +176,23 @@ class PublishedGestureModel {
         .merge(d['practice']);
     final classes = <PublishedGestureClass>[];
     final raw = d['classes'];
+    final invalidIndex = (d['invalidIndex'] as num?)?.toInt();
+    final seen = <int>{};
     if (raw is List) {
       for (var i = 0; i < raw.length; i++) {
         final c = raw[i];
         if (c is! Map) continue;
+        // The model output this sign is. Never the list position: the worker leaves held-back signs out of
+        // `classes` (publishSigns) but keeps every output's index, so position i is not output i. A class with
+        // no index, a repeated index or the "not a sign" index is skipped (that sign is then never passed)
+        // rather than judged on another sign's score.
+        final index = (c['index'] as num?)?.toInt();
+        if (index == null || index < 0 || index == invalidIndex || !seen.add(index)) {
+          debugPrint('Published model $id: class ${c['key'] ?? i} skipped (index ${c['index']})');
+          continue;
+        }
         classes.add(PublishedGestureClass(
-          index: (c['index'] as num?)?.toInt() ?? i,
+          index: index,
           key: (c['key'] ?? '').toString(),
           label: (c['label'] ?? '').toString(),
           lessonSymbol: (c['lessonSymbol'] ?? '').toString(),
@@ -197,7 +208,7 @@ class PublishedGestureModel {
       serviceUrl: (d['serviceUrl'] ?? '').toString().trim(),
       name: (d['name'] ?? id).toString(),
       category: (d['category'] ?? '').toString(),
-      invalidIndex: (d['invalidIndex'] as num?)?.toInt(),
+      invalidIndex: invalidIndex,
       modelVersion: (d['modelVersion'] ?? '').toString(),
       classes: classes,
       practice: practice,
@@ -276,7 +287,9 @@ class PublishedGestureModels {
   /// around the sign. A clipS set on the web (practice / classes[].practice)
   /// wins. Read once per model version; on failure the model is used as is.
   static Future<PublishedGestureModel> _withTrainingShape(PublishedGestureModel m) {
-    final key = '${m.modelId}|${m.modelVersion}';
+    // Keyed on this snapshot of the document too (a new object per Firestore update), so practice settings
+    // changed on the web without a new model version (pass rule, regate) are used at once, not after a restart.
+    final key = '${m.modelId}|${m.modelVersion}|${identityHashCode(m)}';
     return _shaped[key] ??= _readTrainingShape(m).catchError((Object e) {
       debugPrint('Training clip shape for ${m.modelId} not read: $e');
       _shaped.remove(key);

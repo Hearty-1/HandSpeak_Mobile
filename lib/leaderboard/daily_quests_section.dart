@@ -1,10 +1,10 @@
+import '/services/app_haptics.dart';
 import '/widgets/button_3d.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '/services/daily_challenge_service.dart';
 
@@ -84,7 +84,7 @@ class _DailyQuestsSectionState extends State<DailyQuestsSection> {
   Future<void> _claim(QuestDef q) async {
     if (_claiming.contains(q.id)) return;
     setState(() => _claiming.add(q.id));
-    HapticFeedback.mediumImpact();
+    AppHaptics.celebrate(); // quest reward
     final ok = await _service.claim(q, profile: _profile);
     if (!mounted) return;
     setState(() => _claiming.remove(q.id));

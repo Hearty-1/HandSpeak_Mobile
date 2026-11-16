@@ -306,8 +306,154 @@ class _TutorialInterface3State extends State<TutorialInterface3> {
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final double scale = Responsive.scale(constraints.maxWidth);
+                // Landscape (wider than tall): sized by the height, side by side.
+                final bool wide = constraints.maxWidth > constraints.maxHeight;
+                final double scale = wide ? (constraints.maxHeight / 380).clamp(0.55, 1.2) : Responsive.scale(constraints.maxWidth);
                 final double calculatedProgressWidth = maxProgressWidth * progressPercentage;
+
+                if (wide) {
+                  return Center(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 12 * scale),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                              width: 299 * scale,
+                              height: 276 * scale,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.06),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 8),
+                                  )
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16 * scale),
+                                child: _buildDynamicImage(currentSign.imageUrl, 299 * scale, 276 * scale),
+                              ),
+                            ),
+                          SizedBox(width: 36 * scale),
+                          SizedBox(
+                            width: 299 * scale,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Center(
+                              child: Text(
+                                currentSign.label,
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 52 * scale,
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -1.5,
+                                ),
+                              ),
+                            ),
+                                SizedBox(height: 18 * scale),
+                                ClipRRect(
+                              borderRadius: BorderRadius.circular(25 * scale),
+                              child: SmartBlur(
+                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                child: Container(
+                                  width: maxProgressWidth * scale,
+                                  height: 14 * scale,
+                                  decoration: BoxDecoration(
+                                    color: theme.cardColor.withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(25 * scale),
+                                    border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1.0),
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      AnimatedContainer(
+                                        duration: const Duration(milliseconds: 250),
+                                        width: calculatedProgressWidth * scale,
+                                        height: 14 * scale,
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.secondary,
+                                          borderRadius: BorderRadius.circular(25 * scale),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: theme.colorScheme.secondary.withValues(alpha: 0.4),
+                                              blurRadius: 4,
+                                            )
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                                SizedBox(height: 10 * scale),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    TextButton.icon(
+                              onPressed: _goToPrevious,
+                              icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface, size: 18 * scale),
+                              label: Text(L.t('Previous', 'Nakaraan'), style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                            ),
+                                    TextButton(
+                              onPressed: _goToNext,
+                              child: Row(
+                                children: [
+                                  Text(L.t('Next', 'Susunod'), style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16 * scale, fontWeight: FontWeight.bold)),
+                                  SizedBox(width: 8 * scale),
+                                  Icon(Icons.arrow_forward, color: theme.colorScheme.onSurface, size: 18 * scale),
+                                ],
+                              ),
+                            ),
+                                  ],
+                                ),
+                                SizedBox(height: 16 * scale),
+                                Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(25 * scale),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: theme.primaryColor.withValues(alpha: 0.3),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 5),
+                                  )
+                                ],
+                              ),
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.primaryColor,
+                                  foregroundColor: theme.colorScheme.onPrimary,
+                                  minimumSize: Size(299 * scale, 50 * scale),
+                                  shape: Button3DBorder(borderRadius: BorderRadius.circular(25 * scale)),
+                                  elevation: 0,
+                                ),
+                                onPressed: () {
+                                  String letterToPractice = currentSign.gestureKey;
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => TutorialPractice(
+                                        targetLetter: letterToPractice,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Text(L.t('Practice', 'Pagsasanay'), style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                              ),
+                            ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
 
                 return SizedBox(
                   width: double.infinity,

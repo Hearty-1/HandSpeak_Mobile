@@ -1,8 +1,8 @@
+import '/services/app_haptics.dart';
 import '/widgets/button_3d.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '/providers/language_provider.dart';
 import '/services/performance_monitor.dart';
@@ -31,11 +31,7 @@ class PracticeVisuals {
 }
 
 /// The double haptic pulse of a correct sign.
-Future<void> practiceSuccessHaptics() async {
-  HapticFeedback.heavyImpact();
-  await Future.delayed(const Duration(milliseconds: 100));
-  HapticFeedback.heavyImpact();
-}
+Future<void> practiceSuccessHaptics() => AppHaptics.celebrate();
 
 /// The "Mastered!" dialog. [xpGained]: XP actually awarded (0 when the sign
 /// was mastered before or the daily repeat limit was reached). Completes when
@@ -46,7 +42,10 @@ Future<void> showPracticeMasteredDialog(BuildContext context, {required String s
   final student = context.rolesRead.isStudent;
   // Smaller on small / short phones (the dialog was cut off there).
   final size = MediaQuery.sizeOf(context);
-  final k = ((size.width / 393).clamp(0.7, 1.0) * (size.height / 800).clamp(0.75, 1.0)).clamp(0.6, 1.0);
+  // Landscape / short screens shrink further so nothing is cut at the bottom.
+  final k = ((size.width / 393).clamp(0.7, 1.0) * (size.height / 800).clamp(0.5, 1.0)).clamp(0.45, 1.0);
+  final pad = MediaQuery.paddingOf(context);
+  final maxH = size.height - pad.vertical - 56; // Dialog insets + safe area
   return showDialog(
     context: context,
     barrierDismissible: false,
@@ -61,7 +60,7 @@ Future<void> showPracticeMasteredDialog(BuildContext context, {required String s
           curve: Curves.elasticOut,
           builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
           child: Container(
-            constraints: BoxConstraints(maxHeight: size.height * 0.85),
+            constraints: BoxConstraints(maxHeight: maxH < size.height * 0.85 ? maxH : size.height * 0.85),
             padding: EdgeInsets.all(24 * k),
             decoration: BoxDecoration(
               color: theme.cardColor,
@@ -185,6 +184,7 @@ class ContinuousPracticeSuccess extends StatelessWidget {
               border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 1.5),
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   mainAxisSize: MainAxisSize.min,

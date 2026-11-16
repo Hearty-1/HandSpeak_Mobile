@@ -1,3 +1,4 @@
+import '/services/app_haptics.dart';
 import '/widgets/sign_recording.dart';
 import '/widgets/activity_feedback.dart';
 import 'dart:math' as math;
@@ -7,6 +8,9 @@ import 'dart:ui' show ImageFilter;
 import 'dart:convert';
 import 'dart:io' show Directory, File;
 import 'package:flutter/foundation.dart' show kReleaseMode;
+import '/widgets/landscape_practice_layout.dart';
+import '/services/latency_probe.dart';
+import '/services/tutorial_session_recorder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
@@ -96,6 +100,12 @@ class CivicTutorialPractice extends StatefulWidget {
 }
 
 class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with WidgetsBindingObserver {
+  // Tutorial practice record (tutorial_practice_sessions); off inside
+  // activities and continuous practice, which keep their own records.
+  late final TutorialAttemptLog _tlog = TutorialAttemptLog(
+      category: 'civic', sign: 'Lupang Hinirang',
+      enabled: !widget.embedded && !widget.continuous && widget.onPassed == null);
+
   static const MethodChannel _platformChannel = MethodChannel('fsl_holistic_channel');
   /// Native landmark engine of the last frame (MainActivity.kt).
   String _engine = '';
@@ -476,11 +486,13 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
         _startRecording();
       } else {
         setState(() => _countdown--);
+        if (_countdown > 0) AppHaptics.tick();
       }
     });
   }
 
   void _startRecording() {
+    AppHaptics.recordStart();
     _recorded.clear();
     _sawHands = false;
     _lastHandMs = 0;
@@ -624,6 +636,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   }
 
   void _showFeedback(String text, {double score = 0.0}) {
+    _tlog.fail(score: score, handsDetected: _handsVisible);
     if (!mounted || _isDisposed) return;
     setState(() {
       _currentFeedback = text;
@@ -632,6 +645,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   }
 
   Future<void> _stopAndEvaluate({bool manual = false}) async {
+    LatencyProbe.markInput(); // gesture input time (System Testing latency)
+    AppHaptics.recordStop();
+    if (_activeQuestions.isNotEmpty) _tlog.sign = '${_activeQuestions[_currentStep]['question'] ?? 'Lupang Hinirang'}';
+    _tlog.begin();
     if (!_isRecording || _isDisposed) return;
     _isRecording = false; // stop collecting immediately (no re-entry)
     _maxRecordTimer?.cancel();
@@ -794,9 +811,10 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
   }
 
   void _onSuccess() async {
+    _tlog.pass(score: _currentScore > 0 ? _currentScore : 100);
     if (_isSuccessAchieved) return;
     _isSuccessAchieved = true;
-    HapticFeedback.heavyImpact();
+    AppHaptics.correct();
     if (widget.onPassed != null) {
       widget.onPassed!();
       return;
@@ -816,7 +834,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
     final line = '${_activeQuestions[_currentStep]['question'] ?? _labelForIndex(_expectedClassIndex())}';
     setState(() => _currentFeedback = L.t('Great job! Correct sign!', 'Mahusay! Tumpak ang kumpas!'));
     await Future.delayed(const Duration(milliseconds: 100));
-    HapticFeedback.heavyImpact();
+    AppHaptics.celebrate();
 
     // XP per line: awarded only the first time this line is mastered.
     final gained = await _awardLineXp(_expectedClassIndex());
@@ -867,7 +885,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                   )
                 ],
               ),
-              child: Column(
+              child: SingleChildScrollView(child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Stack(
@@ -955,7 +973,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                     child: const Text("Continue", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                   ),
                 ],
-              ),
+              )),
             ),
           ),
         ),
@@ -1111,6 +1129,34 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       ],
     );
 
+    // Demo video / picture: left square in landscape.
+    final Widget demoBox = SizedBox(
+              width: screenWidth * 0.60,
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: _lineVideo(currentItem).isNotEmpty
+                        ? CustomVideoPlayer(key: ValueKey(_lineVideo(currentItem)), videoUrl: _lineVideo(currentItem))
+                        : _isImageLoading
+                        ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                        : _templateImageBytes != null
+                            ? Image.memory(_templateImageBytes!, fit: BoxFit.contain)
+                            : Container(
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                                child: Icon(visuals.ambientIcon1, color: Colors.grey, size: 50),
+                              ),
+                  ),
+                ),
+              ),
+            );
     final List<Widget> content = !ready
         ? [
             const SizedBox(height: 120),
@@ -1159,33 +1205,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
               ),
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              width: screenWidth * 0.60,
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: _lineVideo(currentItem).isNotEmpty
-                        ? CustomVideoPlayer(key: ValueKey(_lineVideo(currentItem)), videoUrl: _lineVideo(currentItem))
-                        : _isImageLoading
-                        ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-                        : _templateImageBytes != null
-                            ? Image.memory(_templateImageBytes!, fit: BoxFit.contain)
-                            : Container(
-                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-                                child: Icon(visuals.ambientIcon1, color: Colors.grey, size: 50),
-                              ),
-                  ),
-                ),
-              ),
-            ),
+            if (!landscape) demoBox,
             const SizedBox(height: 24),
             // Same camera size as every category: a square 60% of the screen width.
             if (!landscape) SizedBox(width: _side, height: _side, child: cameraPane),
@@ -1236,7 +1256,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                 ),
               )
             else ...[
-              _RecordControls(
+              landscape ? const SizedBox.shrink() : _RecordControls(
                 heroTag: 'civic_practice_record_button',
                 countdown: _countdown,
                 isRecording: _isRecording,
@@ -1253,6 +1273,15 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             ],
           ];
 
+    // Left pane (portrait) / middle column (landscape).
+    final Widget leftPane = SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: content),
+                    ),
+                  );
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -1298,19 +1327,14 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             ),
           ),
           SafeArea(
-            child: Row(
+            child: landscape && ready
+                ? LandscapePracticeLayout(demo: demoBox, middle: leftPane, camera: cameraPane)
+                : Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
                   flex: 5,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: content),
-                    ),
-                  ),
+                  child: leftPane,
                 ),
                 if (landscape && ready)
                   Expanded(
@@ -1327,6 +1351,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
 
   @override
   void dispose() {
+    _tlog.finish();
     _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
@@ -1492,22 +1517,8 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       ),
     );
 
-    final Widget tutorial = SingleChildScrollView(
-      // Full width: a shrink-wrapped column moved sideways whenever the
-      // status line under the camera changed width (tapping record).
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(
-        children: [
-          Text(
-            currentItem['question'] ?? '',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 16),
-
-          // Reference video / picture: same square as the camera (all categories).
-          SizedBox(
+    // Demo video / picture: left square in landscape.
+    final Widget demoBox = SizedBox(
             width: _side,
             height: _side,
             child: ClipRRect(
@@ -1523,11 +1534,27 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
                         child: const Icon(Icons.image, size: 50, color: Colors.grey),
                       ),
             ),
+          );
+    final Widget tutorial = SingleChildScrollView(
+      // Full width: a shrink-wrapped column moved sideways whenever the
+      // status line under the camera changed width (tapping record).
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+        children: [
+          Text(
+            currentItem['question'] ?? '',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
           ),
+          const SizedBox(height: 16),
+
+          // Reference video / picture: same square as the camera (all categories).
+          if (!landscape) demoBox,
           const SizedBox(height: 20),
 
           // Camera Preview Box with Dynamic Success Highlight
-          if (!landscape) SizedBox(width: _side, height: _side, child: cameraPane),
+          if (!landscape) SizedBox(width: landscape ? 190 : _side, height: _side, child: cameraPane),
           const SizedBox(height: 8),
           _RecordControls(
             heroTag: 'civic_record_button',
@@ -1539,7 +1566,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
             bodyVisible: _poseVisible,
             showButton: _isInitialized && !_isSuccessAchieved,
             onRecord: _toggleRecording,
-            width: _side,
+            width: landscape ? 190 : _side,
           ),
           const SizedBox(height: 16),
           PracticeFeedback(message: _currentFeedback, tone: _feedbackTone),
@@ -1548,14 +1575,7 @@ class _CivicTutorialPracticeState extends State<CivicTutorialPractice> with Widg
       ),
     );
     if (!landscape) return tutorial;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(flex: 5, child: tutorial),
-        const SizedBox(width: 16),
-        Expanded(flex: 6, child: Padding(padding: const EdgeInsets.only(bottom: 8), child: cameraPane)),
-      ],
-    );
+    return LandscapePracticeLayout(demo: demoBox, middle: tutorial, camera: cameraPane);
   }
 
   Widget _buildCompletionView(ThemeData theme) {

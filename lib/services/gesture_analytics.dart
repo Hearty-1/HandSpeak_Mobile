@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '/services/latency_probe.dart';
 import 'package:flutter/foundation.dart';
 
 /// Camera-sign analytics, organised so each play session reads like a report.
@@ -90,6 +91,8 @@ class GestureAttemptTracker {
 
   int _order = 0, _correct = 0, _dynamicCount = 0;
   double _scoreSum = 0, _confidenceSum = 0;
+  // Response latency (System Testing): measured checks of this session.
+  int _latencyCount = 0, _latencySum = 0, _serverCount = 0, _serverSum = 0;
   final Map<String, int> _triesPerQuestion = {};
   // durationMs: a try is timed from the previous try of the same question,
   // else from when the question was shown ([questionShown]), else from the
@@ -187,9 +190,18 @@ class GestureAttemptTracker {
     int? durationMs,
   }) async {
     final user = _user;
+    final latency = LatencyProbe.take(); // gesture input -> this verdict
     if (user == null) return;
     final now = DateTime.now();
     _lastActivity = now;
+    if (latency != null) {
+      _latencyCount++;
+      _latencySum += latency['responseLatencyMs']!;
+      if (latency['serverCalls']! > 0) {
+        _serverCount++;
+        _serverSum += latency['serverRoundTripMs']!;
+      }
+    }
     final since = _lastTryAt[questionId] ?? _promptAt[questionId] ?? _lastAttemptAt ?? _startedAt;
     final elapsedMs = durationMs ?? now.difference(since).inMilliseconds;
     _lastTryAt[questionId] = now;
@@ -240,6 +252,10 @@ class GestureAttemptTracker {
       'errorType': code.isEmpty ? 'none' : code,
       'handsDetected': handsDetected,
       'modelVersion': usedModel,
+      // Response latency (System Testing): output time - gesture input time,
+      // and the server round trip within it (null: not measured).
+      'responseLatencyMs': latency?['responseLatencyMs'],
+      'serverRoundTripMs': (latency?['serverCalls'] ?? 0) > 0 ? latency!['serverRoundTripMs'] : null,
       'time': FieldValue.serverTimestamp(),
       // ---- session report fields ----
       'order': _order,
@@ -307,6 +323,9 @@ class GestureAttemptTracker {
         'accuracyPercent': _round(acc),
         'averageScore': _round(_order == 0 ? 0 : _scoreSum / _order),
         if (_dynamicCount > 0) 'averageConfidencePercent': _round(_confidenceSum / _dynamicCount * 100),
+        if (_latencyCount > 0) 'averageResponseLatencyMs': (_latencySum / _latencyCount).round(),
+        if (_serverCount > 0) 'averageServerRoundTripMs': (_serverSum / _serverCount).round(),
+        if (_latencyCount > 0) 'latencyMeasurements': _latencyCount,
       },
       'mistakes': Map<String, int>.from(_mistakes),
       'signs': {for (final e in _signs.entries) _fieldKey(e.key): e.value.toMap()},

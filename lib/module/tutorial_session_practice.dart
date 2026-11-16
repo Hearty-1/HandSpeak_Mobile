@@ -1,8 +1,12 @@
+import '/services/app_haptics.dart';
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:firebase_storage/firebase_storage.dart';
+import '/widgets/sign_recording.dart';
+import '/widgets/activity_feedback.dart';
+import '/widgets/landscape_practice_layout.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
@@ -133,11 +137,11 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
       durationMs: DateTime.now().difference(_shownAt).inMilliseconds,
     ));
     if (!r.correct) {
-      HapticFeedback.heavyImpact();
+      AppHaptics.wrong();
       Provider.of<SoundProvider>(context, listen: false).playIncorrect();
       return;
     }
-    HapticFeedback.mediumImpact();
+    AppHaptics.correct();
     Provider.of<SoundProvider>(context, listen: false).playCorrect();
     final xp = await ProgressService().awardFirstMastery(
       moduleKey: XpRewards.practiceKey(widget.category),
@@ -157,8 +161,10 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
   /// The sign's demo, as in the tutorial practice screens: a square 60% of
   /// the screen wide (the camera's size), the uploaded tutorial video /
   /// picture, else the bundled picture (Alphabet, Numbers).
-  Widget _media(ThemeData theme) {
-    final side = MediaQuery.sizeOf(context).width * 0.60;
+  Widget _media(ThemeData theme, {double? size, bool raw = false}) {
+    final screen = MediaQuery.sizeOf(context);
+    // Small / short phones get a smaller example so the camera stays in view.
+    final side = size ?? math.min(screen.width * 0.60, screen.height * 0.26).clamp(120.0, 340.0);
     final Widget? child;
     if (_builtInChecks) {
       final key = _sign.sign.trim().toUpperCase();
@@ -173,6 +179,7 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
       child = src.isEmpty ? null : _UploadedMedia(key: ValueKey('demo_$src'), source: src);
     }
     if (child == null) return const SizedBox.shrink();
+    if (raw) return ColoredBox(color: theme.cardColor, child: child);
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: SizedBox(
@@ -236,7 +243,10 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
     final title = r.correct
         ? L.t('Nice signing!', 'Magaling ang pagkumpas!')
         : L.t('Almost there, keep going', 'Malapit na, ituloy mo');
-    final lookedLike = (r.predicted ?? '').trim().isNotEmpty && r.predicted!.trim().toUpperCase() != _sign.sign.trim().toUpperCase();
+    // Another sign only: the practised one (by symbol or label) is never "looked like".
+    String n(String x) => x.trim().toUpperCase().replaceAll(RegExp(r'[\s_\-]+'), ' ');
+    final p = n(r.predicted ?? '');
+    final lookedLike = p.isNotEmpty && p != n(_sign.sign) && p != n(_sign.label);
     final hint = r.correct
         ? L.t('"$sign" is correct.', 'Tama ang "$sign".')
         : lookedLike
@@ -362,11 +372,26 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
     );
   }
 
+  /// The camera's record / capture button, drawn in the middle in landscape.
+  final CameraButtonBridge _bridge = CameraButtonBridge();
+
+  /// Narrow (< 360 dp) or short (< 640 dp) phones.
+  bool get _compact {
+    final s = MediaQuery.sizeOf(context);
+    return s.shortestSide < 360 || s.longestSide < 640;
+  }
+
+  /// Side padding: tighter on narrow phones, wider on tablets.
+  double get _gutter {
+    final w = MediaQuery.sizeOf(context).width;
+    return w < 360 ? 14 : (w > 700 ? 48 : 24);
+  }
+
   Widget _arrow(ThemeData theme, IconData icon, String tip, VoidCallback onTap) => Tooltip(
         message: tip,
         child: SizedBox(
-          width: 64,
-          height: 56,
+          width: _compact ? 54 : 64,
+          height: _compact ? 46 : 56,
           child: ElevatedButton(
             onPressed: onTap,
             style: ElevatedButton.styleFrom(
@@ -374,7 +399,7 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
               padding: EdgeInsets.zero,
               shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
             ),
-            child: Icon(icon, color: theme.colorScheme.onPrimary, size: 30),
+            child: Icon(icon, color: theme.colorScheme.onPrimary, size: _compact ? 26 : 30),
           ),
         ),
       );
@@ -389,6 +414,7 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
       );
     }
     final sign = _sign;
+    final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
     final camera = _builtInChecks
         ? ChallengeCameraSign(
             // One camera for the whole run: the sign / try changes in place
@@ -398,6 +424,7 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
             attempt: _attempt,
             enabled: _result == null,
             onResult: _onResult,
+            bridge: landscape ? _bridge : null,
           )
         : PublishedCameraSign(
             key: const ValueKey('practice_cam'),
@@ -406,7 +433,21 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
             attempt: _attempt,
             enabled: _result == null,
             onResult: _onResult,
+            bridge: landscape ? _bridge : null,
           );
+
+    final arrows = Padding(
+      padding: EdgeInsets.fromLTRB(_gutter, _compact ? 4 : 8, _gutter, _compact ? 10 : 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _arrow(theme, Icons.arrow_back_rounded, L.t('Previous sign', 'Nakaraang kumpas'), () => _go(-1)),
+          Text('${_i + 1} / ${widget.signs.length}',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: theme.colorScheme.onSurface)),
+          _arrow(theme, Icons.arrow_forward_rounded, L.t('Next sign', 'Susunod na kumpas'), () => _go(1)),
+        ],
+      ),
+    );
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -417,17 +458,53 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
         title: Text(widget.title, style: TextStyle(fontWeight: FontWeight.w900, color: theme.colorScheme.onSurface)),
       ),
       body: SafeArea(
-        child: Column(
+        child: landscape
+            // Landscape: demo | sign, button, feedback, arrows | camera
+            // (demo and camera the same size), as every practice screen.
+            ? LandscapePracticeLayout(
+                demo: _media(theme, raw: true),
+                camera: camera,
+                middle: Center(child: SingleChildScrollView(child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(sign.label,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: sign.label.length > 12 ? 18 : 26, fontWeight: FontWeight.w900, color: theme.colorScheme.onSurface)),
+                    const SizedBox(height: 10),
+                    ValueListenableBuilder<CameraButtonState?>(
+                      valueListenable: _bridge,
+                      builder: (context, b, _) => b == null || _result != null
+                          ? const SizedBox.shrink()
+                          : cameraLevelButton(theme, label: b.label, recording: b.recording, onPressed: b.onPressed),
+                    ),
+                    _feedback(theme),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _arrow(theme, Icons.arrow_back_rounded, L.t('Previous sign', 'Nakaraang kumpas'), () => _go(-1)),
+                        Text('${_i + 1} / ${widget.signs.length}',
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: theme.colorScheme.onSurface)),
+                        _arrow(theme, Icons.arrow_forward_rounded, L.t('Next sign', 'Susunod na kumpas'), () => _go(1)),
+                      ],
+                    ),
+                  ],
+                ))),
+              )
+            : Column(
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                padding: EdgeInsets.fromLTRB(_gutter, _compact ? 4 : 8, _gutter, _compact ? 10 : 16),
                 child: Column(
                   children: [
                     Text(sign.label,
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: sign.label.length > 12 ? 24 : 40, fontWeight: FontWeight.w900, color: theme.colorScheme.onSurface)),
-                    const SizedBox(height: 16),
+                        style: TextStyle(fontSize: (sign.label.length > 12 ? 24 : 40) * (_compact ? 0.8 : 1.0), fontWeight: FontWeight.w900, color: theme.colorScheme.onSurface)),
+                    SizedBox(height: _compact ? 8 : 16),
                     _media(theme),
                     camera,
                   ],
@@ -435,19 +512,15 @@ class _TutorialSessionPracticeState extends State<TutorialSessionPractice> {
               ),
             ),
             // Feedback stays in view above the arrows (not scrolled away).
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: _feedback(theme)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _arrow(theme, Icons.arrow_back_rounded, L.t('Previous sign', 'Nakaraang kumpas'), () => _go(-1)),
-                  Text('${_i + 1} / ${widget.signs.length}',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: theme.colorScheme.onSurface)),
-                  _arrow(theme, Icons.arrow_forward_rounded, L.t('Next sign', 'Susunod na kumpas'), () => _go(1)),
-                ],
+            // Capped and scrollable so a long hint never overflows short phones.
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.30),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(horizontal: _gutter),
+                child: _feedback(theme),
               ),
             ),
+            arrows,
           ],
         ),
       ),

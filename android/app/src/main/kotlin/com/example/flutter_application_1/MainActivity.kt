@@ -92,8 +92,17 @@ class MainActivity : FlutterActivity() {
                 if (vibrator == null || !vibrator.hasVibrator()) {
                     result.success(false)
                 } else {
-                    if (Build.VERSION.SDK_INT >= 26) {
-                        vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+                    // Marked as ACCESSIBILITY feedback (it is: Deaf learners feel
+                    // the result). A vibration with no usage is UNKNOWN, which
+                    // some phones (realme / ColorOS with touch and notification
+                    // vibration off) drop silently.
+                    val effect = VibrationEffect.createWaveform(pattern, -1)
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        vibrator.vibrate(effect, android.os.VibrationAttributes.createForUsage(android.os.VibrationAttributes.USAGE_ACCESSIBILITY))
+                    } else if (Build.VERSION.SDK_INT >= 26) {
+                        vibrator.vibrate(effect, android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                            .build())
                     } else {
                         @Suppress("DEPRECATION")
                         vibrator.vibrate(pattern, -1)

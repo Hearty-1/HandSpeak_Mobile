@@ -1,7 +1,7 @@
+import '/services/app_haptics.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
@@ -129,7 +129,7 @@ class AppNavBar extends StatelessWidget {
                                 isDark: isDark,
                                 onTap: () {
                                   if (i == currentIndex) return;
-                                  HapticFeedback.selectionClick();
+                                  AppHaptics.selection();
                                   onTap(i);
                                 },
                               ),

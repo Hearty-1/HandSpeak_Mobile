@@ -1,3 +1,4 @@
+import '/services/app_haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '/providers/language_provider.dart';
@@ -90,7 +91,7 @@ class _PracticeFeedbackState extends State<PracticeFeedback> with SingleTickerPr
 
   static Future<void> _vibrate(FeedbackTone tone) async {
     final pattern = _patterns[tone];
-    if (pattern == null) return;
+    if (pattern == null || !AppHaptics.enabled.value) return; // Settings > Vibration
     try {
       final ok = await _vibrator.invokeMethod<bool>('pattern', {'pattern': pattern});
       if (ok == true) return;
@@ -98,7 +99,7 @@ class _PracticeFeedbackState extends State<PracticeFeedback> with SingleTickerPr
       // No native channel (e.g. iOS): fall back below.
     }
     try {
-      await HapticFeedback.vibrate();
+      if (AppHaptics.enabled.value) await HapticFeedback.heavyImpact();
     } catch (_) {}
   }
 

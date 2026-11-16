@@ -1,9 +1,12 @@
+import '/services/app_haptics.dart';
 import '/widgets/button_3d.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
+import '/widgets/landscape_practice_layout.dart';
+import '/services/tutorial_session_recorder.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '/widgets/lesson_demo_media.dart';
@@ -693,6 +696,11 @@ class NumbersTutorialPractice extends StatefulWidget {
 }
 
 class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with WidgetsBindingObserver {
+  // Tutorial practice record (tutorial_practice_sessions); off in the
+  // continuous practice, which keeps its own record.
+  late final TutorialAttemptLog _tlog = TutorialAttemptLog(
+      category: 'numbers', sign: widget.targetNumber, enabled: !widget.continuous && widget.onMastered == null);
+
   // No music while this screen is open (see SoundProvider.claimBgm).
   late final SoundProvider _bgm;
 
@@ -1106,6 +1114,15 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   bool _evaluatingSign = false; // one server check at a time
 
   Future<void> _evaluateSign(int now) async {
+    _tlog.begin();
+    try {
+      await _evaluateSignRun(now);
+    } finally {
+      _tlog.fail(score: _currentScore); // no-op when it passed
+    }
+  }
+
+  Future<void> _evaluateSignRun(int now) async {
     if (_evaluatingSign) return;
     _evaluatingSign = true;
     try {
@@ -1408,13 +1425,12 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
   }
 
   void _onSuccess() async {
+    _tlog.pass(score: _currentScore > 0 ? _currentScore : 100);
     _isSuccessAchieved = true;
     _startHoldTime = null;
     _holdProgress = 0.0;
 
-    HapticFeedback.heavyImpact();
-    await Future.delayed(const Duration(milliseconds: 100));
-    HapticFeedback.heavyImpact();
+    await AppHaptics.celebrate(); // sign mastered
 
     await _awardXp();
 
@@ -1463,7 +1479,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                   )
                 ],
               ),
-              child: Column(
+              child: SingleChildScrollView(child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Stack(
@@ -1555,7 +1571,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                     child: const Text("Continue", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                   ),
                 ],
-              ),
+              )),
             ),
           ),
         ),
@@ -1565,6 +1581,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
 
   @override
   void dispose() {
+    _tlog.finish();
     _bgm.releaseBgm(this);
     WidgetsBinding.instance.removeObserver(this);
     _handSub?.cancel();
@@ -1581,7 +1598,7 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
     bool isPassing = _currentScore >= successThreshold;
     final bool landscape = _isLandscape(context);
     // Landscape: the tutorial pane is ~45% of the screen, camera on the right.
-    final double screenWidth = MediaQuery.of(context).size.width * (landscape ? 0.45 : 1.0);
+    final double screenWidth = MediaQuery.of(context).size.width * (landscape ? 0.25 : 1.0);
     final theme = Theme.of(context);
     final visuals = _ThemeVisuals.fromTheme(theme);
     final isDark = theme.brightness == Brightness.dark;
@@ -1682,81 +1699,8 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                           ],
                         );
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
-        flexibleSpace: ClipRRect(
-          child: SmartBlur(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(color: Colors.transparent),
-          ),
-        ),
-        title: Text(
-          widget.continuous ? 'Continuous Practice' : 'Tutorial Practice',
-          style: TextStyle(
-            color: theme.colorScheme.onSurface,
-            fontSize: 22,
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.96,
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          Positioned(
-            top: -20, right: -20,
-            child: Opacity(
-              opacity: 0.12,
-              child: Transform.rotate(
-                angle: -0.2,
-                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 40, left: -30,
-            child: Opacity(
-              opacity: 0.10,
-              child: Transform.rotate(
-                angle: 0.3,
-                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (widget.progressLabel != null) _buildProgressHeader(theme),
-                    Text(
-                      widget.targetNumber,
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 42,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Inter',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    SizedBox(
+    // Demo video / picture: left square in landscape.
+    final Widget demoBox = SizedBox(
                       width: screenWidth * 0.60,
                       child: AspectRatio(
                         aspectRatio: 1 / 1,
@@ -1782,7 +1726,29 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                           ),
                         ),
                       ),
+                    );
+    // Left pane (portrait) / middle column (landscape).
+    final Widget leftPane = SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (widget.progressLabel != null) _buildProgressHeader(theme),
+                    Text(
+                      widget.targetNumber,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 42,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Inter',
+                      ),
                     ),
+                    const SizedBox(height: 12),
+
+                    if (!landscape) demoBox,
                     const SizedBox(height: 24),
 
                     if (!landscape)
@@ -1935,7 +1901,64 @@ class _NumbersTutorialPracticeState extends State<NumbersTutorialPractice> with 
                   ],
                 ),
               ),
+            );
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: theme.cardColor.withValues(alpha: 0.4),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
+        flexibleSpace: ClipRRect(
+          child: SmartBlur(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        title: Text(
+          widget.continuous ? 'Continuous Practice' : 'Tutorial Practice',
+          style: TextStyle(
+            color: theme.colorScheme.onSurface,
+            fontSize: 22,
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.96,
+          ),
+        ),
+      ),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -20, right: -20,
+            child: Opacity(
+              opacity: 0.12,
+              child: Transform.rotate(
+                angle: -0.2,
+                child: Icon(visuals.ambientIcon1, size: 220, color: theme.primaryColor),
+              ),
             ),
+          ),
+          Positioned(
+            bottom: 40, left: -30,
+            child: Opacity(
+              opacity: 0.10,
+              child: Transform.rotate(
+                angle: 0.3,
+                child: Icon(visuals.ambientIcon2, size: 240, color: theme.colorScheme.secondary),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: landscape
+                ? LandscapePracticeLayout(demo: demoBox, middle: leftPane, camera: cameraPane)
+                : Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: leftPane,
                 ),
                 if (landscape)
                   Expanded(

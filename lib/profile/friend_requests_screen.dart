@@ -1,3 +1,4 @@
+import '/profile/public_profile.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,7 +27,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
     final currentUserDoc = await currentRef.get();
     final currentUserData = currentUserDoc.data() ?? {};
-    final String currentUserName = currentUserData['name'] ?? currentUserData['displayName'] ?? 'A player';
+    final String currentUserName = PublicProfileScreen.publicName(currentUserData);
 
     final batch = FirebaseFirestore.instance.batch();
 
@@ -239,7 +240,7 @@ class _RequestTile extends StatelessWidget {
         }
 
         final data = snapshot.data!.data() as Map<String, dynamic>?;
-        final name = data?['name'] ?? data?['displayName'] ?? 'Player';
+        final name = data == null ? 'Player' : PublicProfileScreen.publicName(data);
         final avatar = data?['avatar'] ?? data?['photoURL'];
 
         return Container(

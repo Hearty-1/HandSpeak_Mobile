@@ -1,6 +1,6 @@
+import '/services/app_haptics.dart';
 import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../home/home.dart';
@@ -41,7 +41,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   Future<void> _continue() async {
     final role = _selected;
     if (role == null || _busy) return;
-    HapticFeedback.selectionClick();
+    AppHaptics.selection();
 
     if (role == UserRole.student) {
       // Students keep the existing login flow exactly as it was.
@@ -139,7 +139,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                             accent: _info[role]!.accent,
                             selected: _selected == role,
                             onTap: () {
-                              HapticFeedback.selectionClick();
+                              AppHaptics.selection();
                               setState(() => _selected = role);
                             },
                           ),

@@ -1,3 +1,4 @@
+import '/services/app_haptics.dart';
 import '/widgets/sign_recording.dart';
 import '/widgets/activity_feedback.dart';
 import '/widgets/button_3d.dart';
@@ -11,6 +12,9 @@ import 'dart:ui';
 import 'package:camera/camera.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '/widgets/landscape_practice_layout.dart';
+import '/services/latency_probe.dart';
+import '/services/tutorial_session_recorder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
@@ -197,6 +201,12 @@ class PhraseTutorialPractice extends StatefulWidget {
 
 class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     with WidgetsBindingObserver {
+  // Tutorial practice record (tutorial_practice_sessions); off inside
+  // activities and Practice Sessions, which keep their own records.
+  late final TutorialAttemptLog _tlog = TutorialAttemptLog(
+      category: 'phrases', sign: widget.targetPhrase,
+      enabled: !widget.embedded && !widget.continuous && widget.onPassed == null);
+
   // ---- pipeline objects ----------------------------------------------------
   CameraController? _controller;
   HandLandmarkerPlugin? _landmarker;
@@ -313,6 +323,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
 
   @override
   void dispose() {
+    _tlog.finish();
     _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _maxRecordTimer?.cancel();
@@ -649,6 +660,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
         _startRecording();
       } else {
         setState(() => _countdown--);
+        if (_countdown > 0) AppHaptics.tick();
       }
     });
   }
@@ -664,6 +676,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   }
 
   void _startRecording() {
+    AppHaptics.recordStart();
     _clearCapture();
     _recognizer.resetTracking();
     _maxRecordTimer?.cancel();
@@ -780,6 +793,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
     required Color color,
     double score = 0.0,
   }) {
+    _tlog.fail(score: score, handsDetected: _handsVisible);
     if (!mounted || _disposed) return;
     setState(() {
       _isRecording = false;
@@ -793,6 +807,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   }
 
   Future<void> _stopAndEvaluate({bool manual = false}) async {
+    LatencyProbe.markInput(); // gesture input time (System Testing latency)
+    AppHaptics.recordStop();
+    _tlog.begin();
     if (!_isRecording || _disposed) return;
     _isRecording = false;
     _maxRecordTimer?.cancel();
@@ -1036,6 +1053,9 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   };
 
   Future<void> _evaluateCalendar(bool manual) async {
+    LatencyProbe.markInput(); // gesture input time (System Testing latency)
+    AppHaptics.recordStop();
+    _tlog.begin();
     var frames = List<RawFrame>.of(_rawFrames)..sort((a, b) => a.timeMs.compareTo(b.timeMs));
     _clearCapture();
     if (!mounted) return;
@@ -1249,17 +1269,16 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
   }
 
   Future<void> _onSuccess() async {
+    _tlog.pass();
     if (_isSuccessAchieved) return;
     _isSuccessAchieved = true;
     if (widget.onPassed != null) {
-      HapticFeedback.heavyImpact();
+      AppHaptics.correct();
       widget.onPassed!();
       return;
     }
 
-    HapticFeedback.heavyImpact();
-    await Future.delayed(const Duration(milliseconds: 100));
-    HapticFeedback.heavyImpact();
+    await AppHaptics.celebrate(); // sign mastered
 
     await _awardXp();
     if (!mounted) return;
@@ -1307,7 +1326,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                   )
                 ],
               ),
-              child: Column(
+              child: SingleChildScrollView(child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Stack(
@@ -1399,7 +1418,7 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
                     child: const Text("Continue", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                   ),
                 ],
-              ),
+              )),
             ),
           ),
         ),
@@ -1762,6 +1781,105 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
       );
     }
 
+    // Demo video / picture: left square in landscape.
+    final Widget demoBox = SizedBox(
+                      width: screenWidth * 0.60,
+                      child: AspectRatio(
+                        aspectRatio: 1 / 1,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              )
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: _buildReference(theme),
+                          ),
+                        ),
+                      ),
+                    );
+    // Left pane (portrait) / middle column (landscape).
+    final Widget leftPane = SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (widget.progressLabel != null) _buildProgressHeader(theme),
+                    Text(
+                      widget.targetPhrase,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                    if (_isCalendar)
+                      Text(
+                        CalendarSigns.classNames[_calendarTarget],
+                        style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w600),
+                      ),
+                    const SizedBox(height: 12),
+
+                    if (!landscape) demoBox,
+                    const SizedBox(height: 24),
+
+                    if (!landscape)
+                      SizedBox(
+                        width: screenWidth * 0.60,
+                        child: AspectRatio(aspectRatio: 1 / 1, child: cameraPane),
+                      ),
+                    const SizedBox(height: 16),
+
+
+                    if (!(widget.continuous && _isSuccessAchieved))
+                      _RecordControls(
+                        heroTag: 'record_button',
+                        countdown: _countdown,
+                        isRecording: _isRecording,
+                        isEvaluating: _isEvaluating,
+                        elapsed: elapsed,
+                        recordProgress: recordProgress,
+                        bodyVisible: _poseVisible,
+                        showButton: _isInitialized && !_isSuccessAchieved,
+                        onRecord: _toggleRecording,
+                        width: landscape ? 190 : screenWidth * 0.70,
+                      ),
+
+                    if (widget.continuous && _isSuccessAchieved) ...[
+                      const SizedBox(height: 24),
+                      _buildContinuousSuccess(theme, visuals),
+                    ] else ...[
+                      // One feedback card under the controls, as in the civic
+                      // practice: the verdict after an attempt, else the
+                      // instruction / status.
+                      const SizedBox(height: 16),
+                      if (_resultTitle.isNotEmpty && !_initFailed && !_isRecording && !_isEvaluating)
+                        PracticeFeedback(
+                          title: _resultTitle,
+                          message: _resultDetail,
+                          tone: PracticeFeedback.toneForColor(_resultColor),
+                        )
+                      else
+                        PracticeFeedback(
+                          message: _status,
+                          tone: _initFailed ? FeedbackTone.problem : FeedbackTone.info,
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+            );
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -1811,107 +1929,14 @@ class _PhraseTutorialPracticeState extends State<PhraseTutorialPractice>
           ),
 
           SafeArea(
-            child: Row(
+            child: landscape
+                ? LandscapePracticeLayout(demo: demoBox, middle: leftPane, camera: cameraPane)
+                : Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
                   flex: 5,
-                  child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (widget.progressLabel != null) _buildProgressHeader(theme),
-                    Text(
-                      widget.targetPhrase,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Inter',
-                      ),
-                    ),
-                    if (_isCalendar)
-                      Text(
-                        CalendarSigns.classNames[_calendarTarget],
-                        style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w600),
-                      ),
-                    const SizedBox(height: 12),
-
-                    SizedBox(
-                      width: screenWidth * 0.60,
-                      child: AspectRatio(
-                        aspectRatio: 1 / 1,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.06),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              )
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: _buildReference(theme),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    if (!landscape)
-                      SizedBox(
-                        width: screenWidth * 0.60,
-                        child: AspectRatio(aspectRatio: 1 / 1, child: cameraPane),
-                      ),
-                    const SizedBox(height: 16),
-
-
-                    if (!(widget.continuous && _isSuccessAchieved))
-                      _RecordControls(
-                        heroTag: 'record_button',
-                        countdown: _countdown,
-                        isRecording: _isRecording,
-                        isEvaluating: _isEvaluating,
-                        elapsed: elapsed,
-                        recordProgress: recordProgress,
-                        bodyVisible: _poseVisible,
-                        showButton: _isInitialized && !_isSuccessAchieved,
-                        onRecord: _toggleRecording,
-                        width: screenWidth * 0.70,
-                      ),
-
-                    if (widget.continuous && _isSuccessAchieved) ...[
-                      const SizedBox(height: 24),
-                      _buildContinuousSuccess(theme, visuals),
-                    ] else ...[
-                      // One feedback card under the controls, as in the civic
-                      // practice: the verdict after an attempt, else the
-                      // instruction / status.
-                      const SizedBox(height: 16),
-                      if (_resultTitle.isNotEmpty && !_initFailed && !_isRecording && !_isEvaluating)
-                        PracticeFeedback(
-                          title: _resultTitle,
-                          message: _resultDetail,
-                          tone: PracticeFeedback.toneForColor(_resultColor),
-                        )
-                      else
-                        PracticeFeedback(
-                          message: _status,
-                          tone: _initFailed ? FeedbackTone.problem : FeedbackTone.info,
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+                  child: leftPane,
                 ),
                 if (landscape)
                   Expanded(

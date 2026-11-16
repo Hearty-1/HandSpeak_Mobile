@@ -1,3 +1,4 @@
+import '/profile/public_profile.dart';
 import 'dart:async';
 import '/widgets/button_3d.dart';
 import 'dart:convert';
@@ -729,11 +730,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     return const SizedBox.shrink();
                                   }
                                   final data = snapshot.data!.data() as Map<String, dynamic>;
-                                  String name = data['name'] ?? 'Student';
+                                  String name = PublicProfileScreen.publicName(data);
                                   String avatar = data['avatar'] ?? '';
                                   int xp = data['xp'] ?? 0;
 
-                                  return Container(
+                                  return GestureDetector(
+                                    onTap: () => PublicProfileScreen.open(context, targetUid),
+                                    child: Container(
                                     padding: EdgeInsets.all(12 * scale),
                                     decoration: BoxDecoration(
                                       color: theme.cardColor,
@@ -819,7 +822,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         )
                                       ],
                                     ),
-                                  );
+                                  ));
                                 }
                               );
                             },

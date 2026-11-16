@@ -1,7 +1,7 @@
+import '/services/app_haptics.dart';
 import 'dart:ui' show PlatformDispatcher;
 import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -52,6 +52,7 @@ void main() async {
   final roleProvider = RoleProvider();
   await step('role', roleProvider.load);
   await step('performance mode', PerformanceSettings.load); // Settings > Performance Mode
+  await step('vibration', AppHaptics.load); // Settings > Vibration
 
   // Uncaught errors are logged instead of ending the app.
   FlutterError.onError = (details) {
@@ -236,7 +237,7 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
   }
 
   void _next() {
-    HapticFeedback.selectionClick();
+    AppHaptics.selection();
     if (_isLast) {
       _begin();
     } else {

@@ -1,3 +1,4 @@
+import '/services/app_haptics.dart';
 import '/widgets/sign_recording.dart';
 import '/widgets/activity_feedback.dart';
 import '/widgets/button_3d.dart';
@@ -10,6 +11,9 @@ import 'package:camera/camera.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
+import '/widgets/landscape_practice_layout.dart';
+import '/services/latency_probe.dart';
+import '/services/tutorial_session_recorder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
@@ -1280,16 +1284,11 @@ class _CloudLessonScreenState extends State<CloudLessonScreen> {
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final scale = Responsive.scale(constraints.maxWidth);
-                return SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.symmetric(vertical: 10 * scale),
-                  child: Center(
-                    child: SizedBox(
-                      width: 299 * scale,
-                      child: Column(
-                        children: [
-                          Text(
+                // Same as the other tutorial details: landscape (wider than
+                // tall) is sized by the height, picture left, the rest right.
+                final bool wide = constraints.maxWidth > constraints.maxHeight;
+                final double scale = wide ? (constraints.maxHeight / 380).clamp(0.55, 1.2) : Responsive.scale(constraints.maxWidth);
+                final Widget title = Text(
                             label,
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -1299,9 +1298,8 @@ class _CloudLessonScreenState extends State<CloudLessonScreen> {
                               fontWeight: FontWeight.w800,
                               height: 1.1,
                             ),
-                          ),
-                          SizedBox(height: 18 * scale),
-                          Container(
+                          );
+                final Widget media = Container(
                             width: 299 * scale,
                             height: 276 * scale,
                             decoration: BoxDecoration(
@@ -1315,17 +1313,15 @@ class _CloudLessonScreenState extends State<CloudLessonScreen> {
                                 child: _CloudMedia(key: ValueKey(lesson.media), source: lesson.media, fit: BoxFit.cover),
                               ),
                             ),
-                          ),
-                          SizedBox(height: 34 * scale),
-                          ClipRRect(
+                          );
+                final Widget progress = ClipRRect(
                             borderRadius: BorderRadius.circular(25 * scale),
                             child: SizedBox(
                               width: 295 * scale,
                               child: ProgressBar3D(value: ((_i + 1) / n).toDouble(), color: theme.colorScheme.secondary, height: 14 * scale, trackColor: theme.cardColor.withValues(alpha: 0.4)),
                             ),
-                          ),
-                          SizedBox(height: 26 * scale),
-                          Row(
+                          );
+                final Widget nav = Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               TextButton.icon(
@@ -1344,9 +1340,8 @@ class _CloudLessonScreenState extends State<CloudLessonScreen> {
                                 ]),
                               ),
                             ],
-                          ),
-                          SizedBox(height: 30 * scale),
-                          Container(
+                          );
+                final Widget practice = Container(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(25 * scale),
                               boxShadow: [BoxShadow(color: theme.primaryColor.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 5))],
@@ -1364,7 +1359,51 @@ class _CloudLessonScreenState extends State<CloudLessonScreen> {
                               child: Text(L.t('Practice', 'Pagsasanay'),
                                   style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
                             ),
+                          );
+                if (wide) {
+                  return Center(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(horizontal: 24 * scale, vertical: 12 * scale),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          media,
+                          SizedBox(width: 36 * scale),
+                          SizedBox(
+                            width: 299 * scale,
+                            child: Column(mainAxisSize: MainAxisSize.min, children: [
+                              title,
+                              SizedBox(height: 18 * scale),
+                              progress,
+                              SizedBox(height: 10 * scale),
+                              nav,
+                              SizedBox(height: 16 * scale),
+                              practice,
+                            ]),
                           ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                return SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.symmetric(vertical: 10 * scale),
+                  child: Center(
+                    child: SizedBox(
+                      width: 299 * scale,
+                      child: Column(
+                        children: [
+                          title,
+                          SizedBox(height: 18 * scale),
+                          media,
+                          SizedBox(height: 34 * scale),
+                          progress,
+                          SizedBox(height: 26 * scale),
+                          nav,
+                          SizedBox(height: 30 * scale),
+                          practice,
                         ],
                       ),
                     ),
@@ -1544,6 +1583,10 @@ class CloudMirrorPractice extends StatefulWidget {
 }
 
 class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
+  // Tutorial practice record (tutorial_practice_sessions): the self-check.
+  late final TutorialAttemptLog _tlog = TutorialAttemptLog(
+      category: widget.category.id, sign: widget.lesson.title, enabled: widget.onDone == null);
+
   static const int _needHandsMs = 1500;
 
   CameraController? _camera;
@@ -1616,6 +1659,7 @@ class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
   Future<void> _confirm() async {
     if (_confirmed) return;
     _confirmed = true;
+    _tlog.pass(model: 'self-check');
     // Same rewards and feedback as the other categories' practice.
     await practiceSuccessHaptics();
     final xp = await _cloudAwardMastery(widget.category, widget.lesson, continuous: widget.onDone != null);
@@ -1631,6 +1675,7 @@ class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
 
   @override
   void dispose() {
+    _tlog.finish();
     _handSub?.cancel();
     _camera?.stopImageStream().catchError((_) {});
     _camera?.dispose();
@@ -1727,6 +1772,122 @@ class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
       ],
     );
 
+    // Demo video / picture: left square in landscape.
+    final Widget demoBox = SizedBox(
+                            width: paneWidth * 0.60,
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.grey.shade900 : Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4)),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: _CloudMedia(source: widget.lesson.media, fit: BoxFit.cover),
+                                ),
+                              ),
+                            ),
+                          );
+    // Left pane (portrait) / middle column (landscape).
+    final Widget leftPane = SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Column(
+                        children: [
+                          Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: onSurface,
+                              fontSize: title.length > 18 ? 28 : 42,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (!landscape) demoBox,
+                          const SizedBox(height: 24),
+                          if (!landscape)
+                            SizedBox(width: paneWidth * 0.60, child: AspectRatio(aspectRatio: 1, child: cameraPane)),
+                          const SizedBox(height: 16),
+                          PracticeFeedback(
+                            message: ready
+                                ? 'Nice! Compare your sign with the demo, then tap "I signed it".'
+                                : (_handsVisible ? 'Keep your hands in view…' : 'Show your hands to the camera and sign along with the demo.'),
+                            tone: ready ? FeedbackTone.success : FeedbackTone.info,
+                          ),
+                          const SizedBox(height: 12),
+                          if (!ready && hold > 0) ...[
+                            const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.workspace_premium_rounded, color: Colors.green, size: 20),
+                                SizedBox(width: 6),
+                                Text('Hold steady...', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18)),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: SmartBlur(
+                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                child: Container(
+                                  width: landscape ? 190 : paneWidth * 0.70,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.surface.withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: FractionallySizedBox(
+                                      widthFactor: hold,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
+                                          borderRadius: BorderRadius.circular(12),
+                                          boxShadow: [BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.5), blurRadius: 10)],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          SizedBox(
+                            width: landscape ? 190 : paneWidth * 0.70,
+                            height: 52,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: theme.primaryColor,
+                                foregroundColor: theme.colorScheme.onPrimary,
+                                disabledBackgroundColor: theme.dividerColor,
+                                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
+                              ),
+                              onPressed: ready ? _confirm : null,
+                              icon: const Icon(Icons.check_rounded),
+                              label: const Text('I signed it', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, fontFamily: 'Inter')),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Watch the demo, sign along, and tap the button when your sign matches.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: onSurface.withValues(alpha: 0.55), fontSize: 12.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -1765,124 +1926,14 @@ class _CloudMirrorPracticeState extends State<CloudMirrorPractice> {
             ),
           ),
           SafeArea(
-            child: Row(
+            child: landscape
+                ? LandscapePracticeLayout(demo: demoBox, middle: leftPane, camera: cameraPane)
+                : Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
                   flex: 5,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Column(
-                        children: [
-                          Text(
-                            title,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: onSurface,
-                              fontSize: title.length > 18 ? 28 : 42,
-                              fontWeight: FontWeight.w900,
-                              fontFamily: 'Inter',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: paneWidth * 0.60,
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: isDark ? Colors.grey.shade900 : Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4)),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: _CloudMedia(source: widget.lesson.media, fit: BoxFit.cover),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          if (!landscape)
-                            SizedBox(width: paneWidth * 0.60, child: AspectRatio(aspectRatio: 1, child: cameraPane)),
-                          const SizedBox(height: 16),
-                          PracticeFeedback(
-                            message: ready
-                                ? 'Nice! Compare your sign with the demo, then tap "I signed it".'
-                                : (_handsVisible ? 'Keep your hands in view…' : 'Show your hands to the camera and sign along with the demo.'),
-                            tone: ready ? FeedbackTone.success : FeedbackTone.info,
-                          ),
-                          const SizedBox(height: 12),
-                          if (!ready && hold > 0) ...[
-                            const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.workspace_premium_rounded, color: Colors.green, size: 20),
-                                SizedBox(width: 6),
-                                Text('Hold steady...', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18)),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: SmartBlur(
-                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                                child: Container(
-                                  width: paneWidth * 0.70,
-                                  height: 20,
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.surface.withValues(alpha: 0.4),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: theme.colorScheme.surface.withValues(alpha: 0.5), width: 1),
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: FractionallySizedBox(
-                                      widthFactor: hold,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          gradient: const LinearGradient(colors: [Colors.greenAccent, Colors.green]),
-                                          borderRadius: BorderRadius.circular(12),
-                                          boxShadow: [BoxShadow(color: Colors.greenAccent.withValues(alpha: 0.5), blurRadius: 10)],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                          SizedBox(
-                            width: paneWidth * 0.70,
-                            height: 52,
-                            child: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: theme.primaryColor,
-                                foregroundColor: theme.colorScheme.onPrimary,
-                                disabledBackgroundColor: theme.dividerColor,
-                                shape: Button3DBorder(borderRadius: BorderRadius.circular(28)),
-                              ),
-                              onPressed: ready ? _confirm : null,
-                              icon: const Icon(Icons.check_rounded),
-                              label: const Text('I signed it', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, fontFamily: 'Inter')),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Watch the demo, sign along, and tap the button when your sign matches.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: onSurface.withValues(alpha: 0.55), fontSize: 12.5),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: leftPane,
                 ),
                 if (landscape)
                   Expanded(
@@ -2077,6 +2128,11 @@ class CloudModelPractice extends StatefulWidget {
 }
 
 class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBindingObserver {
+  // Tutorial practice record (tutorial_practice_sessions); off in the
+  // continuous practice ([onDone]), which keeps its own record.
+  late final TutorialAttemptLog _tlog = TutorialAttemptLog(
+      category: widget.category.id, sign: widget.lesson.title, enabled: widget.onDone == null);
+
   // Hands must be gone this long before the recording stops by itself.
   static const int _autoStopAfterMs = 1500;
   // A manual stop drops the reach to the screen.
@@ -2162,6 +2218,7 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
 
   @override
   void dispose() {
+    _tlog.finish();
     _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
@@ -2260,11 +2317,13 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
         _startRecording();
       } else {
         setState(() => _countdown--);
+        if (_countdown > 0) AppHaptics.tick();
       }
     });
   }
 
   void _startRecording() {
+    AppHaptics.recordStart();
     _frames.clear();
     _sawHands = false;
     _lastHandMs = 0;
@@ -2304,6 +2363,9 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
   // ---- evaluation -------------------------------------------------------------
 
   Future<void> _stopAndEvaluate({bool manual = false}) async {
+    LatencyProbe.markInput(); // gesture input time (System Testing latency)
+    AppHaptics.recordStop();
+    _tlog.begin();
     if (!_recording || _disposed) return;
     _recording = false;
     _recordStart = null;
@@ -2427,56 +2489,38 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
   /// of the sign probability and a lead over the next sign.
   /// Whether [result] passes the practice check (as in [_judge]) and the
   /// practised sign's share of the sign probability.
-  // The confidence pass also needs the server's own verdict (accepted): its
-  // margin vs "not recognised" check is what the web app's test passes on.
+  // Same rule as the web app (app-judge.ts appJudge, used by "Test with videos"):
+  // the confidence pass does not also need the server's "accepted" flag.
   ({bool passed, double share}) _assess(RawPredictResponse result) {
-    double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
-    bool isSign(Prediction p) => p.index != _model.invalidIndex && _model.classAt(p.index) != null;
-    final signs = [for (final p in result.topK) if (isSign(p)) p];
-    final invalid = result.topK.where((p) => !isSign(p)).fold<double>(0, (a, p) => a + pct(p));
-    final mass = math.max(1.0 - invalid, 0.05);
-    double share(Prediction? p) => p == null ? 0.0 : (pct(p) / mass).clamp(0.0, 1.0);
-    final best = signs.isNotEmpty ? signs.first : null;
-    final next = signs.length > 1 ? signs[1] : null;
-    final target = signs.where((p) => p.index == _target.index).firstOrNull;
-    final passed = best != null &&
-        best.index == _target.index &&
-        ((result.accepted && pct(best) >= _target.practice.minConfidence) ||
-            (invalid <= _target.practice.maxInvalid &&
-                share(best) >= _target.practice.minSignShare &&
-                share(best) - share(next) >= _target.practice.minSignLead));
-    return (passed: passed, share: share(target));
+    final v = judgePublishedSign(result, _model, _target);
+    return (passed: v.passed, share: v.targetShare);
   }
 
   void _judge(RawPredictResponse result) {
-    double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
-    bool isSign(Prediction p) => p.index != _model.invalidIndex && _model.classAt(p.index) != null;
-    final signs = [for (final p in result.topK) if (isSign(p)) p];
-    final invalid = result.topK.where((p) => !isSign(p)).fold<double>(0, (a, p) => a + pct(p));
-    final signMass = math.max(1.0 - invalid, 0.05);
-    double share(Prediction? p) => p == null ? 0.0 : (pct(p) / signMass).clamp(0.0, 1.0);
-    final best = signs.isNotEmpty ? signs.first : null;
-    final next = signs.length > 1 ? signs[1] : null;
-    final bestCls = best == null ? null : _model.classAt(best.index);
-    final lead = share(best) - share(next);
-    final passed = best != null &&
-        best.index == _target.index &&
-        ((result.accepted && pct(best) >= _target.practice.minConfidence) ||
-            (invalid <= _target.practice.maxInvalid && share(best) >= _target.practice.minSignShare && lead >= _target.practice.minSignLead));
+    final v = judgePublishedSign(result, _model, _target);
+    final passed = v.passed, bestCls = v.bestClass;
+    if (passed) {
+      _tlog.pass(score: v.bestConfidence, model: result.modelVersion);
+    } else {
+      _tlog.fail(
+          score: v.bestIsTarget ? v.bestConfidence : 0,
+          predicted: v.bestIsTarget ? null : bestCls?.label,
+          handsDetected: result.topK.isNotEmpty,
+          model: result.modelVersion);
+    }
 
     var debug = '';
     if (kDebugMode) {
-      String fmt(Prediction p) => '${_model.classAt(p.index)?.name ?? 'Not recognised'} ${(pct(p) * 100).toStringAsFixed(0)}%';
-      debug = '\n\n[debug] target ${_target.name}\nclip: $_clipInfo\nmodel: ${result.topK.take(4).map(fmt).join(', ')}\n'
-          'best sign: ${bestCls?.name ?? '-'} ${(share(best) * 100).toStringAsFixed(0)}% of signs, '
-          'lead ${(lead * 100).toStringAsFixed(0)}% -> ${passed ? 'PASS' : 'no'}';
+      debug = '\n\n[debug] target ${_target.name}\nclip: $_clipInfo\n${v.describe()}';
       debugPrint(debug.trim());
     }
 
     if (passed) {
       _show(L.t('Great job!', 'Mahusay!'), L.t('Correct sign!', 'Tumpak ang kumpas!') + debug, FeedbackTone.success);
       unawaited(_onSuccess());
-    } else if (bestCls != null && best!.index == _target.index) {
+    } else if (bestCls != null && v.bestIsTarget && v.bestConfidence >= 0.10) {
+      // "Almost" only when the sign really is close: at 1-5 % (the rest
+      // "not recognised") the model did not see the sign at all.
       _show(
         L.t('Almost! Make it clearer', 'Malapit na! Gawin nang mas malinaw'),
         L.t('Do the whole sign slowly, with your hands in front of your chest.',
@@ -2484,7 +2528,9 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
             debug,
         FeedbackTone.almost,
       );
-    } else if (bestCls != null && share(best) >= 0.40 && lead >= _target.practice.minSignLead) {
+    } else if (bestCls != null && !v.bestIsTarget && v.bestShare >= 0.40 && v.lead >= _target.practice.minSignLead) {
+      // Only a DIFFERENT sign: the practised sign leading at a low score is
+      // "not recognised" (below), never "that looked like <the same sign>".
       _show(
         L.t('That looked like ${bestCls.name}', 'Mukhang ${bestCls.name} ang naisagawa'),
         L.t('Try ${_target.name} again. Follow the example.', 'Subukang muli ang ${_target.name}. Sundan ang halimbawa.') + debug,
@@ -2644,6 +2690,76 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
       ],
     );
 
+    // Demo video / picture: left square in landscape.
+    final Widget demoBox = SizedBox(
+                            width: screenWidth * 0.60,
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: _CloudMedia(source: widget.lesson.media, fit: BoxFit.cover),
+                                ),
+                              ),
+                            ),
+                          );
+    // Left pane (portrait) / middle column (landscape).
+    final Widget leftPane = SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (widget.progressLabel != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Text(widget.progressLabel!,
+                                  style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w700)),
+                            ),
+                          Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: onSurface, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'Inter'),
+                          ),
+                          const SizedBox(height: 12),
+                          if (!landscape) demoBox,
+                          const SizedBox(height: 24),
+                          if (!landscape) SizedBox(width: screenWidth * 0.60, child: AspectRatio(aspectRatio: 1, child: cameraPane)),
+                          const SizedBox(height: 16),
+                          if (widget.onDone != null && _done) ...[
+                            const SizedBox(height: 8),
+                            ContinuousPracticeSuccess(xpGained: _xpGained, nextLabel: L.t('Next sign...', 'Susunod na kumpas...')),
+                          ] else ...[
+                            _RecordControls(
+                              heroTag: 'cloud_record_button',
+                              countdown: _countdown,
+                              isRecording: _recording,
+                              isEvaluating: _evaluating,
+                              elapsed: elapsed,
+                              recordProgress: recordProgress,
+                              bodyVisible: _poseVisible,
+                              showButton: ready && !_done,
+                              onRecord: _toggleRecording,
+                              width: landscape ? 190 : screenWidth * 0.70,
+                            ),
+                            const SizedBox(height: 16),
+                            // One feedback card: the verdict after an attempt,
+                            // else the instruction / status.
+                            if (_title.isNotEmpty && !_recording && !_evaluating)
+                              PracticeFeedback(title: _title, message: _message, tone: _tone)
+                            else
+                              PracticeFeedback(message: _guide, tone: _error != null ? FeedbackTone.problem : FeedbackTone.info),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -2682,78 +2798,14 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
             ),
           ),
           SafeArea(
-            child: Row(
+            child: landscape
+                ? LandscapePracticeLayout(demo: demoBox, middle: leftPane, camera: cameraPane)
+                : Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
                   flex: 5,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          if (widget.progressLabel != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Text(widget.progressLabel!,
-                                  style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w700)),
-                            ),
-                          Text(
-                            title,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: onSurface, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'Inter'),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: screenWidth * 0.60,
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: _CloudMedia(source: widget.lesson.media, fit: BoxFit.cover),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          if (!landscape) SizedBox(width: screenWidth * 0.60, child: AspectRatio(aspectRatio: 1, child: cameraPane)),
-                          const SizedBox(height: 16),
-                          if (widget.onDone != null && _done) ...[
-                            const SizedBox(height: 8),
-                            ContinuousPracticeSuccess(xpGained: _xpGained, nextLabel: L.t('Next sign...', 'Susunod na kumpas...')),
-                          ] else ...[
-                            _RecordControls(
-                              heroTag: 'cloud_record_button',
-                              countdown: _countdown,
-                              isRecording: _recording,
-                              isEvaluating: _evaluating,
-                              elapsed: elapsed,
-                              recordProgress: recordProgress,
-                              bodyVisible: _poseVisible,
-                              showButton: ready && !_done,
-                              onRecord: _toggleRecording,
-                              width: screenWidth * 0.70,
-                            ),
-                            const SizedBox(height: 16),
-                            // One feedback card: the verdict after an attempt,
-                            // else the instruction / status.
-                            if (_title.isNotEmpty && !_recording && !_evaluating)
-                              PracticeFeedback(title: _title, message: _message, tone: _tone)
-                            else
-                              PracticeFeedback(message: _guide, tone: _error != null ? FeedbackTone.problem : FeedbackTone.info),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: leftPane,
                 ),
                 if (landscape)
                   Expanded(flex: 6, child: Padding(padding: const EdgeInsets.fromLTRB(0, 10, 16, 16), child: cameraPane)),
@@ -3321,8 +3373,9 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
     } else if (_recording) {
       _stopAndEvaluate(manual: true);
     } else {
-      HapticFeedback.selectionClick();
+      AppHaptics.selection();
       void begin() {
+          AppHaptics.recordStart();
           _frames.clear();
           _sawHands = false;
           _recStart = DateTime.now();
@@ -3354,6 +3407,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
           begin();
         } else {
           setState(() => _countdown--);
+        if (_countdown > 0) AppHaptics.tick();
         }
       });
     }
@@ -3378,27 +3432,15 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
   }
 
   /// Same pass rule as CloudModelPractice._assess.
-  ({bool passed, double share, Prediction? best}) _assess(RawPredictResponse result) {
-    final model = _model!, target = _target!;
-    double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
-    bool isSign(Prediction p) => p.index != model.invalidIndex && model.classAt(p.index) != null;
-    final signs = [for (final p in result.topK) if (isSign(p)) p];
-    final invalid = result.topK.where((p) => !isSign(p)).fold<double>(0, (a, p) => a + pct(p));
-    final mass = math.max(1.0 - invalid, 0.05);
-    double share(Prediction? p) => p == null ? 0.0 : (pct(p) / mass).clamp(0.0, 1.0);
-    final best = signs.isNotEmpty ? signs.first : null;
-    final next = signs.length > 1 ? signs[1] : null;
-    final t = signs.where((p) => p.index == target.index).firstOrNull;
-    final passed = best != null &&
-        best.index == target.index &&
-        ((result.accepted && pct(best) >= target.practice.minConfidence) ||
-            (invalid <= target.practice.maxInvalid &&
-                share(best) >= target.practice.minSignShare &&
-                share(best) - share(next) >= target.practice.minSignLead));
-    return (passed: passed, share: share(t), best: best);
+  ({bool passed, double share, Prediction? best, String? wrongSign}) _assess(RawPredictResponse result) {
+    final v = judgePublishedSign(result, _model!, _target!);
+    // wrongSign: the model's best sign, only when it is NOT the practised one.
+    return (passed: v.passed, share: v.targetShare, best: v.best, wrongSign: v.bestIsTarget ? null : v.bestClass?.name);
   }
 
   Future<void> _stopAndEvaluate({bool manual = false}) async {
+    LatencyProbe.markInput(); // gesture input time (System Testing latency)
+    AppHaptics.recordStop();
     if (!_recording || _disposed) return;
     _maxTimer?.cancel();
     var frames = List<RawFrame>.of(_frames)..sort((a, b) => a.timeMs.compareTo(b.timeMs));
@@ -3449,7 +3491,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
         if (alt.problem() == null) alt.unsmoothed,
       ];
       RawPredictResponse? result;
-      ({bool passed, double share, Prediction? best})? verdict;
+      ({bool passed, double share, Prediction? best, String? wrongSign})? verdict;
       var rank = -1.0;
       for (final fs in tries) {
         if (fs.length < 2) continue;
@@ -3474,7 +3516,7 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
         score: verdict.share * 100,
         isDynamic: true,
         model: model.modelId,
-        predicted: best == null ? null : model.classAt(best.index)?.name,
+        predicted: verdict.wrongSign,
         confidence: best == null ? null : pct(best),
         frames: frames.length,
       ));
@@ -3551,9 +3593,13 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
   /// The live square camera, as in the Alphabet / Numbers camera levels:
   /// 60% of the screen width, a 4 px border that glows while hands are seen
   /// (red while recording).
-  Widget _cameraBox(ThemeData theme) {
+  Widget _cameraBox(ThemeData theme, {double? size}) {
     final c = _camera;
-    final side = math.min(MediaQuery.sizeOf(context).width * 0.60, 320.0);
+    final scr = MediaQuery.sizeOf(context);
+    final side = size ?? math.min(math.min(scr.width * 0.60, scr.height * 0.38), 320.0).clamp(140.0, 320.0);
+    final o = c?.value.deviceOrientation;
+    final turned = o == DeviceOrientation.landscapeLeft || o == DeviceOrientation.landscapeRight;
+    final pv = c?.value.previewSize;
     return Center(
             child: Container(
               width: side,
@@ -3574,8 +3620,9 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
                     : FittedBox(
                         fit: BoxFit.cover,
                         child: SizedBox(
-                          width: c.value.previewSize?.shortestSide ?? 1,
-                          height: c.value.previewSize?.longestSide ?? 1,
+                          // Preview turns with the phone: landscape is wide.
+                          width: (turned ? pv?.longestSide : pv?.shortestSide) ?? 1,
+                          height: (turned ? pv?.shortestSide : pv?.longestSide) ?? 1,
                           child: CameraPreview(c),
                         ),
                       ),
@@ -3630,6 +3677,50 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
       onPressed: widget.enabled && !_answered && !_evaluating && c != null ? _onButton : null,
     );
     widget.bridge?.publish(buttonState);
+    final status = SignRecordingStatus.view(
+      theme,
+      countdown: _countdown,
+      recording: _recording,
+      progress: _recStart == null ? 0 : DateTime.now().difference(_recStart!).inMilliseconds / _maxRecording.inMilliseconds,
+      sign: widget.sign,
+      checking: _evaluating,
+      handsVisible: _handsVisible,
+      message: _note,
+    );
+    // Landscape: status + button on the left, camera on the right (as the
+    // Alphabet / Numbers camera levels), so nothing is pushed off screen.
+    if (MediaQuery.orientationOf(context) == Orientation.landscape && widget.bridge != null) {
+      // Button lives outside: camera on top, status under it.
+      return LayoutBuilder(builder: (context, box) {
+        // Button lives outside: the camera fills its square, status on it.
+        final h = box.maxHeight.isFinite ? box.maxHeight : MediaQuery.sizeOf(context).height * 0.6;
+        final side = math.max(120.0, math.min(box.maxWidth, h));
+        return Stack(alignment: Alignment.center, children: [
+          _cameraBox(theme, size: side),
+          Positioned(left: 8, right: 8, bottom: 8, child: status),
+        ]);
+      });
+    }
+    if (MediaQuery.orientationOf(context) == Orientation.landscape) {
+      return LayoutBuilder(builder: (context, box) {
+        final side = math.max(120.0, math.min(box.maxWidth * 0.55, box.maxHeight.isFinite ? box.maxHeight : MediaQuery.sizeOf(context).height * 0.6));
+        return Row(
+          children: [
+            Expanded(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                status,
+                if (widget.bridge == null) ...[
+                  const SizedBox(height: 14),
+                  cameraLevelButton(theme, label: buttonState.label, recording: _recording, onPressed: buttonState.onPressed),
+                ],
+              ]),
+            ),
+            const SizedBox(width: 16),
+            _cameraBox(theme, size: side),
+          ],
+        );
+      });
+    }
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
@@ -3656,3 +3747,176 @@ class _PublishedCameraSignState extends State<PublishedCameraSign> {
     );
   }
 }
+
+/// The ONE pass rule for every published (web-trained) model: tutorial
+/// practice, activities and challenges all call this, so the app cannot drift
+/// from the server again. It mirrors the server and the web app:
+///
+/// 1. Answers are mapped to the model's signs BY LABEL (the server sends each
+///    answer's label), by index only when the label is unknown: a model
+///    retrained with its signs in another order, before the app's class list
+///    is refreshed, is still read correctly.
+/// 2. The practised sign must be the model's best SIGN ("not recognised" left
+///    out). Then it passes when any of these holds:
+///    - the server accepted it (its calibrated checks: the model's own verdict);
+///    - its confidence reaches practice.minConfidence (web app-judge.ts);
+///    - the share rule: "not recognised" <= maxInvalid, share >= minSignShare,
+///      lead >= minSignLead (web app-judge.ts);
+///    - the lead rule (server lupang_raw.py LEAD_RULE, there for Foods only):
+///      refused ONLY on model scores, best >= 25 %, >= 3x the next sign,
+///      "not recognised" <= 70 %. Motion / framing / duration refusals never
+///      pass (they come without model scores, or with other codes).
+PublishedVerdict judgePublishedSign(RawPredictResponse r, PublishedGestureModel model, PublishedGestureClass target) {
+  double pct(Prediction p) => p.confidence > 1.0 ? p.confidence / 100.0 : p.confidence;
+  final scores = publishedSignScores(model, r);
+  final signs = scores.pairs;
+  final invalid = scores.invalid;
+  PublishedGestureClass? classOf(Prediction p) => _publishedClassOf(model, p);
+  bool isInvalid(PublishedGestureClass? c) => _isNotASign(model, c);
+  final versionNote = r.modelVersion.isNotEmpty && model.modelVersion.isNotEmpty && r.modelVersion != model.modelVersion
+      ? '\nversion: server ${r.modelVersion}, app ${model.modelVersion} (matched by label)'
+      : '';
+
+  final mass = math.max(1.0 - invalid, 0.05);
+  double share(Prediction? p) => p == null ? 0.0 : (pct(p) / mass).clamp(0.0, 1.0);
+  final best = signs.isNotEmpty ? signs.first : null;
+  final next = signs.length > 1 ? signs[1] : null;
+  final tgt = signs.where((e) => e.$2.key == target.key).firstOrNull;
+  final bestIsTarget = best != null && best.$2.key == target.key;
+  final bestConf = best == null ? 0.0 : pct(best.$1);
+  final nextConf = next == null ? 0.0 : pct(next.$1);
+  final bestShare = share(best?.$1);
+  final lead = bestShare - share(next?.$1);
+  final s = target.practice;
+
+  final byServer = r.accepted;
+  final byConfidence = bestConf >= s.minConfidence;
+  final byShare = invalid <= s.maxInvalid && bestShare >= s.minSignShare && lead >= s.minSignLead;
+  final byLead = !r.accepted &&
+      r.failedChecks.every(_leadRuleCodes.contains) &&
+      invalid <= _leadMaxInvalid &&
+      bestConf >= _leadFloor &&
+      bestConf >= _leadRatio * math.max(nextConf, 1e-6);
+  final passed = bestIsTarget && (byServer || byConfidence || byShare || byLead);
+
+  String nameOf(Prediction p) {
+    final c = classOf(p);
+    return isInvalid(c) ? 'Not recognised' : c!.name;
+  }
+
+  return PublishedVerdict(
+    passed: passed,
+    best: best?.$1,
+    bestClass: best?.$2,
+    bestIsTarget: bestIsTarget,
+    bestConfidence: bestConf,
+    bestShare: bestShare,
+    lead: lead,
+    invalid: invalid,
+    targetShare: share(tgt?.$1),
+    why: passed
+        ? [if (byServer) 'server accepted', if (byConfidence) 'confidence', if (byShare) 'share rule', if (byLead) 'lead rule'].join(' + ')
+        : (bestIsTarget ? 'target leads, no rule met' : 'best sign is ${best?.$2.name ?? 'none'}'),
+    topText: [for (final p in r.topK.take(4)) '${nameOf(p)} ${(pct(p) * 100).toStringAsFixed(0)}%'].join(', '),
+    ruleText: 'accepted ${r.accepted} ${r.failedChecks}, minConf ${s.minConfidence}, share >= ${s.minSignShare}, '
+        'lead >= ${s.minSignLead}, invalid <= ${s.maxInvalid}$versionNote',
+  );
+}
+
+/// The model's signs with their scores, best first, and the "not a sign"
+/// probability (the invalid class plus every held-back, unpublished sign).
+class PublishedSignScores {
+  final List<(Prediction, PublishedGestureClass)> pairs;
+  final double invalid;
+  const PublishedSignScores(this.pairs, this.invalid);
+  List<Prediction> get signs => [for (final e in pairs) e.$1];
+}
+
+/// Scores of [model]'s published signs in [r]. When the server sends the full
+/// probability vector (gesture-set models, up to 105 outputs), EVERY output is
+/// read: top_k (at most 10) hides the practised sign when it is not in the
+/// top 10, and leaves most of the held-back signs' "not a sign" mass out, which
+/// makes every sign's share too small. The vector is read by index, so it is
+/// only used while the server runs the app's model version; otherwise (and
+/// from an older service) top_k is matched by label.
+PublishedSignScores publishedSignScores(PublishedGestureModel model, RawPredictResponse r) {
+  double pct(double c) => c > 1.0 ? c / 100.0 : c;
+  final probs = r.probabilities;
+  final sameVersion = r.modelVersion.isEmpty || model.modelVersion.isEmpty || r.modelVersion == model.modelVersion;
+  final pairs = <(Prediction, PublishedGestureClass)>[];
+  var invalid = 0.0;
+  if (probs != null && probs.isNotEmpty && sameVersion) {
+    final invalidIdx = {?model.invalidIndex, ?r.invalidIndex};
+    for (var i = 0; i < probs.length; i++) {
+      final v = pct(probs[i]);
+      final c = invalidIdx.contains(i) ? null : model.classAt(i);
+      if (c == null || _isNotASign(model, c)) {
+        invalid += v;
+      } else {
+        pairs.add((Prediction(index: i, label: c.label.isNotEmpty ? c.label : c.key, code: c.key, confidence: v), c));
+      }
+    }
+  } else {
+    for (final p in r.topK) {
+      final c = _publishedClassOf(model, p);
+      if (_isNotASign(model, c)) {
+        invalid += pct(p.confidence);
+      } else {
+        pairs.add((p, c!));
+      }
+    }
+  }
+  pairs.sort((a, b) => b.$1.confidence.compareTo(a.$1.confidence));
+  return PublishedSignScores(pairs, invalid);
+}
+
+/// A server answer's sign: by label first (a retrained model may reorder its
+/// signs), by index only when the label is unknown.
+PublishedGestureClass? _publishedClassOf(PublishedGestureModel model, Prediction p) {
+  String norm(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'[\s_\-]+'), ' ');
+  final names = {for (final n in [p.label, p.labelEn ?? '', p.code ?? '']) if (n.trim().isNotEmpty) norm(n)};
+  if (names.isNotEmpty) {
+    for (final c in model.classes) {
+      if (names.contains(norm(c.key)) ||
+          names.contains(norm(c.label)) ||
+          (c.lessonSymbol.trim().isNotEmpty && names.contains(norm(c.lessonSymbol)))) {
+        return c;
+      }
+    }
+  }
+  return model.classAt(p.index);
+}
+
+/// "Not recognised": the model's invalid class, or no known (published) sign.
+bool _isNotASign(PublishedGestureModel model, PublishedGestureClass? c) =>
+    c == null || (model.invalidIndex != null && c.index == model.invalidIndex);
+
+/// Result of [judgePublishedSign].
+class PublishedVerdict {
+  final bool passed, bestIsTarget;
+  final Prediction? best;
+  final PublishedGestureClass? bestClass;
+  final double bestConfidence, bestShare, lead, invalid, targetShare;
+  final String why, topText, ruleText;
+
+  const PublishedVerdict({
+    required this.passed,
+    required this.best,
+    required this.bestClass,
+    required this.bestIsTarget,
+    required this.bestConfidence,
+    required this.bestShare,
+    required this.lead,
+    required this.invalid,
+    required this.targetShare,
+    required this.why,
+    required this.topText,
+    required this.ruleText,
+  });
+
+  String describe() => 'model: $topText\nbest sign: ${bestClass?.name ?? '-'} ${(bestShare * 100).toStringAsFixed(0)}% of signs, '
+      'lead ${(lead * 100).toStringAsFixed(0)}% -> ${passed ? 'PASS ($why)' : 'no ($why)'}\nrule: $ruleText';
+}
+
+const Set<String> _leadRuleCodes = {'INVALID_CLASS', 'LOW_CONFIDENCE', 'SMALL_MARGIN'};
+const double _leadFloor = 0.25, _leadRatio = 3.0, _leadMaxInvalid = 0.70;
