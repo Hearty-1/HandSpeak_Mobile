@@ -1,3 +1,4 @@
+import '/services/presence_service.dart';
 import '/services/app_haptics.dart';
 import 'dart:ui' show PlatformDispatcher;
 import '/widgets/button_3d.dart';
@@ -53,6 +54,7 @@ void main() async {
   await step('role', roleProvider.load);
   await step('performance mode', PerformanceSettings.load); // Settings > Performance Mode
   await step('vibration', AppHaptics.load); // Settings > Vibration
+  await step('presence', () async => PresenceService.instance.start()); // green online dot
 
   // Uncaught errors are logged instead of ending the app.
   FlutterError.onError = (details) {

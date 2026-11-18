@@ -14,6 +14,7 @@ analyzer:
     - ios/**
     - web/**
     - windows/**
+    - tools/manager_reference/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

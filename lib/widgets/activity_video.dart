@@ -30,6 +30,9 @@ class ActivityVideo extends StatefulWidget {
     }
   }
 
+  /// The phone's copy of [url], downloaded once (later plays cost no download).
+  static Future<File> fetchFile(String url) => _cache.getSingleFile(url);
+
   /// Downloads [url] in the background (e.g. the next questions' videos), so
   /// it plays at once when it is shown.
   static void prefetch(String url) {

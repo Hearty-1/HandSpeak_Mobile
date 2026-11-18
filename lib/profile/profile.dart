@@ -1,3 +1,6 @@
+import '/services/presence_service.dart';
+import '/widgets/guide_tour.dart';
+import '/providers/language_provider.dart';
 import '/profile/public_profile.dart';
 import 'dart:async';
 import '/widgets/button_3d.dart';
@@ -30,6 +33,48 @@ Route _fadeRoute(Widget page) {
     },
     transitionDuration: const Duration(milliseconds: 180),
   );
+}
+
+// Profile guide (the ? in the app bar).
+final GlobalKey _pgAddFriend = GlobalKey();
+final GlobalKey _pgEdit = GlobalKey();
+final GlobalKey _pgFriends = GlobalKey();
+final GlobalKey _pgStats = GlobalKey();
+final GlobalKey _pgBadges = GlobalKey();
+
+void _startProfileGuide(BuildContext context) {
+  GuideTour.start(context, [
+    GuideStep(
+      target: _pgEdit,
+      icon: Icons.edit_rounded,
+      title: L.t('Edit', 'I-edit'),
+      body: L.t('Change your photo and name.', 'Palitan ang iyong larawan at pangalan.'),
+    ),
+    GuideStep(
+      target: _pgFriends,
+      icon: Icons.people_rounded,
+      title: L.t('Friends', 'Mga kaibigan'),
+      body: L.t('Tap to see who follows you.', 'Pindutin para makita ang mga sumusunod sa iyo.'),
+    ),
+    GuideStep(
+      target: _pgStats,
+      icon: Icons.local_fire_department_rounded,
+      title: L.t('Streak, XP, stars', 'Streak, XP, stars'),
+      body: L.t('Learn every day to grow them.', 'Mag-aral araw-araw para dumami ito.'),
+    ),
+    GuideStep(
+      target: _pgBadges,
+      icon: Icons.military_tech_rounded,
+      title: L.t('Badges', 'Mga badge'),
+      body: L.t('Badges you won. Tap one to see it.', 'Mga badge na nakuha mo. Pindutin para makita.'),
+    ),
+    GuideStep(
+      target: _pgAddFriend,
+      icon: Icons.person_add_alt_1_rounded,
+      title: L.t('Add friends', 'Magdagdag ng kaibigan'),
+      body: L.t('Find classmates and add them.', 'Hanapin at idagdag ang mga kaklase.'),
+    ),
+  ]);
 }
 
 class ProfileScreen extends StatefulWidget {
@@ -146,6 +191,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         centerTitle: true,
         automaticallyImplyLeading: false,
         leading: IconButton(
+          key: _pgAddFriend,
           icon: Icon(Icons.person_add_alt_1_rounded, color: textColor, size: 26),
           onPressed: () {
             Navigator.push(
@@ -209,6 +255,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
 
+      floatingActionButtonLocation: PetAssistant.location,
+
+      floatingActionButton: PetAssistant(onGuide: () => _startProfileGuide(context)),
       bottomNavigationBar: AppNavBar(
         currentIndex: 3,
         onTap: (i) {
@@ -353,6 +402,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           GestureDetector(
+                            key: _pgEdit,
                             onTap: () => _showEditAvatarDialog(context, currentUser, currentAvatar: avatarUrl, currentName: name, scale: scale),
                             child: Container(
                               height: 32 * scale,
@@ -367,7 +417,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               child: Icon(Icons.edit_rounded, size: 16 * scale, color: textColor),
                             ),
-                          )
+                          ),
+                          // You are online while the app is open (the edit button
+                          // has the lower right, so the dot sits lower left).
+                          Positioned(
+                            left: 10 * scale,
+                            bottom: 6 * scale,
+                            child: Semantics(
+                              label: 'Online',
+                              child: Container(
+                                width: 22 * scale,
+                                height: 22 * scale,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF22A06B),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: theme.cardColor, width: 4 * scale),
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                       
@@ -397,6 +465,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       SizedBox(height: 20 * scale),
 
                       Row(
+                        key: _pgFriends,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           GestureDetector(
@@ -445,6 +514,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
                             ),
                             child: Row(
+                              key: _pgStats,
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
                                 _buildStatItem(context, scale, "Streak", "$streak", Icons.local_fire_department_rounded, theme.colorScheme.secondary),
@@ -460,6 +530,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       SizedBox(height: 28 * scale),
 
                       Row(
+                        key: _pgBadges,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
@@ -745,10 +816,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                     child: Row(
                                       children: [
-                                        CircleAvatar(
-                                          radius: 20 * scale,
-                                          backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
-                                          child: ClipOval(child: _buildAvatarImage(context, avatar, scale, size: 40)),
+                                        OnlineBadge(
+                                          online: PresenceService.isOnline(data),
+                                          size: 40 * scale,
+                                          child: CircleAvatar(
+                                            radius: 20 * scale,
+                                            backgroundColor: theme.primaryColor.withValues(alpha: 0.2),
+                                            child: ClipOval(child: _buildAvatarImage(context, avatar, scale, size: 40)),
+                                          ),
                                         ),
                                         SizedBox(width: 12 * scale),
                                         Expanded(

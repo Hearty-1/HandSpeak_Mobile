@@ -242,13 +242,6 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
     super.dispose();
   }
 
-  String get _formattedLevelName {
-    final match = RegExp(r'\d+').firstMatch(widget.levelId);
-    if (match != null) {
-      return "Level ${match.group(0)}";
-    }
-    return widget.levelId.replaceAll('_', ' ');
-  }
 
   LinearGradient _getDialogGradient(Color bgColor) {
     final hex = bgColor.toARGB32() & 0xFFFFFF;
@@ -325,7 +318,7 @@ class _ThemedLevelCompleteDialogState extends State<ThemedLevelCompleteDialog>
             ),
             const SizedBox(height: 8),
             Text(
-              "You finished $_formattedLevelName!",
+              L.t('You finished the activity!', 'Natapos mo ang aktibidad!'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600),
             ),

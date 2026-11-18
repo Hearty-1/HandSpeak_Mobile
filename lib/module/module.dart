@@ -1,3 +1,5 @@
+import '/services/presence_service.dart';
+import '/widgets/guide_tour.dart';
 import '/widgets/button_3d.dart';
 import 'dart:ui'; 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -40,6 +42,40 @@ Route _fadeRoute(Widget page) {
 void _openModule(BuildContext context, String moduleKey, Route route) {
   ProgressService().trackRecentModule(moduleKey);
   Navigator.push(context, route);
+}
+
+// Learn guide (the ? in the app bar).
+final GlobalKey _lgMenu = GlobalKey();
+final GlobalKey _lgFirstModule = GlobalKey();
+final GlobalKey _lgMore = GlobalKey();
+
+void _startLearnGuide(BuildContext context) {
+  GuideTour.start(context, [
+    GuideStep(
+      target: _lgFirstModule,
+      icon: Icons.touch_app_rounded,
+      title: L.t('Pick a module', 'Pumili ng module'),
+      body: L.t('Tap a card to start learning.', 'Pindutin ang card para magsimula.'),
+    ),
+    GuideStep(
+      target: _lgFirstModule,
+      icon: Icons.trending_up_rounded,
+      title: L.t('Your progress', 'Iyong progreso'),
+      body: L.t('The bar fills as you learn.', 'Napupuno ang bar habang natututo ka.'),
+    ),
+    GuideStep(
+      target: _lgMore,
+      icon: Icons.category_rounded,
+      title: L.t('More signs', 'Iba pang kumpas'),
+      body: L.t('Scroll down for foods, family and more.', 'Mag-scroll pababa para sa pagkain, pamilya at iba pa.'),
+    ),
+    GuideStep(
+      target: _lgMenu,
+      icon: Icons.menu_rounded,
+      title: L.t('Menu', 'Menu'),
+      body: L.t('Settings, help and log out.', 'Settings, tulong at log out.'),
+    ),
+  ]);
 }
 
 class SnedInterface2 extends StatelessWidget {
@@ -187,24 +223,6 @@ class SnedInterface2 extends StatelessWidget {
                             },
                           )),
                           MenuCapsule(child: ListTile(
-                            leading: Icon(Icons.help_outline, color: theme.primaryColor),
-                            title: Text(L.t('Help & Support', 'Tulong at Suporta'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
-                            onTap: () {
-                              Navigator.pop(context);
-                              Navigator.push(context, _fadeRoute(InfoDetailScreen(
-                                title: L.t('Help & Support', 'Tulong at Suporta'),
-                                sections: [
-                                  InfoSection(title: L.t('The Learning Loop', 'Ang Paraan ng Pag-aaral'), body: L.t('Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges.', 'Ang pag-aaral mo ng Filipino Sign Language ay may apat na yugto: Tutorials, Practice, Activities at Challenges.'), icon: Icons.loop_rounded),
-                                  InfoSection(title: L.t('Camera Combat', 'Camera Combat'), body: L.t('Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.', 'Siguraduhing maliwanag ang lugar at gamitin ang Mirror-Mode Camera. Ang berdeng tsek ay tama, at ang pulang "X" ay kailangan pang ayusin ang porma.'), icon: Icons.camera_alt_rounded),
-                                  InfoSection(title: L.t('Leveling Up & Streaks', 'Pag-level Up at Streaks'), body: L.t('Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.', 'Patuloy na magsanay para makakuha ng XP at mapuno ang Level Progress Bar. I-on ang Streak Reminders para tuloy-tuloy ang pag-aaral.'), icon: Icons.local_fire_department_rounded),
-                                  InfoSection(title: L.t('Multiplayer Challenges', 'Multiplayer Challenges'), body: L.t('Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".', 'Hamunin ang mga kaklase: pindutin ang "Join a Room" at ilagay ang Room Code, o maging host sa pagpili ng "Create a Room".'), icon: Icons.group_rounded),
-                                  InfoSection(title: L.t('Customizing Experience', 'Pag-customize ng App'), body: L.t('Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.', 'Pumunta sa Settings para palitan ang Tema (tulad ng Galaxy Explorer o Deep Ocean) at i-on o i-off ang Background Music.'), icon: Icons.palette_rounded),
-                                  InfoSection(title: L.t('Reporting Bugs', 'Pag-uulat ng Problema'), body: L.t('Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.', 'Maaaring magpadala ang mga guro ng bug report sa admin gamit ang "Feedback & Support". Ang mga estudyante ay mag-ulat sa kanilang guro.'), icon: Icons.bug_report_rounded),
-                                ],
-                              )));
-                            },
-                          )),
-                          MenuCapsule(child: ListTile(
                             leading: Icon(Icons.info_outline, color: theme.primaryColor),
                             title: Text(L.t('About Us', 'Tungkol sa Amin'), style: TextStyle(color: textColor, fontWeight: FontWeight.w600)),
                             onTap: () {
@@ -247,6 +265,7 @@ class SnedInterface2 extends StatelessWidget {
       );
       return;
     }
+    await PresenceService.instance.goOffline();
     await FirebaseAuth.instance.signOut();
     if (!context.mounted) return;
 
@@ -274,6 +293,14 @@ class SnedInterface2 extends StatelessWidget {
                   child: SmartBlur(
                     filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Container(color: Colors.transparent),
+                  ),
+                ),
+                leading: Builder(
+                  builder: (c) => IconButton(
+                    key: _lgMenu,
+                    tooltip: L.t('Menu', 'Menu'),
+                    icon: Icon(Icons.menu_rounded, color: textColor),
+                    onPressed: () => Scaffold.of(c).openDrawer(),
                   ),
                 ),
                 title: Text(
@@ -307,6 +334,9 @@ class SnedInterface2 extends StatelessWidget {
                 ],
               ),
       
+              floatingActionButtonLocation: PetAssistant.location,
+      
+              floatingActionButton: PetAssistant(onGuide: () => _startLearnGuide(context)),
               bottomNavigationBar: AppNavBar(
                 currentIndex: 1,
                 onTap: (i) {
@@ -370,6 +400,7 @@ class SnedInterface2 extends StatelessWidget {
                           childAspectRatio: canProgress ? 0.66 : 0.78,
                           children: [
                             ModuleCard(
+                              key: _lgFirstModule,
                               scale: scale,
                               title: L.t('Alphabets', 'Alpabeto'),
                               picture: Image.asset("assets/pictures/abc.png", fit: BoxFit.contain),
@@ -409,7 +440,7 @@ class SnedInterface2 extends StatelessWidget {
                         ),
                       ),
                       // Categories added in the web app (activity_categories), live.
-                      CloudCategoriesSection(scale: scale),
+                      KeyedSubtree(key: _lgMore, child: CloudCategoriesSection(scale: scale)),
                         ],
                       ),
                     ),

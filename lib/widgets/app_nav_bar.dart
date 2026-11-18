@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '/services/performance_monitor.dart';
 import '/services/role_service.dart';
 import '/providers/language_provider.dart';
+import '/translate/gesture_to_text_screen.dart';
 
 /// One tab of [AppNavBar].
 class AppNavItem {
@@ -15,7 +16,12 @@ class AppNavItem {
 
   /// Feature a role needs to see this tab; null = visible to every role.
   final AppFeature? feature;
-  const AppNavItem({required this.icon, required this.activeIcon, required this.label, this.feature});
+  const AppNavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    this.feature,
+  });
 }
 
 /// Floating, frosted-glass tab bar in the style of iOS (blurred capsule,
@@ -36,6 +42,10 @@ class AppNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final List<AppNavItem>? _items;
+
+  /// Optional keys for a [GuideTour]: tab index -> key, and the Translate tab.
+  final Map<int, GlobalKey>? guideKeys;
+  final GlobalKey? translateGuideKey;
   // Built on use, so the labels follow the app language.
   List<AppNavItem> get items => _items ?? defaultItems;
 
@@ -44,13 +54,33 @@ class AppNavBar extends StatelessWidget {
     required this.currentIndex,
     required this.onTap,
     List<AppNavItem>? items,
+    this.guideKeys,
+    this.translateGuideKey,
   }) : _items = items;
 
   static List<AppNavItem> get defaultItems => [
-    AppNavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: L.t('Home', 'Home')),
-    AppNavItem(icon: Icons.auto_stories_outlined, activeIcon: Icons.auto_stories_rounded, label: L.t('Learn', 'Matuto')),
-    AppNavItem(icon: Icons.sports_esports_outlined, activeIcon: Icons.sports_esports_rounded, label: L.t('Arena', 'Arena'), feature: AppFeature.challenges),
-    AppNavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: L.t('Profile', 'Profile'), feature: AppFeature.profile),
+    AppNavItem(
+      icon: Icons.home_outlined,
+      activeIcon: Icons.home_rounded,
+      label: L.t('Home', 'Home'),
+    ),
+    AppNavItem(
+      icon: Icons.auto_stories_outlined,
+      activeIcon: Icons.auto_stories_rounded,
+      label: L.t('Learn', 'Matuto'),
+    ),
+    AppNavItem(
+      icon: Icons.sports_esports_outlined,
+      activeIcon: Icons.sports_esports_rounded,
+      label: L.t('Arena', 'Arena'),
+      feature: AppFeature.challenges,
+    ),
+    AppNavItem(
+      icon: Icons.person_outline_rounded,
+      activeIcon: Icons.person_rounded,
+      label: L.t('Profile', 'Profile'),
+      feature: AppFeature.profile,
+    ),
   ];
 
   @override
@@ -75,13 +105,26 @@ class AppNavBar extends StatelessWidget {
     final bottomInset = mq.viewPadding.bottom;
     // Gesture pill / 3-button bar: sit just above it; no inset: small gap.
     final bottomGap = bottomInset > 0 ? bottomInset + 4.0 : 12.0;
+    // Gesture to Text: a tab like the others between Learn and Arena
+    // (opened on top of the current tab, so the tab numbering is unchanged).
+    const lift = 0.0;
+    final centerAfter = shown.contains(1)
+        ? 1
+        : (shown.isEmpty ? -1 : shown.first);
 
     final tint = theme.colorScheme.primary;
-    final idle = theme.colorScheme.onSurface.withValues(alpha: isDark ? 0.55 : 0.5);
+    final idle = theme.colorScheme.onSurface.withValues(
+      alpha: isDark ? 0.55 : 0.5,
+    );
 
     return MediaQuery(
       // Labels follow the user's font size, but never so large that they break the bar.
-      data: mq.copyWith(textScaler: mq.textScaler.clamp(minScaleFactor: 0.9, maxScaleFactor: 1.15)),
+      data: mq.copyWith(
+        textScaler: mq.textScaler.clamp(
+          minScaleFactor: 0.9,
+          maxScaleFactor: 1.15,
+        ),
+      ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(sideMargin, 0, sideMargin, bottomGap),
         child: Align(
@@ -89,56 +132,111 @@ class AppNavBar extends StatelessWidget {
           heightFactor: 1,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
-            child: Container(
-              height: barHeight,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(barHeight / 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(barHeight / 2),
-                child: SmartBlur(
-                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: (isDark ? const Color(0xFF1C1C1E) : Colors.white)
-                          .withValues(alpha: isDark ? 0.72 : 0.78),
-                      borderRadius: BorderRadius.circular(barHeight / 2),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.6),
-                        width: 0.8,
+            child: SizedBox(
+              height: barHeight + lift,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: barHeight,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(barHeight / 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.35 : 0.12,
+                            ),
+                            blurRadius: 24,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(barHeight / 2),
+                        child: SmartBlur(
+                          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color:
+                                  (isDark
+                                          ? const Color(0xFF1C1C1E)
+                                          : Colors.white)
+                                      .withValues(alpha: isDark ? 0.72 : 0.78),
+                              borderRadius: BorderRadius.circular(
+                                barHeight / 2,
+                              ),
+                              border: Border.all(
+                                color: Colors.white.withValues(
+                                  alpha: isDark ? 0.12 : 0.6,
+                                ),
+                                width: 0.8,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
+                  ),
+                  Positioned.fill(
                     child: Padding(
                       padding: const EdgeInsets.all(5),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          for (final i in shown)
+                          for (final i in shown) ...[
                             Expanded(
-                              child: _NavTab(
-                                item: items[i],
-                                selected: i == currentIndex,
-                                tint: tint,
-                                idle: idle,
-                                isDark: isDark,
-                                onTap: () {
-                                  if (i == currentIndex) return;
-                                  AppHaptics.selection();
-                                  onTap(i);
-                                },
+                              child: SizedBox(
+                                key: guideKeys?[i],
+                                height: barHeight - 10,
+                                child: _NavTab(
+                                  item: items[i],
+                                  selected: i == currentIndex,
+                                  tint: tint,
+                                  idle: idle,
+                                  isDark: isDark,
+                                  onTap: () {
+                                    if (i == currentIndex) return;
+                                    AppHaptics.selection();
+                                    onTap(i);
+                                  },
+                                ),
                               ),
                             ),
+                            if (i == centerAfter)
+                              Expanded(
+                                child: SizedBox(
+                                  key: translateGuideKey,
+                                  height: barHeight - 10,
+                                  child: _NavTab(
+                                    item: AppNavItem(
+                                      icon: Icons.sign_language_outlined,
+                                      activeIcon: Icons.sign_language_rounded,
+                                      label: L.t('Translate', 'Isalin'),
+                                    ),
+                                    selected: false,
+                                    tint: tint,
+                                    idle: idle,
+                                    isDark: isDark,
+                                    onTap: () {
+                                      AppHaptics.selection();
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (_) => const GestureToTextScreen()),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                          ],
                         ],
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
@@ -179,7 +277,9 @@ class _NavTab extends StatelessWidget {
           duration: const Duration(milliseconds: 320),
           curve: Curves.easeOutBack,
           decoration: BoxDecoration(
-            color: selected ? tint.withValues(alpha: isDark ? 0.22 : 0.12) : Colors.transparent,
+            color: selected
+                ? tint.withValues(alpha: isDark ? 0.22 : 0.12)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(100),
           ),
           child: LayoutBuilder(
@@ -199,7 +299,11 @@ class _NavTab extends StatelessWidget {
                           scale: selected ? 1.08 : 1.0,
                           duration: const Duration(milliseconds: 320),
                           curve: Curves.easeOutBack,
-                          child: Icon(selected ? item.activeIcon : item.icon, size: iconSize, color: color),
+                          child: Icon(
+                            selected ? item.activeIcon : item.icon,
+                            size: iconSize,
+                            color: color,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         AnimatedDefaultTextStyle(
@@ -208,7 +312,9 @@ class _NavTab extends StatelessWidget {
                             fontSize: 10.5,
                             height: 1.1,
                             letterSpacing: 0.1,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
                             color: color,
                           ),
                           child: Text(item.label, maxLines: 1),

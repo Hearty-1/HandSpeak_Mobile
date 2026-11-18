@@ -1,3 +1,4 @@
+import '/services/presence_service.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '/services/activity_log.dart';
@@ -136,6 +137,7 @@ class AuthService {
     required String studentId,
     required String section,
     required String gradeLevel,
+    String department = 'STNCS',
   }) async {
     try {
       UserCredential credential = await _auth.createUserWithEmailAndPassword(
@@ -160,6 +162,7 @@ class AuthService {
           'studentId': studentId,
           'section': section,
           'gradeLevel': gradeLevel,
+          'department': department,
           'role': 'student',
           'status': 'pending', 
           'themePreference': 'defaultWarm', // Default theme preference on signup
@@ -298,6 +301,7 @@ class AuthService {
   Future<void> _signOutEverywhere() async {
     await _googleSignOutQuietly();
     try {
+      await PresenceService.instance.goOffline();
       await _auth.signOut();
     } catch (_) {}
   }
@@ -351,6 +355,7 @@ class AuthService {
 
       // Perform Firebase Sign Out (and Google, so the account picker shows next time)
       await _googleSignOutQuietly();
+      await PresenceService.instance.goOffline();
       await _auth.signOut();
 
       // Note: We intentionally do NOT clear SharedPreferences here 

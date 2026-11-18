@@ -3920,3 +3920,383 @@ class PublishedVerdict {
 
 const Set<String> _leadRuleCodes = {'INVALID_CLASS', 'LOW_CONFIDENCE', 'SMALL_MARGIN'};
 const double _leadFloor = 0.25, _leadRatio = 3.0, _leadMaxInvalid = 0.70;
+
+// =============================================================================
+// Gesture to Text: open recognition with a published model (Words mode)
+// =============================================================================
+
+/// One recognised word for [PublishedTranslateCamera.onWord].
+class TranslatedWord {
+  final String word;
+  final double confidence; // 0..1, the word's share of the sign probability
+  const TranslatedWord(this.word, this.confidence);
+}
+
+/// Records one sign and returns the word the published [model] reads, with no
+/// target: the clip is judged against the model's best sign with the same
+/// pass rule as practice ([judgePublishedSign]), so a word is only written
+/// when practice would have accepted it as that sign.
+class PublishedTranslateCamera extends StatefulWidget {
+  final PublishedGestureModel model;
+  final ValueChanged<TranslatedWord> onWord;
+  const PublishedTranslateCamera({super.key, required this.model, required this.onWord});
+
+  @override
+  State<PublishedTranslateCamera> createState() => _PublishedTranslateCameraState();
+}
+
+class _PublishedTranslateCameraState extends State<PublishedTranslateCamera> {
+  static const int _autoStopAfterMs = 1200;
+  static const Duration _maxRecording = Duration(seconds: 6);
+
+  CameraController? _camera;
+  bool _disposed = false;
+  int _inFlight = 0;
+  bool _handsVisible = false;
+  int _imageWidth = 0, _imageHeight = 0;
+  String _engine = '';
+
+  int _countdown = 0;
+  Timer? _countdownTimer, _maxTimer;
+  bool _recording = false, _evaluating = false, _sawHands = false;
+  int _lastHandMs = 0;
+  final List<RawFrame> _frames = [];
+  String _note = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _startCamera();
+  }
+
+  Future<void> _startCamera() async {
+    try {
+      final cams = await availableCameras();
+      if (cams.isEmpty || _disposed) return;
+      final cam = cams.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cams.first);
+      final c = CameraController(cam, ResolutionPreset.medium, enableAudio: false, imageFormatGroup: ImageFormatGroup.yuv420);
+      await c.initialize();
+      if (_disposed) {
+        await c.dispose();
+        return;
+      }
+      setState(() => _camera = c);
+      await c.startImageStream(_onImage);
+    } catch (e) {
+      debugPrint('Translate (words): camera unavailable: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _countdownTimer?.cancel();
+    _maxTimer?.cancel();
+    final c = _camera;
+    _camera = null;
+    if (c != null) {
+      unawaited(() async {
+        try {
+          if (c.value.isStreamingImages) await c.stopImageStream();
+        } catch (_) {}
+        await c.dispose();
+      }());
+    }
+    super.dispose();
+  }
+
+  Future<void> _onImage(CameraImage image) async {
+    LightingMonitor.instance.onImage(image);
+    final c = _camera;
+    if (_disposed || _evaluating || c == null || _inFlight >= 2) return;
+    _inFlight++;
+    try {
+      final r = await HolisticCapture.process(image, _CloudMirrorPracticeState._rotation(c));
+      if (r == null || _disposed || !mounted) return;
+      _imageWidth = r.imageWidth;
+      _imageHeight = r.imageHeight;
+      _engine = r.engine;
+      final f = r.frame;
+      final changed = f.hasHands != _handsVisible;
+      _handsVisible = f.hasHands;
+      if (_recording) {
+        _frames.add(f);
+        if (_PublishedCameraSignState._inFrame(f.leftHand) || _PublishedCameraSignState._inFrame(f.rightHand)) {
+          _sawHands = true;
+          _lastHandMs = f.timeMs;
+        } else if (_sawHands && f.timeMs - _lastHandMs > _autoStopAfterMs) {
+          unawaited(_stopAndEvaluate());
+          return;
+        }
+      }
+      if (changed) setState(() {});
+    } catch (e) {
+      debugPrint('Translate (words) capture error: $e');
+    } finally {
+      _inFlight--;
+    }
+  }
+
+  void _onButton() {
+    if (_evaluating || _camera == null) return;
+    if (_countdown > 0) {
+      _countdownTimer?.cancel();
+      setState(() => _countdown = 0);
+      return;
+    }
+    if (_recording) {
+      _stopAndEvaluate();
+      return;
+    }
+    AppHaptics.selection();
+    void begin() {
+      AppHaptics.recordStart();
+      _frames.clear();
+      _sawHands = false;
+      setState(() {
+        _countdown = 0;
+        _recording = true;
+        _note = L.t('Sign one word, then lower your hands.', 'Mag-kumpas ng isang salita, saka ibaba ang mga kamay.');
+      });
+      _maxTimer = Timer(_maxRecording, _stopAndEvaluate);
+    }
+
+    setState(() {
+      _countdown = 2;
+      _note = L.t('Get ready...', 'Humanda...');
+    });
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted || _disposed) return t.cancel();
+      if (_countdown <= 1) {
+        t.cancel();
+        begin();
+      } else {
+        setState(() => _countdown--);
+        AppHaptics.tick();
+      }
+    });
+  }
+
+  Future<void> _stopAndEvaluate() async {
+    if (!_recording || _disposed) return;
+    LatencyProbe.markInput();
+    AppHaptics.recordStop();
+    _maxTimer?.cancel();
+    final frames = List<RawFrame>.of(_frames)..sort((a, b) => a.timeMs.compareTo(b.timeMs));
+    _frames.clear();
+    setState(() => _recording = false);
+    if (!frames.any((f) => f.hasHands)) {
+      setState(() => _note = L.t('No hands were seen. Keep your hands in view.', 'Walang nakitang kamay. Panatilihing kita ang mga kamay.'));
+      return;
+    }
+    final model = widget.model;
+    final settings = model.practice;
+    final clip = _TrainingClip.from(frames, settings, tight: settings.tightFirst);
+    final problem = clip.problem();
+    if (problem != null) {
+      setState(() => _note = '${problem.title}. ${problem.message}');
+      return;
+    }
+    setState(() {
+      _evaluating = true;
+      _note = L.t('Reading your sign...', 'Binabasa ang kumpas...');
+    });
+    try {
+      final s0 = clip.frames.first.timeMs;
+      final fixed = CaptureFixer.fix([for (final f in clip.frames) f.toJson(s0)], _imageWidth, _imageHeight,
+          reassignHands: !HolisticResult.isHolisticEngine(_engine));
+      final r = await HandSpeakApiService().predictRaw(
+        modelId: model.modelId,
+        serviceUrl: model.serviceUrl,
+        frames: fixed.frames,
+        imageWidth: fixed.imageWidth,
+        imageHeight: fixed.imageHeight,
+        topK: 10,
+      );
+      if (!mounted) return;
+      final scores = publishedSignScores(model, r);
+      final best = scores.pairs.isEmpty ? null : scores.pairs.first;
+      final v = best == null ? null : judgePublishedSign(r, model, best.$2);
+      if (best != null && v != null && v.passed) {
+        AppHaptics.correct();
+        widget.onWord(TranslatedWord(best.$2.name, v.bestShare));
+        setState(() => _note = L.t('Added: ${best.$2.name}', 'Naidagdag: ${best.$2.name}'));
+      } else {
+        AppHaptics.wrong();
+        setState(() => _note = L.t('Not sure what that was. Sign it again, clearly and fully in view.',
+            'Hindi matiyak ang kumpas. Ulitin nang malinaw at buong kita.'));
+      }
+    } catch (e) {
+      debugPrint('Translate (words): prediction error: $e');
+      if (mounted) {
+        setState(() => _note = L.t('The model did not answer. Check your internet connection.',
+            'Hindi sumagot ang model. Tingnan ang koneksyon sa internet.'));
+      }
+    } finally {
+      if (mounted) setState(() => _evaluating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _camera;
+    final String title = _countdown > 0
+        ? '$_countdown'
+        : _recording
+            ? L.t('Recording...', 'Nagre-record...')
+            : _evaluating
+                ? L.t('Reading...', 'Binabasa...')
+                : (_handsVisible ? L.t('Ready', 'Handa na') : L.t('Show your hands', 'Ipakita ang mga kamay'));
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (c != null && c.value.isInitialized) TranslateCameraPreview(controller: c) else const ColoredBox(color: Colors.black),
+        TranslateHint(
+          title: title,
+          subtitle: _note.isNotEmpty
+              ? _note
+              : L.t('Tap the button, sign one word, then lower your hands.', 'Pindutin ang button, mag-kumpas ng isang salita, saka ibaba ang kamay.'),
+        ),
+        TranslateRecordButton(recording: _recording || _countdown > 0, busy: _evaluating, onPressed: _onButton),
+      ],
+    );
+  }
+}
+
+/// Camera preview that covers its box.
+class TranslateCameraPreview extends StatelessWidget {
+  final CameraController controller;
+  const TranslateCameraPreview({super.key, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<CameraValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final size = value.previewSize;
+        if (!value.isInitialized || size == null) return const ColoredBox(color: Colors.black);
+        final landscape = value.deviceOrientation == DeviceOrientation.landscapeLeft ||
+            value.deviceOrientation == DeviceOrientation.landscapeRight;
+        return ColoredBox(
+          color: Colors.black,
+          child: ClipRect(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: landscape ? size.longestSide : size.shortestSide,
+                height: landscape ? size.shortestSide : size.longestSide,
+                child: CameraPreview(controller),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The dark hint pill near the bottom of the camera.
+class TranslateHint extends StatelessWidget {
+  final String title, subtitle;
+
+  /// Leave room for the record button below it.
+  final bool raised;
+  const TranslateHint({super.key, required this.title, required this.subtitle, this.raised = true});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 14,
+      right: 14,
+      bottom: raised ? 76 : 14,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.62), borderRadius: BorderRadius.circular(16)),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 2),
+          Text(subtitle,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12.5)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Round record button at the bottom centre of the camera.
+class TranslateRecordButton extends StatelessWidget {
+  final bool recording, busy;
+  final VoidCallback onPressed;
+  const TranslateRecordButton({super.key, required this.recording, required this.busy, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: 12,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Semantics(
+          button: true,
+          label: recording ? 'Stop recording' : 'Record a sign',
+          child: GestureDetector(
+            onTap: busy ? null : onPressed,
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 4),
+                color: Colors.black.withValues(alpha: 0.25),
+              ),
+              alignment: Alignment.center,
+              child: busy
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                  : AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: recording ? 20 : 40,
+                      height: recording ? 20 : 40,
+                      decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(recording ? 5 : 20)),
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Gesture to Text (automatic): the word [model] reads in [frames] (one sign,
+/// from the shared full-body camera), or null when it is not one of its signs
+/// by the practice pass rule. Confidence: the best sign's probability, 0..1.
+Future<TranslatedWord?> readPublishedClip(
+    PublishedGestureModel model, List<RawFrame> frames, int imageWidth, int imageHeight, String engine) async {
+  final settings = model.practice;
+  final clip = _TrainingClip.from(frames, settings, tight: settings.tightFirst);
+  if (clip.problem() != null || clip.frames.length < 2) return null;
+  final s0 = clip.frames.first.timeMs;
+  final fixed = CaptureFixer.fix([for (final f in clip.frames) f.toJson(s0)], imageWidth, imageHeight,
+      reassignHands: !HolisticResult.isHolisticEngine(engine));
+  final r = await HandSpeakApiService().predictRaw(
+    modelId: model.modelId,
+    serviceUrl: model.serviceUrl,
+    frames: fixed.frames,
+    imageWidth: fixed.imageWidth,
+    imageHeight: fixed.imageHeight,
+    topK: 10,
+  );
+  final scores = publishedSignScores(model, r);
+  if (scores.pairs.isEmpty) return null;
+  final best = scores.pairs.first;
+  final v = judgePublishedSign(r, model, best.$2);
+  if (!v.passed) return null;
+  final c = best.$1.confidence;
+  return TranslatedWord(best.$2.name, c > 1 ? c / 100 : c);
+}

@@ -8,6 +8,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import '/widgets/landscape_practice_layout.dart';
 import '/services/tutorial_session_recorder.dart';
+import '/services/practice_letter_score.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '/widgets/lesson_demo_media.dart';
@@ -1334,139 +1335,10 @@ class _TutorialPracticeState extends State<TutorialPractice> with WidgetsBinding
     }
   }
 
-  /// G, H, K, P, Q: tricky letters (horizontal or crossing fingers). Scored in
-  /// 2D only (no z noise), scale from wrist->middle base or the index reach,
-  /// fingertips weighted 1.5x, a relaxed curve, and G/H/P/Q locked to the
-  /// sideways orientations.
-  static const List<String> _trickyLetters = ['G', 'H', 'K', 'P', 'Q'];
-
-  double _calculateTrickyScore(List<Landmark> liveLms, List<dynamic> template, String letter) {
-    final Landmark wrist = liveLms[0];
-    final Landmark mBase = liveLms[9];
-    final Landmark indexTip = liveLms[8];
-
-    // Stable scale factor to prevent small-fist error inflation
-    double dist = math.sqrt(math.pow(wrist.x - mBase.x, 2) + math.pow(wrist.y - mBase.y, 2));
-    final double distIndex = math.sqrt(math.pow(wrist.x - indexTip.x, 2) + math.pow(wrist.y - indexTip.y, 2));
-    dist = math.max(dist, distIndex * 0.55);
-    if (dist < 0.05) dist = 0.05; // Safety floor
-
-    // High priority weighting on action fingertips: thumb, index, middle tips
-    const List<int> highPriorityLandmarks = [4, 8, 12];
-
-    const orientationMatrices = [
-      [1.0, 0.0, 0.0, 1.0, 1.0], // 0: Upright Normal
-      [0.0, -1.0, 1.0, 0.0, 1.0], // 1: 90 deg
-      [-1.0, 0.0, 0.0, -1.0, 1.0], // 2: 180 deg
-      [0.0, 1.0, -1.0, 0.0, 1.0], // 3: 270 deg
-      [1.0, 0.0, 0.0, 1.0, -1.0], // 4: Upright Mirrored
-      [0.0, -1.0, 1.0, 0.0, -1.0], // 5: 90 deg Mirrored
-      [-1.0, 0.0, 0.0, -1.0, -1.0], // 6: 180 deg Mirrored
-      [0.0, 1.0, -1.0, 0.0, -1.0], // 7: 270 deg Mirrored
-    ];
-
-    double bestScore = 0.0;
-    for (int mIdx = 0; mIdx < orientationMatrices.length; mIdx++) {
-      // Directional Lock: horizontal letters use the sideways matrices only ('K' excluded)
-      if (letter != 'K' && mIdx.isEven) continue;
-
-      final matrix = orientationMatrices[mIdx];
-      final double xx = matrix[0], xy = matrix[1], yx = matrix[2], yy = matrix[3], flipX = matrix[4];
-
-      double totalWeightedDifference = 0.0;
-      double totalWeight = 0.0;
-      for (int i = 0; i < 21; i++) {
-        final double dx = ((liveLms[i].x - wrist.x) / dist) * flipX;
-        final double dy = (liveLms[i].y - wrist.y) / dist;
-        final double rx = dx * xx + dy * xy;
-        final double ry = dx * yx + dy * yy;
-        final double tx = (template[i]['x'] as num).toDouble();
-        final double ty = (template[i]['y'] as num).toDouble();
-
-        // Purely 2D comparison to eliminate Z-depth noise
-        final double pointDiff = math.sqrt(math.pow(rx - tx, 2) + math.pow(ry - ty, 2));
-        final double weight = highPriorityLandmarks.contains(i) ? 1.5 : 1.0;
-        totalWeightedDifference += pointDiff * weight;
-        totalWeight += weight;
-      }
-
-      // Relaxed scoring curve for G, H, K, P, Q
-      final double score = (100.0 - (totalWeightedDifference / totalWeight * 45.0)).clamp(0.0, 100.0);
-      if (score > bestScore) bestScore = score;
-    }
-    return bestScore;
-  }
-
-  double _calculateScore(List<Landmark> liveLms, List<dynamic> template) {
-    if (liveLms.isEmpty || template.length < 21 || liveLms.length < 21) return 0.0;
-    final String letter = widget.targetLetter.toUpperCase();
-    if (_trickyLetters.contains(letter)) return _calculateTrickyScore(liveLms, template, letter);
-
-    final Landmark wrist = liveLms[0];
-    final Landmark mBase = liveLms[9];
-
-    double dist = math.sqrt(
-      math.pow(wrist.x - mBase.x, 2) +
-      math.pow(wrist.y - mBase.y, 2) +
-      math.pow(wrist.z - mBase.z, 2)
-    );
-
-    if (dist == 0) dist = 1.0;
-
-    double bestScore = 0.0;
-
-    final orientationMatrices = [
-      [1.0, 0.0, 0.0, 1.0, 1.0],
-      [0.0, -1.0, 1.0, 0.0, 1.0],
-      [-1.0, 0.0, 0.0, -1.0, 1.0],
-      [0.0, 1.0, -1.0, 0.0, 1.0],
-      [1.0, 0.0, 0.0, 1.0, -1.0],
-      [0.0, -1.0, 1.0, 0.0, -1.0],
-      [-1.0, 0.0, 0.0, -1.0, -1.0],
-      [0.0, 1.0, -1.0, 0.0, -1.0],
-    ];
-
-    for (var matrix in orientationMatrices) {
-      double xx = matrix[0];
-      double xy = matrix[1];
-      double yx = matrix[2];
-      double yy = matrix[3];
-      double flipX = matrix[4];
-
-      double totalDifference = 0.0;
-
-      for (int i = 0; i < 21; i++) {
-        double dx = (liveLms[i].x - wrist.x) / dist;
-        double dy = (liveLms[i].y - wrist.y) / dist;
-        double dz = (liveLms[i].z - wrist.z) / dist;
-
-        dx = dx * flipX;
-
-        double rx = dx * xx + dy * xy;
-        double ry = dx * yx + dy * yy;
-
-        double tx = (template[i]['x'] as num).toDouble();
-        double ty = (template[i]['y'] as num).toDouble();
-        double tz = ((template[i]['z'] ?? 0.0) as num).toDouble();
-
-        double pointDiff = math.sqrt(
-          math.pow(rx - tx, 2) +
-          math.pow(ry - ty, 2) +
-          math.pow(dz - tz, 2)
-        );
-        totalDifference += pointDiff;
-      }
-
-      double meanDiff = totalDifference / 21.0;
-      double score = (100.0 - (meanDiff * 80.0)).clamp(0.0, 100.0);
-
-      if (score > bestScore) {
-        bestScore = score;
-      }
-    }
-
-    return bestScore;
-  }
+  /// The practice's template score (services/practice_letter_score.dart,
+  /// shared with Translate so both judge a handshape the same way).
+  double _calculateScore(List<Landmark> liveLms, List<dynamic> template) =>
+      PracticeLetterScore.score(liveLms, template, widget.targetLetter);
 
   // ---------------------------------------------------------------------------
   // Dynamic letters (J, Z)

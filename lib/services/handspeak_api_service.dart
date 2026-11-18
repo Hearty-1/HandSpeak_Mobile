@@ -1,4 +1,3 @@
-import '/services/latency_probe.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -72,6 +71,21 @@ class Prediction {
   }
 }
 
+/// The last prediction any model returned (analytics: tutorial practice
+/// sessions fill modelVersion / confusedWith from it when a screen does not
+/// pass them). Cleared by [clear] before each check.
+class LastPrediction {
+  static String? model;
+  static String? label;
+  static void clear() => model = label = null;
+  static void _set(String m, String? v, Prediction? p) {
+    final name = (v != null && v.isNotEmpty) ? v : m;
+    model = name.isEmpty ? null : name;
+    final l = p == null ? '' : (p.labelEn?.isNotEmpty == true ? p.labelEn! : p.label);
+    label = l.isEmpty ? null : l;
+  }
+}
+
 class PredictResponse {
   final String model;
   final Prediction prediction;
@@ -88,11 +102,13 @@ class PredictResponse {
         .map((item) => Prediction.fromJson(item as Map<String, dynamic>))
         .toList();
 
-    return PredictResponse(
+    final r = PredictResponse(
       model: json['model'] as String? ?? '',
       prediction: Prediction.fromJson(json['prediction'] as Map<String, dynamic>? ?? {}),
       topK: topKList,
     );
+    LastPrediction._set(r.model, json['model_version'] as String?, r.prediction);
+    return r;
   }
 }
 
@@ -451,7 +467,7 @@ class RawPredictResponse {
 
   factory RawPredictResponse.fromJson(Map<String, dynamic> json) {
     List<dynamic> list(String k) => json[k] as List<dynamic>? ?? const [];
-    return RawPredictResponse(
+    final r = RawPredictResponse(
       model: json['model'] as String? ?? '',
       modelVersion: json['model_version'] as String? ?? '',
       accepted: json['accepted'] as bool? ?? false,
@@ -470,6 +486,8 @@ class RawPredictResponse {
       invalidIndex: (json['invalid_index'] as num?)?.toInt(),
       raw: json,
     );
+    LastPrediction._set(r.model, r.modelVersion, r.predictedClass);
+    return r;
   }
 }
 
@@ -793,21 +811,18 @@ class HandSpeakApiService {
   /// Nagpapadala ng authenticated request; kapag 401 (expired token), isang
   /// beses na nire-refresh ang token at inuulit.
   Future<http.Response> _authed(
-    Future<http.Response> Function(Map<String, String> headers) send, {
-    bool measure = false, // a recognition request: timed for LatencyProbe
-  }) async {
+    Future<http.Response> Function(Map<String, String> headers) send,
+  ) async {
     Future<http.Response> attempt(bool refresh) async => send({
           "Authorization": "Bearer ${await _getIdToken(forceRefresh: refresh)}",
           "Accept": "application/json",
           "Content-Type": "application/json",
         });
     // Server round trip time feeds the in-app slow-connection hint.
-    if (measure) LatencyProbe.requestStarted();
     final sw = Stopwatch()..start();
     var response = await attempt(false);
     if (response.statusCode == 401) response = await attempt(true);
     PerformanceMonitor.instance.reportNetwork(sw.elapsedMilliseconds);
-    if (measure) LatencyProbe.requestDone(sw.elapsedMilliseconds);
     return response;
   }
 
@@ -968,7 +983,7 @@ class HandSpeakApiService {
     }
 
     Future<RawPredictResponse> send(String base) async {
-      final response = await _authed(measure: true, (h) => _client.post(
+      final response = await _authed((h) => _client.post(
             Uri.parse("$base/v1/predict_raw/$modelId"),
             headers: h,
             body: body,
@@ -1045,7 +1060,7 @@ class HandSpeakApiService {
       'image_width': imageWidth,
       'image_height': imageHeight,
     });
-    final response = await _authed(measure: true, 
+    final response = await _authed(
         (h) => _client.post(Uri.parse("$baseUrl/v1/predict_raw/$model"), headers: h, body: body));
     if (response.statusCode != 200) throw _error(response);
     return StaticPredictResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
@@ -1060,7 +1075,7 @@ class HandSpeakApiService {
     if (targetNumber < 11 || targetNumber > 100) throw ArgumentError("target_number ay 11..100");
     if (frames24.length != 24) throw ArgumentError("Kailangan ng 24 frames, nakuha: ${frames24.length}");
     final body = jsonEncode({'target_number': targetNumber, 'frames': _cleanHandFrames(frames24)});
-    final response = await _authed(measure: true, 
+    final response = await _authed(
         (h) => _client.post(Uri.parse("$baseUrl/v1/predict_raw/numbers"), headers: h, body: body));
     if (response.statusCode != 200) throw _error(response);
     return NumbersPredictResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
@@ -1130,7 +1145,7 @@ class HandSpeakApiService {
     if (body.length > maxRawBodyBytes) {
       throw ArgumentError("Masyadong malaki ang request (${body.length} bytes)");
     }
-    final response = await _authed(measure: true, (h) => _client.post(
+    final response = await _authed((h) => _client.post(
           Uri.parse("$baseUrl/v1/predict_raw/$modelId"),
           headers: h,
           body: body,

@@ -1,3 +1,4 @@
+import '/services/presence_service.dart';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -123,10 +124,20 @@ class _ProfileBody extends StatelessWidget {
           children: [
             // ---- who
             Column(children: [
-              _Avatar(source: (data['avatar'] ?? data['avatarUrl'] ?? data['photoUrl'] ?? '').toString(), name: name, size: 104),
+              OnlineBadge(
+                online: PresenceService.isOnline(data),
+                size: 104,
+                child: _Avatar(source: (data['avatar'] ?? data['avatarUrl'] ?? data['photoUrl'] ?? '').toString(), name: name, size: 104),
+              ),
               const SizedBox(height: 12),
               Text(name, textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: onSurface)),
               const SizedBox(height: 4),
+              if (PresenceService.isOnline(data))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(L.t('● Online now', '● Online ngayon'),
+                      style: const TextStyle(color: Color(0xFF22A06B), fontWeight: FontWeight.w800, fontSize: 13)),
+                ),
               Text(L.t('Level $level', 'Level $level'),
                   style: TextStyle(fontWeight: FontWeight.w800, color: theme.primaryColor, fontSize: 15)),
               const SizedBox(height: 8),

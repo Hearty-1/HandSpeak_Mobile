@@ -1,3 +1,6 @@
+import '/services/presence_service.dart';
+import '/widgets/guide_tour.dart';
+import '/providers/language_provider.dart';
 import '/profile/public_profile.dart';
 import '/widgets/button_3d.dart';
 import 'dart:async';
@@ -31,6 +34,41 @@ Route _fadeRoute(Widget page) {
     },
     transitionDuration: const Duration(milliseconds: 180),
   );
+}
+
+// Arena guide (the ? in the app bar).
+final GlobalKey _agAddFriend = GlobalKey();
+final GlobalKey _agHub = GlobalKey();
+final GlobalKey _agTimeframe = GlobalKey();
+final GlobalKey _agContent = GlobalKey();
+
+void _startArenaGuide(BuildContext context) {
+  GuideTour.start(context, [
+    GuideStep(
+      target: _agHub,
+      icon: Icons.swap_horiz_rounded,
+      title: L.t('Rank or play', 'Ranggo o laro'),
+      body: L.t('Switch between the rankings and the games.', 'Lumipat sa ranggo o sa mga laro.'),
+    ),
+    GuideStep(
+      target: _agTimeframe,
+      icon: Icons.emoji_events_rounded,
+      title: L.t('This week or all time', 'Ngayong linggo o lahat'),
+      body: L.t('See who has the most XP.', 'Tingnan kung sino ang may pinakamaraming XP.'),
+    ),
+    GuideStep(
+      target: _agContent,
+      icon: Icons.leaderboard_rounded,
+      title: L.t('The list', 'Ang listahan'),
+      body: L.t('Top players, or the games you can play.', 'Mga nangunguna, o ang mga larong puwede.'),
+    ),
+    GuideStep(
+      target: _agAddFriend,
+      icon: Icons.person_add_alt_1_rounded,
+      title: L.t('Add friends', 'Magdagdag ng kaibigan'),
+      body: L.t('Find classmates and add them.', 'Hanapin at idagdag ang mga kaklase.'),
+    ),
+  ]);
 }
 
 class LeaderboardScreen extends StatefulWidget {
@@ -85,9 +123,28 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   /// The student's own place: how many have more XP, plus one (a count
   /// query, so it works however many students there are).
+  /// Weekly League: this week's active students, best first (set by the board).
+  List<Map<String, dynamic>> _weeklyRanked = const [];
+
+  /// This week's XP (Weekly League) or total XP (Global).
+  int _scoreOf(Map<String, dynamic> d) =>
+      _rankTimeframe == 'weekly' ? ProgressService.weekXpOf(d) : ((d['xp'] as num?)?.toInt() ?? 0);
+
+  /// The leaderboard query. The rules let a student list only student
+  /// accounts, so the query must say role == 'student' (else Firestore
+  /// refuses the whole query and the board is empty).
+  Query<Map<String, dynamic>> _leaderQuery() {
+    // Only an equality filter (automatic single-field index): no composite
+    // index has to exist. Ranked in the app (one school: a few hundred docs).
+    return FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student').limit(2000);
+  }
+
   Future<int?> _myRank(String field, int myXp) async {
+    if (_weeklyRanked.isNotEmpty || _rankTimeframe == 'weekly') {
+      return _weeklyRanked.where((d) => _scoreOf(d) > myXp).length + 1;
+    }
     try {
-      final c = await FirebaseFirestore.instance.collection('users').where(field, isGreaterThan: myXp).count().get();
+      final c = await FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student').where(field, isGreaterThan: myXp).count().get();
       return (c.count ?? 0) + 1;
     } catch (_) {
       return null;
@@ -230,6 +287,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         centerTitle: true,
         automaticallyImplyLeading: false,
         leading: IconButton(
+          key: _agAddFriend,
           icon: Icon(Icons.person_add_alt_1_rounded, color: textColor, size: 26),
           onPressed: () {
             Navigator.push(
@@ -292,6 +350,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ],
       ),
 
+      floatingActionButtonLocation: PetAssistant.location,
+
+      floatingActionButton: PetAssistant(onGuide: () => _startArenaGuide(context)),
       bottomNavigationBar: AppNavBar(
         currentIndex: 2,
         onTap: (i) {
@@ -355,18 +416,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                   ),
                   child: Column(
                     children: [
-                      _buildMainHubSegmentControl(theme, scale),
+                      KeyedSubtree(key: _agHub, child: _buildMainHubSegmentControl(theme, scale)),
                       SizedBox(height: 16 * scale),
 
                       _mainHubTab == 'rankings'
-                          ? _buildLeaderboardTimeframeToggle(theme, scale)
+                          ? KeyedSubtree(key: _agTimeframe, child: _buildLeaderboardTimeframeToggle(theme, scale))
                           : const SizedBox.shrink(),
 
                       SizedBox(height: 18 * scale),
 
-                      _mainHubTab == 'rankings'
-                          ? _buildRankingsView(theme, scale)
-                          : _buildChallengesView(theme, scale),
+                      KeyedSubtree(
+                        key: _agContent,
+                        child: _mainHubTab == 'rankings'
+                            ? _buildRankingsView(theme, scale)
+                            : _buildChallengesView(theme, scale),
+                      ),
                     ],
                   ),
                 ),
@@ -531,11 +595,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         SizedBox(height: 16 * scale),
 
         StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .orderBy(_rankTimeframe == 'weekly' ? ProgressService.weekXpField() : 'xp', descending: true)
-              .limit(_leaderLimit)
-              .snapshots(),
+          stream: _leaderQuery().snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Padding(
@@ -544,7 +604,22 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               );
             }
 
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            if (snapshot.hasError) debugPrint('Leaderboard query failed: ${snapshot.error}');
+            final weekly = _rankTimeframe == 'weekly';
+            final List<QueryDocumentSnapshot> docs;
+            if (snapshot.hasData) {
+              final ranked = snapshot.data!.docs
+                  .where((d) => _scoreOf(d.data() as Map<String, dynamic>) > 0)
+                  .toList()
+                ..sort((a, b) => _scoreOf(b.data() as Map<String, dynamic>)
+                    .compareTo(_scoreOf(a.data() as Map<String, dynamic>)));
+              _weeklyRanked = [for (final d in ranked) d.data() as Map<String, dynamic>];
+              docs = weekly ? ranked : ranked.take(_leaderLimit).toList();
+            } else {
+              docs = const [];
+            }
+
+            if (docs.isEmpty) {
               return Padding(
                 padding: EdgeInsets.all(20 * scale),
                 child: Text(
@@ -557,13 +632,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               );
             }
 
-            final docs = snapshot.data!.docs;
-            _lastLoaded = docs.length;
+            _lastLoaded = weekly ? 0 : docs.length;
             final field = _rankTimeframe == 'weekly' ? ProgressService.weekXpField() : 'xp';
             final top3 = docs.take(3).toList();
             final remainingDocs = docs.skip(3).toList();
             final myIndex = docs.indexWhere((d) => d.id == _currentUserId);
-            final more = docs.length >= _leaderLimit && _leaderLimit < _maxRanked;
+            final more = !weekly && docs.length >= _leaderLimit && _leaderLimit < _maxRanked;
 
             return Column(
               children: [
@@ -604,7 +678,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                     return GestureDetector(
                       // Tap a student: their public profile.
                       onTap: () => PublicProfileScreen.open(context, remainingDocs[index].id),
-                      child: _buildLeaderboardTile(theme, rank, playerName, playerGrade, playerXp, photoUrl, scale),
+                      child: _buildLeaderboardTile(theme, rank, playerName, playerGrade, playerXp, photoUrl, scale, online: PresenceService.isOnline(data)),
                     );
                   },
                       ),
@@ -625,7 +699,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                           return Padding(
                             padding: EdgeInsets.only(top: 12 * scale),
                             child: _buildLeaderboardTile(theme, r.data!, '${PublicProfileScreen.publicName(data)} (you)',
-                                '${data['grade'] ?? 'Player'}', myXp, data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'], scale),
+                                '${data['grade'] ?? 'Player'}', myXp, data['avatar'] ?? data['photoUrl'] ?? data['avatarUrl'], scale, online: PresenceService.isOnline(data)),
                           );
                         },
                       );
@@ -834,12 +908,16 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             border: Border.all(color: color.withValues(alpha: 0.8), width: 2 * scale),
             boxShadow: rank == 1 ? [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 15, spreadRadius: 1)] : [],
           ),
-          child: _buildSafeAvatar(
-            context: context,
-            photoUrl: photoUrl,
-            name: name,
-            radius: (rank == 1 ? 28 : 24) * scale,
-            textColor: color,
+          child: OnlineBadge(
+            online: PresenceService.isOnline(data),
+            size: (rank == 1 ? 56 : 48) * scale,
+            child: _buildSafeAvatar(
+              context: context,
+              photoUrl: photoUrl,
+              name: name,
+              radius: (rank == 1 ? 28 : 24) * scale,
+              textColor: color,
+            ),
           ),
         ),
         SizedBox(height: 8 * scale),
@@ -874,7 +952,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  Widget _buildLeaderboardTile(ThemeData theme, int rank, String name, String grade, int xp, String? photoUrl, double scale) {
+  Widget _buildLeaderboardTile(ThemeData theme, int rank, String name, String grade, int xp, String? photoUrl, double scale, {bool online = false}) {
     final textColor = theme.colorScheme.onSurface;
     return Container(
       margin: EdgeInsets.only(bottom: 12 * scale),
@@ -906,11 +984,15 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             ),
           ),
           SizedBox(width: 14 * scale),
-          _buildSafeAvatar(
-            context: context,
-            photoUrl: photoUrl,
-            name: name,
-            radius: 20 * scale,
+          OnlineBadge(
+            online: online,
+            size: 40 * scale,
+            child: _buildSafeAvatar(
+              context: context,
+              photoUrl: photoUrl,
+              name: name,
+              radius: 20 * scale,
+            ),
           ),
           SizedBox(width: 12 * scale),
           Expanded(
@@ -946,6 +1028,60 @@ class GroupChallengeHubScreen extends StatefulWidget {
 }
 
 class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
+  // "How to make a room" guide (the ? in the app bar).
+  final GlobalKey _gcSwitch = GlobalKey();
+  final GlobalKey _gcCategory = GlobalKey();
+  final GlobalKey _gcRounds = GlobalKey();
+  final GlobalKey _gcTimer = GlobalKey();
+  final GlobalKey _gcInvite = GlobalKey();
+  final GlobalKey _gcCreate = GlobalKey();
+
+  /// Opens Create Room, then walks through making a room step by step.
+  void _startCreateRoomGuide() {
+    if (isJoinMode) setState(() => isJoinMode = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      GuideTour.start(context, [
+        GuideStep(
+          target: _gcSwitch,
+          icon: Icons.add_circle_rounded,
+          title: L.t('Create Room', 'Gumawa ng Room'),
+          body: L.t('Tap here to make your own game.', 'Pindutin para gumawa ng sariling laro.'),
+        ),
+        GuideStep(
+          target: _gcCategory,
+          icon: Icons.category_rounded,
+          title: L.t('1. Pick signs', '1. Pumili ng kumpas'),
+          body: L.t('Choose which signs to play.', 'Piliin ang mga kumpas na lalaruin.'),
+        ),
+        GuideStep(
+          target: _gcRounds,
+          icon: Icons.format_list_numbered_rounded,
+          title: L.t('2. How many', '2. Ilan'),
+          body: L.t('Pick the number of questions.', 'Piliin kung ilang tanong.'),
+        ),
+        GuideStep(
+          target: _gcTimer,
+          icon: Icons.timer_rounded,
+          title: L.t('3. Time', '3. Oras'),
+          body: L.t('Seconds for each question.', 'Segundo sa bawat tanong.'),
+        ),
+        GuideStep(
+          target: _gcInvite,
+          icon: Icons.person_add_rounded,
+          title: L.t('4. Invite', '4. Mag-imbita'),
+          body: L.t('Pick friends to play with you.', 'Pumili ng kaibigang kalaro.'),
+        ),
+        GuideStep(
+          target: _gcCreate,
+          icon: Icons.rocket_launch_rounded,
+          title: L.t('5. Start', '5. Simulan'),
+          body: L.t('Tap to make the room. Share the code!', 'Pindutin para gawin ang room. Ibahagi ang code!'),
+        ),
+      ]);
+    });
+  }
+
   bool isJoinMode = true;
   bool isLoading = false;
   final TextEditingController _codeController = TextEditingController();
@@ -1184,7 +1320,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                   const SizedBox(height: 16),
                   Expanded(
                     child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance.collection('users').snapshots(),
+                      stream: FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student').snapshots(),
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
 
@@ -1219,7 +1355,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
 
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
-                              leading: _buildSafeAvatar(context: context, photoUrl: photoUrl, name: name, radius: 20),
+                              leading: OnlineBadge(online: PresenceService.isOnline(userData), size: 40, child: _buildSafeAvatar(context: context, photoUrl: photoUrl, name: name, radius: 20)),
                               title: Text(name, style: TextStyle(fontWeight: FontWeight.w700, color: textColor)),
                               trailing: IconButton(
                                 icon: Icon(
@@ -1264,6 +1400,8 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: PetAssistant(onGuide: _startCreateRoomGuide),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -1273,10 +1411,13 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         ),
         title: Text("Group Challenges", style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter', fontSize: 20)),
         centerTitle: true,
+        actions: [
+          const SizedBox(width: 8),
+        ],
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 110), // room for the pet
         child: Column(
           children: [
             StreamBuilder<DocumentSnapshot>(
@@ -1330,6 +1471,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
             const SizedBox(height: 20),
 
             Container(
+              key: _gcSwitch,
               height: 48,
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -1563,6 +1705,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           Text("⚡ Choose Sign Category", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
           const SizedBox(height: 8),
           Container(
+            key: _gcCategory,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: textColor.withValues(alpha: 0.04),
@@ -1587,6 +1730,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           Text("🎯 Select Number of Rounds", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
           const SizedBox(height: 8),
           Row(
+            key: _gcRounds,
             children: _roundsOptions.map((rounds) {
               final bool isSelected = _selectedRounds == rounds;
               return Expanded(
@@ -1615,6 +1759,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           Text("⏱️ Timer Duration per Question", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: textColor)),
           const SizedBox(height: 8),
           Row(
+            key: _gcTimer,
             children: _timerOptions.map((timerSec) {
               final bool isSelected = _selectedTimer == timerSec;
               final String label = timerSec == 0 ? "Untimed" : "${timerSec}s";
@@ -1642,6 +1787,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           const SizedBox(height: 20),
 
           InkWell(
+            key: _gcInvite,
             onTap: _showInviteFriendsSheet,
             borderRadius: BorderRadius.circular(16),
             child: Container(
@@ -1673,6 +1819,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
           const SizedBox(height: 20),
 
           SizedBox(
+            key: _gcCreate,
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
@@ -1892,6 +2039,7 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
                         : StreamBuilder<QuerySnapshot>(
                             stream: FirebaseFirestore.instance
                                 .collection('users')
+                                .where('role', isEqualTo: 'student')
                                 .where(FieldPath.documentId, whereIn: playerUids)
                                 .snapshots(),
                             builder: (context, playersSnapshot) {

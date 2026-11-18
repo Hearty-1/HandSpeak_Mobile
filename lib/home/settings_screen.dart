@@ -1,3 +1,4 @@
+import '/services/app_update_service.dart';
 import '/services/app_haptics.dart';
 import '/widgets/button_3d.dart';
 import 'dart:math';
@@ -365,7 +366,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: context.watch<LanguageProvider>().code,
                   dropdownColor: theme.cardColor,
                   underline: const SizedBox(),
-                  icon: Icon(CupertinoIcons.chevron_down, size: 16, color: textColor),
+                  icon: const Icon(CupertinoIcons.chevron_down, size: 16, color: Color(0xFFFFB800)),
                   items: [
                     DropdownMenuItem(value: LanguageProvider.english, child: Text('English', style: TextStyle(color: textColor))),
                     DropdownMenuItem(value: LanguageProvider.filipino, child: Text('Filipino', style: TextStyle(color: textColor))),
@@ -383,7 +384,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: themeProvider.themeString,
                   dropdownColor: theme.cardColor,
                   underline: const SizedBox(),
-                  icon: Icon(CupertinoIcons.chevron_down, size: 16, color: textColor),
+                  icon: const Icon(CupertinoIcons.chevron_down, size: 16, color: Color(0xFFFFB800)),
                   items: [
                     "Default Theme", 
                     "Galaxy Explorer",
@@ -412,7 +413,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
-                secondary: Icon(CupertinoIcons.shield_fill, color: textColor.withValues(alpha: 0.6)),
+                secondary: const Icon(CupertinoIcons.shield_fill, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Two-Factor Authentication', 'Two-Factor Authentication'), context.tr('Two-Factor Authentication', 'Two-Factor Authentication')), style: TextStyle(color: textColor)),
                 subtitle: Text(
                   context.tr(context.tr('Add extra security to your account with Email 2FA', 'Dagdag na seguridad sa account gamit ang Email 2FA'), 'Dagdag na seguridad sa account gamit ang Email 2FA'),
@@ -426,25 +427,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               )),
               Divider(height: 1, color: theme.dividerColor),
               Pressable3D(child: ListTile(
-                leading: Icon(CupertinoIcons.lock_fill, color: textColor.withValues(alpha: 0.6)),
+                leading: const Icon(CupertinoIcons.lock_fill, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Change Password', 'Palitan ang Password'), 'Palitan ang Password'), style: TextStyle(color: textColor)),
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
+                trailing: const Icon(CupertinoIcons.chevron_forward, size: 18, color: Color(0xFFFFB800)),
                 onTap: () {
                   _showChangePasswordDialog(context);
                 },
               )),
               Divider(height: 1, color: theme.dividerColor),
               Pressable3D(child: ListTile(
-                leading: Icon(CupertinoIcons.device_phone_portrait, color: textColor.withValues(alpha: 0.6)),
+                leading: const Icon(CupertinoIcons.device_phone_portrait, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Session & Activity Logs', 'Session at Activity Logs'), 'Session at Activity Logs'), style: TextStyle(color: textColor)),
-                trailing: Icon(CupertinoIcons.chevron_forward, size: 18, color: textColor.withValues(alpha: 0.5)),
+                trailing: const Icon(CupertinoIcons.chevron_forward, size: 18, color: Color(0xFFFFB800)),
                 onTap: () {
                   _showSessionHistory(context);
                 },
               )),
             ],
           ),
-          
+
+          _buildSectionHeader(context.tr('App', 'App'), textColor),
+          _buildSettingsCard(context: context, children: const [AppUpdateTile()]),
+
           const SizedBox(height: 40),
         ],
       ),
@@ -913,4 +917,93 @@ String _otpEmailHtml(String code, String email) {
 </body>
 </html>
 ''';
+}
+
+/// Settings > App: the installed version and the update check.
+class AppUpdateTile extends StatefulWidget {
+  const AppUpdateTile({super.key});
+
+  @override
+  State<AppUpdateTile> createState() => _AppUpdateTileState();
+}
+
+class _AppUpdateTileState extends State<AppUpdateTile> {
+  String _version = '';
+  bool _checking = false;
+  bool _checked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AppUpdateService.currentLabel().then((v) {
+      if (mounted) setState(() => _version = v);
+    });
+    _check(silent: true);
+  }
+
+  Future<void> _check({bool silent = false}) async {
+    setState(() => _checking = true);
+    final r = await AppUpdateService.check();
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _checked = true;
+    });
+    if (silent) return;
+    if (r != null) {
+      await AppUpdateService.showUpdateDialog(context, r);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(L.t("You're on the latest version.", 'Pinakabagong bersyon na ang gamit mo.')),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+    return ValueListenableBuilder<AppRelease?>(
+      valueListenable: AppUpdateService.available,
+      builder: (context, r, _) {
+        final String subtitle;
+        if (_checking) {
+          subtitle = L.t('Checking for updates...', 'Naghahanap ng update...');
+        } else if (r != null) {
+          subtitle = L.t('Version ${r.versionName} is available', 'May bagong bersyon: ${r.versionName}');
+        } else {
+          subtitle = _checked ? L.t('Up to date', 'Pinakabago na') : '';
+        }
+        return Pressable3D(
+          child: ListTile(
+            leading: Badge(
+              isLabelVisible: r != null,
+              smallSize: 10,
+              child: const Icon(Icons.system_update_rounded, color: Color(0xFFFFB800)),
+            ),
+            title: Text(
+              '${L.t('App updates', 'Mga update ng app')}${_version.isEmpty ? '' : ' · $_version'}',
+              style: TextStyle(color: textColor),
+            ),
+            subtitle: subtitle.isEmpty
+                ? null
+                : Text(subtitle,
+                    style: TextStyle(
+                      color: r != null ? theme.colorScheme.primary : textColor.withValues(alpha: 0.5),
+                      fontSize: 12,
+                      fontWeight: r != null ? FontWeight.w700 : FontWeight.normal,
+                    )),
+            trailing: _checking
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : TextButton(
+                    onPressed: () => r != null ? AppUpdateService.showUpdateDialog(context, r) : _check(),
+                    child: Text(r != null ? L.t('Update', 'I-update') : L.t('Check', 'Suriin')),
+                  ),
+            onTap: _checking ? null : () => r != null ? AppUpdateService.showUpdateDialog(context, r) : _check(),
+          ),
+        );
+      },
+    );
+  }
 }

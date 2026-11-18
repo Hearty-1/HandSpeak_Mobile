@@ -47,14 +47,20 @@ class _CreateAccountState extends State<CreateAccount> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  String? _department; // 'STNCS' or 'SNED'
   String? _gradeLevel;
-  final List<String> _gradeOptions = ["SNED", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6"]; 
+  final List<String> _departmentOptions = const ["STNCS", "SNED"];
+  final List<String> _gradeOptions = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6"];
+  bool get _isSned => _department == "SNED";
 
   void _handleSignUp() async {
-    if (!_formKey.currentState!.validate() || _gradeLevel == null) {
+    final formOk = _formKey.currentState!.validate();
+    if (!formOk || _department == null || (!_isSned && _gradeLevel == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please fix the errors in the form and select a grade."),
+        SnackBar(
+          content: Text(_department == null
+              ? "Please select a department."
+              : "Please fix the errors in the form and select a grade."),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Colors.redAccent,
         ),
@@ -72,7 +78,9 @@ class _CreateAccountState extends State<CreateAccount> {
       lastName: _lastNameController.text.trim(),
       studentId: _idController.text.trim(),
       section: _sectionController.text.trim(),
-      gradeLevel: _gradeLevel!,
+      department: _department!,
+      // SNED has no grade levels; "SNED" keeps older records and filters working.
+      gradeLevel: _isSned ? "SNED" : _gradeLevel!,
     );
 
     setState(() => _isLoading = false);
@@ -213,18 +221,33 @@ class _CreateAccountState extends State<CreateAccount> {
 
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
+                  child: _buildDropdown(
+                    label: "Department",
+                    items: _departmentOptions,
+                    value: _department,
+                    onChanged: (v) => setState(() {
+                      _department = v;
+                      if (_isSned) _gradeLevel = null; // SNED: section only
+                    }),
+                  ),
+                ),
+
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: _buildDropdown(
-                          label: "Grade Level", 
-                          items: _gradeOptions, 
-                          value: _gradeLevel,
-                          onChanged: (v) => setState(() => _gradeLevel = v), 
+                      if (!_isSned) ...[
+                        Expanded(
+                          child: _buildDropdown(
+                            label: "Grade Level",
+                            items: _gradeOptions,
+                            value: _gradeLevel,
+                            onChanged: (v) => setState(() => _gradeLevel = v),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
+                        const SizedBox(width: 16),
+                      ],
                       Expanded(
                         child: _buildInputField(
                           label: "Section", 

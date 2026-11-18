@@ -94,7 +94,14 @@ class DynamicSignJudge {
   // frame; the rotation that makes wrist -> middle knuckle point up wins.
   // ---------------------------------------------------------------------------
 
+  /// Set by a screen that already knows the hand's rotation (voted while the
+  /// hand was held upright before the stroke, as TutorialPractice does): the
+  /// stroke itself (a twisting J) is a poor place to vote.
+  int? forcedRotation;
+
   int _rotation() {
+    final forced = forcedRotation;
+    if (forced != null) return forced;
     final votes = {0: 0.0, 90: 0.0, 180: 0.0, 270: 0.0};
     var n = 0;
     for (final f in _frames) {

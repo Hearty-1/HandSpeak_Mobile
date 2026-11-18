@@ -3,9 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '/services/activity_log.dart';
 import 'package:flutter/foundation.dart';
 import '/services/latency_probe.dart';
+import '/services/handspeak_api_service.dart';
 
 /// "Practice Sessions": one Firestore document per continuous-practice run
-/// (collection `practice_sessions`), for the web dashboard.
+/// (collection `tutorial_sessions`, the web rules' name), for the web dashboard.
 ///
 ///   {
 ///     source: "practice", sessionId, userId, student, sectionId,
@@ -29,14 +30,14 @@ class TutorialSessionRecorder {
   TutorialSessionRecorder(
       {required this.category, required this.levelId, this.difficulty = 'other', this.passMark = 70, this.kind = practiceKind});
 
-  /// Practice Sessions (all signs of a category) -> `practice_sessions`.
+  /// Practice Sessions (all signs of a category) -> `tutorial_sessions`.
   static const String practiceKind = 'practice';
 
   /// Tutorial practice (one sign inside a lesson) -> `tutorial_practice_sessions`,
   /// a separate collection with the same document layout (source "tutorial").
   static const String tutorialKind = 'tutorial';
 
-  static const String collection = 'practice_sessions';
+  static const String collection = 'tutorial_sessions';
   static const String tutorialCollection = 'tutorial_practice_sessions';
 
   /// 'practice' or 'tutorial' (see [practiceKind] / [tutorialKind]).
@@ -61,6 +62,8 @@ class TutorialSessionRecorder {
   final Map<String, _SignStats> _signs = {};
   final Set<String> _models = {};
   bool _finished = false;
+  // Tutorial: time from opening the lesson camera to the first correct check.
+  int? _timeToRecognizeMs;
   // Response latency (System Testing): measured checks of this session.
   int _latencyCount = 0, _latencySum = 0, _serverCount = 0, _serverSum = 0;
   /// Every measured check, in order (for the latency results table).
@@ -151,6 +154,9 @@ class TutorialSessionRecorder {
     }
     _attempts++;
     if (correct) _correct++;
+    if (correct && _timeToRecognizeMs == null) {
+      _timeToRecognizeMs = DateTime.now().difference(_startedAt).inMilliseconds;
+    }
     _scoreSum += s;
     if (model != null && model.trim().isNotEmpty) _models.add(model.trim());
     _signs.putIfAbsent(key, () => _SignStats()).add(
@@ -232,6 +238,11 @@ class TutorialSessionRecorder {
       },
       'mistakes': Map<String, int>.from(_mistakes),
       'signs': {for (final e in _signs.entries) e.key: e.value.toMap()},
+      if (kind == tutorialKind) ...{
+        // Left the lesson without the sign ever being recognised.
+        'abandoned': outcome == 'completed' && _correct == 0,
+        'timeToRecognizeMs': _timeToRecognizeMs,
+      },
       'needsAttention': _attempts > 0 && (acc < passMark || weakSign),
       'summary': '$_correct of $_attempts correct (${acc.round()}%)'
           '${mistakeParts.isEmpty ? '' : ' · ${mistakeParts.join(', ')}'} · $outcome',
@@ -298,7 +309,8 @@ class _SignStats {
 /// a Practice Session, which keep their own records.
 class TutorialAttemptLog {
   TutorialAttemptLog({required String category, required this.sign, bool enabled = true})
-      : _rec = enabled
+      : _defaultModel = _modelFor[category] ?? category,
+        _rec = enabled
             ? TutorialSessionRecorder(
                 category: category,
                 levelId: 'tutorial_${sign.trim().replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')}',
@@ -310,22 +322,44 @@ class TutorialAttemptLog {
   /// The sign being practised (Civic: the current line).
   String sign;
   final TutorialSessionRecorder? _rec;
+  final String _defaultModel;
   bool _pending = false;
+
+  /// modelVersion when neither the screen nor a server reply names one
+  /// (on-device checks).
+  static const Map<String, String> _modelFor = {
+    'alphabet': 'static_letters',
+    'numbers': 'static_numbers',
+    'phrases': HandSpeakModels.greetings,
+    'civic': HandSpeakModels.lupangHinirang,
+  };
 
   static double _pct(double v) => v <= 1.0 ? v * 100 : v;
 
-  void begin() => _pending = true;
+  /// Before a check: forget the previous server reply so it is not
+  /// attributed to this attempt.
+  void begin() {
+    _pending = true;
+    LastPrediction.clear();
+  }
+
+  String get _model => LastPrediction.model ?? _defaultModel;
 
   void pass({double score = 100, String? model}) {
     _pending = false;
-    _rec?.recordAttempt(sign: sign, correct: true, score: _pct(score), handsDetected: true, model: model);
+    _rec?.recordAttempt(sign: sign, correct: true, score: _pct(score), handsDetected: true, model: model ?? _model);
   }
 
   void fail({double score = 0, String? predicted, bool handsDetected = true, String? model}) {
     if (!_pending) return;
     _pending = false;
     _rec?.recordAttempt(
-        sign: sign, correct: false, score: _pct(score), handsDetected: handsDetected, predicted: predicted, model: model);
+        sign: sign,
+        correct: false,
+        score: _pct(score),
+        handsDetected: handsDetected,
+        predicted: predicted ?? (handsDetected ? LastPrediction.label : null),
+        model: model ?? _model);
   }
 
   void finish() => _rec?.finish();

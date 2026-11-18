@@ -1,3 +1,5 @@
+import '/services/app_update_service.dart';
+import '/services/presence_service.dart';
 import 'dart:ui';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -17,6 +19,7 @@ import '../profile/profile.dart';
 import '../leaderboard/arena.dart';
 import '../home/settings_screen.dart';
 import '../widgets/app_nav_bar.dart';
+import '/widgets/guide_tour.dart';
 import '/module/custom_category_screen.dart' show CloudCategory, CloudCategoryScreen, CloudCover, ModuleSource;
 import '/widgets/button_3d.dart';
 import '/services/performance_monitor.dart';
@@ -31,6 +34,68 @@ import '/widgets/responsive.dart';
 
 void main() {
   runApp(const FigmaToCodeApp());
+}
+
+
+// Home guide (the ? in the app bar): the buttons it points at.
+final GlobalKey _guideMenu = GlobalKey();
+final GlobalKey _guideBell = GlobalKey();
+final GlobalKey _guideTranslate = GlobalKey();
+final Map<int, GlobalKey> _guideTabs = {0: GlobalKey(), 1: GlobalKey(), 2: GlobalKey(), 3: GlobalKey()};
+
+/// Step-by-step "where to tap" guide of the Home screen.
+void _startHomeGuide(BuildContext context) {
+  GuideTour.start(context, [
+    GuideStep(
+      target: _guideMenu,
+      icon: Icons.menu_rounded,
+      title: L.t('Menu', 'Menu'),
+      body: L.t('Settings, help and log out.',
+          'Settings, tulong at log out.'),
+    ),
+    GuideStep(
+      target: _guideBell,
+      icon: Icons.notifications_rounded,
+      title: L.t('Notifications', 'Mga Abiso'),
+      body: L.t('New messages and game invites.',
+          'Bagong mensahe at imbitasyon sa laro.'),
+    ),
+    GuideStep(
+      target: _guideTabs[0]!,
+      icon: Icons.home_rounded,
+      title: L.t('Home', 'Home'),
+      body: L.t('Your level and daily quests.',
+          'Ang iyong level at daily quests.'),
+    ),
+    GuideStep(
+      target: _guideTabs[1]!,
+      icon: Icons.auto_stories_rounded,
+      title: L.t('Learn', 'Matuto'),
+      body: L.t('Learn and practice signs.',
+          'Matuto at magsanay ng kumpas.'),
+    ),
+    GuideStep(
+      target: _guideTranslate,
+      icon: Icons.sign_language_rounded,
+      title: L.t('Translate', 'Isalin'),
+      body: L.t('Sign to the camera to make words.',
+          'Mag-kumpas sa camera para maging salita.'),
+    ),
+    GuideStep(
+      target: _guideTabs[2]!,
+      icon: Icons.sports_esports_rounded,
+      title: L.t('Arena', 'Arena'),
+      body: L.t('Play games with classmates.',
+          'Makipaglaro sa mga kaklase.'),
+    ),
+    GuideStep(
+      target: _guideTabs[3]!,
+      icon: Icons.person_rounded,
+      title: L.t('Profile', 'Profile'),
+      body: L.t('Your badges, stars and friends.',
+          'Ang iyong badges, stars at kaibigan.'),
+    ),
+  ]);
 }
 
 class FigmaToCodeApp extends StatelessWidget {
@@ -730,6 +795,10 @@ class SnedInterafce1 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A newer release: asked once per app start (services/app_update_service.dart).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) AppUpdateService.checkOnLaunch(context);
+    });
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     final isDark = theme.brightness == Brightness.dark;
@@ -877,76 +946,6 @@ class SnedInterafce1 extends StatelessWidget {
                       ),
                       MenuCapsule(
                         child: ListTile(
-                          leading: Icon(Icons.help_outline, color: theme.primaryColor),
-                          title: Text(
-                            L.t('Help & Support', 'Tulong at Suporta'),
-                            style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              _fadeRoute(
-                                InfoDetailScreen(
-                                  title: L.t('Help & Support', 'Tulong at Suporta'),
-                                  sections: [
-                                    InfoSection(
-                                      title: L.t('The Learning Loop', 'Ang Paraan ng Pag-aaral'),
-                                      body: L.t(
-                                        'Your Filipino Sign Language learning path is divided into four stages: Tutorials, Practice, Activities, and Challenges. Achieve 1000 XP points to unlock the next module.',
-                                        'Ang pag-aaral mo ng Filipino Sign Language ay may apat na yugto: Tutorials, Practice, Activities at Challenges. Makakuha ng 1000 XP para mabuksan ang susunod na module.',
-                                      ),
-                                      icon: Icons.loop_rounded,
-                                    ),
-                                    InfoSection(
-                                      title: L.t('Camera Combat', 'Camera Combat'),
-                                      body: L.t(
-                                        'Ensure you are in a well-lit area and use the Mirror-Mode Camera. A green checkmark means you scored a hit, while a red "X" means you need to adjust your form.',
-                                        'Siguraduhing maliwanag ang lugar at gamitin ang Mirror-Mode Camera. Ang berdeng tsek ay tama, at ang pulang "X" ay kailangan pang ayusin ang porma.',
-                                      ),
-                                      icon: Icons.camera_alt_rounded,
-                                    ),
-                                    InfoSection(
-                                      title: L.t('Leveling Up & Streaks', 'Pag-level Up at Streaks'),
-                                      body: L.t(
-                                        'Keep practicing to earn Experience Points (XP) and fill your Level Progress Bar. Enable Streak Reminders to keep your momentum going.',
-                                        'Patuloy na magsanay para makakuha ng XP at mapuno ang Level Progress Bar. I-on ang Streak Reminders para tuloy-tuloy ang pag-aaral.',
-                                      ),
-                                      icon: Icons.local_fire_department_rounded,
-                                    ),
-                                    InfoSection(
-                                      title: L.t('Multiplayer Challenges', 'Multiplayer Challenges'),
-                                      body: L.t(
-                                        'Challenge your classmates by tapping "Join a Room" and entering a Room Code, or act as the host by selecting "Create a Room".',
-                                        'Hamunin ang mga kaklase: pindutin ang "Join a Room" at ilagay ang Room Code, o maging host sa pagpili ng "Create a Room".',
-                                      ),
-                                      icon: Icons.group_rounded,
-                                    ),
-                                    InfoSection(
-                                      title: L.t('Customizing Experience', 'Pag-customize ng App'),
-                                      body: L.t(
-                                        'Visit the Settings screen to change your game Theme (like Galaxy Explorer or Deep Ocean), and toggle your Background Music on or off.',
-                                        'Pumunta sa Settings para palitan ang Tema (tulad ng Galaxy Explorer o Deep Ocean) at i-on o i-off ang Background Music.',
-                                      ),
-                                      icon: Icons.palette_rounded,
-                                    ),
-                                    InfoSection(
-                                      title: L.t('Reporting Bugs', 'Pag-uulat ng Problema'),
-                                      body: L.t(
-                                        'Teachers can submit a bug report directly to the admin using the "Feedback & Support" tool. Students should report issues to their teachers.',
-                                        'Maaaring magpadala ang mga guro ng bug report sa admin gamit ang "Feedback & Support". Ang mga estudyante ay mag-ulat sa kanilang guro.',
-                                      ),
-                                      icon: Icons.bug_report_rounded,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      MenuCapsule(
-                        child: ListTile(
                           leading: Icon(Icons.info_outline, color: theme.primaryColor),
                           title: Text(
                             L.t('About Us', 'Tungkol sa Amin'),
@@ -1050,6 +1049,7 @@ class SnedInterafce1 extends StatelessWidget {
                               Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const RoleSelectionScreen()), (route) => false);
                               return;
                             }
+                            await PresenceService.instance.goOffline();
                             await FirebaseAuth.instance.signOut();
                             if (!context.mounted) return;
 
@@ -1077,12 +1077,20 @@ class SnedInterafce1 extends StatelessWidget {
                 child: Container(color: Colors.transparent),
               ),
             ),
+            leading: Builder(
+              builder: (c) => IconButton(
+                key: _guideMenu,
+                tooltip: L.t('Menu', 'Menu'),
+                icon: Icon(Icons.menu_rounded, color: textColor),
+                onPressed: () => Scaffold.of(c).openDrawer(),
+              ),
+            ),
             title: Text(
               "Home",
               style: TextStyle(color: textColor, fontWeight: FontWeight.w700, letterSpacing: -0.5),
             ),
             actions: [
-              if (canNotifications) const NotificationBell(),
+              if (canNotifications) KeyedSubtree(key: _guideBell, child: const NotificationBell()),
               Padding(
                 padding: const EdgeInsets.only(right: 16.0, left: 8.0),
                 child: Container(
@@ -1104,7 +1112,12 @@ class SnedInterafce1 extends StatelessWidget {
             ],
           ),
 
+          floatingActionButtonLocation: PetAssistant.location,
+
+          floatingActionButton: PetAssistant(onGuide: () => _startHomeGuide(context)),
           bottomNavigationBar: AppNavBar(
+            guideKeys: _guideTabs,
+            translateGuideKey: _guideTranslate,
             currentIndex: 0,
             onTap: (i) {
               switch (i) {

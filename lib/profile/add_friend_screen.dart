@@ -1,3 +1,4 @@
+import '/services/presence_service.dart';
 import '/profile/public_profile.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -150,7 +151,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
 
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').snapshots(),
+              stream: FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return Center(child: CircularProgressIndicator(color: theme.primaryColor));
@@ -321,7 +322,7 @@ class _UserCardState extends State<_UserCard> {
       ),
       child: Row(
         children: [
-          _buildUserAvatar(context, avatarUrl, size: 52),
+          OnlineBadge(online: PresenceService.isOnline(widget.userData), size: 52, child: _buildUserAvatar(context, avatarUrl, size: 52)),
           const SizedBox(width: 16),
           Expanded(
             child: Column(

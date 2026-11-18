@@ -1,0 +1,820 @@
+rules_version = '2';
+
+// =============================================================================
+// HandSpeak — Firestore Security Rules
+// =============================================================================
+// Least-privilege rules derived from the application's actual access patterns
+// (web dashboard in this repo + the HandSpeak mobile app) and the RBAC model
+// in lib/rbac.ts (resolveStudentAccess / canAccessStudent).
+//
+// Teacher scope uses a PRECOMPUTED authorization index (lib/class-keys.ts):
+//   staff   users/{uid}.classKeys       e.g. ["stncs|grade 1|hope", ...]
+//   student users/{uid}.studentClassKey e.g.  "stncs|grade 1|hope"
+// A teacher may see/manage a student when the student's key is in the
+// teacher's classKeys. The keys — and every field they are derived from
+// (program, grade, section, staff department/assignment) — are written ONLY by
+// trusted server code (Admin SDK): /api/students, /api/students/{id},
+// /api/admin/create-account, /api/admin/account-requests/{id}/approve and the
+// classKeys migration. No browser write (owner, teacher or admin) may change
+// them, so the index cannot be forged or go stale through the client.
+//
+// Who bypasses these rules: every route under app/api/** and every server
+// module that uses the Firebase Admin SDK (lib/firebase-admin.ts). Those routes
+// authorize the caller themselves (lib/server-auth.ts, lib/rbac.ts).
+//
+// Roles (users/{uid}.role, stored lowercase): admin, principal, teacher,
+// department, student. Staff are "active" when status == 'active'; students
+// are active when status is 'approved' (or 'active').
+//
+// Test: node tests/rules/run-rules-tests.mjs     (Firebase Rules API, no deploy)
+// Cost: node tests/rules/budget.mjs              (evaluation steps per request)
+// Deploy: firebase deploy --only firestore:rules
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Caller identity
+    // -------------------------------------------------------------------------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    // The caller's own users/{uid} document (empty map when it does not exist).
+    function me() {
+      return exists(userPath(request.auth.uid)) ? get(userPath(request.auth.uid)).data : {};
+    }
+
+    // Lower-cased, trimmed text of a field ('' when absent). Non-text values
+    // become their text form, which never equals a role/status/position value.
+    function lowerField(d, key) {
+      return string(d.get(key, '')).lower().trim();
+    }
+
+    function isAdmin() {
+      return signedIn() && isAdminData(me());
+    }
+
+    function isAdminData(d) {
+      return lowerField(d, 'role') == 'admin' && lowerField(d, 'status') == 'active';
+    }
+
+    // Active staff account of any staff role (admin, principal, teacher, department).
+    function isActiveStaff() {
+      return signedIn() && isActiveStaffData(me());
+    }
+
+    function isActiveStaffData(d) {
+      return lowerField(d, 'status') == 'active'
+        && lowerField(d, 'role') in ['admin', 'principal', 'teacher', 'department'];
+    }
+
+    // Approved student account (the mobile app only signs in 'approved' students).
+    function isActiveStudent() {
+      return signedIn() && isActiveStudentData(me());
+    }
+
+    function isActiveStudentData(d) {
+      return lowerField(d, 'role') == 'student' && lowerField(d, 'status') in ['approved', 'active'];
+    }
+
+    function isActiveAccount() {
+      return signedIn() && isActiveAccountData(me());
+    }
+
+    function isActiveAccountData(d) {
+      return isActiveStaffData(d) || isActiveStudentData(d);
+    }
+
+    // -------------------------------------------------------------------------
+    // Student-data scope — mirrors lib/rbac.ts resolveStudentAccess / canAccessStudent.
+    // -------------------------------------------------------------------------
+
+    // SNED vs STNCS from a staff member's department text ('NONE' if missing/ambiguous).
+    function staffProgram(staff) {
+      return programOfDepartment(lowerField(staff, 'department'));
+    }
+
+    function programOfDepartment(dept) {
+      return programFromFlags(dept.matches('.*(sned|special needs).*'),
+                              dept.matches('.*(stncs|elementary|junior high|senior high).*'));
+    }
+
+    function programFromFlags(sned, stncs) {
+      return (sned && !stncs) ? 'SNED' : ((stncs && !sned) ? 'STNCS' : 'NONE');
+    }
+
+    // 'admin' | 'principal' | 'coordinator' | 'teacher' | 'none'
+    function accessLevel(staff) {
+      return accessLevelOf(lowerField(staff, 'status'), lowerField(staff, 'role'),
+                           lowerField(staff, 'facultyPosition'), staffProgram(staff));
+    }
+
+    function accessLevelOf(status, role, position, program) {
+      return status != 'active' ? 'none'
+        : role == 'admin' ? 'admin'
+        : role == 'principal' ? 'principal'
+        : role != 'teacher' ? 'none'
+        : position == 'coordinator' ? (program != 'NONE' ? 'coordinator' : 'none')
+        : position.matches('.*(principal|admin).*') ? 'none'
+        : program != 'NONE' ? 'teacher' : 'none';
+    }
+
+    function programFieldClass(v) {
+      return v == null ? 'NONE' : !(v is string) ? 'BAD' : programTextClass(v.trim().lower());
+    }
+
+    function programTextClass(t) {
+      return t == '' ? 'NONE' : t == 'sned' ? 'SNED' : t in ['regular', 'stncs'] ? 'STNCS' : 'BAD';
+    }
+
+    function programBoolClass(v) {
+      return v == null ? 'NONE' : !(v is bool) ? 'BAD' : (v ? 'SNED' : 'STNCS');
+    }
+
+    // Student program; 'NONE' when missing, invalid or contradictory (fail closed).
+    // Only needed for the program-wide roles (principal, coordinator).
+    function studentProgram(d) {
+      return studentProgramFrom(programFieldClass(d.get('studentType', null)),
+                                programFieldClass(d.get('type', null)),
+                                programBoolClass(d.get('isSned', null)),
+                                d.get('gradeLevel', null));
+    }
+
+    // studentType / type / isSned decide whenever any is present. A record with
+    // none of them (mobile self-registration) uses its gradeLevel choice:
+    // "SNED" or "Grade 1".."Grade 6" (STNCS). Mirrors lib/rbac.ts studentProgramOf.
+    function studentProgramFrom(a, b, c, gradeLevel) {
+      return (a == 'NONE' && b == 'NONE' && c == 'NONE')
+        ? mobileGradeProgram(gradeLevel)
+        : programCombine(a, b, c);
+    }
+
+    function mobileGradeProgram(v) {
+      return !(v is string) ? 'NONE' : mobileGradeText(v.trim().lower());
+    }
+
+    function mobileGradeText(t) {
+      return t == 'sned' ? 'SNED' : (t.matches('grade\\s*[1-6]') ? 'STNCS' : 'NONE');
+    }
+
+    function programCombine(a, b, c) {
+      return (a == 'BAD' || b == 'BAD' || c == 'BAD') ? 'NONE'
+        : a != 'NONE' ? (((b == 'NONE' || b == a) && (c == 'NONE' || c == a)) ? a : 'NONE')
+        : b != 'NONE' ? ((c == 'NONE' || c == b) ? b : 'NONE')
+        : c;
+    }
+
+    // Teacher scope: the student's precomputed class key is one of the
+    // teacher's precomputed class keys. A missing/blank key never matches.
+    function inClassKeys(staff, student) {
+      return student.get('studentClassKey', '') is string
+        && student.get('studentClassKey', '') != ''
+        && staff.get('classKeys', []) is list
+        && student.get('studentClassKey', '') in staff.get('classKeys', []);
+    }
+
+    // May a staff member (already resolved to `level`) see or manage this student record?
+    function studentInScope(staff, level, student) {
+      return lowerField(student, 'role') == 'student' && (
+        level == 'admin'
+        || (level == 'teacher' && inClassKeys(staff, student))
+        || (level == 'principal' && studentProgram(student) != 'NONE')
+        || (level == 'coordinator' && studentProgram(student) == staffProgram(staff)));
+    }
+
+    function canAccessStudent(staff, student) {
+      return studentInScope(staff, accessLevel(staff), student);
+    }
+
+    function callerCanAccessStudentId(uid) {
+      return signedIn() && exists(userPath(uid)) && canAccessStudent(me(), get(userPath(uid)).data);
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{uid} field protection
+    // -------------------------------------------------------------------------
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Authorization index + every field it is derived from: written only by the
+    // server (Admin SDK). No browser write may change these — not the owner,
+    // not a teacher, not an admin — so the index cannot be forged or go stale.
+    function serverOnlyKeys() {
+      return [
+        'classKeys', 'studentClassKey',
+        'studentType', 'type', 'isSned', 'section', 'gradeLevel', 'grade',
+        'department', 'facultyPosition', 'assignedSections', 'assignedGrade'
+      ];
+    }
+
+    // Fields an account owner may never change on their own record: role and
+    // authority, the registered full name, program/class assignment, account
+    // status and approval history, server-maintained security fields.
+    function protectedProfileKeys() {
+      return [
+        'role', 'status', 'permissions',
+        'name', 'fullName', 'firstName', 'middleName', 'middleInitial', 'lastName', 'suffix', 'suffixPosition',
+        'employeeId', 'studentId', 'schoolName', 'creationOrigin', 'loginEmail',
+        'twoFactorEnabled', 'temporaryPassword', 'initialPassword', 'teacherNotes', 'notes',
+        'approvedAt', 'approvedBy', 'reviewedAt', 'reviewedBy', 'rejectedAt', 'rejectionReason',
+        'archivedAt', 'archivedBy', 'archivedFromStatus', 'restoredAt', 'restoredBy', 'reactivatedAt', 'reactivatedBy', 'deactivatedAt', 'deactivatedBy',
+        'createdAt', 'createdAtServer', 'uid', 'id', 'dailyChallengesCompleted'
+      ];
+    }
+
+    // Owner edits own record (Settings: displayName, contact, photo, password
+    // metadata; mobile app: progress, XP, stars, badges, preferences, ...).
+    function isOwnerProfileUpdate(userId) {
+      return request.auth.uid == userId
+        && !changedKeys().hasAny(protectedProfileKeys())
+        && !changedKeys().hasAny(serverOnlyKeys());
+    }
+
+    // Follow / friend-request writes the mobile app makes on ANOTHER student's
+    // record: only these list fields, only adding/removing the caller's own uid,
+    // and notifications only appended (one entry sent by the caller).
+    function socialKeys() {
+      return ['followers', 'following', 'incomingRequests', 'outgoingRequests', 'notifications'];
+    }
+
+    function onlyCallerUidChanged(field) {
+      return onlyUidChangedIn(resource.data.get(field, []), request.resource.data.get(field, []));
+    }
+
+    function onlyUidChangedIn(before, after) {
+      return before is list && after is list
+        && after.toSet().difference(before.toSet()).hasOnly([request.auth.uid])
+        && before.toSet().difference(after.toSet()).hasOnly([request.auth.uid]);
+    }
+
+    function notificationAppendedByCaller() {
+      return appendedByCaller(resource.data.get('notifications', []), request.resource.data.get('notifications', []));
+    }
+
+    function appendedByCaller(before, after) {
+      return before is list && after is list
+        && after.size() == before.size() + 1
+        && after.hasAll(before)
+        && after[after.size() - 1] is map
+        && after[after.size() - 1].get('fromUserId', '') == request.auth.uid;
+    }
+
+    function socialFieldOk(field) {
+      return !changedKeys().hasAny([field]) || onlyCallerUidChanged(field);
+    }
+
+    function isSocialUpdate(caller, userId) {
+      return isActiveStudentData(caller)
+        && request.auth.uid != userId
+        && lowerField(resource.data, 'role') == 'student'
+        && changedKeys().hasOnly(socialKeys())
+        && socialFieldOk('followers') && socialFieldOk('following')
+        && socialFieldOk('incomingRequests') && socialFieldOk('outgoingRequests')
+        && (!changedKeys().hasAny(['notifications']) || notificationAppendedByCaller());
+    }
+
+    // Self-registration (web staff sign-up / mobile student sign-up): only the
+    // new account itself, only as a pending, non-admin account, and never with
+    // an authorization index (that is derived by the server on approval).
+    function isSelfRegistration(userId) {
+      return request.auth.uid == userId
+        && request.resource.data.get('status', '') == 'pending'
+        && request.resource.data.get('role', '') in ['student', 'teacher', 'principal']
+        && !request.resource.data.keys().hasAny(['classKeys', 'studentClassKey']);
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{userId} decisions. The caller's record is read once (me()) and
+    // passed on, together with its resolved access level.
+    // -------------------------------------------------------------------------
+
+    function canReadUser(userId) {
+      return request.auth.uid == userId || canReadUserAs(me());
+    }
+
+    function canReadUserAs(caller) {
+      return canReadUserWith(caller, accessLevel(caller));
+    }
+
+    function canReadUserWith(caller, level) {
+      return level == 'admin'
+        // Staff: students in their RBAC scope (classKeys / program).
+        || (level != 'none' && studentInScope(caller, level, resource.data))
+        // Staff: administrator profiles (feedback replies show the admin's name/photo).
+        || (isActiveStaffData(caller) && resource.data.role == 'admin')
+        // Students: other students (leaderboard, friends, group games).
+        || (isActiveStudentData(caller) && resource.data.role == 'student');
+    }
+
+    // Browsers only create their own pending registration. Student records
+    // (Teacher Console, roster import) and staff accounts are created by the
+    // server (/api/students, /api/admin/create-account).
+    function canCreateUser(userId) {
+      return isSelfRegistration(userId);
+    }
+
+    function canUpdateUser(userId) {
+      return isOwnerProfileUpdate(userId) || canUpdateUserAs(me(), userId);
+    }
+
+    function canUpdateUserAs(caller, userId) {
+      return canUpdateUserWith(caller, userId, accessLevel(caller));
+    }
+
+    function canUpdateUserWith(caller, userId, level) {
+      return (level == 'admin' && !changedKeys().hasAny(serverOnlyKeys()))
+        || isSocialUpdate(caller, userId)
+        // Student management in the browser (approve/reject/archive/restore,
+        // teacher notes): a student in the caller's scope, and never a change
+        // to the scope itself (that goes through /api/students/{id}).
+        || (level != 'none'
+            && studentInScope(caller, level, resource.data)
+            && !changedKeys().hasAny(serverOnlyKeys())
+            && !changedKeys().hasAny(['role']));
+    }
+
+    function canDeleteUser() {
+      return canDeleteUserAs(me());
+    }
+
+    function canDeleteUserAs(caller) {
+      return canDeleteUserWith(caller, accessLevel(caller));
+    }
+
+    function canDeleteUserWith(caller, level) {
+      return level == 'admin' || (level != 'none' && studentInScope(caller, level, resource.data));
+    }
+
+    // =========================================================================
+    // users/{userId}
+    // =========================================================================
+    match /users/{userId} {
+      allow read: if signedIn() && canReadUser(userId);
+      allow create: if signedIn() && canCreateUser(userId);
+      allow update: if signedIn() && canUpdateUser(userId);
+      allow delete: if signedIn() && canDeleteUser();
+
+      // 2FA OTP state — Admin SDK only (/api/2fa/*). Never readable by anyone.
+      match /private/{docId} {
+        allow read, write: if false;
+      }
+
+      // System Preferences (lib/preferences-context.tsx).
+      match /settings/{docId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+        allow read: if isAdmin();
+      }
+
+      // Login history & account activity (Settings, teacher Account page).
+      match /login_activity/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create, update, delete: if signedIn() && request.auth.uid == userId;
+        allow delete: if isAdmin();
+      }
+      match /account_activity/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create, update, delete: if signedIn() && request.auth.uid == userId;
+        allow delete: if isAdmin();
+      }
+
+      // Web sessions (Settings > Security) and mobile devices.
+      match /sessions/{sessionId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+        allow read: if isAdmin();
+      }
+      match /device_sessions/{deviceId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+        allow read: if isAdmin() || (isActiveStaff() && callerCanAccessStudentId(userId));
+      }
+
+      // Learning history written by the mobile app for the signed-in student.
+      match /progress_history/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create: if signedIn() && request.auth.uid == userId;
+      }
+      match /category_progress/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create, update: if signedIn() && request.auth.uid == userId;
+      }
+      match /activity_history/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create: if signedIn() && request.auth.uid == userId;
+      }
+      match /group_challenge_history/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create: if signedIn() && request.auth.uid == userId;
+      }
+
+      // Daily-challenge completions — written only by /api/student/rewards (Admin SDK).
+      match /challenge_completions/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      }
+      // Mobile app: daily quests the student claimed (one doc per quest, written once).
+      match /daily_challenge_history/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create: if signedIn() && request.auth.uid == userId;
+      }
+
+      // [mobile] Settings > Session & Activity Logs (services/activity_log.dart):
+      // the student's own events, fixed event id (a retry overwrites the entry).
+      match /activity_logs/{eventId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create, update: if signedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // =========================================================================
+    // accountRequests/{requestId} — staff registration requests (contain ID documents)
+    // =========================================================================
+    match /accountRequests/{requestId} {
+      allow get: if signedIn() && (request.auth.uid == requestId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.auth.uid == requestId
+        && request.resource.data.get('status', '') == 'pending'
+        && request.resource.data.get('role', '') in ['student', 'teacher', 'principal'];
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // Communication
+    // =========================================================================
+    // Written only by Admin > System Announcements. Staff read PUBLISHED ones
+    // (the bell queries where status == 'published'); drafts and archived ones
+    // are Admin-only, and students never read announcements. Limits match the
+    // form (ANNOUNCEMENT_TITLE_MAX / ANNOUNCEMENT_CONTENT_MAX in the admin page).
+    // Updates check only the fields they change, so the few older documents
+    // written in a previous schema stay editable.
+    function annText(d, f, max) {
+      return d.get(f, null) is string && d.get(f, '').trim().size() > 0 && d.get(f, '').size() <= max;
+    }
+    function annField(d, f) {
+      return (f == 'title' && annText(d, 'title', 150))
+        || (f == 'content' && annText(d, 'content', 5000))
+        || (f == 'category' && d.get('category', '') in ['General', 'Maintenance', 'New Feature', 'Policy', 'Urgent'])
+        || (f == 'priority' && d.get('priority', '') in ['Normal', 'Urgent'])
+        || (f == 'targetAudience' && d.get('targetAudience', '') in ['All Roles', 'Teachers', 'Coordinators', 'Principals'])
+        || (f == 'status' && d.get('status', '') in ['draft', 'published', 'archived'])
+        || (f == 'authorName' && annText(d, 'authorName', 200))
+        || f in ['createdAt', 'publishedAt', 'updatedAt'];
+    }
+    match /announcements/{docId} {
+      allow get, list: if isAdmin()
+        || (isActiveStaff() && resource.data.get('status', '') == 'published');
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasAll(['title', 'content', 'priority', 'targetAudience', 'status'])
+        && request.resource.data.keys().hasOnly(['title', 'content', 'category', 'priority', 'targetAudience', 'status', 'authorName', 'createdAt', 'publishedAt', 'updatedAt'])
+        && annField(request.resource.data, 'title') && annField(request.resource.data, 'content')
+        && annField(request.resource.data, 'priority') && annField(request.resource.data, 'targetAudience')
+        && annField(request.resource.data, 'status')
+        && (!('category' in request.resource.data) || annField(request.resource.data, 'category'))
+        && (!('authorName' in request.resource.data) || annField(request.resource.data, 'authorName'));
+      allow update: if isAdmin()
+        && changedKeys().hasOnly(['title', 'content', 'category', 'priority', 'targetAudience', 'status', 'publishedAt', 'updatedAt'])
+        && annField(request.resource.data, 'title') && annField(request.resource.data, 'content')
+        && (!changedKeys().hasAny(['category']) || annField(request.resource.data, 'category'))
+        && (!changedKeys().hasAny(['priority']) || annField(request.resource.data, 'priority'))
+        && (!changedKeys().hasAny(['targetAudience']) || annField(request.resource.data, 'targetAudience'))
+        && (!changedKeys().hasAny(['status']) || annField(request.resource.data, 'status'));
+      allow delete: if isAdmin();
+    }
+
+    // Admin asks a teacher for sign recordings; the teacher adds videos to it.
+    match /recording_requests/{docId} {
+      allow read: if isAdmin() || (isActiveStaff() && resource.data.teacherId == request.auth.uid);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isActiveStaff() && resource.data.teacherId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['videos', 'status', 'updatedAt']));
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin()
+        || (signedIn() && (resource.data.recipientUid == request.auth.uid
+                           || resource.data.userId == request.auth.uid
+                           || resource.data.recipientId == request.auth.uid));
+      allow create: if isActiveStaff();
+      allow update: if isAdmin()
+        || (signedIn()
+            && (resource.data.recipientUid == request.auth.uid
+                || resource.data.userId == request.auth.uid
+                || resource.data.recipientId == request.auth.uid)
+            && changedKeys().hasOnly(['isRead', 'read', 'readAt']));
+      allow delete: if isAdmin()
+        || (signedIn() && (resource.data.recipientUid == request.auth.uid
+                           || resource.data.userId == request.auth.uid
+                           || resource.data.recipientId == request.auth.uid));
+    }
+
+    // A teacher's follow-up on their own ticket: each reply list that changes
+    // must be the previous list unchanged plus exactly ONE new message, written
+    // by the caller and not posing as an admin or a resolution. Earlier messages
+    // (including admin replies) can never be edited, reordered or removed.
+    function feedbackAppendsOwnMessage(field) {
+      let before = resource.data.get(field, []);
+      let after = request.resource.data.get(field, []);
+      return !changedKeys().hasAny([field])
+        || (before is list && after is list
+            && after.size() == before.size() + 1
+            && (before.size() == 0 || after[0:before.size()] == before)
+            && feedbackOwnMessage(after[before.size()]));
+    }
+
+    function feedbackOwnMessage(m) {
+      return m is map
+        && m.get('senderId', '') == request.auth.uid
+        && !(m.get('senderRole', '').lower() in ['admin', 'administrator'])
+        && m.get('isResolution', false) == false;
+    }
+
+    match /feedback/{feedbackId} {
+      allow read: if isAdmin()
+        || (isActiveStaff() && (resource.data.userId == request.auth.uid
+                                || resource.data.submittedByUid == request.auth.uid));
+      allow create: if isActiveStaff()
+        && (request.resource.data.get('userId', '') == request.auth.uid
+            || request.resource.data.get('submittedByUid', '') == request.auth.uid);
+      allow update: if isAdmin()
+        || (isActiveStaff()
+            && (resource.data.userId == request.auth.uid || resource.data.submittedByUid == request.auth.uid)
+            // A resolved, closed or archived ticket is read-only for its owner.
+            && !(resource.data.get('status', 'pending') in ['resolved', 'closed', 'archived'])
+            && changedKeys().hasOnly(['replies', 'conversation', 'thread', 'status', 'updatedAt'])
+            && changedKeys().hasAny(['replies', 'conversation', 'thread'])
+            && feedbackAppendsOwnMessage('replies')
+            && feedbackAppendsOwnMessage('conversation')
+            && feedbackAppendsOwnMessage('thread')
+            && request.resource.data.get('status', '') in ['pending', 'in_progress', resource.data.get('status', '')]);
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // Audit logs (content-management actions, security events)
+    // =========================================================================
+    match /activity_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isActiveStaff() && request.resource.data.get('userId', '') == request.auth.uid;
+    }
+    match /login_activity/{logId} {
+      allow read: if isAdmin();
+      allow create: if isActiveStaff() && request.resource.data.get('userId', '') == request.auth.uid;
+    }
+
+    // =========================================================================
+    // Learning content
+    // =========================================================================
+    // Published content: read by any active account (dashboard + mobile app),
+    // written only by an administrator (content approval publishes it).
+    match /activity_questions/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if isAdmin();
+    }
+    match /activity_categories/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if isAdmin();
+    }
+    match /level_counters/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if isAdmin();
+    }
+    match /gesture_training_data/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if isAdmin();
+    }
+    // Training-sample metadata (clip timing). The app reads it to shape practice; the
+    // training worker writes it with Admin credentials.
+    match /gesture_training_samples/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if isAdmin();
+    }
+
+    // Email queue for the Trigger Email extension. The app only sends its own
+    // verification code to one address; nothing can be read back, and no other
+    // message shape is accepted (so this cannot be used to send arbitrary mail).
+    match /mail/{mailId} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['to', 'message'])
+        && request.resource.data.to is list
+        && request.resource.data.to.size() == 1
+        && request.resource.data.to[0] is string
+        && request.resource.data.message is map
+        && request.resource.data.message.keys().hasOnly(['subject', 'text', 'html'])
+        && request.resource.data.message.subject is string
+        && request.resource.data.message.subject.matches('^[0-9]{4,8} is your HandSpeak verification code$');
+    }
+    match /deployed_models/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if isAdmin();
+    }
+    // Gesture models published from Content Management (teacher gesture sets):
+    // classes + endpoint the mobile app reads. Written only by the training
+    // worker (Admin SDK) after an administrator approved and it published.
+    // The training collections themselves (gesture_training_*, gesture_model_*,
+    // gesture_sets) have no rule: browsers are denied by the catch-all.
+    match /published_gesture_models/{modelId} {
+      allow read: if isActiveAccount();
+      allow write: if false;
+    }
+    match /signs/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if isAdmin();
+    }
+    // Badges and daily challenges: published by /api/admin/rewards (Admin SDK).
+    // Badge definitions: admins manage them only through /api/admin/rewards
+    // (role checked server-side); no client, admin included, writes them directly.
+    match /badges/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if false;
+    }
+    match /daily_challenges/{docId} {
+      allow read: if isActiveAccount();
+    }
+
+    // Live lessons change only when an admin approves a teacher's submission (content_submissions).
+    match /tutorial_lessons/{docId} {
+      allow read: if isActiveAccount();
+      allow write: if isAdmin();
+    }
+
+    // Content workflow: teachers submit, administrators review and publish.
+    // Fields only the reviewing administrator writes (approve / reject / admin edit
+    // in lib/content-service.ts). A teacher may not invent them — e.g. a fake
+    // "approved by admin" note — when filing or editing a request. The one
+    // exception is rejectionReason: resubmitting clears it to ''.
+    function reviewOnlyKeys() {
+      return ['reviewedById', 'reviewedByName', 'reviewedAt', 'publishedLevel', 'approvalFeedback',
+              'reviewerFeedback', 'adminEditChanges', 'adminEditNote', 'adminEditedAt', 'adminEditedById',
+              'adminEditedByName', 'adminId', 'adminName'];
+    }
+    match /content_submissions/{docId} {
+      // A request is read by its author and by administrators only. The checks that
+      // must look across all teachers ("is this already requested?") run on the server
+      // (/api/content/submission-checks) and return flags, never other teachers' drafts.
+      allow read: if isAdmin()
+        || (isActiveStaff() && resource.data.get('createdById', '') == request.auth.uid);
+      allow create: if (isActiveStaff()
+        && request.resource.data.get('createdById', '') == request.auth.uid
+        && request.resource.data.get('status', 'draft') in ['draft', 'pending']
+        && !request.resource.data.keys().hasAny(reviewOnlyKeys())
+        && request.resource.data.get('rejectionReason', '') == '')
+        // An admin may file the lessons a teacher attached to a category request, in the teacher's name.
+        || (isAdmin() && request.resource.data.get('status', '') == 'pending');
+      allow update: if isAdmin()
+        || (isActiveStaff()
+            && resource.data.get('createdById', '') == request.auth.uid
+            && request.resource.data.get('createdById', '') == request.auth.uid
+            && resource.data.get('status', 'draft') != 'approved'
+            && request.resource.data.get('status', 'draft') in ['draft', 'pending']
+            && !changedKeys().hasAny(reviewOnlyKeys())
+            && (!changedKeys().hasAny(['rejectionReason']) || request.resource.data.get('rejectionReason', '') == ''));
+      allow delete: if isAdmin()
+        || (isActiveStaff()
+            && resource.data.get('createdById', '') == request.auth.uid
+            && resource.data.get('status', 'draft') != 'approved');
+    }
+
+    // =========================================================================
+    // Learning records (written by the mobile app for the signed-in student)
+    // =========================================================================
+    match /gesture_attempts/{attemptId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
+                                    || (isActiveStaff() && callerCanAccessStudentId(resource.data.userId)));
+      allow create: if isActiveStudent() && request.resource.data.get('userId', '') == request.auth.uid;
+      // The app re-saves its own session summary (set merge) as the level goes on.
+      // Only the summary fields the app writes may change — never a stored
+      // grade such as isCorrect / score — and the owner stays the same.
+      allow update: if isActiveStudent()
+        && resource.data.get('userId', '') == request.auth.uid
+        && request.resource.data.get('userId', '') == request.auth.uid
+        && changedKeys().hasOnly(['summary', 'student', 'sectionId', 'level', 'sessionId', 'modelVersions',
+                                  'modelVersion', 'session', 'results', 'mistakes', 'signs', 'needsAttention', 'updatedAt']);
+
+      // Per-question attempts of that session: written by the session's student.
+      match /attempts/{entryId} {
+        allow read: if signedIn() && (get(/databases/$(database)/documents/gesture_attempts/$(attemptId)).data.get('userId', '') == request.auth.uid
+                                      || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(get(/databases/$(database)/documents/gesture_attempts/$(attemptId)).data.get('userId', ''))));
+        allow create, update: if isActiveStudent()
+          && get(/databases/$(database)/documents/gesture_attempts/$(attemptId)).data.get('userId', '') == request.auth.uid;
+      }
+    }
+
+    // Mobile app: running totals per gesture level over all students
+    // (counters only; best-effort analytics, no personal data).
+    match /gesture_level_stats/{levelId} {
+      allow read: if isActiveAccount();
+      allow create, update: if isActiveStudent()
+        && request.resource.data.keys().hasOnly(['level', 'attempts', 'correct', 'scoreSum', 'mistakes', 'signs', 'updatedAt']);
+    }
+
+    // Mobile app: Solo Challenge results (one document per finished game).
+    match /solo_challenges/{resultId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
+                                    || (isActiveStaff() && callerCanAccessStudentId(resource.data.userId)));
+      allow create: if isActiveStudent() && request.resource.data.get('userId', '') == request.auth.uid;
+    }
+    // Practice-mode summaries (one document per Practice session, source "practice").
+    // Deleted by the Firestore TTL policy on expireAt, never by clients.
+    match /tutorial_sessions/{sessionId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
+                                    || (isActiveStaff() && callerCanAccessStudentId(resource.data.userId)));
+      allow create: if isActiveStudent() && request.resource.data.get('userId', '') == request.auth.uid
+                    && request.resource.data.get('source', '') == 'practice';
+      allow update: if isActiveStudent() && resource.data.userId == request.auth.uid
+                    && request.resource.data.get('userId', '') == request.auth.uid;
+    }
+    // Tutorial practice summaries (lesson camera; one document per lesson visit, source "tutorial").
+    // Same per-sign shape as tutorial_sessions plus abandoned / timeToRecognizeMs.
+    match /tutorial_practice_sessions/{sessionId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
+                                    || (isActiveStaff() && callerCanAccessStudentId(resource.data.userId)));
+      allow create: if isActiveStudent() && request.resource.data.get('userId', '') == request.auth.uid
+                    && request.resource.data.get('source', '') == 'tutorial';
+      allow update: if isActiveStudent() && resource.data.userId == request.auth.uid
+                    && request.resource.data.get('userId', '') == request.auth.uid;
+    }
+    // Level plays: one document per play of a non-camera (Easy / Medium) level.
+    match /activity_sessions/{playId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
+                                    || (isActiveStaff() && callerCanAccessStudentId(resource.data.userId)));
+      allow create: if isActiveStudent() && request.resource.data.get('userId', '') == request.auth.uid;
+    }
+    match /activity_attempts/{attemptId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
+                                    || (isActiveStaff() && callerCanAccessStudentId(resource.data.userId)));
+      allow create: if isActiveStudent() && request.resource.data.get('userId', '') == request.auth.uid;
+    }
+    match /group_challenges/{resultId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
+                                    || (isActiveStaff() && callerCanAccessStudentId(resource.data.userId)));
+      allow create: if isActiveStudent() && request.resource.data.get('userId', '') == request.auth.uid;
+    }
+
+    // Multiplayer rooms (mobile Arena).
+    match /rooms/{roomId} {
+      allow read: if isActiveAccount();
+      allow create: if isActiveAccount() && request.resource.data.get('hostUid', '') == request.auth.uid;
+      allow update: if isActiveAccount() && (
+        resource.data.get('hostUid', '') == request.auth.uid
+        || request.auth.uid in resource.data.get('playerUids', [])
+        || request.auth.uid in resource.data.get('invitedUids', [])
+        || (changedKeys().hasOnly(['playerUids'])
+            && request.resource.data.playerUids.toSet().difference(resource.data.get('playerUids', []).toSet()).hasOnly([request.auth.uid])));
+      allow delete: if isActiveAccount() && resource.data.get('hostUid', '') == request.auth.uid;
+
+      match /players/{playerId} {
+        allow read: if isActiveAccount();
+        allow create, update: if isActiveAccount() && playerId == request.auth.uid;
+        allow delete: if isActiveAccount() && (playerId == request.auth.uid
+          || get(/databases/$(database)/documents/rooms/$(roomId)).data.get('hostUid', '') == request.auth.uid);
+      }
+    }
+
+    // =========================================================================
+    // Administration
+    // =========================================================================
+    // Backup manifests are written ONLY by the server (Admin SDK, after the
+    // snapshot is verified) via /api/admin/backups*. Admins may read them;
+    // no client may create, edit or delete one, so a "successful" row cannot
+    // be forged from the browser. system_backup_locks / system_restores are
+    // server-only (catch-all below).
+    match /system_backups/{backupId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // [mobile] Settings > App updates: newest Android release
+    // (written by tools/publish_release.py with the Admin SDK).
+    match /app_config/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Public landing page settings (app download links). Readable by anyone,
+    // including signed-out visitors; edited in Admin → Settings → Mobile App.
+    match /public_config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Everything else (admins, ai_insights_v2, ...) is server-only or unused.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

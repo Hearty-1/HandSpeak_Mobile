@@ -5,6 +5,8 @@
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 <uses-permission android:name="android.permission.INTERNET"/>
 <uses-permission android:name="android.permission.VIBRATE" />
+<!-- Settings > App updates: installs a downloaded HandSpeak release. -->
+<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 <!-- Android 13+: needed to show reminders and challenge invites. -->
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
@@ -51,6 +53,10 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Gesture to Text: Speak uses the phone's text-to-speech engine. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
         <!-- About Us: open the mail app for the developers' emails. -->
         <intent>
             <action android:name="android.intent.action.SENDTO"/>
