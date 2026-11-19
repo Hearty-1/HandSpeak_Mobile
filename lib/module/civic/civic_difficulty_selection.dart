@@ -1,4 +1,6 @@
 import '/services/app_haptics.dart';
+import '/widgets/guide_tour.dart';
+import '/services/live.dart';
 import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
 import '/widgets/difficulty_card.dart';
@@ -536,6 +538,8 @@ class _CivicDifficultySelectionScreenState
     final scaffoldBgColor = Theme.of(context).scaffoldBackgroundColor;
 
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: scaffoldBgColor,
       appBar: AppBar(
@@ -567,13 +571,13 @@ class _CivicDifficultySelectionScreenState
               stream: ProgressService().getUserProgressStream(),
               builder: (context, userProgressSnapshot) {
                 return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
+                  stream: Live.query(FirebaseFirestore.instance
                       .collection('activity_questions')
                       .where('category', isEqualTo: 'civic')
-                      .snapshots(),
+                      ),
                   builder: (context, questionsSnapshot) {
-                    if (userProgressSnapshot.connectionState == ConnectionState.waiting ||
-                        questionsSnapshot.connectionState == ConnectionState.waiting) {
+                    if ((userProgressSnapshot.connectionState == ConnectionState.waiting && !userProgressSnapshot.hasData) ||
+                        (questionsSnapshot.connectionState == ConnectionState.waiting && !questionsSnapshot.hasData)) {
                       return const Center(
                         child: CircularProgressIndicator(color: Color(0xFFFFB300)),
                       );

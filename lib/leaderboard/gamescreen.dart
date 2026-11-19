@@ -1,4 +1,5 @@
 import '/profile/public_profile.dart';
+import '/services/live.dart';
 import '/services/app_haptics.dart';
 import '/widgets/activity_feedback.dart';
 import '/widgets/challenge_feedback.dart';
@@ -530,6 +531,10 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
 
     _questionLogs.add({
       'questionIndex': _currentQuestionIndex + 1,
+      // The same id every time this question appears (its Firestore doc id).
+      'questionId': (currentQ['id'] ?? currentQ['docId'] ?? currentQ['questionId'] ?? 'q_$_currentQuestionIndex').toString(),
+      'type': ChallengeCategories.answerType(
+          _getValueCaseInsensitive(currentQ, ['type', 'question_type', 'questionType', 'kind']), type),
       'questionText': _extractQuestionText(currentQ),
       'userAnswer': answer,
       'correctAnswer': correctAnswer,
@@ -669,6 +674,8 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         'mistakesCount': _mistakesCount,
         'standings': standings,
         'questionBreakdown': _questionLogs,
+        // Per question: {questionId, type, correct} (web dashboard analytics).
+        'answers': ChallengeCategories.answersOf(_questionLogs),
         'completedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -1456,12 +1463,12 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
     final textColor = theme.colorScheme.onSurface;
 
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
+      stream: Live.query(FirebaseFirestore.instance
           .collection('rooms')
           .doc(widget.roomCode)
           .collection('players')
           .orderBy('score', descending: true)
-          .snapshots(),
+          ),
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const SizedBox.shrink();
@@ -1635,12 +1642,12 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
         return StreamBuilder<int>(
           stream: Stream<int>.periodic(const Duration(seconds: 10), (i) => i),
           builder: (context, _) => StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
+          stream: Live.query(FirebaseFirestore.instance
               .collection('rooms')
               .doc(widget.roomCode)
               .collection('players')
               .orderBy('score', descending: true)
-              .snapshots(),
+              ),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const AlertDialog(
@@ -2160,7 +2167,7 @@ class _GameProperScreenState extends State<GameProperScreen> with SingleTickerPr
               Expanded(
                 flex: 5,
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).collection('players').snapshots(),
+                  stream: Live.query(FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).collection('players')),
                   builder: (context, snapshot) {
                     Map<String, int> answerCounts = {};
 

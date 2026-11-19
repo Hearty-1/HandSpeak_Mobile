@@ -106,7 +106,7 @@ class _NumbersTutorialDetailState extends State<NumbersTutorialDetail> {
       // rebuild reset this builder and reloaded the video (flicker).
       future: _resolvedMedia.putIfAbsent(path, () => _resolveImageUrl(path)),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if ((snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)) {
           return Container(
             width: width,
             height: height,

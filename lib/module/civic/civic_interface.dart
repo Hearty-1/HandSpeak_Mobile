@@ -1,4 +1,5 @@
 import '/module/custom_category_screen.dart' show ModuleLearnCard, ModuleSource;
+import '/widgets/guide_tour.dart';
 import '/widgets/button_3d.dart';
 import 'dart:ui'; 
 import 'package:flutter/material.dart';
@@ -53,6 +54,8 @@ class CivicInterface extends StatelessWidget {
         
 
         return Scaffold(
+          floatingActionButtonLocation: PetAssistant.location,
+          floatingActionButton: const PetAssistant(),
           extendBodyBehindAppBar: true, 
           backgroundColor: theme.scaffoldBackgroundColor, 
           

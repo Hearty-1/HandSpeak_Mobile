@@ -74,6 +74,32 @@ class ChallengeCategories {
     return null;
   }
 
+  /// The question type the web dashboard reads in a challenge's `answers`:
+  /// "multiple_choice", "true_false", "sign_to_text", "text_to_sign" or
+  /// "camera" (other kinds keep their own name, e.g. "typing").
+  /// [raw] is the question's stored type, [played] the game's own kind
+  /// (which merges sign_to_text / text_to_sign into multiple choice).
+  static String answerType(Object? raw, String played) {
+    final t = (raw ?? '').toString().trim().toLowerCase();
+    if (const {'sign_to_text', 'text_to_sign', 'multiple_choice', 'true_false'}.contains(t)) return t;
+    if (played == 'camera_spell' || t == 'camera_spell' || t == 'camera') return 'camera';
+    if (played == 'true_false' || t.contains('true') || t == 'tf' || t == 'boolean') return 'true_false';
+    if (played == 'multiple_choice' || t == 'mcq') return 'multiple_choice';
+    return played.isNotEmpty ? played : (t.isEmpty ? 'multiple_choice' : t);
+  }
+
+  /// The `answers` array of a finished challenge (web dashboard): one
+  /// {questionId, type, correct} per answered question, from the game's
+  /// question log (questionId / type / isCorrect).
+  static List<Map<String, dynamic>> answersOf(List<Map<String, dynamic>> log) => [
+        for (final l in log)
+          {
+            'questionId': (l['questionId'] ?? '').toString(),
+            'type': (l['answerType'] ?? l['type'] ?? 'multiple_choice').toString(),
+            'correct': l['isCorrect'] == true,
+          },
+      ];
+
   /// Whether a question's `category` belongs to the challenge [target].
   /// A question without a category never matches.
   static bool matches(String? questionCategory, String target) {

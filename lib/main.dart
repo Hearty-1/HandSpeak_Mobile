@@ -15,7 +15,6 @@ import 'auth/role_selection_screen.dart';
 import 'services/role_service.dart';
 
 // Import the local notification service
-import 'services/local_notification_service.dart';
 import 'services/performance_monitor.dart';
 import 'widgets/app_status_overlay.dart';
 import 'providers/language_provider.dart';
@@ -46,15 +45,18 @@ void main() async {
     );
   });
 
-  // Notifications (and the Android 13+ permission prompt).
-  await step('notifications', LocalNotificationService.initialize);
-
-  // Remembered Faculty / Parent (guest) choice, so they re-enter without the intro.
+  // Faster start: the small settings the first screen needs are read
+  // together (not one after another); the online dot starts after the
+  // first frame, so the app shows sooner.
   final roleProvider = RoleProvider();
-  await step('role', roleProvider.load);
-  await step('performance mode', PerformanceSettings.load); // Settings > Performance Mode
-  await step('vibration', AppHaptics.load); // Settings > Vibration
-  await step('presence', () async => PresenceService.instance.start()); // green online dot
+  await Future.wait([
+    step('role', roleProvider.load), // remembered Faculty / Parent (guest) choice
+    step('performance mode', PerformanceSettings.load), // Settings > Performance Mode
+    step('vibration', AppHaptics.load), // Settings > Vibration
+  ]);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    step('presence', () async => PresenceService.instance.start()); // green online dot
+  });
 
   // Uncaught errors are logged instead of ending the app.
   FlutterError.onError = (details) {
@@ -105,7 +107,7 @@ class MyApp extends StatelessWidget {
           home: StreamBuilder<User?>(
             stream: FirebaseAuth.instance.authStateChanges(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              if ((snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)) {
                 return const Scaffold(
                   body: Center(
                     child: CircularProgressIndicator(color: Color(0xFFFFB800)),

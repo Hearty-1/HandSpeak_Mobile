@@ -1,4 +1,6 @@
 import '/services/presence_service.dart';
+import '/widgets/guide_tour.dart';
+import '/services/live.dart';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -47,6 +49,8 @@ class PublicProfileScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final me = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -56,7 +60,7 @@ class PublicProfileScreen extends StatelessWidget {
             style: TextStyle(fontWeight: FontWeight.w900, color: theme.colorScheme.onSurface)),
       ),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+        stream: Live.doc(FirebaseFirestore.instance.collection('users').doc(userId)),
         builder: (context, snap) {
           if (snap.hasError) {
             return _Message(icon: Icons.lock_outline_rounded, text: L.t('This profile is private.', 'Pribado ang profile na ito.'));

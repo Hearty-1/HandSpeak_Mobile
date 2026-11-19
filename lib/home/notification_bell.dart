@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import '/services/live.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -57,7 +58,7 @@ class _NotificationBellState extends State<NotificationBell> with SingleTickerPr
     final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(currentUserId).snapshots(),
+      stream: Live.doc(FirebaseFirestore.instance.collection('users').doc(currentUserId)),
       builder: (context, snapshot) {
         bool hasUnreadNotifications = false;
         if (snapshot.hasData && snapshot.data!.exists) {

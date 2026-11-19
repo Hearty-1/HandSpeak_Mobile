@@ -1,4 +1,5 @@
 import '/services/presence_service.dart';
+import '/services/live.dart';
 import '/widgets/guide_tour.dart';
 import '/providers/language_provider.dart';
 import '/profile/public_profile.dart';
@@ -85,6 +86,72 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  // Followers / following: only active students count and are listed.
+  // uid -> true (active student) / false (inactive, deleted or not a student).
+  final Map<String, bool> _activeUsers = {};
+  final Set<String> _checking = {};
+
+  static bool _isActiveStudent(Map<String, dynamic> d) {
+    final role = (d['role'] ?? '').toString().trim().toLowerCase();
+    final status = (d['status'] ?? '').toString().trim().toLowerCase();
+    return role == 'student' && (status == 'approved' || status == 'active') && d['deleted'] != true;
+  }
+
+  /// Checks the accounts in [uids] not checked yet (30 per query) and drops
+  /// accounts that no longer exist from this student's own lists.
+  void _checkUsers(Iterable<dynamic> uids, String myUid) {
+    final todo = {
+      for (final u in uids)
+        if (u is String && u.isNotEmpty && !_activeUsers.containsKey(u) && !_checking.contains(u)) u,
+    }.toList();
+    if (todo.isEmpty) return;
+    _checking.addAll(todo);
+    () async {
+      final gone = <String>[];
+      final found = <String, bool>{};
+      // One read per person (the same read the list makes). A batch query
+      // (documentId in [...] + role == student) was refused by the rules
+      // (PERMISSION_DENIED), so nobody was checked and inactive / deleted
+      // friends kept being counted (8 shown, 4 listed).
+      await Future.wait([
+        for (final u in todo)
+          FirebaseFirestore.instance.collection('users').doc(u).get().then((d) {
+            if (!d.exists) {
+              gone.add(u); // deleted account
+            } else {
+              found[u] = _isActiveStudent(d.data() ?? const {});
+            }
+          }).catchError((Object e) {
+            // Not readable (e.g. no longer a student): not counted, kept in
+            // the lists (only a deleted account is removed for good).
+            found[u] = false;
+          }),
+      ]);
+      _checking.removeAll(todo);
+      if (!mounted) return;
+      setState(() {
+        _activeUsers.addAll(found);
+        for (final u in gone) {
+          _activeUsers[u] = false;
+        }
+      });
+      // Deleted accounts: removed from this student's own lists for good.
+      if (gone.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(myUid).update({
+            'followers': FieldValue.arrayRemove(gone),
+            'following': FieldValue.arrayRemove(gone),
+          });
+        } catch (e) {
+          debugPrint('Removing deleted friends failed: $e');
+        }
+      }
+    }();
+  }
+
+  /// Active students only (not yet checked ones stay until the check ends).
+  List<dynamic> _onlyActive(List<dynamic> uids) => uids.where((u) => _activeUsers[u] != false).toList();
+
   // Badge definitions edited from the web (badges collection): rebuild on change.
   void _onCatalog() {
     if (mounted) setState(() {});
@@ -297,9 +364,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           SafeArea(
             child: StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).snapshots(), 
+              stream: Live.doc(FirebaseFirestore.instance.collection('users').doc(currentUser.uid)), 
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if ((snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)) {
                   return Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(theme.primaryColor)));
                 }
 
@@ -322,8 +389,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   stars = userData['stars'] ?? 0;
                   streak = userData['streak'] ?? 0;
 
-                  followersList = userData['followers'] as List<dynamic>? ?? [];
-                  followingList = userData['following'] as List<dynamic>? ?? [];
+                  // Inactive / deleted accounts are not counted or listed.
+                  final allFollowers = userData['followers'] as List<dynamic>? ?? [];
+                  final allFollowing = userData['following'] as List<dynamic>? ?? [];
+                  _checkUsers([...allFollowers, ...allFollowing], currentUser.uid);
+                  followersList = _onlyActive(allFollowers);
+                  followingList = _onlyActive(allFollowing);
                   followersCount = followersList.length;
                   followingCount = followingList.length;
 
@@ -801,6 +872,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     return const SizedBox.shrink();
                                   }
                                   final data = snapshot.data!.data() as Map<String, dynamic>;
+                                  if (!_isActiveStudent(data)) return const SizedBox.shrink();
                                   String name = PublicProfileScreen.publicName(data);
                                   String avatar = data['avatar'] ?? '';
                                   int xp = data['xp'] ?? 0;

@@ -1,4 +1,6 @@
 import '/widgets/level_map.dart';
+import '/widgets/guide_tour.dart';
+import '/services/live.dart';
 import '/widgets/level_avatar.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -563,6 +565,8 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
     final Color nodeLightColor = themeStyles['nodeLightColor'];
 
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: scaffoldBgColor,
       appBar: AppBar(
@@ -592,7 +596,7 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
             child: StreamBuilder<DocumentSnapshot>(
               stream: ProgressService().getUserProgressStream(),
               builder: (context, userProgressSnapshot) {
-                if (userProgressSnapshot.connectionState == ConnectionState.waiting) {
+                if ((userProgressSnapshot.connectionState == ConnectionState.waiting && !userProgressSnapshot.hasData)) {
                   return Center(child: CircularProgressIndicator(color: nodeColor));
                 }
 
@@ -626,12 +630,12 @@ class _NumbersActivityInterfaceState extends State<NumbersActivityInterface> {
                 }
 
                 return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
+                  stream: Live.query(FirebaseFirestore.instance
                       .collection('activity_questions')
                       .where('category', isEqualTo: 'numbers')
-                      .snapshots(),
+                      ),
                   builder: (context, questionsSnapshot) {
-                    if (questionsSnapshot.connectionState == ConnectionState.waiting) {
+                    if ((questionsSnapshot.connectionState == ConnectionState.waiting && !questionsSnapshot.hasData)) {
                       return Center(child: CircularProgressIndicator(color: nodeColor));
                     }
 

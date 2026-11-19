@@ -1,4 +1,5 @@
 import '/services/presence_service.dart';
+import '/services/live.dart';
 import '/widgets/guide_tour.dart';
 import '/providers/language_provider.dart';
 import '/profile/public_profile.dart';
@@ -130,17 +131,93 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   int _scoreOf(Map<String, dynamic> d) =>
       _rankTimeframe == 'weekly' ? ProgressService.weekXpOf(d) : ((d['xp'] as num?)?.toInt() ?? 0);
 
-  /// The leaderboard query. The rules let a student list only student
-  /// accounts, so the query must say role == 'student' (else Firestore
-  /// refuses the whole query and the board is empty).
-  Query<Map<String, dynamic>> _leaderQuery() {
-    // Only an equality filter (automatic single-field index): no composite
-    // index has to exist. Ranked in the app (one school: a few hundred docs).
-    return FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student').limit(2000);
+  // ---- Loading the board (thrifty on Firestore reads) -----------------------
+  //
+  // * Global: Firestore sorts (role == student, xp descending) and sends only
+  //   the page shown (50, more on scroll): about 50 reads per visit instead
+  //   of every student. Needs the composite index role + xp (in
+  //   firestore.indexes.json); until it is deployed the old way is used.
+  // * Weekly League: XP of this week is a field named by the week
+  //   (weekXp.2026-W47), which cannot have a fixed index, so only students
+  //   active since Monday are read (index role + lastActive) and ranked here.
+  // * Read once per visit / tab / page (pull down to refresh), not a live
+  //   stream: a live board re-sent every student's XP change to everyone
+  //   looking at it.
+  // The rules let a student list only student accounts, so every query says
+  // role == 'student'.
+  bool _xpIndexReady = true;
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>? _board;
+  String _boardKey = '';
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _boardFuture() {
+    final key = '$_rankTimeframe/$_leaderLimit';
+    if (_board == null || key != _boardKey) {
+      _boardKey = key;
+      _board = _loadBoard();
+    }
+    return _board!;
   }
 
-  Future<int?> _myRank(String field, int myXp) async {
-    if (_weeklyRanked.isNotEmpty || _rankTimeframe == 'weekly') {
+  Future<void> _refreshBoard() async {
+    setState(() => _board = null);
+    await _boardFuture();
+  }
+
+  static DateTime _weekStart() {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    return day.subtract(Duration(days: day.weekday - 1)).subtract(const Duration(days: 1)); // Monday (1 day slack)
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _loadBoard() async {
+    final users = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student');
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> ranked(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs) =>
+        docs.where((d) => _scoreOf(d.data()) > 0).toList()..sort((a, b) => _scoreOf(b.data()).compareTo(_scoreOf(a.data())));
+
+    if (_rankTimeframe == 'weekly') {
+      try {
+        final snap = await users
+            .where('lastActive', isGreaterThanOrEqualTo: Timestamp.fromDate(_weekStart()))
+            .orderBy('lastActive', descending: true)
+            .limit(_maxRanked)
+            .get();
+        final out = ranked(snap.docs);
+        _weeklyRanked = [for (final d in out) d.data()];
+        return out;
+      } on FirebaseException catch (e) {
+        debugPrint('Weekly board (role + lastActive) failed, reading every student: ${e.code}');
+      }
+      final out = ranked((await users.limit(2000).get()).docs);
+      _weeklyRanked = [for (final d in out) d.data()];
+      return out;
+    }
+
+    _weeklyRanked = const [];
+    if (_xpIndexReady) {
+      try {
+        final snap = await users.orderBy('xp', descending: true).limit(_leaderLimit).get();
+        return snap.docs.where((d) => ((d.data()['xp'] as num?)?.toInt() ?? 0) > 0).toList();
+      } on FirebaseException catch (e) {
+        // failed-precondition: the role + xp index is not deployed yet.
+        debugPrint('Global board (role + xp index) failed, reading every student: ${e.code} ${e.message}');
+        _xpIndexReady = false;
+      }
+    }
+    return ranked((await users.limit(2000).get()).docs).take(_leaderLimit).toList();
+  }
+
+  // The student's own document, one stream for the page (not one per build).
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _meStream =
+      FirebaseFirestore.instance.collection('users').doc(_currentUserId).snapshots();
+
+  // "Your place": counted once per XP value / board, not on every build.
+  final Map<String, Future<int?>> _rankCache = {};
+
+  Future<int?> _myRank(String field, int myXp) =>
+      _rankCache.putIfAbsent('$_rankTimeframe/$field/$myXp', () => _countRank(field, myXp));
+
+  Future<int?> _countRank(String field, int myXp) async {
+    if (_rankTimeframe == 'weekly') {
       return _weeklyRanked.where((d) => _scoreOf(d) > myXp).length + 1;
     }
     try {
@@ -406,8 +483,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               ),
 
               SafeArea(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
+                // Pull down: read the board again (it is not a live stream).
+                child: RefreshIndicator(
+                  onRefresh: _refreshBoard,
+                  child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                   padding: EdgeInsets.only(
                     left: 20 * scale,
                     right: 20 * scale,
@@ -433,6 +513,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                       ),
                     ],
                   ),
+                ),
                 ),
               ),
             ],
@@ -594,10 +675,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         ),
         SizedBox(height: 16 * scale),
 
-        StreamBuilder<QuerySnapshot>(
-          stream: _leaderQuery().snapshots(),
+        FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+          future: _boardFuture(),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if ((snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)) {
               return Padding(
                 padding: EdgeInsets.all(20 * scale),
                 child: CircularProgressIndicator(color: theme.primaryColor),
@@ -606,18 +687,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
             if (snapshot.hasError) debugPrint('Leaderboard query failed: ${snapshot.error}');
             final weekly = _rankTimeframe == 'weekly';
-            final List<QueryDocumentSnapshot> docs;
-            if (snapshot.hasData) {
-              final ranked = snapshot.data!.docs
-                  .where((d) => _scoreOf(d.data() as Map<String, dynamic>) > 0)
-                  .toList()
-                ..sort((a, b) => _scoreOf(b.data() as Map<String, dynamic>)
-                    .compareTo(_scoreOf(a.data() as Map<String, dynamic>)));
-              _weeklyRanked = [for (final d in ranked) d.data() as Map<String, dynamic>];
-              docs = weekly ? ranked : ranked.take(_leaderLimit).toList();
-            } else {
-              docs = const [];
-            }
+            final List<QueryDocumentSnapshot> docs = snapshot.data ?? const [];
 
             if (docs.isEmpty) {
               return Padding(
@@ -687,10 +757,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
                 // Your place, also when you are below the loaded students.
                 if (_currentUserId.isNotEmpty && myIndex == -1)
-                  StreamBuilder<DocumentSnapshot>(
-                    stream: FirebaseFirestore.instance.collection('users').doc(_currentUserId).snapshots(),
+                  StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    stream: _meStream,
                     builder: (context, me) {
-                      final data = (me.data?.data() as Map<String, dynamic>?) ?? const {};
+                      final data = me.data?.data() ?? const <String, dynamic>{};
                       final myXp = _rankTimeframe == 'weekly' ? ProgressService.weekXpOf(data) : ((data['xp'] as num?)?.toInt() ?? 0);
                       return FutureBuilder<int?>(
                         future: _myRank(field, myXp),
@@ -1320,7 +1390,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
                   const SizedBox(height: 16),
                   Expanded(
                     child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student').snapshots(),
+                      stream: Live.query(FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student')),
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
 
@@ -1412,7 +1482,26 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         title: Text("Group Challenges", style: TextStyle(color: textColor, fontWeight: FontWeight.w800, fontFamily: 'Inter', fontSize: 20)),
         centerTitle: true,
         actions: [
-          const SizedBox(width: 8),
+          // The app logo, as on the other main screens.
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0, left: 8.0),
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
+              ),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/pictures/image 66.png',
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      Icon(Icons.account_circle, size: 40, color: Theme.of(context).disabledColor),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -1421,7 +1510,7 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         child: Column(
           children: [
             StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').doc(_currentUserId).snapshots(),
+              stream: Live.doc(FirebaseFirestore.instance.collection('users').doc(_currentUserId)),
               builder: (context, snapshot) {
                 int userXp = 0;
                 int streak = 0;
@@ -1588,12 +1677,12 @@ class _GroupChallengeHubScreenState extends State<GroupChallengeHubScreen> {
         const SizedBox(height: 12),
 
         StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
+          stream: Live.query(FirebaseFirestore.instance
               .collection('rooms')
               .where('status', isEqualTo: 'waiting')
-              .snapshots(),
+              ),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if ((snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)) {
               return Center(child: CircularProgressIndicator(color: theme.primaryColor));
             }
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -1974,9 +2063,9 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
         centerTitle: true,
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode).snapshots(),
+        stream: Live.doc(FirebaseFirestore.instance.collection('rooms').doc(widget.roomCode)),
         builder: (context, roomSnapshot) {
-          if (roomSnapshot.connectionState == ConnectionState.waiting) {
+          if ((roomSnapshot.connectionState == ConnectionState.waiting && !roomSnapshot.hasData)) {
             return Center(child: CircularProgressIndicator(color: theme.primaryColor));
           }
 
@@ -2037,13 +2126,13 @@ class _RoomLobbyScreenState extends State<RoomLobbyScreen> {
                     child: playerUids.isEmpty
                         ? Center(child: Text("Waiting for players to join...", style: TextStyle(color: textColor.withValues(alpha: 0.6))))
                         : StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance
+                            stream: Live.query(FirebaseFirestore.instance
                                 .collection('users')
                                 .where('role', isEqualTo: 'student')
                                 .where(FieldPath.documentId, whereIn: playerUids)
-                                .snapshots(),
+                                ),
                             builder: (context, playersSnapshot) {
-                              if (playersSnapshot.connectionState == ConnectionState.waiting) {
+                              if ((playersSnapshot.connectionState == ConnectionState.waiting && !playersSnapshot.hasData)) {
                                 return Center(child: CircularProgressIndicator(color: theme.primaryColor));
                               }
 

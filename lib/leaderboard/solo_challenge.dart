@@ -1,5 +1,7 @@
 import '/services/app_haptics.dart';
 import '/widgets/activity_feedback.dart';
+import '/widgets/guide_tour.dart';
+import '/providers/language_provider.dart';
 import '/widgets/challenge_feedback.dart';
 import '/module/custom_category_screen.dart' show PublishedCameraSign;
 import '/widgets/button_3d.dart';
@@ -30,6 +32,41 @@ class SoloChallengeSetupScreen extends StatefulWidget {
 }
 
 class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
+  // Hoot's "how to play solo" guide.
+  final GlobalKey _sgCategory = GlobalKey();
+  final GlobalKey _sgRounds = GlobalKey();
+  final GlobalKey _sgTimer = GlobalKey();
+  final GlobalKey _sgStart = GlobalKey();
+
+  void _startSoloGuide() {
+    GuideTour.start(context, [
+      GuideStep(
+        target: _sgCategory,
+        icon: Icons.category_rounded,
+        title: L.t('1. Pick signs', '1. Pumili ng kumpas'),
+        body: L.t('Choose which signs to play.', 'Piliin ang mga kumpas na lalaruin.'),
+      ),
+      GuideStep(
+        target: _sgRounds,
+        icon: Icons.format_list_numbered_rounded,
+        title: L.t('2. How many', '2. Ilan'),
+        body: L.t('Pick the number of questions.', 'Piliin kung ilang tanong.'),
+      ),
+      GuideStep(
+        target: _sgTimer,
+        icon: Icons.timer_rounded,
+        title: L.t('3. Time', '3. Oras'),
+        body: L.t('Seconds for each question. Untimed = no rush.', 'Segundo sa bawat tanong. Untimed = walang oras.'),
+      ),
+      GuideStep(
+        target: _sgStart,
+        icon: Icons.play_arrow_rounded,
+        title: L.t('4. Play!', '4. Maglaro!'),
+        body: L.t('Tap to start. Answer fast for more points.', 'Pindutin para magsimula. Bilisan para mas maraming puntos.'),
+      ),
+    ]);
+  }
+
   // Game music while this screen is open (see SoundProvider.claimBgm).
   late final SoundProvider _bgm;
 
@@ -81,6 +118,8 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: PetAssistant(onGuide: _startSoloGuide),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -98,10 +137,32 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          // The app logo, as on the other main screens.
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0, left: 8.0),
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
+              ),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/pictures/image 66.png',
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      Icon(Icons.account_circle, size: 40, color: Theme.of(context).disabledColor),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 110), // room for Hoot
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -156,6 +217,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
               Text("⚡ Category", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: textColor)),
               const SizedBox(height: 10),
               Container(
+                key: _sgCategory,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 decoration: BoxDecoration(
                   color: textColor.withValues(alpha: 0.04),
@@ -181,6 +243,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
               Text("🎯 Total Rounds", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: textColor)),
               const SizedBox(height: 10),
               Row(
+                key: _sgRounds,
                 children: _roundsOptions.map((rounds) {
                   final bool isSelected = _selectedRounds == rounds;
                   return Expanded(
@@ -217,6 +280,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
               Text("⏱️ Timer Per Question", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: textColor)),
               const SizedBox(height: 10),
               Row(
+                key: _sgTimer,
                 children: _timerOptions.map((timerSec) {
                   final bool isSelected = _selectedTimer == timerSec;
                   final String label = timerSec == 0 ? "Untimed" : "${timerSec}s";
@@ -252,6 +316,7 @@ class _SoloChallengeSetupScreenState extends State<SoloChallengeSetupScreen> {
               const SizedBox(height: 28),
 
               Container(
+                key: _sgStart,
                 width: double.infinity,
                 height: 54,
                 decoration: BoxDecoration(
@@ -679,6 +744,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
       'questionIndex': _currentQuestionIndex + 1,
       'questionId': (q['id'] ?? q['docId'] ?? q['questionId'] ?? '').toString(),
       'type': type,
+      'answerType': ChallengeCategories.answerType(
+          _getValueCaseInsensitive(q, ['type', 'question_type', 'questionType', 'kind']), type),
       'questionText': _extractQuestionText(q),
       'userAnswer': given,
       'correctAnswer': _extractCorrectAnswer(q),
@@ -1299,6 +1366,8 @@ class _GameProperScreenState extends State<GameProperScreen> {
         'peakStreak': _peakStreak,
         'durationSec': DateTime.now().difference(_startedAt).inSeconds,
         'questionBreakdown': _questionLogs,
+        // Per question: {questionId, type, correct} (web dashboard analytics).
+        'answers': ChallengeCategories.answersOf(_questionLogs),
         'startedAt': Timestamp.fromDate(_startedAt),
         'completedAt': FieldValue.serverTimestamp(),
       });

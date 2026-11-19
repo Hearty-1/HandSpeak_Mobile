@@ -1,4 +1,6 @@
 import '/widgets/level_map.dart';
+import '/widgets/guide_tour.dart';
+import '/services/live.dart';
 import '/widgets/level_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -174,6 +176,8 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
     final Color nodeLightColor = themeStyles['nodeLightColor'];
 
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: scaffoldBgColor,
       appBar: AppBar(
@@ -202,7 +206,7 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
             child: StreamBuilder<DocumentSnapshot>(
               stream: ProgressService().getUserProgressStream(),
               builder: (context, userProgressSnapshot) {
-                if (userProgressSnapshot.connectionState == ConnectionState.waiting) {
+                if ((userProgressSnapshot.connectionState == ConnectionState.waiting && !userProgressSnapshot.hasData)) {
                   return Center(child: CircularProgressIndicator(color: nodeColor));
                 }
 
@@ -223,12 +227,12 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
                 }
 
                 return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
+                  stream: Live.query(FirebaseFirestore.instance
                       .collection('activity_questions')
                       .where('category', whereIn: widget.config.aliases)
-                      .snapshots(),
+                      ),
                   builder: (context, questionsSnapshot) {
-                    if (questionsSnapshot.connectionState == ConnectionState.waiting) {
+                    if ((questionsSnapshot.connectionState == ConnectionState.waiting && !questionsSnapshot.hasData)) {
                       return Center(child: CircularProgressIndicator(color: nodeColor));
                     }
 

@@ -40,16 +40,22 @@ class AppRelease {
 
   static AppRelease? fromMap(Map<String, dynamic>? d) {
     if (d == null) return null;
-    final code = (d['versionCode'] as num?)?.toInt() ?? 0;
-    final url = (d['apkUrl'] ?? '').toString().trim();
+    // The names tools/publish_release.py writes, plus the ones the web
+    // dashboard's "Mobile App" upload may use (downloadUrl, size, ...).
+    int? asInt(Object? v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}'.trim());
+    final code = asInt(d['versionCode'] ?? d['buildNumber']) ?? 0;
+    final url = (d['apkUrl'] ?? d['downloadUrl'] ?? d['url'] ?? '').toString().trim();
     if (code <= 0 || url.isEmpty) return null;
+    final rawNotes = d['notes'] ?? d['releaseNotes'] ?? d['whatsNew'];
     return AppRelease(
       versionCode: code,
-      versionName: (d['versionName'] ?? '').toString(),
+      versionName: (d['versionName'] ?? d['version'] ?? '').toString(),
       apkUrl: url,
-      sizeBytes: (d['sizeBytes'] as num?)?.toInt() ?? 0,
-      notes: [for (final n in (d['notes'] as List? ?? const [])) if ('$n'.trim().isNotEmpty) '$n'.trim()],
-      minVersionCode: (d['minVersionCode'] as num?)?.toInt() ?? 0,
+      sizeBytes: asInt(d['sizeBytes'] ?? d['size']) ?? 0,
+      notes: rawNotes is List
+          ? [for (final n in rawNotes) if ('$n'.trim().isNotEmpty) '$n'.trim()]
+          : [for (final n in '${rawNotes ?? ''}'.split('\n')) if (n.trim().isNotEmpty) n.trim()],
+      minVersionCode: asInt(d['minVersionCode']) ?? 0,
     );
   }
 

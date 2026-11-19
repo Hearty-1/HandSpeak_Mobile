@@ -486,7 +486,9 @@ class _GuidePetState extends State<GuidePet> with SingleTickerProviderStateMixin
         ),
       ),
     );
-    return Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: pet);
+    // Its own layer: Hoot's constant animation must not repaint the page
+    // (blurred app bars / glass cards behind it flickered and cost frames).
+    return RepaintBoundary(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: pet));
   }
 }
 
@@ -511,11 +513,13 @@ class PetTopic {
 ///
 ///   Scaffold(floatingActionButton: PetAssistant(onGuide: () => _startGuide(context)), ...)
 class PetAssistant extends StatefulWidget {
-  final VoidCallback onGuide;
+  /// The page's step-by-step guide; null on pages without one (the chat
+  /// then shows only the picture questions).
+  final VoidCallback? onGuide;
 
   /// Extra questions for this page (shown first).
   final List<PetTopic> topics;
-  const PetAssistant({super.key, required this.onGuide, this.topics = const []});
+  const PetAssistant({super.key, this.onGuide, this.topics = const []});
 
   /// Use with it: the floating slot then covers the whole screen (see-through;
   /// only the pet takes touches), so the pet can be dragged anywhere.
@@ -601,7 +605,13 @@ class _PetAssistantState extends State<PetAssistant> {
         screen.height - pad.bottom - 96 - _size,
       );
 
-  Offset _clamp(Offset o, Rect a) => Offset(o.dx.clamp(a.left, a.right), o.dy.clamp(a.top, a.bottom));
+  // A tiny or not-yet-measured screen (first frame, keyboard open, split
+  // screen) can give an area whose right / bottom is before its left / top;
+  // clamp(min, max) throws then (ArgumentError), so max is never below min.
+  Offset _clamp(Offset o, Rect a) => Offset(
+        o.dx.clamp(a.left, math.max(a.left, a.right)),
+        o.dy.clamp(a.top, math.max(a.top, a.bottom)),
+      );
 
   /// The saved place (or the bottom-right corner) on this screen.
   Offset _placed(Rect a) {
@@ -635,10 +645,12 @@ class _PetAssistantState extends State<PetAssistant> {
       backgroundColor: Colors.transparent,
       builder: (sheet) => _PetChat(
         topics: [...widget.topics, ...PetAssistant.common],
-        onGuide: () {
+        onGuide: widget.onGuide == null
+            ? null
+            : () {
           Navigator.pop(sheet);
           // Let the sheet close before the guide measures the page.
-          Future.delayed(const Duration(milliseconds: 300), widget.onGuide);
+          Future.delayed(const Duration(milliseconds: 300), widget.onGuide!);
         },
       ),
     );
@@ -736,8 +748,8 @@ class _ChatLine {
 
 class _PetChat extends StatefulWidget {
   final List<PetTopic> topics;
-  final VoidCallback onGuide;
-  const _PetChat({required this.topics, required this.onGuide});
+  final VoidCallback? onGuide;
+  const _PetChat({required this.topics, this.onGuide});
 
   @override
   State<_PetChat> createState() => _PetChatState();
@@ -1053,6 +1065,7 @@ class _PetChatState extends State<_PetChat> with SingleTickerProviderStateMixin 
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (widget.onGuide != null) ...[
                 // The page guide: the most useful choice, biggest.
                 SizedBox(
                   width: double.infinity,
@@ -1069,6 +1082,8 @@ class _PetChatState extends State<_PetChat> with SingleTickerProviderStateMixin 
                   ),
                 ),
                 const SizedBox(height: 10),
+                ],
+
                 LayoutBuilder(
                   builder: (context, c) {
                     final w = (c.maxWidth - 10) / 2;

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '/services/live.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '/services/activity_log.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -616,6 +617,8 @@ class ProgressService {
       return const Stream.empty();
     }
 
-    return _db.collection('users').doc(currentUser.uid).snapshots();
+    // Shared (services/live.dart): Home, Modules ... rebuilt often; one
+    // listener, the last data at once (no reconnect, no flicker).
+    return Live.doc(_db.collection('users').doc(currentUser.uid));
   }
 }

@@ -1,4 +1,6 @@
 import 'dart:ui';
+import '/widgets/guide_tour.dart';
+import '/services/live.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -45,6 +47,8 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
     );
 
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
@@ -128,10 +132,10 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
                 ),
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
+                    stream: Live.query(FirebaseFirestore.instance
                         .collection('tutorial_lessons')
                         .where('category', isEqualTo: 'numbers')
-                        .snapshots(),
+                        ),
                     builder: (context, cmsSnapshot) {
                       List<Map<String, dynamic>> mergedLessons = List.from(_defaultLessons);
 

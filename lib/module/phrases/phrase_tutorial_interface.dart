@@ -1,4 +1,5 @@
 import 'dart:ui'; 
+import '/widgets/guide_tour.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -192,6 +193,8 @@ class _PhraseTutorialInterfaceState extends State<PhraseTutorialInterface> {
     );
 
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true, 
       backgroundColor: theme.scaffoldBackgroundColor,
       

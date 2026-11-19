@@ -8,7 +8,6 @@
 <!-- Settings > App updates: installs a downloaded HandSpeak release. -->
 <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 <!-- Android 13+: needed to show reminders and challenge invites. -->
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="HandSpeak"
         android:name="${applicationName}"

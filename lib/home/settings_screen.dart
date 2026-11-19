@@ -1,4 +1,6 @@
 import '/services/app_update_service.dart';
+import '/widgets/guide_tour.dart';
+import '/services/live.dart';
 import '/services/app_haptics.dart';
 import '/widgets/button_3d.dart';
 import 'dart:math';
@@ -22,6 +24,85 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  // Hoot's "what each setting does" guide.
+  final GlobalKey _sgPerf = GlobalKey();
+  final GlobalKey _sgVibration = GlobalKey();
+  final GlobalKey _sgMusic = GlobalKey();
+  final GlobalKey _sgSounds = GlobalKey();
+  final GlobalKey _sgLanguage = GlobalKey();
+  final GlobalKey _sgTheme = GlobalKey();
+  final GlobalKey _sg2fa = GlobalKey();
+  final GlobalKey _sgPassword = GlobalKey();
+  final GlobalKey _sgLogs = GlobalKey();
+  final GlobalKey _sgUpdate = GlobalKey();
+
+  void _startSettingsGuide() {
+    GuideTour.start(context, [
+      GuideStep(
+        target: _sgPerf,
+        icon: Icons.speed_rounded,
+        title: L.t('Performance Mode', 'Performance Mode'),
+        body: L.t('Turn on if the app is slow. Fewer effects, smoother camera.',
+            'Buksan kung mabagal ang app. Mas kaunting effect, mas maayos ang camera.'),
+      ),
+      GuideStep(
+        target: _sgVibration,
+        icon: Icons.vibration_rounded,
+        title: L.t('Vibration', 'Pag-vibrate'),
+        body: L.t('The phone buzzes when you are right or wrong.', 'Mag-vi-vibrate ang phone kapag tama o mali.'),
+      ),
+      GuideStep(
+        target: _sgMusic,
+        icon: Icons.music_note_rounded,
+        title: L.t('Background Music', 'Background na Musika'),
+        body: L.t('Music while you use the app.', 'Musika habang ginagamit ang app.'),
+      ),
+      GuideStep(
+        target: _sgSounds,
+        icon: Icons.volume_up_rounded,
+        title: L.t('Sound Effects', 'Sound Effects'),
+        body: L.t('Sounds for right and wrong answers.', 'Tunog para sa tama at maling sagot.'),
+      ),
+      GuideStep(
+        target: _sgLanguage,
+        icon: Icons.translate_rounded,
+        title: L.t('Language', 'Wika'),
+        body: L.t('English or Filipino.', 'English o Filipino.'),
+      ),
+      GuideStep(
+        target: _sgTheme,
+        icon: Icons.dark_mode_rounded,
+        title: L.t('Theme', 'Tema'),
+        body: L.t('Light or dark screen.', 'Maliwanag o madilim na screen.'),
+      ),
+      GuideStep(
+        target: _sg2fa,
+        icon: Icons.verified_user_rounded,
+        title: L.t('Two-Factor', 'Two-Factor'),
+        body: L.t('Extra safe: a code is sent to your email when you log in.',
+            'Dagdag na seguridad: may code sa email tuwing mag-log in.'),
+      ),
+      GuideStep(
+        target: _sgPassword,
+        icon: Icons.lock_reset_rounded,
+        title: L.t('Change Password', 'Palitan ang Password'),
+        body: L.t('Make a new password.', 'Gumawa ng bagong password.'),
+      ),
+      GuideStep(
+        target: _sgLogs,
+        icon: Icons.history_rounded,
+        title: L.t('Activity Logs', 'Activity Logs'),
+        body: L.t('See what you did and where you logged in.', 'Tingnan ang iyong ginawa at kung saan nag-log in.'),
+      ),
+      GuideStep(
+        target: _sgUpdate,
+        icon: Icons.system_update_rounded,
+        title: L.t('App updates', 'Mga update'),
+        body: L.t('Get the newest version of HandSpeak.', 'Kunin ang pinakabagong HandSpeak.'),
+      ),
+    ]);
+  }
+
   static const int _otpValidMinutes = 10;
 
   bool _twoFactorEnabled = false;
@@ -278,6 +359,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final textColor = theme.colorScheme.onSurface;
 
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: PetAssistant(onGuide: _startSettingsGuide),
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -300,7 +383,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // Same light mode as the lag warning's button (saved on the phone).
               ValueListenableBuilder<bool>(
                 valueListenable: PerformanceSettings.reduceEffects,
-                builder: (context, on, _) => Pressable3D(child: SwitchListTile(
+                builder: (context, on, _) => Pressable3D(key: _sgPerf, child: SwitchListTile(
                   activeThumbColor: const Color(0xFFFFB800),
                   inactiveThumbColor: Colors.grey.shade400,
                   inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -314,7 +397,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // Haptic feedback for answers, recording, rewards (saved on the phone).
               ValueListenableBuilder<bool>(
                 valueListenable: AppHaptics.enabled,
-                builder: (context, on, _) => Pressable3D(child: SwitchListTile(
+                builder: (context, on, _) => Pressable3D(key: _sgVibration, child: SwitchListTile(
                   activeThumbColor: const Color(0xFFFFB800),
                   inactiveThumbColor: Colors.grey.shade400,
                   inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -325,7 +408,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 )),
               ),
               Divider(height: 1, color: theme.dividerColor),
-              Pressable3D(child: SwitchListTile(
+              Pressable3D(key: _sgMusic, child: SwitchListTile(
                 activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -342,7 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               )),
               Divider(height: 1, color: theme.dividerColor),
-              Pressable3D(child: SwitchListTile(
+              Pressable3D(key: _sgSounds, child: SwitchListTile(
                 activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -359,7 +442,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               )),
               Divider(height: 1, color: theme.dividerColor),
-              Pressable3D(child: ListTile(
+              Pressable3D(key: _sgLanguage, child: ListTile(
                 leading: const Icon(Icons.translate_rounded, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Language', 'Wika'), 'Wika'), style: TextStyle(color: textColor)),
                 trailing: DropdownButton<String>(
@@ -377,7 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               )),
               Divider(height: 1, color: theme.dividerColor),
-              Pressable3D(child: ListTile(
+              Pressable3D(key: _sgTheme, child: ListTile(
                 leading: const Icon(CupertinoIcons.paintbrush_fill, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Theme', 'Tema'), 'Tema'), style: TextStyle(color: textColor)),
                 trailing: DropdownButton<String>(
@@ -409,7 +492,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingsCard(
             context: context,
             children: [
-              Pressable3D(child: SwitchListTile(
+              Pressable3D(key: _sg2fa, child: SwitchListTile(
                 activeThumbColor: const Color(0xFFFFB800),
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
@@ -426,7 +509,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               )),
               Divider(height: 1, color: theme.dividerColor),
-              Pressable3D(child: ListTile(
+              Pressable3D(key: _sgPassword, child: ListTile(
                 leading: const Icon(CupertinoIcons.lock_fill, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Change Password', 'Palitan ang Password'), 'Palitan ang Password'), style: TextStyle(color: textColor)),
                 trailing: const Icon(CupertinoIcons.chevron_forward, size: 18, color: Color(0xFFFFB800)),
@@ -435,7 +518,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               )),
               Divider(height: 1, color: theme.dividerColor),
-              Pressable3D(child: ListTile(
+              Pressable3D(key: _sgLogs, child: ListTile(
                 leading: const Icon(CupertinoIcons.device_phone_portrait, color: Color(0xFFFFB800)),
                 title: Text(context.tr(context.tr('Session & Activity Logs', 'Session at Activity Logs'), 'Session at Activity Logs'), style: TextStyle(color: textColor)),
                 trailing: const Icon(CupertinoIcons.chevron_forward, size: 18, color: Color(0xFFFFB800)),
@@ -447,7 +530,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           _buildSectionHeader(context.tr('App', 'App'), textColor),
-          _buildSettingsCard(context: context, children: const [AppUpdateTile()]),
+          _buildSettingsCard(context: context, children: [KeyedSubtree(key: _sgUpdate, child: const AppUpdateTile())]),
 
           const SizedBox(height: 40),
         ],
@@ -635,7 +718,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildDeviceHistoryTab(String uid, ScrollController scrollController) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(uid).collection('device_sessions').snapshots(),
+      stream: Live.query(FirebaseFirestore.instance.collection('users').doc(uid).collection('device_sessions')),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         return ListView(

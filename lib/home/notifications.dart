@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '/widgets/guide_tour.dart';
 import '/services/offline_sync.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -249,6 +250,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         final hasUnread = notifications.any((n) => n['isRead'] == false);
 
         return Scaffold(
+          floatingActionButtonLocation: PetAssistant.location,
+          floatingActionButton: const PetAssistant(),
           backgroundColor: theme.scaffoldBackgroundColor,
           appBar: AppBar(
             title: Text(
@@ -299,7 +302,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot,
     List<Map<String, dynamic>> notifications,
   ) {
-    if (snapshot.connectionState == ConnectionState.waiting) {
+    if ((snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)) {
       return Center(child: CircularProgressIndicator(color: theme.primaryColor));
     }
 

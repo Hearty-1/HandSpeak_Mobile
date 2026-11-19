@@ -657,6 +657,8 @@ class DailyChallengeService {
               'xp': FieldValue.increment(q.reward),
               ...ProgressService.periodXp(q.reward),
               moduleField: FieldValue.increment(q.reward),
+              // The Weekly League reads this week's active students.
+              'lastActive': FieldValue.serverTimestamp(),
             },
             SetOptions(merge: true));
         return true;

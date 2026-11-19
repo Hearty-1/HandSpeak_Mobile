@@ -1,4 +1,6 @@
 import '/profile/public_profile.dart';
+import '/widgets/guide_tour.dart';
+import '/services/live.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -89,6 +91,8 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     final textColor = theme.colorScheme.onSurface;
 
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
@@ -101,9 +105,9 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
         iconTheme: IconThemeData(color: textColor),
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(currentUserId).snapshots(),
+        stream: Live.doc(FirebaseFirestore.instance.collection('users').doc(currentUserId)),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if ((snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)) {
             return Center(child: CircularProgressIndicator(color: theme.primaryColor));
           }
 

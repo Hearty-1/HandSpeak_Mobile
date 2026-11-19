@@ -1,4 +1,7 @@
 import '/services/app_haptics.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '/widgets/guide_tour.dart';
+import '/services/live.dart';
 import '/widgets/sign_recording.dart';
 import '/widgets/activity_feedback.dart';
 import '/widgets/button_3d.dart';
@@ -187,7 +190,7 @@ class CloudCategoriesSection extends StatelessWidget {
     final textColor = Theme.of(context).colorScheme.onSurface;
     final canProgress = context.roles.can(AppFeature.progress);
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('activity_categories').snapshots(),
+      stream: Live.query(FirebaseFirestore.instance.collection('activity_categories')),
       builder: (context, snap) {
         final cats = [
           for (final d in snap.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[])
@@ -298,23 +301,57 @@ class ModuleSource {
     return (m is Map ? m.length : 0) >= lessons;
   }
 
-  /// Lessons and activity levels of the module (read once per session).
-  Future<({int lessons, List<String> levels})> totals() => _totals[masteryKey] ??= () async {
-        final db = FirebaseFirestore.instance;
-        final cats = categories.take(30).toList();
-        final lessons = await db.collection('tutorial_lessons').where('category', whereIn: cats).get();
-        final questions = await db.collection('activity_questions').where('category', whereIn: cats).get();
-        final levels = {
-          for (final d in questions.docs)
-            if ('${d.data()['level'] ?? ''}'.trim().isNotEmpty) '${d.data()['level']}'.trim(),
-        }.toList();
-        _knownLessons[masteryKey] = lessons.size;
-        return (lessons: lessons.size, levels: levels);
-      }()
-          .catchError((Object e) {
+  /// Lessons and activity levels of the module. Faster and cheaper: the
+  /// lessons are counted on the server (one read, not one per lesson), the
+  /// two reads run together, and the result is kept on the phone for 12 h
+  /// (the next launches show the % at once).
+  Future<({int lessons, List<String> levels})> totals() => _totals[masteryKey] ??= _cachedTotals().catchError((Object e) {
         _totals.remove(masteryKey);
         throw e;
       });
+
+  static const Duration _totalsFor = Duration(hours: 12);
+
+  Future<({int lessons, List<String> levels})> _cachedTotals() async {
+    final key = 'module_totals_v1_$masteryKey';
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(key);
+      if (saved != null) {
+        final j = jsonDecode(saved) as Map<String, dynamic>;
+        final at = DateTime.fromMillisecondsSinceEpoch((j['t'] as num).toInt());
+        if (DateTime.now().difference(at) < _totalsFor) {
+          final n = (j['lessons'] as num).toInt();
+          _knownLessons[masteryKey] = n;
+          return (lessons: n, levels: [for (final l in j['levels'] as List) '$l']);
+        }
+      }
+    } catch (_) {}
+    final fresh = await _readTotals();
+    try {
+      await prefs?.setString(
+          key, jsonEncode({'t': DateTime.now().millisecondsSinceEpoch, 'lessons': fresh.lessons, 'levels': fresh.levels}));
+    } catch (_) {}
+    return fresh;
+  }
+
+  Future<({int lessons, List<String> levels})> _readTotals() async {
+    final db = FirebaseFirestore.instance;
+    final cats = categories.take(30).toList();
+    final results = await Future.wait<Object>([
+      db.collection('tutorial_lessons').where('category', whereIn: cats).count().get(),
+      db.collection('activity_questions').where('category', whereIn: cats).get(),
+    ]);
+    final lessons = (results[0] as AggregateQuerySnapshot).count ?? 0;
+    final questions = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    final levels = {
+      for (final d in questions.docs)
+        if ('${d.data()['level'] ?? ''}'.trim().isNotEmpty) '${d.data()['level']}'.trim(),
+    }.toList();
+    _knownLessons[masteryKey] = lessons;
+    return (lessons: lessons, levels: levels);
+  }
 
   /// The student's completion from users/{uid} [data].
   ModuleProgress progress(Map<String, dynamic> data, ({int lessons, List<String> levels}) t) {
@@ -874,6 +911,8 @@ class CloudCategoryScreen extends StatelessWidget {
       stream: ProgressService().getUserProgressStream(),
       builder: (context, snapshot) {
         return Scaffold(
+          floatingActionButtonLocation: PetAssistant.location,
+          floatingActionButton: const PetAssistant(),
           extendBodyBehindAppBar: true,
           backgroundColor: theme.scaffoldBackgroundColor,
           appBar: AppBar(
@@ -1021,6 +1060,8 @@ class _CloudTutorialListScreenState extends State<CloudTutorialListScreen> {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
@@ -2019,7 +2060,7 @@ class CloudActivityLevelsScreen extends StatelessWidget {
               style: TextStyle(color: textColor, fontSize: 22, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -0.96)),
         ),
         body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('activity_questions').where('category', whereIn: category.aliases).snapshots(),
+          stream: Live.query(FirebaseFirestore.instance.collection('activity_questions').where('category', whereIn: category.aliases)),
           builder: (context, snap) {
             if (!snap.hasData) return Center(child: CircularProgressIndicator(color: theme.primaryColor));
             final counts = <String, int>{};
@@ -2761,6 +2802,8 @@ class _CloudModelPracticeState extends State<CloudModelPractice> with WidgetsBin
                     ),
                   );
     return Scaffold(
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(

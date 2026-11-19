@@ -1,5 +1,7 @@
 import '/services/presence_service.dart';
 import '/profile/public_profile.dart';
+import '/widgets/guide_tour.dart';
+import '/providers/language_provider.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -15,8 +17,91 @@ class AddFriendScreen extends StatefulWidget {
 }
 
 class _AddFriendScreenState extends State<AddFriendScreen> {
+  // Hoot's "how to add friends" guide.
+  final GlobalKey _fgSearch = GlobalKey();
+  final GlobalKey _fgList = GlobalKey();
+  final GlobalKey _fgRequests = GlobalKey();
+
+  void _startFriendsGuide() {
+    GuideTour.start(context, [
+      GuideStep(
+        target: _fgSearch,
+        icon: Icons.search_rounded,
+        title: L.t('1. Find', '1. Hanapin'),
+        body: L.t("Type your classmate's name.", 'I-type ang pangalan ng kaklase.'),
+      ),
+      GuideStep(
+        target: _fgList,
+        icon: Icons.person_add_alt_1_rounded,
+        title: L.t('2. Add', '2. Idagdag'),
+        body: L.t('Tap Follow next to their name.', 'Pindutin ang Follow sa tabi ng pangalan.'),
+      ),
+      GuideStep(
+        target: _fgRequests,
+        icon: Icons.notifications_rounded,
+        title: L.t('3. Requests', '3. Mga request'),
+        body: L.t('See who wants to be your friend.', 'Tingnan kung sino ang gustong makipagkaibigan.'),
+      ),
+    ]);
+  }
+
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = ""; 
+  String _searchQuery = "";
+
+  // ---- Loading players (thrifty on Firestore reads) -------------------------
+  // Was: a live stream of every student (all of them read, and every change
+  // of any student re-sent while the screen was open). Now:
+  //  * suggested players: the 30 most recently active students, read once;
+  //  * search: the student list is read only when something is typed, and
+  //    kept for 10 minutes (more typing costs nothing);
+  //  * this student's own follow lists: a stream of their own document only.
+  static const int _suggestedCount = 30;
+  static Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>? _allStudents;
+  static DateTime _allStudentsAt = DateTime(2000);
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>>? _suggested;
+
+  Query<Map<String, dynamic>> get _students =>
+      FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student');
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _suggestedFuture() => _suggested ??= () async {
+        try {
+          final snap = await _students.orderBy('lastActive', descending: true).limit(_suggestedCount).get();
+          return snap.docs;
+        } on FirebaseException catch (e) {
+          // The role + lastActive index is not there: a small plain page.
+          debugPrint('Suggested players (role + lastActive) failed: ${e.code}');
+          return (await _students.limit(_suggestedCount).get()).docs;
+        }
+      }();
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _searchFuture() {
+    if (_allStudents == null || DateTime.now().difference(_allStudentsAt) > const Duration(minutes: 10)) {
+      _allStudentsAt = DateTime.now();
+      _allStudents = _students.limit(2000).get().then((s) => s.docs).catchError((Object e) {
+        _allStudents = null; // try again on the next search
+        throw e;
+      });
+    }
+    return _allStudents!;
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _suggested = null;
+      if (_searchQuery.isNotEmpty) _allStudents = null;
+    });
+    await (_searchQuery.isEmpty ? _suggestedFuture() : _searchFuture());
+  }
+
+  /// The requests bell's stream of the same document, made once (not per build).
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>>? _bellStream = FirebaseAuth.instance.currentUser == null
+      ? null
+      : FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).snapshots();
+
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>>? _meStream = FirebaseAuth.instance.currentUser == null
+      ? null
+      : FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).snapshots();
+
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +111,8 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
 
     return Scaffold( 
       backgroundColor: theme.scaffoldBackgroundColor,
+      floatingActionButtonLocation: PetAssistant.location,
+      floatingActionButton: PetAssistant(onGuide: _startFriendsGuide),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -48,7 +135,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
         actions: [
           if (currentUserId != null)
             StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').doc(currentUserId).snapshots(),
+              stream: _bellStream,
               builder: (context, snapshot) {
                 int requestCount = 0;
                 if (snapshot.hasData && snapshot.data!.exists) {
@@ -62,6 +149,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 }
 
                 return Padding(
+                  key: _fgRequests,
                   padding: const EdgeInsets.only(right: 12.0),
                   child: Stack(
                     alignment: Alignment.center,
@@ -104,6 +192,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
             child: Container(
+              key: _fgSearch,
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(20),
@@ -150,23 +239,19 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
           ),
 
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'student').snapshots(),
+            key: _fgList,
+            child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: _meStream,
+              builder: (context, meSnap) {
+              return FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+              future: _searchQuery.isEmpty ? _suggestedFuture() : _searchFuture(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if ((snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)) {
                   return Center(child: CircularProgressIndicator(color: theme.primaryColor));
                 }
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
                   return Center(child: Text("No users found.", style: TextStyle(color: textColor.withValues(alpha: 0.5))));
-                }
-
-                DocumentSnapshot? currentUserDoc;
-                for (var doc in snapshot.data!.docs) {
-                  if (doc.id == currentUserId) {
-                    currentUserDoc = doc;
-                    break;
-                  }
                 }
 
                 List<dynamic> followingList = [];
@@ -174,18 +259,18 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                 List<dynamic> followersList = [];
                 String currentUserName = 'Someone';
 
-                if (currentUserDoc != null) {
-                  final data = currentUserDoc.data() as Map<String, dynamic>;
-                  followingList = data['following'] ?? [];
-                  incomingRequests = data['incomingRequests'] ?? [];
-                  followersList = data['followers'] ?? [];
-                  currentUserName = PublicProfileScreen.publicName(data);
+                final me = meSnap.data?.data();
+                if (me != null) {
+                  followingList = me['following'] ?? [];
+                  incomingRequests = me['incomingRequests'] ?? [];
+                  followersList = me['followers'] ?? [];
+                  currentUserName = PublicProfileScreen.publicName(me);
                 }
 
-                final users = snapshot.data!.docs.where((doc) {
+                final users = snapshot.data!.where((doc) {
                   if (doc.id == currentUserId) return false;
                   
-                  final data = doc.data() as Map<String, dynamic>;
+                  final data = doc.data();
                   final String status = (data['status'] ?? '').toString().toLowerCase();
                   final bool isActive = data['isActive'] ?? false;
                   if (!(status == 'approved' || isActive == true)) return false;
@@ -210,14 +295,16 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                   );
                 }
 
-                return ListView.separated(
-                  physics: const BouncingScrollPhysics(),
+                return RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   itemCount: users.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final doc = users[index];
-                    final data = doc.data() as Map<String, dynamic>;
+                    final data = doc.data();
                     
                     final bool isFollowing = followingList.contains(doc.id);
                     final bool isTargetFollowingMe = incomingRequests.contains(doc.id) || followersList.contains(doc.id);
@@ -228,10 +315,13 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
                       currentUserId: currentUserId,
                       currentUserName: currentUserName,
                       isInitiallyFollowing: isFollowing,
-                      isTargetFollowingMe: isTargetFollowingMe, 
+                      isTargetFollowingMe: isTargetFollowingMe,
                     );
                   },
+                ),
                 );
+              },
+              );
               },
             ),
           ),
