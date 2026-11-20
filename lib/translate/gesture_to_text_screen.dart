@@ -127,7 +127,7 @@ class _GestureToTextScreenState extends State<GestureToTextScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(L.t('Copied', 'Nakopya')),
-        behavior: SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.fixed,
         duration: const Duration(seconds: 1),
       ),
     );

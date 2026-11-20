@@ -1102,3 +1102,44 @@ class _PetChatState extends State<_PetChat> with SingleTickerProviderStateMixin 
     );
   }
 }
+
+
+/// The guide of a module page (Alphabet, Numbers, Greetings, Civic and the
+/// web categories): Tutorial -> Practice -> Activity -> Challenges. Each page
+/// keeps one instance and puts its keys on those four parts.
+class ModulePageGuide {
+  final GlobalKey tutorial = GlobalKey();
+  final GlobalKey practice = GlobalKey();
+  final GlobalKey activities = GlobalKey();
+  final GlobalKey challenges = GlobalKey();
+
+  void start(BuildContext context) {
+    GuideTour.start(context, [
+      GuideStep(
+        target: tutorial,
+        icon: Icons.play_circle_rounded,
+        title: L.t('1. Learn', '1. Matuto'),
+        body: L.t('Watch each sign, then copy it on camera. The bar shows your progress.',
+            'Panoorin ang bawat kumpas, saka gayahin sa camera. Ipinapakita ng bar ang iyong progreso.'),
+      ),
+      GuideStep(
+        target: practice,
+        icon: Icons.camera_alt_rounded,
+        title: L.t('2. Practise', '2. Magsanay'),
+        body: L.t('Practise all the signs with the camera.', 'Sanayin ang lahat ng kumpas gamit ang camera.'),
+      ),
+      GuideStep(
+        target: activities,
+        icon: Icons.stars_rounded,
+        title: L.t('3. Play levels', '3. Maglaro ng level'),
+        body: L.t('Easy, Medium and Hard levels. Win stars and XP.', 'Easy, Medium at Hard na level. Manalo ng stars at XP.'),
+      ),
+      GuideStep(
+        target: challenges,
+        icon: Icons.sports_esports_rounded,
+        title: L.t('4. Challenges', '4. Mga hamon'),
+        body: L.t('Play games with your classmates.', 'Makipaglaro sa iyong mga kaklase.'),
+      ),
+    ]);
+  }
+}

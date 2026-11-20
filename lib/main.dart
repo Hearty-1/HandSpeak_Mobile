@@ -157,56 +157,81 @@ class _IntroSlide {
   });
 }
 
-const List<_IntroSlide> _introSlides = [
-  _IntroSlide(
-    image: 'assets/pictures/image 66.png',
-    eyebrow: 'WELCOME TO',
-    title: 'HandSpeak',
-    body: 'Learn Filipino Sign Language (FSL) anytime, using only your phone and its camera.',
-    chips: [(Icons.sign_language_rounded, 'FSL'), (Icons.phone_android_rounded, 'On your phone')],
-    accent: Color(0xFFFFB800),
-  ),
-  _IntroSlide(
-    image: 'assets/pictures/abc.png',
-    eyebrow: 'LEARN',
-    title: 'Step by step',
-    body: 'Start with the alphabet and numbers, then move on to greetings.',
-    chips: [(Icons.abc_rounded, 'Alphabet'), (Icons.pin_rounded, 'Numbers'), (Icons.chat_rounded, 'Greetings')],
-    accent: Color(0xFFFF8A3D),
-  ),
-  _IntroSlide(
-    image: 'assets/pictures/sign.png',
-    eyebrow: 'PRACTICE',
-    title: 'Your camera is your coach',
-    body: 'Sign in front of the camera. HandSpeak checks your handshape and movement and tells you right away how to improve.',
-    chips: [(Icons.videocam_rounded, 'Live camera'), (Icons.auto_awesome_rounded, 'Instant feedback')],
-    accent: Color(0xFF7DC579),
-  ),
-  _IntroSlide(
-    image: 'assets/pictures/civic.png',
-    eyebrow: 'CULTURE',
-    title: 'Sign with pride',
-    body: 'Learn to sign Lupang Hinirang, so every Filipino student can take part in them.',
-    chips: [(Icons.flag_rounded, 'Lupang Hinirang'), (Icons.groups_rounded, 'Civic')],
-    accent: Color(0xFF3D7BFF),
-  ),
-  _IntroSlide(
-    image: 'assets/pictures/troph.png',
-    eyebrow: 'PLAY',
-    title: 'Earn, level up, compete',
-    body: 'Collect XP and Stars, keep your daily streak, unlock badges and challenge your classmates in the arena.',
-    chips: [(Icons.bolt_rounded, 'XP'), (Icons.local_fire_department_rounded, 'Streaks'), (Icons.emoji_events_rounded, 'Badges')],
-    accent: Color(0xFFB26BE0),
-  ),
-  _IntroSlide(
-    image: 'assets/pictures/people.png',
-    eyebrow: 'OUR PURPOSE',
-    title: 'A bridge, not a barrier',
-    body: 'HandSpeak helps Deaf and hearing Filipinos understand each other, one sign at a time.',
-    chips: [(Icons.favorite_rounded, 'Inclusion'), (Icons.diversity_3_rounded, 'For everyone')],
-    accent: Color(0xFFFF5C8A),
-  ),
-];
+/// The welcome slides (English / Filipino, following the app language).
+List<_IntroSlide> get _introSlides => [
+      _IntroSlide(
+        image: 'assets/pictures/image 66.png',
+        eyebrow: L.t('WELCOME TO', 'MALIGAYANG PAGDATING SA'),
+        title: 'HandSpeak',
+        body: L.t('Learn Filipino Sign Language (FSL) anytime, using only your phone and its camera.',
+            'Matuto ng Filipino Sign Language (FSL) kahit kailan, gamit lamang ang iyong phone at ang camera nito.'),
+        chips: [(Icons.sign_language_rounded, 'FSL'), (Icons.phone_android_rounded, L.t('On your phone', 'Sa iyong phone'))],
+        accent: const Color(0xFFFFB800),
+      ),
+      _IntroSlide(
+        image: 'assets/pictures/abc.png',
+        eyebrow: L.t('LEARN', 'MATUTO'),
+        title: L.t('Step by step', 'Hakbang-hakbang'),
+        body: L.t(
+            'Start with the alphabet and numbers, then greetings and civic signs, plus new topics your teachers add.',
+            'Magsimula sa alpabeto at numero, saka mga pagbati at kumpas pansibiko, pati mga bagong paksang idinadagdag ng iyong guro.'),
+        chips: [
+          (Icons.abc_rounded, L.t('Alphabet', 'Alpabeto')),
+          (Icons.pin_rounded, L.t('Numbers', 'Numero')),
+          (Icons.chat_rounded, L.t('Greetings', 'Pagbati')),
+          (Icons.category_rounded, L.t('More topics', 'Iba pang paksa')),
+        ],
+        accent: const Color(0xFFFF8A3D),
+      ),
+      _IntroSlide(
+        image: 'assets/pictures/sign.png',
+        eyebrow: L.t('PRACTICE', 'MAGSANAY'),
+        title: L.t('Your camera is your coach', 'Ang camera ang iyong coach'),
+        body: L.t('Sign in front of the camera. HandSpeak checks your handshape and movement and tells you right away how to improve.',
+            'Mag-kumpas sa harap ng camera. Sinusuri ng HandSpeak ang porma at galaw ng iyong kamay at agad na sinasabi kung paano ito mapapabuti.'),
+        chips: [
+          (Icons.videocam_rounded, L.t('Live camera', 'Live na camera')),
+          (Icons.auto_awesome_rounded, L.t('Instant feedback', 'Agarang feedback')),
+        ],
+        accent: const Color(0xFF7DC579),
+      ),
+      _IntroSlide(
+        image: 'assets/pictures/civic.png',
+        eyebrow: L.t('CULTURE', 'KULTURA'),
+        title: L.t('Sign with pride', 'Kumpas nang may dangal'),
+        body: L.t('Learn to sign Lupang Hinirang, so every Filipino student can take part in the flag ceremony.',
+            'Matutong ikumpas ang Lupang Hinirang, upang ang bawat batang Pilipino ay makasali sa seremonya ng watawat.'),
+        chips: [(Icons.flag_rounded, 'Lupang Hinirang'), (Icons.groups_rounded, L.t('Civic', 'Pansibiko'))],
+        accent: const Color(0xFF3D7BFF),
+      ),
+      _IntroSlide(
+        image: 'assets/pictures/troph.png',
+        eyebrow: L.t('PLAY', 'MAGLARO'),
+        title: L.t('Earn, level up, compete', 'Kumita, mag-level up, makipagpaligsahan'),
+        body: L.t('Collect XP and Stars, finish daily quests, keep your streak, unlock badges and challenge your classmates in the arena.',
+            'Mangolekta ng XP at Stars, tapusin ang daily quests, panatilihin ang streak, magbukas ng badges at hamunin ang mga kaklase sa arena.'),
+        chips: [
+          (Icons.bolt_rounded, 'XP'),
+          (Icons.local_fire_department_rounded, 'Streaks'),
+          (Icons.emoji_events_rounded, 'Badges'),
+        ],
+        accent: const Color(0xFFB26BE0),
+      ),
+      _IntroSlide(
+        image: 'assets/pictures/people.png',
+        eyebrow: L.t('OUR PURPOSE', 'AMING LAYUNIN'),
+        title: L.t('A bridge, not a barrier', 'Tulay, hindi hadlang'),
+        body: L.t(
+            'HandSpeak helps Deaf and hearing Filipinos understand each other, and translates between signs and text, one sign at a time.',
+            'Tinutulungan ng HandSpeak ang mga Bingi at nakaririnig na Pilipino na magkaunawaan, at nagsasalin sa pagitan ng kumpas at teksto, isang kumpas sa bawat pagkakataon.'),
+        chips: [
+          (Icons.translate_rounded, L.t('Sign ↔ Text', 'Kumpas ↔ Teksto')),
+          (Icons.favorite_rounded, L.t('Inclusion', 'Pagsasama')),
+          (Icons.diversity_3_rounded, L.t('For everyone', 'Para sa lahat')),
+        ],
+        accent: const Color(0xFFFF5C8A),
+      ),
+    ];
 
 class MainLogin extends StatefulWidget {
   const MainLogin({super.key});
@@ -301,7 +326,7 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
                               ? null
                               : () => _pageController.animateToPage(_introSlides.length - 1,
                                   duration: const Duration(milliseconds: 600), curve: Curves.easeOutCubic),
-                          child: Text('Skip',
+                          child: Text(L.t('Skip', 'Laktawan'),
                               style: TextStyle(color: onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w700)),
                         ),
                       ),
@@ -346,7 +371,7 @@ class _MainLoginState extends State<MainLogin> with SingleTickerProviderStateMix
                       const SizedBox(height: 20),
                       _PrimaryButton(
                         color: accent,
-                        label: _isLast ? "Let's Begin" : 'Next',
+                        label: _isLast ? L.t("Let's Begin", 'Magsimula na') : L.t('Next', 'Susunod'),
                         icon: _isLast ? Icons.arrow_forward_rounded : Icons.chevron_right_rounded,
                         onPressed: _next,
                       ),

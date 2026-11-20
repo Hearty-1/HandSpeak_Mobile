@@ -222,10 +222,15 @@ service cloud.firestore {
       return [
         'role', 'status', 'permissions',
         'name', 'fullName', 'firstName', 'middleName', 'middleInitial', 'lastName', 'suffix', 'suffixPosition',
-        'employeeId', 'studentId', 'schoolName', 'creationOrigin', 'loginEmail',
+        // email: the 2FA code is sent to users.email, so it changes only through the
+        // code-verified server flow (/api/profile/email), never by a direct write.
+        'email', 'employeeId', 'studentId', 'schoolName', 'creationOrigin', 'loginEmail',
         'twoFactorEnabled', 'temporaryPassword', 'initialPassword', 'teacherNotes', 'notes',
         'approvedAt', 'approvedBy', 'reviewedAt', 'reviewedBy', 'rejectedAt', 'rejectionReason',
         'archivedAt', 'archivedBy', 'archivedFromStatus', 'restoredAt', 'restoredBy', 'reactivatedAt', 'reactivatedBy', 'deactivatedAt', 'deactivatedBy',
+        // Suspension (lib/suspension.ts): an owner moving suspendedUntil into the past would
+        // let /api/account/end-suspension unlock the account.
+        'suspendedAt', 'suspendedBy', 'suspensionReason', 'suspendedUntil', 'unsuspendedAt', 'unsuspendedBy',
         'createdAt', 'createdAtServer', 'uid', 'id', 'dailyChallengesCompleted'
       ];
     }
@@ -337,8 +342,21 @@ service cloud.firestore {
         // to the scope itself (that goes through /api/students/{id}).
         || (level != 'none'
             && studentInScope(caller, level, resource.data)
-            && !changedKeys().hasAny(serverOnlyKeys())
-            && !changedKeys().hasAny(['role']));
+            && changedKeys().hasOnly(staffStudentWritableKeys())
+            && request.resource.data.get('status', '') in ['pending', 'approved', 'active', 'rejected', 'deactivated', 'archived']);
+    }
+
+    // What staff may change directly on an in-scope student from the browser:
+    // the account status with its review stamps, and teacher notes
+    // (lib/data-service.ts deactivate / activate / archive / restore /
+    // addTeacherNoteToStudent). Name, student ID, e-mail, password and placement
+    // go through /api/students/{id} (validated, duplicate-checked, scope-checked).
+    function staffStudentWritableKeys() {
+      return ['status', 'updatedAt',
+              'approvedAt', 'approvedBy', 'reviewedAt', 'reviewedBy',
+              'deactivatedAt', 'deactivatedBy', 'archivedAt', 'archivedBy', 'archivedFromStatus',
+              'restoredAt', 'restoredBy', 'reactivatedAt', 'reactivatedBy',
+              'teacherNotes'];
     }
 
     function canDeleteUser() {
@@ -349,8 +367,12 @@ service cloud.firestore {
       return canDeleteUserWith(caller, accessLevel(caller));
     }
 
+    // No browser deletes a users/{id} document: a direct delete would leave the
+    // Firebase sign-in account and every subcollection behind. Students are
+    // deleted by DELETE /api/students/{id} (archived only), staff by
+    // DELETE /api/admin/account-requests/{id} — both with the Admin SDK.
     function canDeleteUserWith(caller, level) {
-      return level == 'admin' || (level != 'none' && studentInScope(caller, level, resource.data));
+      return false;
     }
 
     // =========================================================================
@@ -419,23 +441,34 @@ service cloud.firestore {
         allow create: if signedIn() && request.auth.uid == userId;
       }
 
-      // Daily-challenge completions — written only by /api/student/rewards (Admin SDK).
-      match /challenge_completions/{entryId} {
-        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
-      }
-      // Mobile app: daily quests the student claimed (one doc per quest, written once).
-      match /daily_challenge_history/{entryId} {
-        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
-                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
-        allow create: if signedIn() && request.auth.uid == userId;
-      }
-
       // [mobile] Settings > Session & Activity Logs (services/activity_log.dart):
       // the student's own events, fixed event id (a retry overwrites the entry).
       match /activity_logs/{eventId} {
         allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
                                       || (isActiveStaff() && callerCanAccessStudentId(userId)));
         allow create, update: if signedIn() && request.auth.uid == userId;
+      }
+
+      // Daily-challenge completions — written only by /api/student/rewards (Admin SDK).
+      match /challenge_completions/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      }
+      // Teacher-assigned daily quests (written by /api/analytics/assigned-quests, Admin SDK).
+      // The student reads them and may only mark an active, unexpired one completed.
+      match /assigned_quests/{questId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow update: if signedIn() && request.auth.uid == userId
+          && resource.data.status == 'active'
+          && request.resource.data.status == 'completed'
+          && request.resource.data.completedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt']);
+      }
+      // Mobile app: daily quests the student claimed (one doc per quest, written once).
+      match /daily_challenge_history/{entryId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin()
+                                      || (isActiveStaff() && callerCanAccessStudentId(userId)));
+        allow create: if signedIn() && request.auth.uid == userId;
       }
     }
 
@@ -467,10 +500,12 @@ service cloud.firestore {
       return (f == 'title' && annText(d, 'title', 150))
         || (f == 'content' && annText(d, 'content', 5000))
         || (f == 'category' && d.get('category', '') in ['General', 'Maintenance', 'New Feature', 'Policy', 'Urgent'])
-        || (f == 'priority' && d.get('priority', '') in ['Normal', 'Urgent'])
+        || (f == 'priority' && d.get('priority', '') in ['High', 'Medium', 'Low'])
         || (f == 'targetAudience' && d.get('targetAudience', '') in ['All Roles', 'Teachers', 'Coordinators', 'Principals'])
         || (f == 'status' && d.get('status', '') in ['draft', 'published', 'archived'])
         || (f == 'authorName' && annText(d, 'authorName', 200))
+        || (f == 'scheduledFor' && (d.get('scheduledFor', null) == null || (d.get('scheduledFor', null) is string && d.get('scheduledFor', '').size() <= 40)))
+        || (f == 'expiresAt' && (d.get('expiresAt', null) == null || (d.get('expiresAt', null) is string && d.get('expiresAt', '').size() <= 40)))
         || f in ['createdAt', 'publishedAt', 'updatedAt'];
     }
     match /announcements/{docId} {
@@ -478,20 +513,45 @@ service cloud.firestore {
         || (isActiveStaff() && resource.data.get('status', '') == 'published');
       allow create: if isAdmin()
         && request.resource.data.keys().hasAll(['title', 'content', 'priority', 'targetAudience', 'status'])
-        && request.resource.data.keys().hasOnly(['title', 'content', 'category', 'priority', 'targetAudience', 'status', 'authorName', 'createdAt', 'publishedAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['title', 'content', 'category', 'priority', 'targetAudience', 'status', 'authorName', 'createdAt', 'publishedAt', 'updatedAt', 'expiresAt', 'scheduledFor'])
         && annField(request.resource.data, 'title') && annField(request.resource.data, 'content')
         && annField(request.resource.data, 'priority') && annField(request.resource.data, 'targetAudience')
         && annField(request.resource.data, 'status')
         && (!('category' in request.resource.data) || annField(request.resource.data, 'category'))
-        && (!('authorName' in request.resource.data) || annField(request.resource.data, 'authorName'));
+        && (!('authorName' in request.resource.data) || annField(request.resource.data, 'authorName'))
+        && (!('scheduledFor' in request.resource.data) || annField(request.resource.data, 'scheduledFor'))
+        && (!('expiresAt' in request.resource.data) || annField(request.resource.data, 'expiresAt'));
       allow update: if isAdmin()
-        && changedKeys().hasOnly(['title', 'content', 'category', 'priority', 'targetAudience', 'status', 'publishedAt', 'updatedAt'])
+        && changedKeys().hasOnly(['title', 'content', 'category', 'priority', 'targetAudience', 'status', 'publishedAt', 'updatedAt', 'expiresAt', 'scheduledFor'])
         && annField(request.resource.data, 'title') && annField(request.resource.data, 'content')
         && (!changedKeys().hasAny(['category']) || annField(request.resource.data, 'category'))
         && (!changedKeys().hasAny(['priority']) || annField(request.resource.data, 'priority'))
         && (!changedKeys().hasAny(['targetAudience']) || annField(request.resource.data, 'targetAudience'))
-        && (!changedKeys().hasAny(['status']) || annField(request.resource.data, 'status'));
-      allow delete: if isAdmin();
+        && (!changedKeys().hasAny(['status']) || annField(request.resource.data, 'status'))
+        && (!changedKeys().hasAny(['scheduledFor']) || annField(request.resource.data, 'scheduledFor'))
+        && (!changedKeys().hasAny(['expiresAt']) || annField(request.resource.data, 'expiresAt'));
+      allow delete: if isAdmin() && resource.data.get('status', '') != 'published';
+
+      // Read receipts / acknowledgements: each staff member writes only their
+      // own receipt for a published announcement; administrators read them.
+      match /receipts/{uid} {
+        allow get, list: if isAdmin();
+        allow create, update: if isActiveStaff()
+          && request.auth.uid == uid
+          && get(/databases/$(database)/documents/announcements/$(docId)).data.get('status', '') == 'published'
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'role', 'readAt', 'acknowledgedAt', 'readSeconds', 'postponed'])
+          && (!('readSeconds' in request.resource.data)
+              || (request.resource.data.readSeconds is int && request.resource.data.readSeconds >= 0 && request.resource.data.readSeconds <= 86400))
+          && (!('postponed' in request.resource.data)
+              || (request.resource.data.postponed is int && request.resource.data.postponed >= 0 && request.resource.data.postponed <= 10))
+          && request.resource.data.uid == uid
+          && request.resource.data.name is string && request.resource.data.name.size() <= 200
+          && request.resource.data.role in ['Teacher', 'Coordinator', 'Principal']
+          && request.resource.data.readAt is string && request.resource.data.readAt.size() <= 40
+          && (!('acknowledgedAt' in request.resource.data)
+              || (request.resource.data.acknowledgedAt is string && request.resource.data.acknowledgedAt.size() <= 40));
+        allow delete: if isAdmin();
+      }
     }
 
     // Admin asks a teacher for sign recordings; the teacher adds videos to it.
@@ -748,6 +808,17 @@ service cloud.firestore {
       allow update: if isActiveStudent() && resource.data.userId == request.auth.uid
                     && request.resource.data.get('userId', '') == request.auth.uid;
     }
+    // [mobile] Daily quests per student per day (web dashboard analytics):
+    // daily_quest_sessions/{uid}_{day}, written by the app while the quests
+    // are open (services/daily_challenge_service.dart recordDay).
+    match /daily_quest_sessions/{dayId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
+                                    || (isActiveStaff() && callerCanAccessStudentId(resource.data.userId)));
+      allow create, update: if isActiveStudent()
+                            && request.resource.data.get('userId', '') == request.auth.uid
+                            && dayId.matches(request.auth.uid + '_[0-9]{4}-[0-9]{2}-[0-9]{2}')
+                            && (resource == null || resource.data.get('userId', '') == request.auth.uid);
+    }
     // Level plays: one document per play of a non-camera (Easy / Medium) level.
     match /activity_sessions/{playId} {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin()
@@ -798,18 +869,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // [mobile] Settings > App updates: newest Android release
-    // (written by tools/publish_release.py with the Admin SDK).
+    // [mobile] Settings > App updates: newest Android release. Written with the
+    // Admin SDK only, by tools/publish_release.py (mobile repo). The web only reads it
+    // (GET /api/app-download) for the landing page and the Settings card.
     match /app_config/{docId} {
       allow read: if signedIn();
       allow write: if false;
-    }
-
-    // Public landing page settings (app download links). Readable by anyone,
-    // including signed-out visitors; edited in Admin → Settings → Mobile App.
-    match /public_config/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
     }
 
     // Everything else (admins, ai_insights_v2, ...) is server-only or unused.

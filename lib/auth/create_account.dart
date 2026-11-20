@@ -61,7 +61,7 @@ class _CreateAccountState extends State<CreateAccount> {
           content: Text(_department == null
               ? "Please select a department."
               : "Please fix the errors in the form and select a grade."),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -91,7 +91,7 @@ class _CreateAccountState extends State<CreateAccount> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Account created successfully! Please wait for faculty approval."),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           backgroundColor: Colors.green,
         ),
       );
@@ -102,7 +102,7 @@ class _CreateAccountState extends State<CreateAccount> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Failed to create account. Email might be in use or invalid."),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           backgroundColor: Colors.redAccent,
         ),
       );

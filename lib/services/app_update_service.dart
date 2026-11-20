@@ -280,7 +280,7 @@ class AppUpdateService {
       closeDialog();
       if (result.type != ResultType.done && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           content: Text(L.t(
             'Could not open the installer. Allow HandSpeak to install apps (Settings > Apps > Special access > Install unknown apps), then try again.',
             'Hindi mabuksan ang installer. Payagan ang HandSpeak na mag-install ng apps (Settings > Apps > Special access > Install unknown apps), saka subukang muli.',
@@ -292,7 +292,7 @@ class AppUpdateService {
       closeDialog();
       if (!cancelled && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           content: Text(L.t('The download failed. Check your internet connection and try again.',
               'Nabigo ang download. Tingnan ang koneksyon sa internet at subukang muli.')),
         ));

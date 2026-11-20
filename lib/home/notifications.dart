@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '/widgets/guide_tour.dart';
+import '/providers/language_provider.dart';
 import '/services/offline_sync.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,6 +17,48 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
+  // Hoot's "how notifications work" guide.
+  final GlobalKey _ngList = GlobalKey();
+  final GlobalKey _ngFirst = GlobalKey();
+  final GlobalKey _ngReadAll = GlobalKey();
+  final GlobalKey _ngMenu = GlobalKey();
+
+  void _startNotificationsGuide() {
+    GuideTour.start(context, [
+      GuideStep(
+        target: _ngList,
+        icon: Icons.notifications_rounded,
+        title: L.t('Your messages', 'Iyong mga mensahe'),
+        body: L.t('Friend requests, game invites and badges show here.',
+            'Dito lalabas ang friend requests, imbitasyon sa laro at badges.'),
+      ),
+      GuideStep(
+        target: _ngFirst,
+        icon: Icons.touch_app_rounded,
+        title: L.t('Open one', 'Buksan'),
+        body: L.t('Tap a message to open it.', 'Pindutin ang mensahe para buksan.'),
+      ),
+      GuideStep(
+        target: _ngFirst,
+        icon: Icons.swipe_left_rounded,
+        title: L.t('Remove one', 'Alisin'),
+        body: L.t('Swipe a message to the left to delete it.', 'I-swipe pakaliwa para burahin.'),
+      ),
+      GuideStep(
+        target: _ngReadAll,
+        icon: Icons.done_all_rounded,
+        title: L.t('Mark all as read', 'Basahin lahat'),
+        body: L.t('Tap to mark every message as read.', 'Pindutin para mabasa na lahat.'),
+      ),
+      GuideStep(
+        target: _ngMenu,
+        icon: Icons.delete_sweep_rounded,
+        title: L.t('Clear all', 'Burahin lahat'),
+        body: L.t('Open this menu to delete every message.', 'Buksan ito para burahin lahat ng mensahe.'),
+      ),
+    ]);
+  }
+
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
   /// Only the newest notifications are kept (they live in an array on the
@@ -251,7 +294,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
         return Scaffold(
           floatingActionButtonLocation: PetAssistant.location,
-          floatingActionButton: const PetAssistant(),
+          floatingActionButton: PetAssistant(onGuide: _startNotificationsGuide),
           backgroundColor: theme.scaffoldBackgroundColor,
           appBar: AppBar(
             title: Text(
@@ -264,12 +307,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             centerTitle: true,
             actions: [
               IconButton(
+                key: _ngReadAll,
                 tooltip: 'Mark all as read',
                 icon: const Icon(Icons.done_all_rounded),
                 color: textColor,
                 onPressed: hasUnread ? _markAllRead : null,
               ),
               PopupMenuButton<String>(
+                key: _ngMenu,
                 icon: Icon(Icons.more_vert_rounded, color: textColor),
                 enabled: notifications.isNotEmpty,
                 onSelected: (value) {
@@ -290,7 +335,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
             ],
           ),
-          body: _buildBody(theme, textColor, snapshot, notifications),
+          body: KeyedSubtree(key: _ngList, child: _buildBody(theme, textColor, snapshot, notifications)),
         );
       },
     );
@@ -346,7 +391,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ));
       }
-      children.add(_buildNotificationTile(theme, textColor, notification, now));
+      final tile = _buildNotificationTile(theme, textColor, notification, now);
+      children.add(identical(notification, notifications.first) ? KeyedSubtree(key: _ngFirst, child: tile) : tile);
     }
 
     return ListView(

@@ -16,6 +16,9 @@ import '/services/role_service.dart';
 import '/providers/language_provider.dart';
 import '/widgets/responsive.dart';
 
+
+// Hoot's guide of this page.
+final ModulePageGuide _moduleGuide = ModulePageGuide();
 class CivicInterface extends StatelessWidget {
   final int currentXp; 
   final int targetXp; 
@@ -55,7 +58,7 @@ class CivicInterface extends StatelessWidget {
 
         return Scaffold(
           floatingActionButtonLocation: PetAssistant.location,
-          floatingActionButton: const PetAssistant(),
+          floatingActionButton: PetAssistant(onGuide: () => _moduleGuide.start(context)),
           extendBodyBehindAppBar: true, 
           backgroundColor: theme.scaffoldBackgroundColor, 
           
@@ -123,6 +126,7 @@ class CivicInterface extends StatelessWidget {
 
                           if (canTutorials) ...[
                           ModuleLearnCard(
+                            key: _moduleGuide.tutorial,
                             scale: scale,
                             image: "assets/pictures/tutor.png",
                             imageScale: 0.82,
@@ -138,6 +142,7 @@ class CivicInterface extends StatelessWidget {
 
                           if (canPractice) ...[
                           ModuleLearnCard(
+                            key: _moduleGuide.practice,
                             scale: scale,
                             image: "assets/pictures/practice.png",
                             imageScale: 1.3,
@@ -166,6 +171,7 @@ class CivicInterface extends StatelessWidget {
                                     ),
                                     SizedBox(height: 12 * scale),
                                     GestureDetector(
+                                      key: _moduleGuide.activities,
                                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CivicDifficultySelectionScreen())),
                                       child: PictureButton3D(picture: Image.asset("assets/pictures/actt.png", width: 164 * scale, height: 160 * scale, fit: BoxFit.cover)),
                                     ),
@@ -182,6 +188,7 @@ class CivicInterface extends StatelessWidget {
                                     ),
                                     SizedBox(height: 12 * scale),
                                     GestureDetector(
+                                      key: _moduleGuide.challenges,
                                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LeaderboardScreen(initialTab: 'challenges'))),
                                       child: PictureButton3D(picture: Image.asset("assets/pictures/battle.png", width: 159 * scale, height: 159 * scale, fit: BoxFit.cover)),
                                     ),

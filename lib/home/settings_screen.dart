@@ -1037,7 +1037,7 @@ class _AppUpdateTileState extends State<AppUpdateTile> {
       await AppUpdateService.showUpdateDialog(context, r);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.fixed,
         content: Text(L.t("You're on the latest version.", 'Pinakabagong bersyon na ang gamit mo.')),
       ));
     }

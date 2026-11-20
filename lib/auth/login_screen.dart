@@ -49,14 +49,16 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
     super.dispose();
   }
 
-  // Load Saved Credentials
+  // Remember Me: only the email is remembered. The password is never stored
+  // on the phone (it used to be saved as plain text; any old copy is deleted
+  // here). Firebase keeps a signed-in student signed in by itself.
   Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('saved_password');
     setState(() {
       _rememberMe = prefs.getBool('remember_me') ?? false;
       if (_rememberMe) {
         _emailController.text = prefs.getString('saved_email') ?? '';
-        _passwordController.text = prefs.getString('saved_password') ?? '';
       }
     });
   }
@@ -87,7 +89,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Too many attempts. Please wait $_remainingLockoutSeconds seconds."),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
         ),
       );
       return;
@@ -100,7 +102,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Please enter both email and password"),
-          behavior: SnackBarBehavior.floating, 
+          behavior: SnackBarBehavior.fixed, 
         ),
       );
       return;
@@ -118,12 +120,11 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
         // Reset failed attempts on success
         _failedAttempts = 0;
 
-        // Remember Me Logic: Save or clear credentials
+        // Remember Me: save or clear the email only (never the password)
         final prefs = await SharedPreferences.getInstance();
         if (_rememberMe) {
           await prefs.setBool('remember_me', true);
           await prefs.setString('saved_email', email);
-          await prefs.setString('saved_password', password);
         } else {
           await prefs.remove('remember_me');
           await prefs.remove('saved_email');
@@ -145,7 +146,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Your account is awaiting faculty approval."),
-            behavior: SnackBarBehavior.floating,
+            behavior: SnackBarBehavior.fixed,
           ),
         );
       }
@@ -159,7 +160,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Too many failed attempts. Account temporarily locked for 30 seconds."),
-            behavior: SnackBarBehavior.floating,
+            behavior: SnackBarBehavior.fixed,
           ),
         );
       } else {
@@ -168,7 +169,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Login failed. Check credentials. ($remaining attempts remaining)"),
-            behavior: SnackBarBehavior.floating,
+            behavior: SnackBarBehavior.fixed,
           ),
         );
       }
@@ -178,7 +179,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
   void _showMessage(String text, {Color? color}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text), behavior: SnackBarBehavior.floating, backgroundColor: color),
+      SnackBar(content: Text(text), behavior: SnackBarBehavior.fixed, backgroundColor: color),
     );
   }
 
@@ -232,7 +233,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Please enter your email in the text field first."),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
         ),
       );
       return;
@@ -246,7 +247,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("A password reset link has been sent to $email."),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           backgroundColor: Colors.green,
         ),
       );
@@ -254,7 +255,7 @@ class _SnedStudentLoginState extends State<SnedStudentLogin> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           backgroundColor: Colors.redAccent,
         ),
       );

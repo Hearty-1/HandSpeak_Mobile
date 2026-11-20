@@ -1,5 +1,4 @@
 import '/widgets/level_map.dart';
-import '/widgets/guide_tour.dart';
 import '/services/live.dart';
 import '/widgets/level_avatar.dart';
 import 'package:flutter/material.dart';
@@ -176,8 +175,6 @@ class _PhrasesActivityInterfaceState extends State<PhrasesActivityInterface> {
     final Color nodeLightColor = themeStyles['nodeLightColor'];
 
     return Scaffold(
-      floatingActionButtonLocation: PetAssistant.location,
-      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: scaffoldBgColor,
       appBar: AppBar(

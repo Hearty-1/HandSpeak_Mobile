@@ -1,5 +1,8 @@
 import 'dart:math';
 
+import '/services/tutorial_session_recorder.dart' show TutorialSessionRecorder;
+import '/services/live.dart';
+import 'quest_catalog.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -88,7 +91,10 @@ const Map<String, String> questCategoryNames = {
 
 /// Every daily challenge in the app (34). See the summary in the README /
 /// the chat for who receives which.
-final List<QuestDef> questCatalog = [
+/// The built-in quests (the defaults). The web can edit, switch off or add
+/// quests in Firestore `daily_challenges` (services/quest_catalog.dart), so
+/// use [questCatalog], which applies those edits.
+final List<QuestDef> builtInQuests = [
   // --- Starter: brand-new learners (fewer than 3 completed levels) ---------
   const QuestDef('starter_first_lesson', QuestTrack.starter, 'Your First Lesson',
       'Complete 1 tutorial lesson.', QuestMetric.lessons, 1, 20, Icons.menu_book_rounded),
@@ -162,8 +168,13 @@ final List<QuestDef> questCatalog = [
       'Complete a level in all 4 categories today.', QuestMetric.categoriesToday, 4, 120, Icons.public_rounded),
 ];
 
+/// The quests students can get now: [builtInQuests] with the web's edits
+/// (daily_challenges), switched-off ones left out.
+List<QuestDef> get questCatalog => QuestCatalog.instance.apply(builtInQuests);
+
 QuestDef? questById(String id) {
-  for (final q in questCatalog) {
+  // Also a switched-off quest (it may have been given today already).
+  for (final q in QuestCatalog.instance.apply(builtInQuests, includeInactive: true)) {
     if (q.id == id) return q;
   }
   return null;
@@ -258,8 +269,26 @@ class _Attempt {
   final String levelId;
   final bool completed;
   final int stars;
-  _Attempt(this.time, this.category, this.levelId, this.completed, this.stars);
+
+  /// The category as stored (also web categories, e.g. "foods").
+  final String rawCategory;
+  _Attempt(this.time, this.category, this.levelId, this.completed, this.stars, [this.rawCategory = '']);
   bool get isHard => levelId.contains('hard');
+}
+
+/// Camera checks of one record (session) for teacher quests.
+class _SignRecord {
+  final DateTime time;
+  final String rawCategory;
+  final Map<String, int> perSign; // SIGN -> correct
+  final int correct;
+  _SignRecord(this.time, this.rawCategory, this.perSign, this.correct);
+}
+
+class _RawData {
+  final List<_SignRecord> signs;
+  final List<_Attempt> activities;
+  _RawData(this.signs, this.activities);
 }
 
 class _Sign {
@@ -295,7 +324,38 @@ class DailyChallengeService {
   /// Activity plays: activity_sessions (current records), plus the older
   /// activity_attempts for earlier history. A play saved in both (while both
   /// were written) counts once.
-  Future<List<_Attempt>> _activityAttempts() async {
+  // The student's play / camera records change only while they play, not when
+  // a quest is claimed. Every refresh used to download and parse ALL of them
+  // on the main thread (the app froze ~5 s on a claim: "Skipped 306 frames",
+  // ANR). Now each list is read once and reused for [_recordsFor], shared by
+  // the daily quests and the teacher quests. [forget] starts fresh (screen
+  // opened again).
+  static const Duration _recordsFor = Duration(minutes: 2);
+  static final Map<String, (DateTime, Future<Object>)> _records = {};
+
+  Future<T> _cached<T extends Object>(String name, Future<T> Function() read) {
+    final key = '$_uid|$name';
+    final hit = _records[key];
+    if (hit != null && DateTime.now().difference(hit.$1) < _recordsFor) return hit.$2.then((v) => v as T);
+    final f = read();
+    _records[key] = (DateTime.now(), f);
+    // A failed read is forgotten (read again next time). The error itself
+    // goes to the caller through [f]; this listener must not pass it on (it
+    // did: "Uncaught error: PERMISSION_DENIED" stopped the app on Arena).
+    f.then<void>((_) {}, onError: (Object _) => _records.remove(key));
+    return f;
+  }
+
+  /// Read the records again on the next refresh (e.g. Daily Quests opened).
+  static void forget() {
+    _records.clear();
+    _raw = null;
+  }
+
+  Future<List<_Attempt>> _activityAttempts() => _cached('activities', _readActivityAttempts);
+  Future<List<_Sign>> _signAttempts() => _cached('signs', _readSignAttempts);
+
+  Future<List<_Attempt>> _readActivityAttempts() async {
     final out = <_Attempt>[];
     final seen = <String>{};
     for (final col in ['activity_sessions', 'activity_attempts']) {
@@ -315,36 +375,34 @@ class DailyChallengeService {
         final id = '$level|${ts.toDate().millisecondsSinceEpoch ~/ 60000}';
         if (!seen.add(id)) continue;
         out.add(_Attempt(ts.toDate(), _categoryOf('${m['category'] ?? level}'), level, m['isCompleted'] == true,
-            (m['starsEarned'] as num?)?.toInt() ?? 0));
+            (m['starsEarned'] as num?)?.toInt() ?? 0, '${m['category'] ?? level}'));
       }
     }
     out.sort((a, b) => a.time.compareTo(b.time));
     return out;
   }
 
-  /// Camera-sign attempts from the session reports in `gesture_attempts`
-  /// (one document per session: student.userId, level.category,
-  /// results.attempts / correct, session.endedAt). Older flat attempt
-  /// documents (userId, isCorrect, timestamp) are still read too.
-  Future<List<_Sign>> _signAttempts() async {
+  /// Camera-sign attempts from `gesture_attempts`: session reports (level,
+  /// results.attempts / correct, session.endedAt) and older flat attempt
+  /// documents (isCorrect, timestamp). One query by `userId`, the field the
+  /// rules check (a query by `student.userId` was refused: PERMISSION_DENIED).
+  Future<List<_Sign>> _readSignAttempts() async {
     final out = <_Sign>[];
-    final sessions = await _db.collection('gesture_attempts').where('student.userId', isEqualTo: _uid).get();
-    for (final d in sessions.docs) {
+    final docs = await _db.collection('gesture_attempts').where('userId', isEqualTo: _uid).get();
+    for (final d in docs.docs) {
       final m = d.data();
       final session = m['session'], results = m['results'], level = m['level'];
-      if (session is! Map || results is! Map) continue;
-      final ts = session['endedAt'] ?? session['startedAt'];
-      if (ts is! Timestamp) continue;
-      final cat = _categoryOf('${level is Map ? level['category'] ?? level['levelId'] : ''}');
-      final attempts = (results['attempts'] as num?)?.toInt() ?? 0;
-      final correct = (results['correct'] as num?)?.toInt() ?? 0;
-      for (int i = 0; i < attempts; i++) {
-        out.add(_Sign(ts.toDate(), cat, i < correct));
+      if (session is Map && results is Map) {
+        final ts = session['endedAt'] ?? session['startedAt'];
+        if (ts is! Timestamp) continue;
+        final cat = _categoryOf('${level is Map ? level['category'] ?? level['levelId'] : ''}');
+        final attempts = (results['attempts'] as num?)?.toInt() ?? 0;
+        final correct = (results['correct'] as num?)?.toInt() ?? 0;
+        for (int i = 0; i < attempts; i++) {
+          out.add(_Sign(ts.toDate(), cat, i < correct));
+        }
+        continue;
       }
-    }
-    final legacy = await _db.collection('gesture_attempts').where('userId', isEqualTo: _uid).get();
-    for (final d in legacy.docs) {
-      final m = d.data();
       final type = m['recordType'];
       if (type != null && type != 'attempt') continue;
       final ts = m['timestamp'];
@@ -619,6 +677,303 @@ class DailyChallengeService {
         return _firstInCategory[q.category] ?? 0;
       default:
         return m[q.metric] ?? 0;
+    }
+  }
+
+  // ------------------------------------------------------------ analytics ---
+  /// Web dashboard analytics: one document per student per day,
+  /// `daily_quest_sessions/{uid}_{day}`:
+  ///
+  ///   userId, sectionId, day ("2026-11-20"), learnerPace,
+  ///   quests: [{ id, title, track, category, metric, target, progress,
+  ///              percent, completed (progress >= target), claimed, reward }],
+  ///   assignedCount, completedCount, claimedCount, xpEarned,
+  ///   allClaimed, updatedAt, expireAt (+365 days, Firestore TTL)
+  ///
+  /// Written when the day's quests are shown and again only when something
+  /// changed (progress, completion, claim), so it costs a few writes a day.
+  static const String sessionsCollection = 'daily_quest_sessions';
+  static String? _lastRecorded;
+
+  Future<void> recordDay({
+    required List<QuestDef> quests,
+    required Map<QuestMetric, int>? metrics,
+    required Set<String> claimedIds,
+    required Map<String, dynamic> user,
+  }) async {
+    if (_uid.isEmpty || quests.isEmpty) return;
+    final day = dayKey(DateTime.now());
+    final rows = [
+      for (final q in quests)
+        () {
+          final progress = metrics == null ? 0 : progressFor(q, metrics).clamp(0, 1 << 30);
+          final done = progress >= q.target;
+          return <String, dynamic>{
+            'id': q.id,
+            'title': q.title,
+            'track': q.track.name,
+            if (q.category != null) 'category': q.category,
+            'metric': q.metric.name,
+            'target': q.target,
+            'progress': progress > q.target ? q.target : progress,
+            'percent': q.target <= 0 ? 0 : ((progress > q.target ? q.target : progress) * 100 ~/ q.target),
+            'completed': done,
+            'claimed': claimedIds.contains(q.id),
+            'reward': q.reward,
+          };
+        }(),
+    ];
+    // Only when something changed (no write for the same numbers).
+    final signature = '$_uid|$day|${[for (final r in rows) '${r['id']}:${r['progress']}:${r['claimed']}'].join(',')}';
+    if (signature == _lastRecorded) return;
+    _lastRecorded = signature;
+    final claimed = rows.where((r) => r['claimed'] == true).toList();
+    final section = (user['section'] ?? user['sectionId'] ?? '').toString().trim();
+    final pace = (user['learnerProfile'] is Map) ? (user['learnerProfile'] as Map)['pace'] : null;
+    try {
+      await FirebaseFirestore.instance.collection(sessionsCollection).doc('${_uid}_$day').set({
+        'userId': _uid,
+        if (section.isNotEmpty) 'sectionId': section,
+        'day': day,
+        'learnerPace': ?pace,
+        'quests': rows,
+        'assignedCount': rows.length,
+        'completedCount': rows.where((r) => r['completed'] == true).length,
+        'claimedCount': claimed.length,
+        'xpEarned': claimed.fold<int>(0, (total, r) => total + (r['reward'] as int)),
+        'allClaimed': claimed.length == rows.length,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'expireAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 365))),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      _lastRecorded = null; // try again next time
+      debugPrint('$sessionsCollection: not saved: $e');
+    }
+  }
+
+  // ------------------------------------------------------- teacher quests ---
+  // Quests a teacher sends from the web: users/{uid}/assigned_quests/{id}
+  // (spec: docs/teacher-assigned-quests.md in the web repo). Extra to the
+  // student's 3 daily quests (select() is not involved), at most 3 shown,
+  // counted from assignedAt (a quest can last up to 7 days), never from the
+  // title / description. On claim only status + completedAt change on the
+  // quest (the rules reject anything else).
+
+  static const String teacherCollection = 'assigned_quests';
+  static const int maxTeacherQuests = 3;
+
+  /// Metrics a teacher quest may use; any other metric hides the quest.
+  static const Set<String> teacherMetrics = {
+    'correctSignsOfSign',
+    'levelPassed',
+    'correctSignsInCategory',
+    'activitiesInCategory',
+    'activities',
+    'retriedLevel',
+    'twoStarLevel',
+    'lessons',
+    'sessions',
+  };
+
+  /// The live active teacher quests (status == 'active').
+  Stream<QuerySnapshot<Map<String, dynamic>>> teacherQuests() =>
+      Live.query(_userRef.collection(teacherCollection).where('status', isEqualTo: 'active'));
+
+  /// Still open today: expiresDay (YYYY-MM-DD, Manila time) is today or later,
+  /// and the metric is one the app can count.
+  static bool teacherQuestOpen(Map<String, dynamic> q) {
+    if (!teacherMetrics.contains('${q['metric'] ?? ''}')) return false;
+    final expires = '${q['expiresDay'] ?? ''}'.trim();
+    if (expires.isEmpty) return true;
+    return expires.compareTo(_manilaToday()) >= 0; // YYYY-MM-DD compares as text
+  }
+
+  static String _manilaToday() => dayKey(DateTime.now().toUtc().add(const Duration(hours: 8)));
+
+  /// The quest as a card (the same card as the daily quests).
+  static QuestDef teacherQuestDef(String id, Map<String, dynamic> q) {
+    final target = (q['target'] as num?)?.toInt() ?? 1;
+    final metric = '${q['metric'] ?? ''}';
+    return QuestDef(
+      id,
+      QuestTrack.skill,
+      '${q['title'] ?? 'Teacher quest'}',
+      '${q['description'] ?? ''}',
+      // Only for the card's display (percent or count); progress comes from
+      // [teacherProgress].
+      QuestMetric.correctSigns,
+      target <= 0 ? 1 : target,
+      (q['reward'] as num?)?.toInt() ?? 0,
+      metric == 'levelPassed' ? Icons.replay_rounded : Icons.school_rounded,
+      category: (q['category'] as String?)?.trim().isEmpty ?? true ? null : '${q['category']}'.trim(),
+    );
+  }
+
+  // Raw records (read at most once a minute while quests are shown).
+  static DateTime _rawAt = DateTime(2000);
+  static Future<_RawData>? _raw;
+
+  Future<_RawData> _rawData() {
+    if (_raw == null || DateTime.now().difference(_rawAt) > _recordsFor) {
+      _rawAt = DateTime.now();
+      _raw = _readRaw().catchError((Object e) {
+        _raw = null;
+        throw e;
+      });
+    }
+    return _raw!;
+  }
+
+  Future<_RawData> _readRaw() async {
+    final signs = <_SignRecord>[];
+    Future<void> read(Query<Map<String, dynamic>> q, {required bool session}) async {
+      try {
+        for (final d in (await q.get()).docs) {
+          final m = d.data();
+          final s = m['session'];
+          final ts = (s is Map ? s['endedAt'] ?? s['startedAt'] : null) ?? m['updatedAt'] ?? m['timestamp'];
+          if (ts is! Timestamp) continue;
+          final level = m['level'];
+          final rawCat = '${level is Map ? level['category'] ?? level['levelId'] ?? '' : m['category'] ?? ''}';
+          final perSign = <String, int>{};
+          final rows = m['signs'];
+          if (rows is Map) {
+            rows.forEach((k, v) {
+              if (v is Map) perSign['$k'.toUpperCase()] = (v['correct'] as num?)?.toInt() ?? 0;
+            });
+          }
+          final results = m['results'];
+          final correct = results is Map
+              ? (results['correct'] as num?)?.toInt() ?? 0
+              : (m['isCorrect'] == true ? 1 : perSign.values.fold<int>(0, (a, b) => a + b));
+          if (!session && m['isCorrect'] == true && m['sign'] != null) {
+            perSign['${m['sign']}'.toUpperCase()] = (perSign['${m['sign']}'.toUpperCase()] ?? 0) + 1;
+          }
+          signs.add(_SignRecord(ts.toDate(), rawCat, perSign, correct));
+        }
+      } catch (e) {
+        debugPrint('Teacher quests: records unavailable: $e');
+      }
+    }
+
+    // Camera checks: activity camera levels, Practice Sessions, Tutorial Practice.
+    await Future.wait([
+      read(_db.collection('gesture_attempts').where('userId', isEqualTo: _uid), session: true),
+      read(_db.collection('tutorial_sessions').where('userId', isEqualTo: _uid), session: true),
+      read(_db.collection('tutorial_practice_sessions').where('userId', isEqualTo: _uid), session: true),
+    ]);
+    return _RawData(signs, await _activityAttempts());
+  }
+
+  static String _norm(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'[\s_\-]+'), '');
+  static bool _sameCategory(String raw, String? quest) {
+    if (quest == null || quest.trim().isEmpty) return true;
+    final a = _norm(raw), b = _norm(quest);
+    return a.isNotEmpty && (a == b || a.contains(b) || b.contains(a));
+  }
+
+  /// Progress of a teacher quest: actions at or after assignedAt only.
+  /// null when the metric is unknown.
+  Future<int?> teacherProgress(Map<String, dynamic> q, Map<String, dynamic> user) async {
+    final metric = '${q['metric'] ?? ''}';
+    if (!teacherMetrics.contains(metric)) return null;
+    final at = q['assignedAt'];
+    final since = at is Timestamp ? at.toDate() : DateTime.now();
+    final category = (q['category'] as String?)?.trim();
+    final data = await _rawData();
+    final signs = data.signs.where((r) => !r.time.isBefore(since)).toList();
+    final acts = data.activities.where((a) => !a.time.isBefore(since)).toList();
+    final done = acts.where((a) => a.completed).toList();
+
+    switch (metric) {
+      case 'correctSignsOfSign':
+        final key = TutorialSessionRecorder.signKey('${q['sign'] ?? ''}');
+        if (key.isEmpty) return 0;
+        return signs.where((r) => _sameCategory(r.rawCategory, category)).fold<int>(0, (n, r) => n + (r.perSign[key] ?? 0));
+      case 'levelPassed':
+        final level = '${q['levelId'] ?? ''}'.trim().toLowerCase();
+        return done.any((a) => a.levelId.trim().toLowerCase() == level) ? 1 : 0;
+      case 'correctSignsInCategory':
+        return signs.where((r) => _sameCategory(r.rawCategory, category)).fold<int>(0, (n, r) => n + r.correct);
+      case 'activitiesInCategory':
+        return done.where((a) => _sameCategory(a.rawCategory, category)).length;
+      case 'activities':
+        return done.length;
+      case 'retriedLevel':
+        // Levels passed (since assignedAt) that were failed before, at any time.
+        final all = data.activities;
+        return {
+          for (final a in done)
+            if (all.any((b) => !b.completed && b.levelId == a.levelId && b.time.isBefore(a.time))) a.levelId,
+        }.length;
+      case 'twoStarLevel':
+        return {for (final a in done) if (a.stars >= 2) a.levelId}.length;
+      case 'lessons':
+        // Lessons mastered after assignedAt (tutorialMastery.<module>.<sign> = time).
+        var n = 0;
+        final mastery = user['tutorialMastery'];
+        if (mastery is Map) {
+          for (final module in mastery.values) {
+            if (module is! Map) continue;
+            for (final t in module.values) {
+              if (t is Timestamp && !t.toDate().isBefore(since)) n++;
+            }
+          }
+        }
+        return n;
+      case 'sessions':
+        return _sessionsIn([for (final a in acts) a.time, for (final r in signs) r.time]);
+    }
+    return null;
+  }
+
+  /// Claims a finished teacher quest: the quest gets ONLY status + completedAt
+  /// (the rules reject anything else), the history gets an entry like a normal
+  /// quest (+ source 'teacher', rxKey), and the reward XP is added like a
+  /// normal quest. Not added to completedDailyChallenges / track badges.
+  Future<bool> claimTeacherQuest(DocumentReference<Map<String, dynamic>> questRef, Map<String, dynamic> q) async {
+    if (_uid.isEmpty) return false;
+    final historyRef = _userRef.collection('daily_challenge_history').doc(questRef.id);
+    final reward = (q['reward'] as num?)?.toInt() ?? 0;
+    final category = (q['category'] as String?)?.trim();
+    try {
+      return await OfflineSync.run<bool>((tx) async {
+        final existing = await tx.get(historyRef);
+        if (existing.exists) return false; // claimed once
+        final userSnap = await tx.get(_userRef);
+        final moduleField = ProgressService.moduleXpField(category).isNotEmpty
+            ? ProgressService.moduleXpField(category)
+            : ProgressService.currentModuleXpField(userSnap.data());
+        tx.update(questRef, {'status': 'completed', 'completedAt': FieldValue.serverTimestamp()});
+        tx.set(historyRef, {
+          'challengeId': questRef.id,
+          'title': q['title'],
+          'description': q['description'],
+          'track': 'teacher',
+          'category': category,
+          'target': q['target'],
+          'reward': reward,
+          'day': dayKey(DateTime.now()),
+          'source': 'teacher',
+          'rxKey': q['rxKey'],
+          'completedAt': FieldValue.serverTimestamp(),
+        });
+        if (reward > 0) {
+          tx.set(
+              _userRef,
+              {
+                'xp': FieldValue.increment(reward),
+                ...ProgressService.periodXp(reward),
+                moduleField: FieldValue.increment(reward),
+                'lastActive': FieldValue.serverTimestamp(),
+              },
+              SetOptions(merge: true));
+        }
+        return true;
+      });
+    } catch (e) {
+      debugPrint('Teacher quest claim failed: $e');
+      return false;
     }
   }
 

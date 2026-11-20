@@ -1,5 +1,4 @@
 import '/services/app_haptics.dart';
-import '/widgets/guide_tour.dart';
 import '/services/live.dart';
 import '/widgets/button_3d.dart';
 import 'package:flutter/material.dart';
@@ -107,8 +106,6 @@ class _NumbersDifficultySelectionScreenState
     final scaffoldBgColor = Theme.of(context).scaffoldBackgroundColor;
 
     return Scaffold(
-      floatingActionButtonLocation: PetAssistant.location,
-      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: scaffoldBgColor,
       appBar: AppBar(

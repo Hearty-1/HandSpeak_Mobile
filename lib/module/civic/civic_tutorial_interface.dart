@@ -1,5 +1,4 @@
 import 'dart:convert';
-import '/widgets/guide_tour.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -286,8 +285,6 @@ class _CivicTutorialInterfaceState extends State<CivicTutorialInterface> {
     );
 
     return Scaffold(
-      floatingActionButtonLocation: PetAssistant.location,
-      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
 

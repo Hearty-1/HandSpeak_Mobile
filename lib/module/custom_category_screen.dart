@@ -892,6 +892,9 @@ Stream<List<CloudLesson>> _lessonsOf(CloudCategory c) => FirebaseFirestore.insta
   ];
 });
 
+// Hoot's guide of the web category page.
+final ModulePageGuide _cloudGuide = ModulePageGuide();
+
 class CloudCategoryScreen extends StatelessWidget {
   final CloudCategory category;
   final int targetXp;
@@ -912,7 +915,7 @@ class CloudCategoryScreen extends StatelessWidget {
       builder: (context, snapshot) {
         return Scaffold(
           floatingActionButtonLocation: PetAssistant.location,
-          floatingActionButton: const PetAssistant(),
+          floatingActionButton: PetAssistant(onGuide: () => _cloudGuide.start(context)),
           extendBodyBehindAppBar: true,
           backgroundColor: theme.scaffoldBackgroundColor,
           appBar: AppBar(
@@ -954,6 +957,7 @@ class CloudCategoryScreen extends StatelessWidget {
                         children: [
                           if (canTutorials) ...[
                             ModuleLearnCard(
+                              key: _cloudGuide.tutorial,
                               scale: scale,
                               image: "assets/pictures/tutor.png",
                               imageScale: 0.82,
@@ -968,6 +972,7 @@ class CloudCategoryScreen extends StatelessWidget {
                           ],
                           if (canPractice) ...[
                             ModuleLearnCard(
+                              key: _cloudGuide.practice,
                               scale: scale,
                               image: "assets/pictures/practice.png",
                               imageScale: 1.3,
@@ -990,6 +995,7 @@ class CloudCategoryScreen extends StatelessWidget {
                                         style: TextStyle(color: textColor, fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44)),
                                     SizedBox(height: 12 * scale),
                                     GestureDetector(
+                                      key: _cloudGuide.activities,
                                       onTap: () => Navigator.push(context,
                                           MaterialPageRoute(
                                               builder: (_) => PhraseDifficultySelectionScreen(
@@ -1012,6 +1018,7 @@ class CloudCategoryScreen extends StatelessWidget {
                                         style: TextStyle(color: textColor, fontSize: 24 * scale, fontFamily: 'Inter', fontWeight: FontWeight.w800, letterSpacing: -1.44)),
                                     SizedBox(height: 12 * scale),
                                     GestureDetector(
+                                      key: _cloudGuide.challenges,
                                       onTap: () => Navigator.push(context,
                                           MaterialPageRoute(builder: (_) => const LeaderboardScreen(initialTab: 'challenges'))),
                                       child: PictureButton3D(picture: Image.asset("assets/pictures/battle.png", width: 159 * scale, height: 159 * scale, fit: BoxFit.cover)),
@@ -1060,8 +1067,6 @@ class _CloudTutorialListScreenState extends State<CloudTutorialListScreen> {
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
     return Scaffold(
-      floatingActionButtonLocation: PetAssistant.location,
-      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(

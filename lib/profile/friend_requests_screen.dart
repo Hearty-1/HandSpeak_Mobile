@@ -1,5 +1,4 @@
 import '/profile/public_profile.dart';
-import '/widgets/guide_tour.dart';
 import '/services/live.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -91,8 +90,6 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     final textColor = theme.colorScheme.onSurface;
 
     return Scaffold(
-      floatingActionButtonLocation: PetAssistant.location,
-      floatingActionButton: const PetAssistant(),
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(

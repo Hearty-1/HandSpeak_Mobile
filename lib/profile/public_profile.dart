@@ -1,5 +1,4 @@
 import '/services/presence_service.dart';
-import '/widgets/guide_tour.dart';
 import '/services/live.dart';
 import 'dart:convert';
 
@@ -49,8 +48,6 @@ class PublicProfileScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final me = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
-      floatingActionButtonLocation: PetAssistant.location,
-      floatingActionButton: const PetAssistant(),
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,

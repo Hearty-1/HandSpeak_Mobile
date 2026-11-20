@@ -1,4 +1,5 @@
 import '/services/app_update_service.dart';
+import '/leaderboard/teacher_challenges.dart' show TeacherChallengeBadge;
 import '/services/presence_service.dart';
 import 'dart:ui';
 import 'dart:convert';
@@ -782,6 +783,8 @@ class SnedInterafce1 extends StatelessWidget {
                       SizedBox(height: 10 * scale),
                       ProgressBar3D(value: questsDone / questsTotal, color: Colors.white, height: 12 * scale, trackColor: Colors.white.withValues(alpha: 0.25)),
                     ],
+                    // Challenges a teacher sent from the web dashboard.
+                    TeacherChallengeBadge(scale: scale),
                   ],
                 ),
               ),

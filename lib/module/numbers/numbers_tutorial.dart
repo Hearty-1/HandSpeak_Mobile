@@ -1,5 +1,4 @@
 import 'dart:ui';
-import '/widgets/guide_tour.dart';
 import '/services/live.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -47,8 +46,6 @@ class _NumbersTutorialInterfaceState extends State<NumbersTutorialInterface> {
     );
 
     return Scaffold(
-      floatingActionButtonLocation: PetAssistant.location,
-      floatingActionButton: const PetAssistant(),
       extendBodyBehindAppBar: true,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(

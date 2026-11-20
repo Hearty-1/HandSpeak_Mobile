@@ -1,4 +1,5 @@
 import '/services/presence_service.dart';
+import '/services/quest_catalog.dart';
 import '/services/live.dart';
 import '/widgets/guide_tour.dart';
 import '/providers/language_provider.dart';
@@ -161,6 +162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     BadgeCatalog.instance.start();
+    QuestCatalog.instance.start(); // daily quest conditions from the web
     BadgeCatalog.instance.docs.addListener(_onCatalog);
   }
 

@@ -395,7 +395,7 @@ class ThemeProvider extends ChangeNotifier {
         backgroundColor: GalaxyPalette.cardHigh,
         contentTextStyle: const TextStyle(color: GalaxyPalette.text, fontWeight: FontWeight.w600),
         actionTextColor: GalaxyPalette.star,
-        behavior: SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.fixed,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: GalaxyPalette.primaryGlow.withValues(alpha: 0.4)),

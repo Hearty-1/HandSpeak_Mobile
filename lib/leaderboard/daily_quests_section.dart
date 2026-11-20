@@ -1,4 +1,5 @@
 import '/services/app_haptics.dart';
+import '/services/quest_catalog.dart';
 import '/widgets/button_3d.dart';
 import 'dart:async';
 
@@ -36,6 +37,8 @@ class _DailyQuestsSectionState extends State<DailyQuestsSection> {
   void initState() {
     super.initState();
     if (_uid.isEmpty) return;
+    DailyChallengeService.forget(); // fresh records when the quests are opened
+    QuestCatalog.instance.start(); // daily quest conditions from the web
     _service.ensureTodayQuests().catchError((e) => debugPrint('Daily quests: $e'));
     _sub = FirebaseFirestore.instance.collection('users').doc(_uid).snapshots().listen((snap) {
       _user = snap.data() ?? {};
@@ -57,6 +60,9 @@ class _DailyQuestsSectionState extends State<DailyQuestsSection> {
   Future<void> _refreshProgress() async {
     try {
       final m = await _service.todayProgress(_user);
+      // Web dashboard analytics (daily_quest_sessions): today's quests and
+      // how far the student got; written only when something changed.
+      unawaited(_service.recordDay(quests: _todayQuests, metrics: m, claimedIds: _completedIds, user: _user));
       if (mounted) {
         setState(() {
         _metrics = m;
@@ -81,6 +87,90 @@ class _DailyQuestsSectionState extends State<DailyQuestsSection> {
 
   Set<String> get _completedIds => Set<String>.from(_user['completedDailyChallenges'] ?? const []);
 
+  // ---- teacher quests (users/{uid}/assigned_quests, status active) ----
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _teacherStream = _service.teacherQuests();
+  final Map<String, int> _teacherValues = {};
+  String _teacherSignature = '';
+
+  /// Progress of the shown teacher quests (again when the quests or the
+  /// student's data change).
+  Future<void> _refreshTeacher(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+    for (final d in docs) {
+      try {
+        final v = await _service.teacherProgress(d.data(), _user);
+        if (v != null && mounted && _teacherValues[d.id] != v) setState(() => _teacherValues[d.id] = v);
+      } catch (e) {
+        debugPrint('Teacher quest progress: $e');
+      }
+    }
+  }
+
+  Future<void> _claimTeacher(QueryDocumentSnapshot<Map<String, dynamic>> d) async {
+    if (_claiming.contains(d.id)) return;
+    setState(() => _claiming.add(d.id));
+    AppHaptics.celebrate();
+    final ok = await _service.claimTeacherQuest(d.reference, d.data());
+    if (!mounted) return;
+    setState(() => _claiming.remove(d.id));
+    final reward = (d.data()['reward'] as num?)?.toInt() ?? 0;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.fixed,
+      content: Text(ok
+          ? 'Quest complete: ${d.data()['title'] ?? ''}  +$reward XP'
+          : 'Could not claim. Check your internet and try again.'),
+    ));
+  }
+
+  Widget _teacherGroup(ThemeData theme, Color textColor) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _teacherStream,
+      builder: (context, snap) {
+        if (snap.hasError) debugPrint('Teacher quests unavailable: ${snap.error}');
+        final docs = [
+          for (final d in snap.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[])
+            if (DailyChallengeService.teacherQuestOpen(d.data())) d,
+        ]..sort((a, b) {
+            final ta = a.data()['assignedAt'], tb = b.data()['assignedAt'];
+            return (tb is Timestamp ? tb.millisecondsSinceEpoch : 0).compareTo(ta is Timestamp ? ta.millisecondsSinceEpoch : 0);
+          });
+        final shown = docs.take(DailyChallengeService.maxTeacherQuests).toList();
+        if (shown.isEmpty) return const SizedBox.shrink();
+        // Count progress when the set of quests or the student's data changed.
+        final sig = '${shown.map((d) => d.id).join(',')}|${_user['xp']}|${_user['dailyXp']}|${_user['completedLessons']}';
+        if (sig != _teacherSignature) {
+          _teacherSignature = sig;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _refreshTeacher(shown));
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.school_rounded, size: 18 * s, color: const Color(0xFFAB47BC)),
+              SizedBox(width: 6 * s),
+              Text('From your teacher',
+                  style: TextStyle(fontSize: 15 * s, fontWeight: FontWeight.w900, color: textColor)),
+            ]),
+            SizedBox(height: 8 * s),
+            for (final d in shown)
+              _QuestCard(
+                quest: DailyChallengeService.teacherQuestDef(d.id, d.data()),
+                value: _teacherValues[d.id],
+                claimed: false,
+                claiming: _claiming.contains(d.id),
+                scale: s,
+                tag: 'Until ${d.data()['expiresDay'] ?? ''}'.trim() == 'Until' ? 'Teacher' : 'Until ${d.data()['expiresDay']}',
+                onClaim: () => _claimTeacher(d),
+              ),
+            SizedBox(height: 8 * s),
+            Text('Your daily quests',
+                style: TextStyle(fontSize: 15 * s, fontWeight: FontWeight.w900, color: textColor)),
+            SizedBox(height: 8 * s),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _claim(QuestDef q) async {
     if (_claiming.contains(q.id)) return;
     setState(() => _claiming.add(q.id));
@@ -90,7 +180,7 @@ class _DailyQuestsSectionState extends State<DailyQuestsSection> {
     setState(() => _claiming.remove(q.id));
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.fixed,
         backgroundColor: q.info.color,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         content: Row(children: [
@@ -130,6 +220,8 @@ class _DailyQuestsSectionState extends State<DailyQuestsSection> {
           style: TextStyle(fontSize: 12 * s, fontWeight: FontWeight.w600, color: textColor.withValues(alpha: 0.55)),
         ),
         SizedBox(height: 14 * s),
+        // Quests a teacher sent from the web (extra to the 3 daily quests).
+        _teacherGroup(theme, textColor),
         if (quests.isEmpty && !_loading)
           _emptyState(theme, completed.length >= questCatalog.length)
         else if (quests.isEmpty)
@@ -475,6 +567,9 @@ class _QuestCard extends StatelessWidget {
   final bool claiming;
   final double scale;
   final VoidCallback onClaim;
+
+  /// Shown instead of the track name (teacher quests: "Until 2026-11-27").
+  final String? tag;
   const _QuestCard({
     required this.quest,
     required this.value,
@@ -482,6 +577,7 @@ class _QuestCard extends StatelessWidget {
     required this.claiming,
     required this.scale,
     required this.onClaim,
+    this.tag,
   });
 
   @override
@@ -555,7 +651,7 @@ class _QuestCard extends StatelessWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 8 * s, vertical: 2 * s),
               decoration: BoxDecoration(color: info.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
-              child: Text(info.name,
+              child: Text(tag ?? info.name,
                   style: TextStyle(fontSize: 10.5 * s, fontWeight: FontWeight.w800, color: info.color)),
             ),
             SizedBox(height: 10 * s),
